@@ -3,8 +3,6 @@
     "latitude": 52.472,
     "longitude": 9.333,
     "timezone": "Europe/Berlin"
-  },
-  "cameras": [
-    "SKM-Mardorf"
-  ]
+  }
+  
 }
