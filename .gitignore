@@ -1,0 +1,23 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Runtime data
+temp/*
+logs/*
+videos/*
+
+!temp/.gitkeep
+!logs/.gitkeep
+!videos/.gitkeep
+
+# Environment / secrets
+.env
+*.env
+!*.env.example
+*.key
+*.pem
+
+# OS
+.DS_Store

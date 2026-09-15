@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -u
+
+MOUNTPOINT="/mnt/cameras"
+
+echo "INFO: Starting SSHFS preflight check for $MOUNTPOINT."
+
+# Prüfen, ob der Kernel an diesem Pfad einen Mount kennt.
+if findmnt -rn --mountpoint "$MOUNTPOINT" >/dev/null 2>&1; then
+    echo "INFO: Existing mount detected at $MOUNTPOINT."
+
+    # Prüfen, ob der bestehende Mount tatsächlich noch erreichbar ist.
+    if timeout 5 stat "$MOUNTPOINT" >/dev/null 2>&1; then
+        echo "ERROR: $MOUNTPOINT is already mounted and accessible."
+        echo "ERROR: Refusing to mount another filesystem over it."
+        exit 1
+    fi
+
+    # Ein Mount existiert laut Kernel, ist aber nicht erreichbar.
+    echo "WARNING: Existing mount at $MOUNTPOINT is not accessible."
+    echo "WARNING: Assuming stale FUSE mount and attempting cleanup."
+
+    if ! fusermount3 -uz "$MOUNTPOINT"; then
+        echo "ERROR: Failed to unmount stale FUSE mount at $MOUNTPOINT."
+        exit 1
+    fi
+
+    # Kurz warten, damit der Kernel den Lazy-Unmount verarbeiten kann.
+    sleep 1
+
+    # Direkt die Mount-Tabelle prüfen, nicht den Mountpoint öffnen.
+    if findmnt -rn --mountpoint "$MOUNTPOINT" >/dev/null 2>&1; then
+        echo "ERROR: $MOUNTPOINT is still present in the mount table after cleanup."
+        exit 1
+    fi
+
+    echo "INFO: Stale FUSE mount removed successfully."
+fi
+
+# Erst jetzt auf das eigentliche Verzeichnis zugreifen.
+if [[ ! -d "$MOUNTPOINT" ]]; then
+    echo "ERROR: Mountpoint directory $MOUNTPOINT does not exist."
+    exit 1
+fi
+
+echo "INFO: $MOUNTPOINT is ready for SSHFS."
+exit 0

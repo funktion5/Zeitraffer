@@ -1,0 +1,29 @@
+[Unit]
+Description=Mount Hetzner camera storage via SSHFS
+Documentation=man:sshfs(1)
+
+Wants=network-online.target
+After=network-online.target
+
+ConditionPathIsDirectory=/mnt/cameras
+ConditionPathExists=/home/zruser/.ssh/storagebox_ed25519
+
+[Service]
+EnvironmentFile=/etc/timelapse/mount.env
+Type=exec
+User=zruser
+Group=zruser
+
+ExecStartPre=/usr/local/sbin/cameras-sshfs-preflight
+ExecStart=/usr/bin/sshfs -f -p ${REMOTE_PORT} -o ro -o IdentityFile=${REMOTE_SSH_KEY} -o BatchMode=yes -o StrictHostKeyChecking=yes -o reconnect -o ServerAliveInterval=30 -o ServerAliveCountMax=3 ${REMOTE_USER}@${REMOTE_HOST}: /mnt/cameras
+
+ExecStop=/usr/bin/fusermount3 -u /mnt/cameras
+
+Restart=on-failure
+RestartSec=30s
+
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target
