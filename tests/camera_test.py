@@ -1,5 +1,5 @@
-from datetime import date
-
+from datetime import date, datetime
+from pathlib import Path
 from src.images import (
     ImageRange,
     extract_date, 
@@ -10,7 +10,9 @@ from src.images import (
     get_image_range,
     )
 from src.solar import get_sun_times
+from zoneinfo import ZoneInfo
 
+import src.images as images_module
 
 def test_cameras_with_known_dates():
     # Use known dates with existing images to verify that the date-based
@@ -130,6 +132,7 @@ def test_complete_image_selection():
             target_date=target_date,
             sunrise=sunrise,
             sunset=sunset,
+            daylight_buffer_minutes=90,
         )
 
         # Verify that at least one image remains after daylight filtering.
@@ -200,3 +203,41 @@ def test_get_image_range_with_unknown_format(tmp_path, monkeypatch):
 	# Never guess a date when the filename format is unsupported.
 	assert result.earliest_date is None
 	assert result.latest_date is None
+
+def test_find_images_uses_daylight_buffer(monkeypatch):
+    
+	target_date = date(2026, 9, 16)
+	timezone = ZoneInfo("Europe/Berlin")
+
+	sunrise = datetime(2026, 9, 16, 7, 0, tzinfo=timezone)
+	sunset = datetime(2026, 9, 16, 19, 0, tzinfo=timezone)
+    
+
+	test_images = [
+		Path("camera_26-09-16_06-29-00-00.jpg"),
+		Path("camera_26-09-16_06-31-00-00.jpg"),
+		Path("camera_26-09-16_19-29-00-00.jpg"),
+		Path("camera_26-09-16_19-31-00-00.jpg"),
+	]
+
+	def fake_find_images_for_date(camera, target_date):
+		return test_images
+
+	monkeypatch.setattr(
+		images_module,
+		"find_images_for_date",
+		fake_find_images_for_date,
+	)
+
+	result = images_module.find_images(
+		camera="Test-Camera",
+		target_date=target_date,
+		sunrise=sunrise,
+		sunset=sunset,
+        daylight_buffer_minutes=30
+	)
+
+	assert result == [
+		Path("camera_26-09-16_06-31-00-00.jpg"),
+		Path("camera_26-09-16_19-29-00-00.jpg"),
+	]

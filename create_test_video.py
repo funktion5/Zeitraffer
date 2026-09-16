@@ -15,6 +15,7 @@ target_date = date(2026, 9, 14)
 
 config = load_config()
 location = config["location"]
+daylight_buffer_minutes = config["daylight_buffer_minutes"]
 
 sunrise, sunset = get_sun_times(
     target_date=target_date,
@@ -29,6 +30,7 @@ images = find_images(
     target_date=target_date,
     sunrise=sunrise,
     sunset=sunset,
+    daylight_buffer_minutes=daylight_buffer_minutes,
 )
 
 print(f"Found {len(images)} images.")

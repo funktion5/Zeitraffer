@@ -3,6 +3,6 @@
     "latitude": 52.472,
     "longitude": 9.333,
     "timezone": "Europe/Berlin"
-  }
-  
+  },
+  "daylight_buffer_minutes": 90
 }

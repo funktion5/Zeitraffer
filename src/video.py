@@ -1,7 +1,10 @@
 from datetime import date
 from pathlib import Path
+
 import shutil
 import subprocess
+
+from src.logger import logger
 
 
 TEMP_ROOT = Path("temp")
@@ -10,19 +13,31 @@ VIDEO_FRAMERATE = 10
 
 
 # Creates a clean temporary working directory for a camera and date.
+# Create a clean temporary working directory for a camera and date.
 def create_temp_directory(camera: str, target_date: date) -> Path:
     temp_directory = TEMP_ROOT / camera / target_date.isoformat()
 
     if temp_directory.exists():
+        logger.debug(
+            f"Removing existing temporary directory: {temp_directory}"
+        )
         shutil.rmtree(temp_directory)
 
     temp_directory.mkdir(parents=True)
 
+    logger.debug(f"Created temporary directory: {temp_directory}")
+
     return temp_directory
 
 
-# Copies selected images locally and renames them as sequential FFmpeg frames.
-def copy_images_to_temp(images: list[Path], temp_directory: Path) -> list[Path]:
+
+# Copy selected images locally and rename them as sequential FFmpeg frames.
+def copy_images_to_temp(
+    images: list[Path],
+    temp_directory: Path,
+) -> list[Path]:
+    logger.info(f"Copying {len(images)} images to temporary directory")
+
     copied_images = []
 
     for index, image in enumerate(images, start=1):
@@ -31,10 +46,12 @@ def copy_images_to_temp(images: list[Path], temp_directory: Path) -> list[Path]:
         shutil.copy2(image, destination)
         copied_images.append(destination)
 
-    return copied_images    
+    logger.debug(f"Copied {len(copied_images)} temporary frames")
+
+    return copied_images
 
 
-# Creates a daily MP4 timelapse from the prepared temporary frames.
+# Create a daily MP4 timelapse from the prepared temporary frames.
 def create_video(
     camera: str,
     target_date: date,
@@ -61,16 +78,23 @@ def create_video(
         str(output_path),
     ]
 
+    logger.info(f"Creating video: {output_path}")
+    logger.debug(f"FFmpeg command: {' '.join(command)}")
+
     subprocess.run(command, check=True)
+
+    logger.info(f"Video created successfully: {output_path}")
 
     return output_path
 
 
-# Removes the temporary working directory after successful processing.
+# Remove the temporary working directory after successful processing.
 def cleanup_temp_directory(temp_directory: Path) -> None:
     if temp_directory.exists():
         shutil.rmtree(temp_directory)
-
+        logger.debug(
+            f"Removed temporary directory: {temp_directory}"
+        )
 
 # Creates a complete timelapse from selected images and cleans up temporary files.
 def create_timelapse(

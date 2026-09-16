@@ -675,39 +675,134 @@ Die endgültige Retry- und Logging-Strategie wird im weiteren Projektverlauf ver
 
 ---
 
-# Logging
+# Daylight-Buffer
 
-Ein strukturiertes Logging ist vorgesehen, aber noch nicht vollständig implementiert.
+Die Auswahl der Bilder orientiert sich dynamisch an Sonnenaufgang und Sonnenuntergang.
 
-Es soll später Pythons `logging`-Modul verwendet werden.
+Zusätzlich wird der verwendete Zeitraum um einen konfigurierbaren Daylight-Buffer vor Sonnenaufgang und nach Sonnenuntergang erweitert. Dadurch können auch die Übergangsphasen vor Sonnenaufgang und nach Sonnenuntergang im Timelapse enthalten sein.
 
-Logs sollen insbesondere Informationen enthalten wie:
+Der Buffer wird zentral in der Konfiguration festgelegt:
 
-```text
-Job gestartet
-Zieldatum
-
-Kamera gestartet
-Anzahl gefundener Bilder
-erster / letzter verwendeter Zeitpunkt
-
-Video erfolgreich erstellt
-Ausgabepfad
-
-keine Bilder gefunden
-verfügbarer Bildzeitraum
-
-nicht erkannte Dateinamen
-
-FFmpeg-Fehler
-Retry-Versuche
-
-Cleanup erfolgreich / fehlgeschlagen
-
-Job beendet
+```json
+"daylight_buffer_minutes": 90
 ```
 
-Die bereits implementierten Diagnosefunktionen sind bewusst so gestaltet, dass sie dem Logger später strukturierte Informationen liefern können.
+`main.py` liest diesen Wert aus der Konfiguration und übergibt ihn an `find_images()`.
+
+Die eigentliche Bildauswahl enthält dadurch keinen fest vorgegebenen Buffer. Der gewünschte Zeitraum kann über die Konfiguration geändert werden, ohne die Logik in `images.py` anzupassen.
+
+Aktuell sind 90 Minuten konfiguriert. Der endgültige fachliche Wert ist noch abzustimmen.
+
+---
+
+# Logging
+
+Das Projekt verwendet Pythons `logging`-Modul mit einer zentralen Logger-Konfiguration in `src/logger.py`.
+
+Der Logger dient dazu, den automatisierten Ablauf nachvollziehbar zu machen und insbesondere Probleme bei einzelnen Kameras diagnostizieren zu können.
+
+Der aktuelle Daily-Workflow protokolliert unter anderem:
+
+- Start und Ende eines Daily-Jobs,
+- das verarbeitete Zieldatum,
+- den konfigurierten Daylight-Buffer,
+- Sonnenaufgang und Sonnenuntergang,
+- Beginn der Verarbeitung einer Kamera,
+- Anzahl der ausgewählten Bilder,
+- erstes und letztes ausgewähltes Bild als Debug-Information,
+- fehlende Bilder,
+- verfügbaren Bildzeitraum bei fehlenden Bildern,
+- unbekannte Dateinamensformate,
+- Schritte der Videoerstellung,
+- erfolgreiche Videoerstellung und Ausgabepfad,
+- Erstellung und Bereinigung temporärer Verzeichnisse.
+
+Die Log-Level werden nach Bedeutung getrennt:
+
+```text
+DEBUG    technische Detailinformationen
+INFO     normaler Programmablauf
+WARNING  ungewöhnliche, aber behandelbare Zustände
+ERROR    fehlgeschlagene Verarbeitung
+```
+
+Die gezielte Fehlerbehandlung und Retry-Strategie für den späteren automatisierten Betrieb wird im weiteren Projektverlauf ergänzt.
+
+---
+
+# Tests
+
+Das Projekt verwendet `pytest`.
+
+Tests werden beispielsweise ausgeführt mit:
+
+```bash
+PYTHONPATH=. pytest
+```
+
+oder ausführlicher:
+
+```bash
+PYTHONPATH=. pytest -v
+```
+
+Einzelne Tests können gezielt ausgeführt werden:
+
+```bash
+PYTHONPATH=. pytest tests/camera_test.py::test_get_image_range -v
+```
+
+Die Tests decken unter anderem ab:
+
+- Erkennung bekannter Kamera-Dateinamen,
+- Extraktion von Datum und Uhrzeit,
+- Ablehnung ungültiger Dateinamen,
+- Verhalten bei vollständig unbekannten Dateinamensformaten,
+- Auswahl von Bildern innerhalb des Tageslichtfensters,
+- konfigurierbaren Daylight-Buffer,
+- Ermittlung des vorhandenen Bildzeitraums,
+- Diagnose bei fehlenden Bildern,
+- Erstellung und Bereinigung temporärer Verzeichnisse,
+- Kopieren und fortlaufendes Benennen von Frames,
+- Video-/Timelapse-Workflow,
+- Verhalten bei Fehlern während der Videoerstellung.
+
+Der Daylight-Buffer wird in den entsprechenden Tests explizit an `find_images()` übergeben. Die Tests bleiben dadurch unabhängig vom aktuell in der Konfiguration gesetzten Betriebswert.
+
+Eine wichtige Testregel lautet:
+
+```text
+Unbekanntes Dateiformat -> nicht raten
+```
+
+Dafür existiert ausdrücklich ein Test mit einer simulierten neuen Kamera, deren Dateinamen keinem bekannten Format entsprechen.
+
+Aktueller Teststand:
+
+```text
+18 passed
+```
+
+---
+
+# Zentrale Architekturentscheidungen
+
+Folgende Entscheidungen gelten derzeit für das Projekt:
+
+1. Kameras werden anhand der gemounteten Kameraordner erkannt.
+2. Der reale, nicht änderbare Kameraname kann zukünftig als Dateiprefix verwendet werden.
+3. Das zukünftige Standardformat lautet `<Kameraname>_YY-MM-DD_HH-MM-SS-MS.jpg`.
+4. Historische Dateinamensformate bleiben als Legacy-Parser erhalten.
+5. Unbekannte Dateinamensformate werden niemals geraten.
+6. Tageslicht wird dynamisch anhand von Sonnenaufgang und Sonnenuntergang bestimmt.
+7. Der Zeitraum kann über einen konfigurierbaren Daylight-Buffer vor Sonnenaufgang und nach Sonnenuntergang erweitert werden.
+8. Originalbilder werden für die Videoerstellung nicht verändert.
+9. FFmpeg erhält eine normalisierte `frame_XXXXXX.jpg`-Sequenz.
+10. Timelapses haben eine einheitliche Framerate statt einer einheitlichen Videolänge.
+11. Videos werden nach Kamera und Timelapse-Typ strukturiert gespeichert.
+12. Daily-, Weekly-, Monthly- und Yearly-Bildauswahl sollen von der allgemeinen Videoerstellung getrennt bleiben.
+13. Diagnose- und Ablaufmeldungen werden zentral über Pythons `logging`-Modul protokolliert.
+14. Konfigurierbare Betriebsparameter wie der Daylight-Buffer werden von der Verarbeitungslogik getrennt gehalten.
 
 ---
 

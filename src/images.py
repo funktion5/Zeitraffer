@@ -1,10 +1,12 @@
 import re
+
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 
 CAMERA_ROOT = Path("/mnt/cameras")
+
 
 
 @dataclass
@@ -162,9 +164,13 @@ def find_images(
 	target_date,
 	sunrise: datetime,
 	sunset: datetime,
+	daylight_buffer_minutes: int,
 ):
 	daily_images = find_images_for_date(camera, target_date)
 	selected_images = []
+
+	start_time = sunrise - timedelta(minutes=daylight_buffer_minutes)
+	end_time = sunset + timedelta(minutes=daylight_buffer_minutes)
 
 	for image_path in daily_images:
 		image_time = extract_time(image_path.name)
@@ -186,7 +192,7 @@ def find_images(
 			tzinfo=sunrise.tzinfo,
 		)
 
-		if sunrise <= timestamp <= sunset:
+		if start_time <= timestamp <= end_time:
 			selected_images.append(image_path)
 
 	return selected_images
