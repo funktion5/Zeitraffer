@@ -1,5 +1,10 @@
 import logging
-from datetime import date
+import subprocess
+from argparse import Namespace
+from datetime import UTC, date, datetime
+from pathlib import Path
+
+import pytest
 
 import src.main as main_module
 from src.images import ImageRange
@@ -100,3 +105,323 @@ def test_missing_images_diagnostic_mixed_formats(monkeypatch, caplog):
         "100 files use an unsupported filename format."
         in caplog.text
     )
+
+
+def test_main_creates_timelapse(monkeypatch):
+    target_date = date(2026, 9, 16)
+
+    sunrise = datetime(2026, 9, 16, 7, 0, tzinfo=UTC)
+    sunset = datetime(2026, 9, 16, 19, 0, tzinfo=UTC)
+
+    images = [
+        Path("image_1.jpg"),
+        Path("image_2.jpg"),
+    ]
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(date=target_date),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: {
+            "location": {
+                "latitude": 52.0,
+                "longitude": 9.0,
+                "timezone": "Europe/Berlin",
+            },
+            "daylight_buffer_minutes": 90,
+        },
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        lambda: ["Test-Camera"],
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_sun_times",
+        lambda **kwargs: (sunrise, sunset),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "find_images",
+        lambda **kwargs: images,
+    )
+
+    create_timelapse_calls = []
+
+    def fake_create_timelapse(camera, target_date, images):
+        create_timelapse_calls.append(
+            {
+                "camera": camera,
+                "target_date": target_date,
+                "images": images,
+            }
+        )
+
+        return Path(
+            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "create_timelapse",
+        fake_create_timelapse,
+    )
+
+    main_module.main()
+
+    assert create_timelapse_calls == [
+        {
+            "camera": "Test-Camera",
+            "target_date": target_date,
+            "images": images,
+        }
+    ]
+
+
+def test_main_continues_after_camera_video_error(monkeypatch):
+    target_date = date(2026, 9, 16)
+
+    sunrise = datetime(
+        2026,
+        9,
+        16,
+        7,
+        0,
+        tzinfo=UTC,
+    )
+    sunset = datetime(
+        2026,
+        9,
+        16,
+        19,
+        0,
+        tzinfo=UTC,
+    )
+
+    images = [Path("image_1.jpg")]
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(date=target_date),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: {
+            "location": {
+                "latitude": 52.0,
+                "longitude": 9.0,
+                "timezone": "Europe/Berlin",
+            },
+            "daylight_buffer_minutes": 90,
+        },
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        lambda: ["Camera-A", "Camera-B"],
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_sun_times",
+        lambda **kwargs: (sunrise, sunset),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "find_images",
+        lambda **kwargs: images,
+    )
+
+    processed_cameras = []
+
+    def fake_create_timelapse(camera, target_date, images):
+        processed_cameras.append(camera)
+
+        if camera == "Camera-A":
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=["ffmpeg"],
+            )
+
+        return Path(
+            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "create_timelapse",
+        fake_create_timelapse,
+    )
+
+    logged_errors = []
+
+    def fake_logger_exception(message):
+        logged_errors.append(message)
+
+    monkeypatch.setattr(
+        main_module.logger,
+        "exception",
+        fake_logger_exception,
+    )
+
+    main_module.main()
+
+    assert processed_cameras == ["Camera-A", "Camera-B"]
+
+    assert logged_errors == [
+        "Failed to process timelapse for camera: Camera-A"
+    ]
+
+
+
+def test_main_continues_after_image_selection_error(monkeypatch):
+    target_date = date(2026, 9, 16)
+   
+
+    sunrise = datetime(
+        2026,
+        9,
+        16,
+        7,
+        0,
+        tzinfo=UTC,
+    )
+    sunset = datetime(
+        2026,
+        9,
+        16,
+        19,
+        0,
+        tzinfo=UTC,
+    )
+
+    images = [Path("image_1.jpg")]
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(date=target_date),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: {
+            "location": {
+                "latitude": 52.0,
+                "longitude": 9.0,
+                "timezone": "Europe/Berlin",
+            },
+            "daylight_buffer_minutes": 90,
+        },
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        lambda: ["Camera-A", "Camera-B"],
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_sun_times",
+        lambda **kwargs: (sunrise, sunset),
+    )
+
+    def fake_find_images(camera, **kwargs):
+        if camera == "Camera-A":
+            raise OSError("Failed to read camera images")
+
+        return images
+
+    monkeypatch.setattr(
+        main_module,
+        "find_images",
+        fake_find_images,
+    )
+
+    processed_cameras = []
+
+    def fake_create_timelapse(camera, target_date, images):
+        processed_cameras.append(camera)
+
+        return Path(
+            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "create_timelapse",
+        fake_create_timelapse,
+    )
+
+    main_module.main()
+
+    assert processed_cameras == ["Camera-B"]
+
+
+def test_main_logs_and_raises_camera_storage_error(monkeypatch):
+    target_date = date(2026, 9, 16)
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(date=target_date),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: {
+            "location": {
+                "latitude": 52.0,
+                "longitude": 9.0,
+                "timezone": "Europe/Berlin",
+            },
+            "daylight_buffer_minutes": 90,
+        },
+    )
+
+    def fake_get_cameras():
+        raise OSError("Camera storage unavailable")
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        fake_get_cameras,
+    )
+
+    logged_errors = []
+
+    def fake_logger_exception(message):
+        logged_errors.append(message)
+
+    monkeypatch.setattr(
+        main_module.logger,
+        "exception",
+        fake_logger_exception,
+    )
+
+    with pytest.raises(
+        OSError,
+        match="Camera storage unavailable",
+    ):
+        main_module.main()
+
+    assert logged_errors == [
+        "Failed to access camera storage."
+    ]

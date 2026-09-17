@@ -1,9 +1,7 @@
 import re
-
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
-
 
 CAMERA_ROOT = Path("/mnt/cameras")
 

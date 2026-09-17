@@ -1,7 +1,5 @@
 import logging
-
 from pathlib import Path
-
 
 LOG_ROOT = Path("logs")
 LOG_PATH = LOG_ROOT / "timelapse.log"

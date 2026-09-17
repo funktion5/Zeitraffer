@@ -1,5 +1,7 @@
 import argparse
-from datetime import date, timedelta
+import subprocess
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from src.config import load_config
 from src.images import find_images, get_cameras, get_image_range
@@ -13,13 +15,11 @@ def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Create timelapses for all available cameras."
     )
-
     parser.add_argument(
         "--date",
         type=date.fromisoformat,
         help="Date to process in YYYY-MM-DD format. Defaults to yesterday.",
     )
-
     return parser.parse_args()
 
 
@@ -58,18 +58,26 @@ def main():
     config = load_config()
 
     # Use the requested date or default to yesterday for automated nightly runs.
-    target_date = args.date or (date.today() - timedelta(days=1))
+    location = config["location"]
+    timezone = ZoneInfo(location["timezone"])
+
+    target_date = args.date or (
+        datetime.now(tz=timezone).date() - timedelta(days=1)
+    )
 
     logger.info(f"Starting daily timelapse job for {target_date}")
 
-    location = config["location"]
     daylight_buffer_minutes = config["daylight_buffer_minutes"]
 
     logger.info(
         f"Daylight buffer: {daylight_buffer_minutes} minutes"
     )
 
-    cameras = get_cameras()
+    try:
+       cameras = get_cameras()
+    except OSError:
+        logger.exception("Failed to access camera storage.")
+        raise
 
     # Calculate solar times once because all cameras share the same location.
     sunrise, sunset = get_sun_times(
@@ -86,29 +94,36 @@ def main():
     for camera in cameras:
         logger.info(f"Processing camera: {camera}")
 
-        images = find_images(
-            camera=camera,
-            target_date=target_date,
-            sunrise=sunrise,
-            sunset=sunset,
-            daylight_buffer_minutes=daylight_buffer_minutes,
-        )
+        try:
+            images = find_images(
+                camera=camera,
+                target_date=target_date,
+                sunrise=sunrise,
+                sunset=sunset,
+                daylight_buffer_minutes=daylight_buffer_minutes,
+            )
 
-        # Skip cameras without images instead of interrupting the complete job.
-        if not images:
-            logger.warning("Found 0 images - skipping camera.")
-            log_missing_images_diagnostic(camera)
+            # Skip cameras without images instead of interrupting the complete job.
+            if not images:
+                logger.warning("Found 0 images - skipping camera.")
+                log_missing_images_diagnostic(camera)
+                continue
+
+            logger.info(f"Found {len(images)} images")
+            logger.debug(f"First image: {images[0].name}")
+            logger.debug(f"Last image: {images[-1].name}")
+
+            video_path = create_timelapse(
+                camera=camera,
+                target_date=target_date,
+                images=images,
+            )
+
+        except (OSError, subprocess.CalledProcessError):
+            logger.exception(
+                f"Failed to process timelapse for camera: {camera}"
+            )
             continue
-
-        logger.info(f"Found {len(images)} images")
-        logger.debug(f"First image: {images[0].name}")
-        logger.debug(f"Last image: {images[-1].name}")
-
-        video_path = create_timelapse(
-            camera=camera,
-            target_date=target_date,
-            images=images,
-        )
 
         logger.info(f"Finished processing camera: {camera}")
         logger.debug(f"Video path: {video_path}")
