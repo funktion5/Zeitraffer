@@ -159,3 +159,105 @@ def test_missing_images_diagnostic_mixed_formats(
         "100 files use an unsupported filename format."
         in caplog.text
     )
+
+
+def test_missing_images_diagnostic_timeout_stops_process(
+    monkeypatch,
+    caplog,
+):
+    created_processes = []
+    created_queues = []
+
+    class FakeQueue:
+        def __init__(self):
+            self.closed = False
+
+            created_queues.append(
+                self
+            )
+
+        def close(self):
+            self.closed = True
+
+    class FakeProcess:
+        def __init__(
+            self,
+            target,
+            args,
+            daemon,
+        ):
+            self.target = target
+            self.args = args
+            self.daemon = daemon
+
+            self.started = False
+            self.alive = True
+            self.terminated = False
+            self.killed = False
+            self.join_calls = []
+
+            created_processes.append(
+                self
+            )
+
+        def start(self):
+            self.started = True
+
+        def join(
+            self,
+            timeout,
+        ):
+            self.join_calls.append(
+                timeout
+            )
+
+        def is_alive(self):
+            return self.alive
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.killed = True
+            self.alive = False
+
+    monkeypatch.setattr(
+        diagnostics_module,
+        "Queue",
+        FakeQueue,
+    )
+
+    monkeypatch.setattr(
+        diagnostics_module,
+        "Process",
+        FakeProcess,
+    )
+
+    with caplog.at_level(
+        logging.WARNING,
+        logger="timelapse",
+    ):
+        diagnostics_module.log_missing_images_diagnostic(
+            "Test-Camera"
+        )
+
+    process = created_processes[0]
+    result_queue = created_queues[0]
+
+    assert process.started is True
+    assert process.terminated is True
+    assert process.killed is True
+
+    assert process.join_calls == [
+        diagnostics_module.IMAGE_RANGE_TIMEOUT_SECONDS,
+        diagnostics_module.IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS,
+        diagnostics_module.IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS,
+    ]
+
+    assert result_queue.closed is True
+
+    assert (
+        "Image range diagnostic timed out for Test-Camera "
+        "after 10 seconds."
+        in caplog.text
+    )

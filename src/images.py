@@ -1,196 +1,597 @@
+import hashlib
+import os
 import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
+from multiprocessing import Process, Queue
 from pathlib import Path
+from queue import Empty
+
+from src.logger import logger
 
 CAMERA_ROOT = Path("/mnt/cameras")
 
+# Report scan progress at most once per second.
+IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS = 1
+
+# Give a worker process a short grace period before forcing termination.
+IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS = 1
 
 
 @dataclass
 class ImageRange:
-	earliest_date: date | None
-	latest_date: date | None
-	total_files: int
-	recognized_files: int
-	unrecognized_files: int
+    earliest_date: date | None
+    latest_date: date | None
+    total_files: int
+    recognized_files: int
+    unrecognized_files: int
+
 
 # Returns all available camera directories from the mounted camera storage.
 def get_cameras():
-	return sorted(
-		path.name
-		for path in CAMERA_ROOT.iterdir()
-		if path.is_dir() and not path.name.startswith(".")
-	)
+    return sorted(
+        path.name
+        for path in CAMERA_ROOT.iterdir()
+        if path.is_dir() and not path.name.startswith(".")
+    )
 
 
-# Finds all images belonging to a specific camera and date.
-def find_images_for_date(camera: str, target_date):
-	camera_path = CAMERA_ROOT / camera
+# Scan the camera directory once and match known date formats by filename.
+def find_images_for_date(
+    camera: str,
+    target_date: date,
+    progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+    camera_path = CAMERA_ROOT / camera
 
-	# Support the different date formats used by the camera systems.
-	date_patterns = (
-		target_date.strftime("%Y%m%d"),
-		target_date.strftime("%y%m%d"),
-		target_date.strftime("%y-%m-%d"),
-	)
+    # Support the different date formats used by the camera systems.
+    date_patterns = (
+        target_date.strftime("%Y%m%d"),
+        target_date.strftime("%y%m%d"),
+        target_date.strftime("%y-%m-%d"),
+    )
 
-	images = set()
+    images = []
 
-	for date_pattern in date_patterns:
-		images.update(camera_path.glob(f"*{date_pattern}*.jpg"))
+		# Track the last reported progress so large scans do not flood the queue.
+    last_progress_report = time.monotonic()
 
-	return sorted(images)
+    # Scan the camera directory once and match known date formats by filename.
+    with os.scandir(camera_path) as entries:
+        for entry in entries:
+            if progress_callback is not None:
+                now = time.monotonic()
+
+								# Report only periodic progress while directory entries are still arriving.
+                if (
+                    now - last_progress_report
+                    >= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS
+                ):
+                    progress_callback()
+                    last_progress_report = now
+
+            if not entry.name.lower().endswith(".jpg"):
+                continue
+
+            if not any(
+                date_pattern in entry.name
+                for date_pattern in date_patterns
+            ):
+                continue
+
+            images.append(
+                camera_path / entry.name
+            )
+
+    return sorted(images)
 
 
 # Extracts the capture date from the different camera filename formats.
 def extract_date(filename: str):
-	date_patterns = (
-		# YYYYMMDDT... format.
-		r"(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})T",
+    date_patterns = (
+        # YYYYMMDDT... format.
+        r"(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})T",
 
-		# Reolink: ..._00_YYYYMMDDHHMMSS.jpg
-		r"_00_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{6}\.jpg$",
+        # Reolink: ..._00_YYYYMMDDHHMMSS.jpg
+        r"_00_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{6}\.jpg$",
 
-		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg
-		r"^bsv_steinhude_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
+        # BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg
+        r"^bsv_steinhude_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
 
-		# YY-MM-DD format.
-		r"(?P<year>\d{2})-(?P<month>\d{2})-(?P<day>\d{2})",
+        # YY-MM-DD format.
+        r"(?P<year>\d{2})-(?P<month>\d{2})-(?P<day>\d{2})",
 
-		# Prefix_YYMMDD_... format.
-		r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})_",
+        # Prefix_YYMMDD_... format.
+        r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})_",
 
-		# Prefix_YYMMDDHHMM... format.
-		r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
+        # Prefix_YYMMDDHHMM... format.
+        r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
 
-		# P/T + YYMMDDHHMMSSxx format.
-		r"^[A-Za-z](?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{8}\.jpg$",
-	)
+        # P/T + YYMMDDHHMMSSxx format.
+        r"^[A-Za-z](?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{8}\.jpg$",
+    )
 
-	for pattern in date_patterns:
-		match = re.search(pattern, filename)
+    for pattern in date_patterns:
+        match = re.search(
+            pattern,
+            filename,
+        )
 
-		if match:
-			year = int(match.group("year"))
-			month = int(match.group("month"))
-			day = int(match.group("day"))
+        if match:
+            year = int(
+                match.group("year")
+            )
+            month = int(
+                match.group("month")
+            )
+            day = int(
+                match.group("day")
+            )
 
-			if year < 100:
-				year += 2000
+            if year < 100:
+                year += 2000
 
-			# Ignore matches that do not represent a valid calendar date.
-			try:
-				return date(year, month, day)
-			except ValueError:
-				continue
+            # Ignore matches that do not represent a valid calendar date.
+            try:
+                return date(
+                    year,
+                    month,
+                    day,
+                )
+            except ValueError:
+                continue
 
-	return None
+    return None
 
 
-# Scans a camera directory and returns its available date range and format statistics.
-def get_image_range(camera: str) -> ImageRange:
-	camera_path = CAMERA_ROOT / camera
+# Inspect filenames without triggering additional file metadata lookups.
+def get_image_range(
+    camera: str,
+) -> ImageRange:
+    camera_path = CAMERA_ROOT / camera
 
-	earliest_date = None
-	latest_date = None
-	total_files = 0
-	recognized_files = 0
-	unrecognized_files = 0
+    earliest_date = None
+    latest_date = None
+    total_files = 0
+    recognized_files = 0
+    unrecognized_files = 0
 
-	for image_path in camera_path.iterdir():
-		if not image_path.is_file() or image_path.suffix.lower() != ".jpg":
-			continue
+    # Inspect filenames without triggering additional file metadata lookups.
+    with os.scandir(camera_path) as entries:
+        for entry in entries:
+            if not entry.name.lower().endswith(".jpg"):
+                continue
 
-		total_files += 1
-		image_date = extract_date(image_path.name)
+            total_files += 1
 
-		# Track files whose filename format is not supported.
-		if image_date is None:
-			unrecognized_files += 1
-			continue
+            image_date = extract_date(
+                entry.name
+            )
 
-		recognized_files += 1
+            # Track files whose filename format is not supported.
+            if image_date is None:
+                unrecognized_files += 1
+                continue
 
-		if earliest_date is None or image_date < earliest_date:
-			earliest_date = image_date
+            recognized_files += 1
 
-		if latest_date is None or image_date > latest_date:
-			latest_date = image_date
+            if (
+                earliest_date is None
+                or image_date < earliest_date
+            ):
+                earliest_date = image_date
 
-	return ImageRange(
-		earliest_date=earliest_date,
-		latest_date=latest_date,
-		total_files=total_files,
-		recognized_files=recognized_files,
-		unrecognized_files=unrecognized_files,
-	)
+            if (
+                latest_date is None
+                or image_date > latest_date
+            ):
+                latest_date = image_date
+
+    return ImageRange(
+        earliest_date=earliest_date,
+        latest_date=latest_date,
+        total_files=total_files,
+        recognized_files=recognized_files,
+        unrecognized_files=unrecognized_files,
+    )
 
 
 # Extracts the capture time from the different camera filename formats.
 def extract_time(filename: str):
-	time_patterns = (
-		r"^[A-Za-z]\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
-		r"_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
-		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
-		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
-		r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}\.jpg$",
-		r"_\d{6}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
-		r"T(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
-	)
+    time_patterns = (
+        r"^[A-Za-z]\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
+        r"_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
+        r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
+        r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
+        r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}\.jpg$",
+        r"_\d{6}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
+        r"T(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
+    )
 
-	for pattern in time_patterns:
-		match = re.search(pattern, filename)
+    for pattern in time_patterns:
+        match = re.search(
+            pattern,
+            filename,
+        )
 
-		if match:
-			hour = int(match.group("hour"))
-			minute = int(match.group("minute"))
-			second = int(match.groupdict().get("second") or 0)
+        if match:
+            hour = int(
+                match.group("hour")
+            )
+            minute = int(
+                match.group("minute")
+            )
+            second = int(
+                match.groupdict().get("second")
+                or 0
+            )
 
-			# Ignore invalid matches that do not represent a real time.
-			if hour > 23 or minute > 59 or second > 59:
-				continue
+            # Ignore invalid matches that do not represent a real time.
+            if (
+                hour > 23
+                or minute > 59
+                or second > 59
+            ):
+                continue
 
-			return hour, minute, second
+            return (
+                hour,
+                minute,
+                second,
+            )
 
-	return None
+    return None
 
 
 # Selects all images for a date that were captured between sunrise and sunset.
 def find_images(
+    camera: str,
+    target_date: date,
+    sunrise: datetime,
+    sunset: datetime,
+    daylight_buffer_minutes: int,
+    progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+    # Forward scan progress to the isolated worker supervisor when provided.
+    daily_images = find_images_for_date(
+        camera=camera,
+        target_date=target_date,
+        progress_callback=progress_callback,
+    )
+
+    selected_images = []
+
+    start_time = sunrise - timedelta(
+        minutes=daylight_buffer_minutes
+    )
+    end_time = sunset + timedelta(
+        minutes=daylight_buffer_minutes
+    )
+
+    for image_path in daily_images:
+        image_time = extract_time(
+            image_path.name
+        )
+
+        # Ignore files whose timestamp cannot be extracted.
+        if image_time is None:
+            continue
+
+        hour, minute, second = image_time
+
+        # Combine the date and extracted capture time for daylight comparison.
+        timestamp = datetime(
+            target_date.year,
+            target_date.month,
+            target_date.day,
+            hour,
+            minute,
+            second,
+            tzinfo=sunrise.tzinfo,
+        )
+
+        if (
+            start_time
+            <= timestamp
+            <= end_time
+        ):
+            selected_images.append(
+                image_path
+            )
+
+    return selected_images
+
+
+# Calculate an image content hash without loading the complete file into memory.
+def _get_image_hash(
+	image_path: Path,
+	progress_callback: Callable[[], None] | None = None,
+) -> str:
+	hasher = hashlib.sha256()
+	last_progress_report = time.monotonic()
+
+	with image_path.open("rb") as image_file:
+		while chunk := image_file.read(
+			1024 * 1024
+		):
+			hasher.update(
+				chunk
+			)
+
+			if progress_callback is not None:
+				now = time.monotonic()
+
+				# Avoid flooding the worker queue while hashing large files.
+				if (
+					now - last_progress_report
+					>= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS
+				):
+					progress_callback()
+					last_progress_report = now
+
+	return hasher.hexdigest()
+
+
+## Validate selected images before they are passed to video processing.
+def validate_images(
 	camera: str,
-	target_date,
-	sunrise: datetime,
-	sunset: datetime,
-	daylight_buffer_minutes: int,
-):
-	daily_images = find_images_for_date(camera, target_date)
-	selected_images = []
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+	valid_images = []
+	images_by_size: dict[int, list[Path]] = {}
+	empty_images = []
 
-	start_time = sunrise - timedelta(minutes=daylight_buffer_minutes)
-	end_time = sunset + timedelta(minutes=daylight_buffer_minutes)
+	for image_path in images:
+		file_size = image_path.stat().st_size
 
-	for image_path in daily_images:
-		image_time = extract_time(image_path.name)
+		if progress_callback is not None:
+			progress_callback()
 
-		# Ignore files whose timestamp cannot be extracted.
-		if image_time is None:
+		# Empty files cannot be used as video frames.
+		if file_size == 0:
+			empty_images.append(
+				image_path
+			)
 			continue
 
-		hour, minute, second = image_time
-
-		# Combine the date and extracted capture time for daylight comparison.
-		timestamp = datetime(
-			target_date.year,
-			target_date.month,
-			target_date.day,
-			hour,
-			minute,
-			second,
-			tzinfo=sunrise.tzinfo,
+		valid_images.append(
+			image_path
 		)
 
-		if start_time <= timestamp <= end_time:
-			selected_images.append(image_path)
+		images_by_size.setdefault(
+			file_size,
+			[],
+		).append(
+			image_path
+		)
 
-	return selected_images
+	if empty_images:
+		logger.warning(
+			f"Camera {camera}: removed "
+			f"{len(empty_images)} empty image files"
+		)
+
+		for image_path in empty_images:
+			logger.debug(
+				f"Empty image: {image_path.name}"
+			)
+
+	duplicate_groups = []
+
+	# Only equal-sized files can contain identical source data.
+	for same_size_images in images_by_size.values():
+		if len(same_size_images) < 2:
+			continue
+
+		images_by_hash: dict[str, list[Path]] = {}
+
+		for image_path in same_size_images:
+			image_hash = _get_image_hash(
+				image_path=image_path,
+				progress_callback=progress_callback,
+			)
+
+			images_by_hash.setdefault(
+				image_hash,
+				[],
+			).append(
+				image_path
+			)
+
+		for matching_images in images_by_hash.values():
+			if len(matching_images) > 1:
+				duplicate_groups.append(
+					matching_images
+				)
+
+	if duplicate_groups:
+		duplicate_images = sum(
+			len(group)
+			for group in duplicate_groups
+		)
+
+		logger.warning(
+			f"Camera {camera}: detected "
+			f"{duplicate_images} images with duplicate source data "
+			f"in {len(duplicate_groups)} duplicate groups"
+		)
+
+		for group in duplicate_groups:
+			logger.debug(
+				"Duplicate image data: "
+				+ ", ".join(
+					image_path.name
+					for image_path in group
+				)
+			)
+
+	return valid_images
+
+# Run image discovery in a separate process so blocked filesystem access
+# cannot stall the complete application.
+def _find_images_worker(
+    camera: str,
+    target_date: date,
+    sunrise: datetime,
+    sunset: datetime,
+    daylight_buffer_minutes: int,
+    result_queue: Queue,
+) -> None:
+    def report_progress():
+				# Notify the parent that the directory scan is still making progress.
+        result_queue.put(
+            (
+                "progress",
+                None,
+            )
+        )
+
+    try:
+        images = find_images(
+	        camera=camera,
+	        target_date=target_date,
+	        sunrise=sunrise,
+	        sunset=sunset,
+	        daylight_buffer_minutes=daylight_buffer_minutes,
+	        progress_callback=report_progress,
+        )  
+
+        # Validate only selected images to avoid unnecessary metadata access.
+        images = validate_images(
+            camera=camera,
+	        images=images,
+	        progress_callback=report_progress,
+        )
+
+        result_queue.put(
+	        (
+		    "success",
+		    images,
+	        )
+        )
+
+    except OSError as error:
+				# Forward expected filesystem errors to the parent process.
+        result_queue.put(
+            (
+                "error",
+                str(error),
+            )
+        )
+
+# Stop a stalled worker and force-kill it only if termination is not enough.
+def _stop_image_scan_process(
+    process: Process,
+) -> None:
+    process.terminate()
+
+    process.join(
+        IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
+    )
+
+    if process.is_alive():
+        process.kill()
+
+        process.join(
+            IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
+        )
+
+# Run image discovery with a stall timeout that resets whenever progress arrives.
+def find_images_isolated(
+    camera: str,
+    target_date: date,
+    sunrise: datetime,
+    sunset: datetime,
+    daylight_buffer_minutes: int,
+    stall_timeout_seconds: float,
+) -> list[Path]:
+    result_queue = Queue()
+
+    process = Process(
+        target=_find_images_worker,
+        args=(
+            camera,
+            target_date,
+            sunrise,
+            sunset,
+            daylight_buffer_minutes,
+            result_queue,
+        ),
+        daemon=True,
+    )
+
+    process.start()
+
+    # Measure inactivity, not total scan duration.
+    last_progress = time.monotonic()
+    # Poll in larger intervals because immediate failure detection is not required.
+    poll_interval_seconds = 5
+
+    while True:
+        remaining_time = (
+            stall_timeout_seconds
+            - (
+                time.monotonic()
+                - last_progress
+            )
+        )
+
+        # The worker is still alive but has stopped reporting progress.
+        if remaining_time <= 0:
+            _stop_image_scan_process(
+                process
+            )
+
+            result_queue.close()
+
+            raise TimeoutError(
+                f"Image scan stalled for camera: {camera}"
+            )
+
+        try:
+            status, result = result_queue.get(
+                timeout=min(
+                    poll_interval_seconds,
+                    remaining_time,
+                )
+            )
+
+        except Empty:
+            # A dead worker indicates an unexpected failure, not a filesystem stall.
+            if not process.is_alive():
+                process.join()
+
+                result_queue.close()
+
+                raise RuntimeError(
+                    "Image scan worker exited unexpectedly "
+                    f"for camera: {camera} "
+                    f"(exit code: {process.exitcode})"
+                )
+
+            continue
+
+        if status == "progress":
+            last_progress = time.monotonic()
+            continue
+
+        process.join(
+            IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
+        )
+
+        if process.is_alive():
+            _stop_image_scan_process(
+                process
+            )
+
+        result_queue.close()
+
+        if status == "error":
+            raise OSError(
+                result
+            )
+
+        return result

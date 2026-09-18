@@ -11,6 +11,7 @@ TEST_CONFIG = {
         "timezone": "Europe/Berlin",
     },
     "daylight_buffer_minutes": 90,
+    "image_scan_stall_timeout_seconds": 10,
 }
 
 TEST_SUNRISE = datetime(
@@ -76,7 +77,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 
     monkeypatch.setattr(
         daily_module,
-        "find_images",
+        "find_images_isolated",
         lambda **kwargs: images,
     )
 
@@ -336,7 +337,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 
     monkeypatch.setattr(
         daily_module,
-        "find_images",
+        "find_images_isolated",
         lambda **kwargs: images,
     )
 
@@ -420,7 +421,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 
     monkeypatch.setattr(
         daily_module,
-        "find_images",
+        "find_images_isolated",
         lambda **kwargs: images,
     )
 
@@ -461,3 +462,94 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
     )
 
     assert cleanup_called is False
+
+# A stalled camera must not prevent later cameras from being processed.
+def test_run_daily_job_continues_after_image_scan_timeout(
+	monkeypatch,
+):
+	images = [
+		Path("image.jpg")
+	]
+
+	class FakeDateTime:
+		@classmethod
+		def now(cls, tz=None):
+			return datetime(
+				2026,
+				9,
+				17,
+				2,
+				0,
+				tzinfo=tz,
+			)
+
+	monkeypatch.setattr(
+		daily_module,
+		"datetime",
+		FakeDateTime,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"get_sun_times",
+		lambda **kwargs: (
+			TEST_SUNRISE,
+			TEST_SUNSET,
+		),
+	)
+
+	def fake_find_images_isolated(
+		camera,
+		**kwargs,
+	):
+        # Simulate one camera whose image scan stops making progress.
+		if camera == "Stalled-Camera":
+			raise TimeoutError(
+				"Image scan stalled"
+			)
+
+		return images
+
+	monkeypatch.setattr(
+		daily_module,
+		"find_images_isolated",
+		fake_find_images_isolated,
+	)
+
+	created_cameras = []
+
+	def fake_create_timelapse(
+		camera,
+		**kwargs,
+	):
+		created_cameras.append(
+			camera
+		)
+
+		return Path(
+			f"videos/{camera}/daily/video.mp4"
+		)
+
+	monkeypatch.setattr(
+		daily_module,
+		"create_timelapse",
+		fake_create_timelapse,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"cleanup_daily_retention",
+		lambda **kwargs: None,
+	)
+
+	daily_module.run_daily_job(
+		config=TEST_CONFIG,
+		cameras=[
+			"Stalled-Camera",
+			"Working-Camera",
+		],
+	)
+
+	assert created_cameras == [
+		"Working-Camera"
+	]

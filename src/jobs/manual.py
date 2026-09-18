@@ -2,8 +2,7 @@ import subprocess
 from datetime import date
 
 from src.diagnostics import log_missing_images_diagnostic
-
-from src.images import find_images
+from src.images import find_images_isolated
 from src.logger import logger
 from src.solar import get_sun_times
 from src.video import create_timelapse, get_video_path
@@ -20,6 +19,11 @@ def run_manual_job(
 
     daylight_buffer_minutes = config[
         "daylight_buffer_minutes"
+    ]
+
+    # Stop only scans that make no progress for the configured timeout.
+    image_scan_stall_timeout_seconds = config[
+	"image_scan_stall_timeout_seconds"
     ]
 
     logger.info(
@@ -93,12 +97,15 @@ def run_manual_job(
             continue
 
         try:
-            images = find_images(
-                camera=camera,
-                target_date=target_date,
-                sunrise=sunrise,
-                sunset=sunset,
-                daylight_buffer_minutes=daylight_buffer_minutes,
+            # Run image discovery in an isolated worker so a blocked camera
+            # cannot stall the complete manual job.
+            images = find_images_isolated(
+	            camera=camera,
+	            target_date=target_date,
+	            sunrise=sunrise,
+	            sunset=sunset,
+	            daylight_buffer_minutes=daylight_buffer_minutes,
+	            stall_timeout_seconds=image_scan_stall_timeout_seconds,
             )
 
             # Missing images only skip the affected camera.
@@ -137,6 +144,7 @@ def run_manual_job(
 
         except (
             OSError,
+            TimeoutError,
             subprocess.CalledProcessError,
         ):
             # Operational errors only skip the affected camera.

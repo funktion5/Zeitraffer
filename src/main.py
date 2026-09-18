@@ -6,7 +6,7 @@ from src.images import get_cameras
 from src.jobs.daily import run_daily_job
 from src.jobs.manual import run_manual_job
 from src.jobs.weekly import run_weekly_job
-from src.logger import configure_file_logging, logger
+from src.logger import cleanup_old_logs, configure_file_logging, logger
 
 
 # Parse optional command-line arguments for the timelapse job.
@@ -54,6 +54,13 @@ def main():
         log_type
     )
 
+    # Remove expired logs once at application startup.
+    cleanup_old_logs(
+	    retention_days=config[
+		    "log_retention_days"
+	    ]
+    )
+    
     # Camera storage must be available before any job can continue.
     try:
         available_cameras = get_cameras()

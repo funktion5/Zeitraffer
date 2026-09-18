@@ -12,6 +12,7 @@ TEST_CONFIG = {
         "timezone": "Europe/Berlin",
     },
     "daylight_buffer_minutes": 90,
+    "image_scan_stall_timeout_seconds": 10,
 }
 
 TEST_SUNRISE = datetime(
@@ -91,7 +92,7 @@ def test_run_manual_job_creates_timelapse(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
+        "find_images_isolated",
         lambda **kwargs: images,
     )
 
@@ -174,12 +175,12 @@ def test_run_manual_job_skips_existing_video(
 
     existing_video.touch()
 
-    find_images_called = False
+    find_images_isolated_called = False
     create_timelapse_called = False
 
-    def fake_find_images(**kwargs):
-        nonlocal find_images_called
-        find_images_called = True
+    def fake_find_images_isolated(**kwargs):
+        nonlocal find_images_isolated_called
+        find_images_isolated_called = True
 
         return [
             Path("image.jpg")
@@ -193,8 +194,8 @@ def test_run_manual_job_skips_existing_video(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
-        fake_find_images,
+        "find_images_isolated",
+        fake_find_images_isolated,
     )
 
     monkeypatch.setattr(
@@ -216,7 +217,7 @@ def test_run_manual_job_skips_existing_video(
             requested_cameras=None,
         )
 
-    assert find_images_called is False
+    assert find_images_isolated_called is False
     assert create_timelapse_called is False
 
     assert (
@@ -244,7 +245,7 @@ def test_run_manual_job_processes_only_requested_cameras(
 
     processed_cameras = []
 
-    def fake_find_images(
+    def fake_find_images_isolated(
         camera,
         **kwargs,
     ):
@@ -260,8 +261,8 @@ def test_run_manual_job_processes_only_requested_cameras(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
-        fake_find_images,
+        "find_images_isolated",
+        fake_find_images_isolated,
     )
 
     monkeypatch.setattr(
@@ -312,7 +313,7 @@ def test_run_manual_job_logs_unknown_camera_and_continues(
 
     processed_cameras = []
 
-    def fake_find_images(
+    def fake_find_images_isolated(
         camera,
         **kwargs,
     ):
@@ -328,8 +329,8 @@ def test_run_manual_job_logs_unknown_camera_and_continues(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
-        fake_find_images,
+        "find_images_isolated",
+        fake_find_images_isolated,
     )
 
     monkeypatch.setattr(
@@ -387,7 +388,7 @@ def test_run_manual_job_deduplicates_requested_cameras(
 
     processed_cameras = []
 
-    def fake_find_images(
+    def fake_find_images_isolated(
         camera,
         **kwargs,
     ):
@@ -401,8 +402,8 @@ def test_run_manual_job_deduplicates_requested_cameras(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
-        fake_find_images,
+        "find_images_isolated",
+        fake_find_images_isolated,
     )
 
     monkeypatch.setattr(
@@ -457,7 +458,7 @@ def test_run_manual_job_continues_after_video_error(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
+        "find_images_isolated",
         lambda **kwargs: images,
     )
 
@@ -543,7 +544,7 @@ def test_run_manual_job_continues_after_image_selection_error(
         tmp_path,
     )
 
-    def fake_find_images(
+    def fake_find_images_isolated(
         camera,
         **kwargs,
     ):
@@ -556,8 +557,8 @@ def test_run_manual_job_continues_after_image_selection_error(
 
     monkeypatch.setattr(
         manual_module,
-        "find_images",
-        fake_find_images,
+        "find_images_isolated",
+        fake_find_images_isolated,
     )
 
     processed_cameras = []
@@ -596,3 +597,75 @@ def test_run_manual_job_continues_after_image_selection_error(
     assert processed_cameras == [
         "Camera-B"
     ]
+
+# A stalled camera must not prevent later manual cameras from being processed.
+def test_run_manual_job_continues_after_image_scan_timeout(
+	monkeypatch,
+	tmp_path,
+):
+	target_date = date(
+		2026,
+		9,
+		16,
+	)
+
+	images = [
+		Path("image.jpg")
+	]
+
+	mock_manual_dependencies(
+		monkeypatch,
+		tmp_path,
+	)
+
+	def fake_find_images_isolated(
+		camera,
+		**kwargs,
+	):
+		# Simulate one camera whose image scan stops making progress.
+		if camera == "Camera-A":
+			raise TimeoutError(
+				"Image scan stalled"
+			)
+
+		return images
+
+	monkeypatch.setattr(
+		manual_module,
+		"find_images_isolated",
+		fake_find_images_isolated,
+	)
+
+	processed_cameras = []
+
+	def fake_create_timelapse(
+		camera,
+		**kwargs,
+	):
+		processed_cameras.append(
+			camera
+		)
+
+		return Path(
+			f"videos/{camera}/manual/video.mp4"
+		)
+
+	monkeypatch.setattr(
+		manual_module,
+		"create_timelapse",
+		fake_create_timelapse,
+	)
+
+	manual_module.run_manual_job(
+		config=TEST_CONFIG,
+		available_cameras=[
+			"Camera-A",
+			"Camera-B",
+		],
+		target_date=target_date,
+		requested_cameras=None,
+	)
+
+	assert processed_cameras == [
+		"Camera-B"
+	]

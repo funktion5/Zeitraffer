@@ -1,6 +1,6 @@
 import logging
 import os
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from zoneinfo import ZoneInfo
@@ -27,6 +27,43 @@ def get_log_path(log_type: LogType) -> Path:
         / log_type
         / f"{current_date.isoformat()}.log"
     )
+
+# Remove log files whose log date is older than the configured retention period.
+def cleanup_old_logs(
+	retention_days: int,
+) -> None:
+	if not LOG_ROOT.exists():
+		return
+
+	cutoff_date = (
+		datetime.now(
+			tz=LOG_TIMEZONE
+		).date()
+		- timedelta(
+			days=retention_days
+		)
+	)
+
+	for log_path in LOG_ROOT.rglob(
+		"*.log"
+	):
+		try:
+			log_date = date.fromisoformat(
+	        log_path.stem
+            )       
+
+		except ValueError:
+			# Ignore files that do not follow the application log naming scheme.
+			continue
+
+		if log_date >= cutoff_date:
+			continue
+
+		logger.debug(
+			f"Removing expired log file: {log_path}"
+		)
+
+		log_path.unlink()
 
 
 def setup_logger() -> logging.Logger:

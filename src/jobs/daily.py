@@ -3,8 +3,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.diagnostics import log_missing_images_diagnostic
-
-from src.images import find_images
+from src.images import find_images_isolated
 from src.logger import logger
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
@@ -83,6 +82,11 @@ def run_daily_job(
         "daylight_buffer_minutes"
     ]
 
+    # Stop only scans that make no progress for the configured timeout.
+    image_scan_stall_timeout_seconds = config[
+	"image_scan_stall_timeout_seconds"
+]
+
     logger.info(
         f"Daylight buffer: "
         f"{daylight_buffer_minutes} minutes"
@@ -111,12 +115,15 @@ def run_daily_job(
         )
 
         try:
-            images = find_images(
+            # Run image discovery in an isolated worker so a blocked camera
+            # cannot stall the complete daily job.
+            images = find_images_isolated(
                 camera=camera,
                 target_date=target_date,
                 sunrise=sunrise,
                 sunset=sunset,
                 daylight_buffer_minutes=daylight_buffer_minutes,
+                stall_timeout_seconds=image_scan_stall_timeout_seconds
             )
 
             # Missing images only skip the affected camera.
@@ -162,6 +169,7 @@ def run_daily_job(
 
         except (
             OSError,
+            TimeoutError,
             subprocess.CalledProcessError,
         ):
             # Operational errors only skip the affected camera.
