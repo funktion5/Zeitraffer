@@ -524,7 +524,7 @@ def test_main_passes_log_retention_to_cleanup(
 	monkeypatch.setattr(
 		main_module,
 		"get_cameras",
-		lambda: [],
+		list,
 	)
 
 	monkeypatch.setattr(

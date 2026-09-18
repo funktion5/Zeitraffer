@@ -1,3 +1,4 @@
+import time
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,6 +11,8 @@ from src.images import (
     extract_time,
     find_images,
     find_images_for_date,
+    find_interval_images,
+    find_interval_images_isolated,
     get_cameras,
     get_image_range,
 )
@@ -857,3 +860,378 @@ def test_get_image_hash_limits_progress_reports(
 	)
 
 	assert len(progress_calls) == 1
+
+def test_find_interval_images_returns_all_images_inside_daily_window(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = (
+		tmp_path
+		/ "cameras"
+	)
+
+	camera_directory = (
+		camera_root
+		/ "Test-Camera"
+	)
+
+	camera_directory.mkdir(
+		parents=True
+	)
+
+	filenames = [
+		"camera_26-09-15_10-20-00-00.jpg",
+		"camera_26-09-15_10-30-00-00.jpg",
+		"camera_26-09-15_11-15-00-00.jpg",
+		"camera_26-09-15_12-02-00-00.jpg",
+		"camera_26-09-15_13-30-00-00.jpg",
+		"camera_26-09-15_13-31-00-00.jpg",
+	]
+
+	for filename in filenames:
+		(
+			camera_directory
+			/ filename
+		).touch()
+
+	monkeypatch.setattr(
+		images_module,
+		"CAMERA_ROOT",
+		camera_root,
+	)
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(
+			2026,
+			9,
+			15,
+		),
+		end_date=date(
+			2026,
+			9,
+			15,
+		),
+	)
+
+	assert result == [
+		camera_directory
+		/ "camera_26-09-15_10-30-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-15_11-15-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-15_12-02-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-15_13-30-00-00.jpg",
+	]
+
+
+def test_find_interval_images_respects_target_tolerance(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = (
+		tmp_path
+		/ "cameras"
+	)
+
+	camera_directory = (
+		camera_root
+		/ "Test-Camera"
+	)
+
+	camera_directory.mkdir(
+		parents=True
+	)
+
+	inside_tolerance = (
+		camera_directory
+		/ "camera_26-09-15_10-30-00-00.jpg"
+	)
+
+	outside_tolerance = (
+		camera_directory
+		/ "camera_26-09-16_10-29-59-00.jpg"
+	)
+
+	inside_tolerance.touch()
+	outside_tolerance.touch()
+
+	monkeypatch.setattr(
+		images_module,
+		"CAMERA_ROOT",
+		camera_root,
+	)
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(
+			2026,
+			9,
+			15,
+		),
+		end_date=date(
+			2026,
+			9,
+			16,
+		),
+		tolerance_minutes=90,
+	)
+
+	assert result == [
+		inside_tolerance
+	]
+
+
+def test_find_interval_images_scans_directory_once(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = (
+		tmp_path
+		/ "cameras"
+	)
+
+	camera_directory = (
+		camera_root
+		/ "Test-Camera"
+	)
+
+	camera_directory.mkdir(
+		parents=True
+	)
+
+	(
+		camera_directory
+		/ "camera_26-09-15_12-00-00-00.jpg"
+	).touch()
+
+	(
+		camera_directory
+		/ "camera_26-09-16_12-00-00-00.jpg"
+	).touch()
+
+	monkeypatch.setattr(
+		images_module,
+		"CAMERA_ROOT",
+		camera_root,
+	)
+
+	original_scandir = (
+		images_module.os.scandir
+	)
+
+	scandir_calls = []
+
+	def fake_scandir(path):
+		scandir_calls.append(
+			path
+		)
+
+		return original_scandir(
+			path
+		)
+
+	monkeypatch.setattr(
+		images_module.os,
+		"scandir",
+		fake_scandir,
+	)
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(
+			2026,
+			9,
+			15,
+		),
+		end_date=date(
+			2026,
+			9,
+			16,
+		),
+	)
+
+	assert len(result) == 2
+
+	assert scandir_calls == [
+		camera_directory
+	]
+
+def test_find_interval_images_returns_images_in_chronological_order(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = (
+		tmp_path
+		/ "cameras"
+	)
+
+	camera_directory = (
+		camera_root
+		/ "Test-Camera"
+	)
+
+	camera_directory.mkdir(
+		parents=True
+	)
+
+	filenames = [
+		"camera_26-09-16_12-30-00-00.jpg",
+		"camera_26-09-15_13-00-00-00.jpg",
+		"camera_26-09-16_10-45-00-00.jpg",
+		"camera_26-09-15_11-00-00-00.jpg",
+	]
+
+	for filename in filenames:
+		(
+			camera_directory
+			/ filename
+		).touch()
+
+	monkeypatch.setattr(
+		images_module,
+		"CAMERA_ROOT",
+		camera_root,
+	)
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(
+			2026,
+			9,
+			15,
+		),
+		end_date=date(
+			2026,
+			9,
+			16,
+		),
+	)
+
+	assert result == [
+		camera_directory
+		/ "camera_26-09-15_11-00-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-15_13-00-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-16_10-45-00-00.jpg",
+		camera_directory
+		/ "camera_26-09-16_12-30-00-00.jpg",
+	]
+
+def test_find_interval_images_isolated_returns_validated_images(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = (
+		tmp_path
+		/ "cameras"
+	)
+
+	camera_directory = (
+		camera_root
+		/ "Test-Camera"
+	)
+
+	camera_directory.mkdir(
+		parents=True
+	)
+
+	valid_image = (
+		camera_directory
+		/ "camera_26-09-15_12-00-00-00.jpg"
+	)
+
+	empty_image = (
+		camera_directory
+		/ "camera_26-09-15_12-10-00-00.jpg"
+	)
+
+	valid_image.write_bytes(
+		b"valid image"
+	)
+
+	empty_image.touch()
+
+	monkeypatch.setattr(
+		images_module,
+		"CAMERA_ROOT",
+		camera_root,
+	)
+
+	result = find_interval_images_isolated(
+		camera="Test-Camera",
+		start_date=date(
+			2026,
+			9,
+			15,
+		),
+		end_date=date(
+			2026,
+			9,
+			15,
+		),
+		stall_timeout_seconds=2,
+	)
+
+	# The isolated pipeline must return only validated interval images.
+	assert result == [
+		valid_image
+	]
+
+def test_find_interval_images_isolated_stops_stalled_scan(
+	monkeypatch,
+):
+	def stalled_worker(
+		camera,
+		start_date,
+		end_date,
+		target_hour,
+		target_minute,
+		tolerance_minutes,
+		result_queue,
+	):
+		while True:
+			time.sleep(
+				1
+			)
+
+	monkeypatch.setattr(
+		images_module,
+		"_find_interval_images_worker",
+		stalled_worker,
+	)
+
+	start_time = time.monotonic()
+
+	try:
+		find_interval_images_isolated(
+			camera="Test-Camera",
+			start_date=date(
+				2026,
+				9,
+				15,
+			),
+			end_date=date(
+				2026,
+				9,
+				16,
+			),
+			stall_timeout_seconds=0.2,
+		)
+
+		assert False, (
+			"Expected TimeoutError"
+		)
+
+	except TimeoutError:
+		pass
+
+	elapsed = (
+		time.monotonic()
+		- start_time
+	)
+
+	# A blocked camera must not keep the parent process waiting indefinitely.
+	assert elapsed < 2

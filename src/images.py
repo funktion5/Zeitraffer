@@ -303,7 +303,112 @@ def find_images(
 
     return selected_images
 
+# Find all images inside the date range and daily target-time window.
+def find_interval_images(
+	camera: str,
+	start_date: date,
+	end_date: date,
+	target_hour: int = 12,
+	target_minute: int = 0,
+	tolerance_minutes: int = 90,
+	progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+	camera_path = CAMERA_ROOT / camera
+	images: list[
+		tuple[
+			date,
+			int,
+			Path,
+		]
+	] = []
 
+	target_seconds = (
+		target_hour * 60 * 60
+		+ target_minute * 60
+	)
+
+	tolerance_seconds = (
+		tolerance_minutes * 60
+	)
+
+	last_progress_report = time.monotonic()
+
+	with os.scandir(camera_path) as entries:
+		for entry in entries:
+			if progress_callback is not None:
+				now = time.monotonic()
+
+				if (
+					now - last_progress_report
+					>= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS
+				):
+					progress_callback()
+					last_progress_report = now
+
+			if not entry.name.lower().endswith(
+				".jpg"
+			):
+				continue
+
+			image_date = extract_date(
+				entry.name
+			)
+
+			if image_date is None:
+				continue
+
+			if not (
+				start_date
+				<= image_date
+				<= end_date
+			):
+				continue
+
+			image_time = extract_time(
+				entry.name
+			)
+
+			if image_time is None:
+				continue
+
+			hour, minute, second = image_time
+
+			capture_seconds = (
+				hour * 60 * 60
+				+ minute * 60
+				+ second
+			)
+
+			distance_seconds = abs(
+				capture_seconds
+				- target_seconds
+			)
+
+			if (
+				distance_seconds
+				> tolerance_seconds
+			):
+				continue
+
+			images.append(
+				(
+					image_date,
+					capture_seconds,
+					camera_path
+					/ entry.name,
+				)
+			)
+
+	images.sort()
+
+	return [
+		image_path
+		for (
+			_image_date,
+			_capture_seconds,
+			image_path,
+		) in images
+	]
 # Calculate an image content hash without loading the complete file into memory.
 def _get_image_hash(
 	image_path: Path,
@@ -482,6 +587,58 @@ def _find_images_worker(
             )
         )
 
+
+# Find and validate interval images inside the isolated worker.
+def _find_interval_images_worker(
+	camera: str,
+	start_date: date,
+	end_date: date,
+	target_hour: int,
+	target_minute: int,
+	tolerance_minutes: int,
+	result_queue: Queue,
+) -> None:
+	def report_progress():
+		result_queue.put(
+			(
+				"progress",
+				None,
+			)
+		)
+
+	try:
+		images = find_interval_images(
+			camera=camera,
+			start_date=start_date,
+			end_date=end_date,
+			target_hour=target_hour,
+			target_minute=target_minute,
+			tolerance_minutes=tolerance_minutes,
+			progress_callback=report_progress,
+		)
+
+		# Validate before Monthly or Yearly applies job-specific selection.
+		images = validate_images(
+			camera=camera,
+			images=images,
+			progress_callback=report_progress,
+		)
+
+		result_queue.put(
+			(
+				"success",
+				images,
+			)
+		)
+
+	except OSError as error:
+		result_queue.put(
+			(
+				"error",
+				str(error),
+			)
+		)
+
 # Stop a stalled worker and force-kill it only if termination is not enough.
 def _stop_image_scan_process(
     process: Process,
@@ -595,3 +752,101 @@ def find_images_isolated(
             )
 
         return result
+
+
+# Run interval discovery and validation with an inactivity timeout.
+def find_interval_images_isolated(
+	camera: str,
+	start_date: date,
+	end_date: date,
+	stall_timeout_seconds: float,
+	target_hour: int = 12,
+	target_minute: int = 0,
+	tolerance_minutes: int = 90,
+) -> list[Path]:
+	result_queue = Queue()
+
+	process = Process(
+		target=_find_interval_images_worker,
+		args=(
+			camera,
+			start_date,
+			end_date,
+			target_hour,
+			target_minute,
+			tolerance_minutes,
+			result_queue,
+		),
+		daemon=True,
+	)
+
+	process.start()
+
+	# Measure inactivity, not total processing time.
+	last_progress = time.monotonic()
+	poll_interval_seconds = 5
+
+	while True:
+		remaining_time = (
+			stall_timeout_seconds
+			- (
+				time.monotonic()
+				- last_progress
+			)
+		)
+
+		if remaining_time <= 0:
+			_stop_image_scan_process(
+				process
+			)
+
+			result_queue.close()
+
+			raise TimeoutError(
+				f"Interval image scan stalled for camera: {camera}"
+			)
+
+		try:
+			status, result = result_queue.get(
+				timeout=min(
+					poll_interval_seconds,
+					remaining_time,
+				)
+			)
+
+		except Empty:
+			# Unexpected worker failures must remain visible.
+			if not process.is_alive():
+				process.join()
+
+				result_queue.close()
+
+				raise RuntimeError(
+					"Interval image scan worker exited unexpectedly "
+					f"for camera: {camera} "
+					f"(exit code: {process.exitcode})"
+				)
+
+			continue
+
+		if status == "progress":
+			last_progress = time.monotonic()
+			continue
+
+		process.join(
+			IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
+		)
+
+		if process.is_alive():
+			_stop_image_scan_process(
+				process
+			)
+
+		result_queue.close()
+
+		if status == "error":
+			raise OSError(
+				result
+			)
+
+		return result

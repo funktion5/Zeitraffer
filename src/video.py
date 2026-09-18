@@ -13,7 +13,7 @@ TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
 VIDEO_FRAMERATE = 10
 
-TimelapseType = Literal["daily", "manual"]
+TimelapseType = Literal["daily", "manual", "yearly"]
 
 
 # Create a clean temporary working directory for a camera and date.
