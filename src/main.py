@@ -1,134 +1,115 @@
 import argparse
-import subprocess
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from src.config import load_config
-from src.images import find_images, get_cameras, get_image_range
-from src.logger import logger
-from src.solar import get_sun_times
-from src.video import create_timelapse
+from src.images import get_cameras
+from src.jobs.daily import run_daily_job
+from src.jobs.manual import run_manual_job
+from src.jobs.weekly import run_weekly_job
+from src.logger import configure_file_logging, logger
 
 
 # Parse optional command-line arguments for the timelapse job.
 def parse_arguments():
     parser = argparse.ArgumentParser(
-        description="Create timelapses for all available cameras."
+        description="Create timelapses for available cameras."
     )
+
     parser.add_argument(
         "--date",
         type=date.fromisoformat,
-        help="Date to process in YYYY-MM-DD format. Defaults to yesterday.",
+        help=(
+            "Date to process in YYYY-MM-DD format. "
+            "Providing a date creates a manual timelapse."
+        ),
     )
+
+    parser.add_argument(
+        "--cameras",
+        nargs="+",
+        help=(
+            "Process only the specified cameras. "
+            "Can only be used together with --date."
+        ),
+    )
+
     return parser.parse_args()
 
 
-# Log additional camera information when no images were found for the target date.
-def log_missing_images_diagnostic(camera: str) -> None:
-    image_range = get_image_range(camera)
-
-    if image_range.total_files == 0:
-        logger.warning("No image files available.")
-        return
-
-    if image_range.recognized_files == 0:
-        logger.warning(
-            "Image files exist, but their filename format is unsupported."
-        )
-        logger.warning(
-            f"Unrecognized files: {image_range.unrecognized_files}"
-        )
-        return
-
-    logger.warning(
-        f"Available image range: "
-        f"{image_range.earliest_date} - {image_range.latest_date}"
-    )
-
-    if image_range.unrecognized_files > 0:
-        logger.warning(
-            f"{image_range.unrecognized_files} files use "
-            "an unsupported filename format."
-        )
-
-
-# Run the daily workflow for all cameras available on the camera mount.
+# Coordinate the requested timelapse jobs.
 def main():
     args = parse_arguments()
+
+    if args.cameras and not args.date:
+        raise ValueError(
+            "--cameras can only be used together with --date."
+        )
+
     config = load_config()
 
-    # Use the requested date or default to yesterday for automated nightly runs.
-    location = config["location"]
-    timezone = ZoneInfo(location["timezone"])
+    # Configure logging before camera discovery and filtering.
+    log_type = "manual" if args.date else "daily"
 
-    target_date = args.date or (
-        datetime.now(tz=timezone).date() - timedelta(days=1)
+    configure_file_logging(
+        log_type
     )
 
-    logger.info(f"Starting daily timelapse job for {target_date}")
-
-    daylight_buffer_minutes = config["daylight_buffer_minutes"]
-
-    logger.info(
-        f"Daylight buffer: {daylight_buffer_minutes} minutes"
-    )
-
+    # Camera storage must be available before any job can continue.
     try:
-       cameras = get_cameras()
+        available_cameras = get_cameras()
+
     except OSError:
-        logger.exception("Failed to access camera storage.")
+        logger.exception(
+            "Failed to access camera storage."
+        )
         raise
 
-    # Calculate solar times once because all cameras share the same location.
-    sunrise, sunset = get_sun_times(
-        target_date=target_date,
-        latitude=location["latitude"],
-        longitude=location["longitude"],
-        timezone=location["timezone"],
+    # Remove globally ignored cameras before any job starts.
+    ignored_cameras = set(
+        config.get(
+            "ignored_cameras",
+            [],
+        )
     )
 
-    logger.info(f"Sunrise: {sunrise}")
-    logger.info(f"Sunset: {sunset}")
-
-    # Process every camera discovered dynamically on the mount.
-    for camera in cameras:
-        logger.info(f"Processing camera: {camera}")
-
-        try:
-            images = find_images(
-                camera=camera,
-                target_date=target_date,
-                sunrise=sunrise,
-                sunset=sunset,
-                daylight_buffer_minutes=daylight_buffer_minutes,
+    for camera in available_cameras:
+        if camera in ignored_cameras:
+            logger.info(
+                f"Ignoring configured camera: {camera}"
             )
 
-            # Skip cameras without images instead of interrupting the complete job.
-            if not images:
-                logger.warning("Found 0 images - skipping camera.")
-                log_missing_images_diagnostic(camera)
-                continue
+    available_cameras = [
+        camera
+        for camera in available_cameras
+        if camera not in ignored_cameras
+    ]
 
-            logger.info(f"Found {len(images)} images")
-            logger.debug(f"First image: {images[0].name}")
-            logger.debug(f"Last image: {images[-1].name}")
+    # Manual runs are independent from the automatic workflow.
+    if args.date:
+        run_manual_job(
+            config=config,
+            available_cameras=available_cameras,
+            target_date=args.date,
+            requested_cameras=args.cameras,
+        )
 
-            video_path = create_timelapse(
-                camera=camera,
-                target_date=target_date,
-                images=images,
-            )
+        return
 
-        except (OSError, subprocess.CalledProcessError):
-            logger.exception(
-                f"Failed to process timelapse for camera: {camera}"
-            )
-            continue
+    # Automatic runs always create Daily videos first.
+    run_daily_job(
+        config=config,
+        cameras=available_cameras,
+    )
 
-        logger.info(f"Finished processing camera: {camera}")
-        logger.debug(f"Video path: {video_path}")
+    # Weekly videos depend on the updated Daily videos.
+    configure_file_logging(
+        "weekly"
+    )
 
-    logger.info(f"Daily timelapse job finished for {target_date}")
+    run_weekly_job(
+        config=config,
+        cameras=available_cameras,
+    )
 
 
 if __name__ == "__main__":

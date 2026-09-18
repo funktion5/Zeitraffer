@@ -1,403 +1,285 @@
-import logging
-import subprocess
 from argparse import Namespace
-from datetime import UTC, date, datetime
-from pathlib import Path
+from datetime import date
 
 import pytest
 
 import src.main as main_module
-from src.images import ImageRange
+
+TEST_CONFIG = {
+    "location": {
+        "latitude": 52.0,
+        "longitude": 9.0,
+        "timezone": "Europe/Berlin",
+    },
+    "daylight_buffer_minutes": 90,
+    "ignored cameras": [],
+}
 
 
-def test_missing_images_diagnostic_empty_camera(monkeypatch, caplog):
-    image_range = ImageRange(
-        earliest_date=None,
-        latest_date=None,
-        total_files=0,
-        recognized_files=0,
-        unrecognized_files=0,
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_image_range",
-        lambda camera: image_range,
-    )
-
-    with caplog.at_level(logging.WARNING, logger="timelapse"):
-        main_module.log_missing_images_diagnostic("Test-Camera")
-
-    assert "No image files available." in caplog.text
-
-def test_missing_images_diagnostic_unsupported_format(monkeypatch, caplog):
-    image_range = ImageRange(
-        earliest_date=None,
-        latest_date=None,
-        total_files=100,
-        recognized_files=0,
-        unrecognized_files=100,
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_image_range",
-        lambda camera: image_range,
-    )
-
-    with caplog.at_level(logging.WARNING, logger="timelapse"):
-        main_module.log_missing_images_diagnostic("Test-Camera")
-
-    assert (
-        "Image files exist, but their filename format is unsupported."
-        in caplog.text
-    )
-    assert "Unrecognized files: 100" in caplog.text
-
-
-def test_missing_images_diagnostic_available_range(monkeypatch, caplog):
-    image_range = ImageRange(
-        earliest_date=date(2023, 2, 12),
-        latest_date=date(2025, 10, 9),
-        total_files=1000,
-        recognized_files=1000,
-        unrecognized_files=0,
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_image_range",
-        lambda camera: image_range,
-    )
-
-    with caplog.at_level(logging.WARNING, logger="timelapse"):
-        main_module.log_missing_images_diagnostic("Test-Camera")
-
-    assert (
-        "Available image range: 2023-02-12 - 2025-10-09"
-        in caplog.text
-    )
-
-
-def test_missing_images_diagnostic_mixed_formats(monkeypatch, caplog):
-    image_range = ImageRange(
-        earliest_date=date(2024, 1, 1),
-        latest_date=date(2026, 9, 16),
-        total_files=1000,
-        recognized_files=900,
-        unrecognized_files=100,
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_image_range",
-        lambda camera: image_range,
-    )
-
-    with caplog.at_level(logging.WARNING, logger="timelapse"):
-        main_module.log_missing_images_diagnostic("Test-Camera")
-
-    assert (
-        "Available image range: 2024-01-01 - 2026-09-16"
-        in caplog.text
-    )
-    assert (
-        "100 files use an unsupported filename format."
-        in caplog.text
-    )
-
-
-def test_main_creates_timelapse(monkeypatch):
-    target_date = date(2026, 9, 16)
-
-    sunrise = datetime(2026, 9, 16, 7, 0, tzinfo=UTC)
-    sunset = datetime(2026, 9, 16, 19, 0, tzinfo=UTC)
-
-    images = [
-        Path("image_1.jpg"),
-        Path("image_2.jpg"),
+# Without a date, main must coordinate a daily job.
+def test_main_runs_daily_job(monkeypatch):
+    cameras = [
+        "Camera-A",
+        "Camera-B",
     ]
 
     monkeypatch.setattr(
         main_module,
         "parse_arguments",
-        lambda: Namespace(date=target_date),
+        lambda: Namespace(
+            date=None,
+            cameras=None,
+        ),
     )
 
     monkeypatch.setattr(
         main_module,
         "load_config",
-        lambda: {
-            "location": {
-                "latitude": 52.0,
-                "longitude": 9.0,
-                "timezone": "Europe/Berlin",
-            },
-            "daylight_buffer_minutes": 90,
-        },
+        lambda: TEST_CONFIG,
     )
 
     monkeypatch.setattr(
         main_module,
         "get_cameras",
-        lambda: ["Test-Camera"],
+        lambda: cameras,
     )
+
+    configured_log_types = []
 
     monkeypatch.setattr(
         main_module,
-        "get_sun_times",
-        lambda **kwargs: (sunrise, sunset),
+        "configure_file_logging",
+        lambda log_type: configured_log_types.append(
+            log_type
+        ),
     )
 
-    monkeypatch.setattr(
-        main_module,
-        "find_images",
-        lambda **kwargs: images,
-    )
+    daily_calls = []
 
-    create_timelapse_calls = []
-
-    def fake_create_timelapse(camera, target_date, images):
-        create_timelapse_calls.append(
+    def fake_run_daily_job(
+        config,
+        cameras,
+    ):
+        daily_calls.append(
             {
-                "camera": camera,
-                "target_date": target_date,
-                "images": images,
+                "config": config,
+                "cameras": cameras,
             }
         )
 
-        return Path(
-            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
+    monkeypatch.setattr(
+        main_module,
+        "run_daily_job",
+        fake_run_daily_job,
+    )
+
+    weekly_calls = []
+
+    def fake_run_weekly_job(
+        config,
+        cameras,
+    ):
+        weekly_calls.append(
+            {
+                "config": config,
+                "cameras": cameras,
+            }
         )
 
     monkeypatch.setattr(
         main_module,
-        "create_timelapse",
-        fake_create_timelapse,
+        "run_weekly_job",
+        fake_run_weekly_job,
+    )
+
+    manual_called = False
+
+    def fake_run_manual_job(**kwargs):
+        nonlocal manual_called
+        manual_called = True
+
+    monkeypatch.setattr(
+        main_module,
+        "run_manual_job",
+        fake_run_manual_job,
     )
 
     main_module.main()
 
-    assert create_timelapse_calls == [
+    assert configured_log_types == [
+        "daily",
+        "weekly",
+    ]
+
+    assert daily_calls == [
         {
-            "camera": "Test-Camera",
-            "target_date": target_date,
-            "images": images,
+            "config": TEST_CONFIG,
+            "cameras": cameras,
         }
     ]
 
-
-def test_main_continues_after_camera_video_error(monkeypatch):
-    target_date = date(2026, 9, 16)
-
-    sunrise = datetime(
-        2026,
-        9,
-        16,
-        7,
-        0,
-        tzinfo=UTC,
-    )
-    sunset = datetime(
-        2026,
-        9,
-        16,
-        19,
-        0,
-        tzinfo=UTC,
-    )
-
-    images = [Path("image_1.jpg")]
-
-    monkeypatch.setattr(
-        main_module,
-        "parse_arguments",
-        lambda: Namespace(date=target_date),
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "load_config",
-        lambda: {
-            "location": {
-                "latitude": 52.0,
-                "longitude": 9.0,
-                "timezone": "Europe/Berlin",
-            },
-            "daylight_buffer_minutes": 90,
-        },
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_cameras",
-        lambda: ["Camera-A", "Camera-B"],
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "get_sun_times",
-        lambda **kwargs: (sunrise, sunset),
-    )
-
-    monkeypatch.setattr(
-        main_module,
-        "find_images",
-        lambda **kwargs: images,
-    )
-
-    processed_cameras = []
-
-    def fake_create_timelapse(camera, target_date, images):
-        processed_cameras.append(camera)
-
-        if camera == "Camera-A":
-            raise subprocess.CalledProcessError(
-                returncode=1,
-                cmd=["ffmpeg"],
-            )
-
-        return Path(
-            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
-        )
-
-    monkeypatch.setattr(
-        main_module,
-        "create_timelapse",
-        fake_create_timelapse,
-    )
-
-    logged_errors = []
-
-    def fake_logger_exception(message):
-        logged_errors.append(message)
-
-    monkeypatch.setattr(
-        main_module.logger,
-        "exception",
-        fake_logger_exception,
-    )
-
-    main_module.main()
-
-    assert processed_cameras == ["Camera-A", "Camera-B"]
-
-    assert logged_errors == [
-        "Failed to process timelapse for camera: Camera-A"
+    assert weekly_calls == [
+        {
+            "config": TEST_CONFIG,
+            "cameras": cameras,
+        }
     ]
 
+    assert manual_called is False
 
-
-def test_main_continues_after_image_selection_error(monkeypatch):
-    target_date = date(2026, 9, 16)
-   
-
-    sunrise = datetime(
+# A supplied date must coordinate a manual job.
+def test_main_runs_manual_job(monkeypatch):
+    target_date = date(
         2026,
         9,
         16,
-        7,
-        0,
-        tzinfo=UTC,
-    )
-    sunset = datetime(
-        2026,
-        9,
-        16,
-        19,
-        0,
-        tzinfo=UTC,
     )
 
-    images = [Path("image_1.jpg")]
+    cameras = [
+        "Camera-A",
+        "Camera-B",
+    ]
+
+    requested_cameras = [
+        "Camera-B",
+    ]
 
     monkeypatch.setattr(
         main_module,
         "parse_arguments",
-        lambda: Namespace(date=target_date),
+        lambda: Namespace(
+            date=target_date,
+            cameras=requested_cameras,
+        ),
     )
 
     monkeypatch.setattr(
         main_module,
         "load_config",
-        lambda: {
-            "location": {
-                "latitude": 52.0,
-                "longitude": 9.0,
-                "timezone": "Europe/Berlin",
-            },
-            "daylight_buffer_minutes": 90,
-        },
+        lambda: TEST_CONFIG,
     )
 
     monkeypatch.setattr(
         main_module,
         "get_cameras",
-        lambda: ["Camera-A", "Camera-B"],
+        lambda: cameras,
     )
+
+    configured_log_types = []
 
     monkeypatch.setattr(
         main_module,
-        "get_sun_times",
-        lambda **kwargs: (sunrise, sunset),
+        "configure_file_logging",
+        lambda log_type: configured_log_types.append(
+            log_type
+        ),
     )
 
-    def fake_find_images(camera, **kwargs):
-        if camera == "Camera-A":
-            raise OSError("Failed to read camera images")
+    manual_calls = []
 
-        return images
-
-    monkeypatch.setattr(
-        main_module,
-        "find_images",
-        fake_find_images,
-    )
-
-    processed_cameras = []
-
-    def fake_create_timelapse(camera, target_date, images):
-        processed_cameras.append(camera)
-
-        return Path(
-            f"videos/{camera}/daily/{target_date.isoformat()}.mp4"
+    def fake_run_manual_job(
+        config,
+        available_cameras,
+        target_date,
+        requested_cameras,
+    ):
+        manual_calls.append(
+            {
+                "config": config,
+                "available_cameras": available_cameras,
+                "target_date": target_date,
+                "requested_cameras": requested_cameras,
+            }
         )
 
     monkeypatch.setattr(
         main_module,
-        "create_timelapse",
-        fake_create_timelapse,
+        "run_manual_job",
+        fake_run_manual_job,
+    )
+
+    daily_called = False
+
+    def fake_run_daily_job(**kwargs):
+        nonlocal daily_called
+        daily_called = True
+
+    monkeypatch.setattr(
+        main_module,
+        "run_daily_job",
+        fake_run_daily_job,
     )
 
     main_module.main()
 
-    assert processed_cameras == ["Camera-B"]
+    assert configured_log_types == [
+        "manual"
+    ]
+
+    assert manual_calls == [
+        {
+            "config": TEST_CONFIG,
+            "available_cameras": cameras,
+            "target_date": target_date,
+            "requested_cameras": requested_cameras,
+        }
+    ]
+
+    assert daily_called is False
 
 
-def test_main_logs_and_raises_camera_storage_error(monkeypatch):
-    target_date = date(2026, 9, 16)
+# Camera filters without a manual date must be rejected.
+def test_main_rejects_camera_filter_without_date(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(
+            date=None,
+            cameras=["Camera-A"],
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "--cameras can only be used "
+            "together with --date."
+        ),
+    ):
+        main_module.main()
+
+
+# Failure to access the complete camera storage must stop the job.
+def test_main_logs_and_raises_camera_storage_error(
+    monkeypatch,
+):
+    target_date = date(
+        2026,
+        9,
+        16,
+    )
 
     monkeypatch.setattr(
         main_module,
         "parse_arguments",
-        lambda: Namespace(date=target_date),
+        lambda: Namespace(
+            date=target_date,
+            cameras=None,
+        ),
     )
 
     monkeypatch.setattr(
         main_module,
         "load_config",
-        lambda: {
-            "location": {
-                "latitude": 52.0,
-                "longitude": 9.0,
-                "timezone": "Europe/Berlin",
-            },
-            "daylight_buffer_minutes": 90,
-        },
+        lambda: TEST_CONFIG,
     )
 
     def fake_get_cameras():
-        raise OSError("Camera storage unavailable")
+        raise OSError(
+            "Camera storage unavailable"
+        )
 
     monkeypatch.setattr(
         main_module,
@@ -408,7 +290,9 @@ def test_main_logs_and_raises_camera_storage_error(monkeypatch):
     logged_errors = []
 
     def fake_logger_exception(message):
-        logged_errors.append(message)
+        logged_errors.append(
+            message
+        )
 
     monkeypatch.setattr(
         main_module.logger,
@@ -424,4 +308,156 @@ def test_main_logs_and_raises_camera_storage_error(monkeypatch):
 
     assert logged_errors == [
         "Failed to access camera storage."
+    ]
+
+# Globally ignored cameras must not be passed to Daily jobs.
+def test_main_filters_ignored_cameras_for_daily(
+    monkeypatch,
+):
+    config = {
+        **TEST_CONFIG,
+        "ignored_cameras": [
+            "Camera-B",
+        ],
+    }
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(
+            date=None,
+            cameras=None,
+        ),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: config,
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        lambda: [
+            "Camera-A",
+            "Camera-B",
+            "Camera-C",
+        ],
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "configure_file_logging",
+        lambda log_type: None,
+    )
+
+    received_cameras = []
+
+    def fake_run_daily_job(
+        config,
+        cameras,
+    ):
+        received_cameras.extend(
+            cameras
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "run_daily_job",
+        fake_run_daily_job,
+    )
+
+    main_module.main()
+
+    assert received_cameras == [
+        "Camera-A",
+        "Camera-C",
+    ]
+
+# Globally ignored cameras must stay ignored even when requested manually.
+def test_main_filters_ignored_cameras_for_manual(
+    monkeypatch,
+):
+    target_date = date(
+        2026,
+        9,
+        16,
+    )
+
+    config = {
+        **TEST_CONFIG,
+        "ignored_cameras": [
+            "Camera-B",
+        ],
+    }
+
+    monkeypatch.setattr(
+        main_module,
+        "parse_arguments",
+        lambda: Namespace(
+            date=target_date,
+            cameras=[
+                "Camera-B",
+                "Camera-C",
+            ],
+        ),
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "load_config",
+        lambda: config,
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "get_cameras",
+        lambda: [
+            "Camera-A",
+            "Camera-B",
+            "Camera-C",
+        ],
+    )
+
+    monkeypatch.setattr(
+        main_module,
+        "configure_file_logging",
+        lambda log_type: None,
+    )
+
+    manual_calls = []
+
+    def fake_run_manual_job(
+        config,
+        available_cameras,
+        target_date,
+        requested_cameras,
+    ):
+        manual_calls.append(
+            {
+                "available_cameras": available_cameras,
+                "requested_cameras": requested_cameras,
+            }
+        )
+
+    monkeypatch.setattr(
+        main_module,
+        "run_manual_job",
+        fake_run_manual_job,
+    )
+
+    main_module.main()
+
+    assert manual_calls == [
+        {
+            "available_cameras": [
+                "Camera-A",
+                "Camera-C",
+            ],
+            "requested_cameras": [
+                "Camera-B",
+                "Camera-C",
+            ],
+        }
     ]

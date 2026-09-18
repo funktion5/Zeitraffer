@@ -1,23 +1,29 @@
-from pathlib import Path
+import subprocess
 from datetime import date
+from pathlib import Path
+
+import pytest
+
+import src.video as video_module
 from src.video import (
     cleanup_temp_directory,
     copy_images_to_temp,
+    create_concat_file,
+    create_concat_video,
+    create_image_timelapse,
     create_temp_directory,
     create_timelapse,
 )
-import pytest
 
 
+# Copy source images into a normalized sequential frame structure.
 def test_copy_images_to_temp(tmp_path: Path):
-    # Create isolated source and temp directories for the test.
     source_directory = tmp_path / "source"
     temp_directory = tmp_path / "temp"
 
     source_directory.mkdir()
     temp_directory.mkdir()
 
-    # Create three fake image files as test input.
     images = []
 
     for index in range(3):
@@ -25,181 +31,715 @@ def test_copy_images_to_temp(tmp_path: Path):
         image.write_bytes(b"test image")
         images.append(image)
 
-    # Copy the images into the temp directory.
-    copied_images = copy_images_to_temp(images, temp_directory)
+    copied_images = copy_images_to_temp(
+        images,
+        temp_directory,
+    )
 
-    # Verify that all images were copied.
     assert len(copied_images) == 3
-
-    # Verify that the copied images use the expected sequential frame names.
     assert copied_images[0].name == "frame_000001.jpg"
     assert copied_images[1].name == "frame_000002.jpg"
     assert copied_images[2].name == "frame_000003.jpg"
 
-    # Verify that all returned frame paths actually exist.
-    assert all(image.exists() for image in copied_images)
+    assert all(
+        image.exists()
+        for image in copied_images
+    )
 
 
-def test_create_temp_directory_removes_old_content(tmp_path: Path, monkeypatch):
-    # Redirect TEMP_ROOT to pytest's isolated temporary directory.
-    # This prevents the test from touching the real project temp directory.
+# Recreate an existing temp directory so no old frames survive a new run.
+def test_create_temp_directory_removes_old_content(
+    tmp_path: Path,
+    monkeypatch,
+):
     temp_root = tmp_path / "temp"
-    monkeypatch.setattr("src.video.TEMP_ROOT", temp_root)
 
-    # Simulate leftovers from a previous timelapse run.
-    old_directory = temp_root / "Scheunenviertel" / "2026-09-14"
-    old_directory.mkdir(parents=True)
+    monkeypatch.setattr(
+        video_module,
+        "TEMP_ROOT",
+        temp_root,
+    )
 
-    old_file = old_directory / "frame_000001.jpg"
-    old_file.write_bytes(b"old image")
+    old_directory = (
+        temp_root
+        / "Scheunenviertel"
+        / "2026-09-14"
+    )
 
-    # Prepare the temp directory for a new run.
+    old_directory.mkdir(
+        parents=True
+    )
+
+    old_file = (
+        old_directory
+        / "frame_000001.jpg"
+    )
+
+    old_file.write_bytes(
+        b"old image"
+    )
+
     temp_directory = create_temp_directory(
         "Scheunenviertel",
         date(2026, 9, 14),
     )
 
-    # Verify that the directory was recreated successfully.
     assert temp_directory.exists()
     assert temp_directory.is_dir()
-
-    # Verify that leftovers from the previous run were removed.
     assert not old_file.exists()
-
-    # Verify that the new temp directory starts completely empty.
     assert list(temp_directory.iterdir()) == []
 
-    
 
-def test_cleanup_temp_directory(tmp_path: Path):
-    # Create a temporary directory containing a simulated frame.
-    temp_directory = tmp_path / "Scheunenviertel" / "2026-09-14"
-    temp_directory.mkdir(parents=True)
+# Remove the complete temporary working directory after a successful run.
+def test_cleanup_temp_directory(
+    tmp_path: Path,
+):
+    temp_directory = (
+        tmp_path
+        / "Scheunenviertel"
+        / "2026-09-14"
+    )
 
-    frame = temp_directory / "frame_000001.jpg"
-    frame.write_bytes(b"test image")
+    temp_directory.mkdir(
+        parents=True
+    )
 
-    # Remove the complete temporary working directory.
-    cleanup_temp_directory(temp_directory)
+    frame = (
+        temp_directory
+        / "frame_000001.jpg"
+    )
 
-    # Verify that the directory and its contents were removed.
+    frame.write_bytes(
+        b"test image"
+    )
+
+    cleanup_temp_directory(
+        temp_directory
+    )
+
     assert not temp_directory.exists()
 
 
-def test_create_timelapse(tmp_path: Path, monkeypatch):
-	# Prepare fake input and output paths without using real camera files.
-	images = [
-		tmp_path / "image_1.jpg",
-		tmp_path / "image_2.jpg",
-	]
-	temp_directory = tmp_path / "temp"
-	video_path = tmp_path / "video.mp4"
-
-	# Track the order in which the processing steps are called.
-	calls = []
-
-	# Replace the individual processing steps with controlled test functions.
-	def fake_create_temp_directory(camera, target_date):
-		calls.append("create_temp_directory")
-		return temp_directory
-
-	def fake_copy_images_to_temp(images, temp_directory):
-		calls.append("copy_images_to_temp")
-		return []
-
-	def fake_create_video(camera, target_date, temp_directory):
-		calls.append("create_video")
-		return video_path
-
-	def fake_cleanup_temp_directory(temp_directory):
-		calls.append("cleanup_temp_directory")
-
-	monkeypatch.setattr(
-		"src.video.create_temp_directory",
-		fake_create_temp_directory,
-	)
-	monkeypatch.setattr(
-		"src.video.copy_images_to_temp",
-		fake_copy_images_to_temp,
-	)
-	monkeypatch.setattr(
-		"src.video.create_video",
-		fake_create_video,
-	)
-	monkeypatch.setattr(
-		"src.video.cleanup_temp_directory",
-		fake_cleanup_temp_directory,
-	)
-
-	# Run the complete timelapse workflow.
-	result = create_timelapse(
-		camera="Scheunenviertel",
-		target_date=date(2026, 9, 14),
-		images=images,
-	)
-
-	# Verify that all processing steps run in the expected order.
-	assert calls == [
-		"create_temp_directory",
-		"copy_images_to_temp",
-		"create_video",
-		"cleanup_temp_directory",
-	]
-
-	# Verify that the generated video path is returned.
-	assert result == video_path
-
-def test_create_timelapse_keeps_temp_files_on_video_error(
-	tmp_path: Path,
-	monkeypatch,
+# Create video safely and replace the final output only after FFmpeg succeeds.
+def test_create_image_timelapse_uses_prefixed_output_path(
+    tmp_path: Path,
+    monkeypatch,
 ):
-	# Prepare isolated paths for the simulated timelapse job.
-	images = [
-		tmp_path / "image_1.jpg",
-		tmp_path / "image_2.jpg",
-	]
-	temp_directory = tmp_path / "temp"
+    video_root = tmp_path / "videos"
+    temp_directory = tmp_path / "temp"
 
-	cleanup_called = False
+    temp_directory.mkdir()
 
-	def fake_create_temp_directory(camera, target_date):
-		return temp_directory
+    monkeypatch.setattr(
+        video_module,
+        "VIDEO_ROOT",
+        video_root,
+    )
 
-	def fake_copy_images_to_temp(images, temp_directory):
-		return []
+    expected_output = (
+        video_root
+        / "Scheunenviertel"
+        / "manual"
+        / "Scheunenviertel_2026-09-14.mp4"
+    )
 
-	# Simulate an FFmpeg/video creation failure.
-	def fake_create_video(camera, target_date, temp_directory):
-		raise RuntimeError("FFmpeg failed")
+    temporary_output = (
+        expected_output.parent
+        / f".{expected_output.stem}.tmp{expected_output.suffix}"
+    )
 
-	def fake_cleanup_temp_directory(temp_directory):
-		nonlocal cleanup_called
-		cleanup_called = True
+    popen_calls = []
 
-	monkeypatch.setattr(
-		"src.video.create_temp_directory",
-		fake_create_temp_directory,
-	)
-	monkeypatch.setattr(
-		"src.video.copy_images_to_temp",
-		fake_copy_images_to_temp,
-	)
-	monkeypatch.setattr(
-		"src.video.create_video",
-		fake_create_video,
-	)
-	monkeypatch.setattr(
-		"src.video.cleanup_temp_directory",
-		fake_cleanup_temp_directory,
-	)
+    class FakeProcess:
+        pid = 12345
 
-	# The video error should propagate to the caller.
-	with pytest.raises(RuntimeError, match="FFmpeg failed"):
-		create_timelapse(
-			camera="Scheunenviertel",
-			target_date=date(2026, 9, 14),
-			images=images,
-		)
+        def __init__(self, command):
+            popen_calls.append(command)
+            self.poll_calls = 0
 
-	# Cleanup must not run after a failed video creation.
-	assert cleanup_called is False
+        def poll(self):
+            self.poll_calls += 1
+
+            if self.poll_calls == 1:
+                return None
+
+            return 0
+
+        def wait(self):
+            temporary_output.write_bytes(
+                b"new video"
+            )
+
+            return 0
+
+    monkeypatch.setattr(
+        video_module.subprocess,
+        "Popen",
+        FakeProcess,
+    )
+
+    class FakeMemoryInfo:
+        rss = 50 * 1024 * 1024
+
+    class FakePsutilProcess:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def cpu_percent(
+            self,
+            interval=None,
+        ):
+            return 125.0
+
+        def memory_info(self):
+            return FakeMemoryInfo()
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "Process",
+        FakePsutilProcess,
+    )
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "cpu_percent",
+        lambda: 42.0,
+    )
+
+    class FakeVirtualMemory:
+        percent = 35.0
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "virtual_memory",
+        lambda: FakeVirtualMemory(),
+    )
+
+    monkeypatch.setattr(
+        video_module.time,
+        "sleep",
+        lambda seconds: None,
+    )
+
+    result = create_image_timelapse(
+        camera="Scheunenviertel",
+        target_date=date(2026, 9, 14),
+        temp_directory=temp_directory,
+        timelapse_type="manual",
+    )
+
+    assert result == expected_output
+    assert expected_output.exists()
+    assert expected_output.read_bytes() == b"new video"
+    assert not temporary_output.exists()
+
+    assert popen_calls == [
+        [
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            "10",
+            "-i",
+            str(
+                temp_directory
+                / "frame_%06d.jpg"
+            ),
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            str(temporary_output),
+        ]
+    ]
+
+
+# A failed image timelapse must preserve the existing working output.
+def test_create_image_timelapse_keeps_existing_output_on_error(
+    tmp_path: Path,
+    monkeypatch,
+):
+    video_root = tmp_path / "videos"
+    temp_directory = tmp_path / "temp"
+
+    temp_directory.mkdir()
+
+    monkeypatch.setattr(
+        video_module,
+        "VIDEO_ROOT",
+        video_root,
+    )
+
+    output_path = (
+        video_root
+        / "Scheunenviertel"
+        / "daily"
+        / "Scheunenviertel_2026-09-14.mp4"
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path.write_bytes(
+        b"old working daily"
+    )
+
+    class FakeProcess:
+        pid = 12345
+
+        def __init__(self, command):
+            self.command = command
+
+        def poll(self):
+            return 1
+
+        def wait(self):
+            return 1
+
+    monkeypatch.setattr(
+        video_module.subprocess,
+        "Popen",
+        FakeProcess,
+    )
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "Process",
+        lambda pid: None,
+    )
+
+    with pytest.raises(
+        subprocess.CalledProcessError,
+    ):
+        create_image_timelapse(
+            camera="Scheunenviertel",
+            target_date=date(2026, 9, 14),
+            temp_directory=temp_directory,
+            timelapse_type="daily",
+        )
+
+    assert output_path.exists()
+    assert (
+        output_path.read_bytes()
+        == b"old working daily"
+    )
+
+
+# Run the complete image-based timelapse workflow in the expected order.
+def test_create_timelapse(
+    tmp_path: Path,
+    monkeypatch,
+):
+    images = [
+        tmp_path / "image_1.jpg",
+        tmp_path / "image_2.jpg",
+    ]
+
+    temp_directory = (
+        tmp_path
+        / "temp"
+    )
+
+    video_path = (
+        tmp_path
+        / "videos"
+        / "Scheunenviertel"
+        / "manual"
+        / "Scheunenviertel_2026-09-14.mp4"
+    )
+
+    calls = []
+
+    def fake_create_temp_directory(
+        camera,
+        target_date,
+    ):
+        calls.append(
+            "create_temp_directory"
+        )
+
+        return temp_directory
+
+    def fake_copy_images_to_temp(
+        images,
+        temp_directory,
+    ):
+        calls.append(
+            "copy_images_to_temp"
+        )
+
+        return []
+
+    def fake_create_image_timelapse(
+        camera,
+        target_date,
+        temp_directory,
+        timelapse_type,
+    ):
+        calls.append(
+            "create_image_timelapse"
+        )
+
+        return video_path
+
+    def fake_cleanup_temp_directory(
+        temp_directory,
+    ):
+        calls.append(
+            "cleanup_temp_directory"
+        )
+
+    monkeypatch.setattr(
+        video_module,
+        "create_temp_directory",
+        fake_create_temp_directory,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "copy_images_to_temp",
+        fake_copy_images_to_temp,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "create_image_timelapse",
+        fake_create_image_timelapse,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "cleanup_temp_directory",
+        fake_cleanup_temp_directory,
+    )
+
+    result = create_timelapse(
+        camera="Scheunenviertel",
+        target_date=date(2026, 9, 14),
+        images=images,
+        timelapse_type="manual",
+    )
+
+    assert calls == [
+        "create_temp_directory",
+        "copy_images_to_temp",
+        "create_image_timelapse",
+        "cleanup_temp_directory",
+    ]
+
+    assert result == video_path
+
+
+# Keep temporary files available for debugging after video creation fails.
+def test_create_timelapse_keeps_temp_on_video_error(
+    tmp_path: Path,
+    monkeypatch,
+):
+    temp_directory = (
+        tmp_path
+        / "temp"
+    )
+
+    cleanup_called = False
+
+    def fake_create_temp_directory(
+        camera,
+        target_date,
+    ):
+        return temp_directory
+
+    def fake_copy_images_to_temp(
+        images,
+        temp_directory,
+    ):
+        return []
+
+    def fake_create_image_timelapse(
+        camera,
+        target_date,
+        temp_directory,
+        timelapse_type,
+    ):
+        raise subprocess.CalledProcessError(
+            returncode=1,
+            cmd=["ffmpeg"],
+        )
+
+    def fake_cleanup_temp_directory(
+        temp_directory,
+    ):
+        nonlocal cleanup_called
+        cleanup_called = True
+
+    monkeypatch.setattr(
+        video_module,
+        "create_temp_directory",
+        fake_create_temp_directory,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "copy_images_to_temp",
+        fake_copy_images_to_temp,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "create_image_timelapse",
+        fake_create_image_timelapse,
+    )
+
+    monkeypatch.setattr(
+        video_module,
+        "cleanup_temp_directory",
+        fake_cleanup_temp_directory,
+    )
+
+    with pytest.raises(
+        subprocess.CalledProcessError,
+    ):
+        create_timelapse(
+            camera="Scheunenviertel",
+            target_date=date(2026, 9, 14),
+            images=[],
+            timelapse_type="daily",
+        )
+
+    assert cleanup_called is False
+
+
+# Create an FFmpeg concat file containing videos in the supplied order.
+def test_create_concat_file(
+    tmp_path: Path,
+):
+    temp_directory = (
+        tmp_path
+        / "concat"
+    )
+
+    videos = [
+        tmp_path / "video_1.mp4",
+        tmp_path / "video_2.mp4",
+        tmp_path / "video_3.mp4",
+    ]
+
+    for video in videos:
+        video.touch()
+
+    concat_path = create_concat_file(
+        videos=videos,
+        temp_directory=temp_directory,
+    )
+
+    assert concat_path == (
+        temp_directory
+        / "concat.txt"
+    )
+
+    assert concat_path.read_text(
+        encoding="utf-8",
+    ) == (
+        f"file '{videos[0].resolve()}'\n"
+        f"file '{videos[1].resolve()}'\n"
+        f"file '{videos[2].resolve()}'\n"
+    )
+
+
+# Create a concat video and replace the target only after FFmpeg succeeds.
+def test_create_concat_video(
+    tmp_path: Path,
+    monkeypatch,
+):
+    concat_path = (
+        tmp_path
+        / "concat.txt"
+    )
+
+    concat_path.touch()
+
+    output_path = (
+        tmp_path
+        / "videos"
+        / "Scheunenviertel"
+        / "weekly"
+        / "Scheunenviertel_weekly.mp4"
+    )
+
+    temporary_output = (
+        output_path.parent
+        / f".{output_path.stem}.tmp{output_path.suffix}"
+    )
+
+    popen_calls = []
+
+    class FakeProcess:
+        pid = 12345
+
+        def __init__(self, command):
+            popen_calls.append(command)
+            self.poll_calls = 0
+
+        def poll(self):
+            self.poll_calls += 1
+
+            if self.poll_calls == 1:
+                return None
+
+            return 0
+
+        def wait(self):
+            temporary_output.write_bytes(
+                b"new weekly video"
+            )
+
+            return 0
+
+    monkeypatch.setattr(
+        video_module.subprocess,
+        "Popen",
+        FakeProcess,
+    )
+
+    class FakeMemoryInfo:
+        rss = 50 * 1024 * 1024
+
+    class FakePsutilProcess:
+        def __init__(self, pid):
+            self.pid = pid
+
+        def cpu_percent(
+            self,
+            interval=None,
+        ):
+            return 120.0
+
+        def memory_info(self):
+            return FakeMemoryInfo()
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "Process",
+        FakePsutilProcess,
+    )
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "cpu_percent",
+        lambda: 25.0,
+    )
+
+    class FakeVirtualMemory:
+        percent = 40.0
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "virtual_memory",
+        lambda: FakeVirtualMemory(),
+    )
+
+    monkeypatch.setattr(
+        video_module.time,
+        "sleep",
+        lambda seconds: None,
+    )
+
+    result = create_concat_video(
+        concat_path=concat_path,
+        output_path=output_path,
+    )
+
+    assert result == output_path
+    assert output_path.exists()
+
+    assert (
+        output_path.read_bytes()
+        == b"new weekly video"
+    )
+
+    assert not temporary_output.exists()
+
+    assert popen_calls == [
+        [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_path),
+            "-c",
+            "copy",
+            str(temporary_output),
+        ]
+    ]
+
+
+# A failed concat must preserve the existing working output.
+def test_create_concat_video_keeps_existing_output_on_error(
+    tmp_path: Path,
+    monkeypatch,
+):
+    concat_path = (
+        tmp_path
+        / "concat.txt"
+    )
+
+    concat_path.touch()
+
+    output_path = (
+        tmp_path
+        / "videos"
+        / "Scheunenviertel"
+        / "weekly"
+        / "Scheunenviertel_weekly.mp4"
+    )
+
+    output_path.parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    output_path.write_bytes(
+        b"old working weekly"
+    )
+
+    class FakeProcess:
+        pid = 12345
+
+        def __init__(self, command):
+            self.command = command
+
+        def poll(self):
+            return 1
+
+        def wait(self):
+            return 1
+
+    monkeypatch.setattr(
+        video_module.subprocess,
+        "Popen",
+        FakeProcess,
+    )
+
+    monkeypatch.setattr(
+        video_module.psutil,
+        "Process",
+        lambda pid: None,
+    )
+
+    with pytest.raises(
+        subprocess.CalledProcessError,
+    ):
+        create_concat_video(
+            concat_path=concat_path,
+            output_path=output_path,
+        )
+
+    assert output_path.exists()
+
+    assert (
+        output_path.read_bytes()
+        == b"old working weekly"
+    )
