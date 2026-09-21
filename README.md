@@ -1,662 +1,46 @@
-# Timelapse
+# Zeitraffer
 
 Automatisierte Erstellung von Timelapse-Videos aus den Bildbeständen mehrerer Kameras auf einem Raspberry Pi.
 
-Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kameraordnern, wählt passende Bilder aus, bereitet sie lokal auf und erzeugt daraus MP4-Timelapses mit FFmpeg.
+Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kameraordnern, wählt je nach Timelapse-Typ passende Frames aus und erzeugt daraus MP4-Videos mit FFmpeg.
 
-Die Originalbilder unter `/mnt/cameras` werden niemals verändert.
+**Die Originalbilder unter `/mnt/cameras` werden niemals verändert.**
 
 ---
 
-## Aktueller Produktionsstand
+## Aktueller Stand
 
-Der aktuelle automatische Ablauf besteht aus:
-
-```text
-main.py
-   ↓
-Daily für gestern
-   ↓
-Daily-Retention
-   ↓
-Weekly für das rollierende 7-Tage-Fenster
-```
-
-Zusätzlich können Manual-Timelapses für ein explizit angegebenes Datum erzeugt werden.
-
-Aktuell implementiert:
+Implementiert sind:
 
 - Daily-Timelapses
 - Manual-Timelapses
 - Weekly-Timelapses
-- globale Kamera-Ausschlussliste über die Konfiguration
+- Monthly-Timelapses
+- Yearly-Timelapses
+- konfigurierbare Framerates
+- globale Kamera-Ausschlussliste
 - daylight-basierte Bildauswahl
-- Unterstützung mehrerer historischer Dateinamensformate
-- sichere temporäre Videoerstellung vor dem Ersetzen bestehender Dateien
-- getrennte Logs für Daily, Manual und Weekly
+- mehrere historische Kamera-Dateinamensformate
+- isolierte Worker mit Stall-Timeout
+- 0-Byte-Validierung
+- SHA-256-basierte Erkennung byte-identischer Quelldaten
+- Duplicate-aware Yearly-Auswahl
+- sichere temporäre Videoerstellung
+- Log-Retention
 - FFmpeg- und System-Performance-Logging
-- isolierte Image-Range-Diagnose mit Timeout für nicht erreichbare Kameraquellen
-- 7-Tage-Retention für Daily-Videos
-
-Geplant:
-
-- Yearly-Timelapse über ein rollierendes 365-Tage-Fenster
-
-Monthly ist derzeit nicht festgelegt.
-
----
-
-## Projektstruktur
-
-```text
-timelapse/
-├── config/
-│   └── cameras.json
-├── src/
-│   ├── jobs/
-│   │   ├── __init__.py
-│   │   ├── daily.py
-│   │   ├── manual.py
-│   │   └── weekly.py
-│   ├── config.py
-│   ├── diagnostics.py
-│   ├── images.py
-│   ├── logger.py
-│   ├── main.py
-│   ├── solar.py
-│   └── video.py
-├── tests/
-│   ├── camera_test.py
-│   ├── daily_test.py
-│   ├── diagnostics_test.py
-│   ├── main_test.py
-│   ├── manual_test.py
-│   ├── video_test.py
-│   ├── weekly_test.py
-│   └── conftest.py
-├── temp/
-├── videos/
-├── logs/
-└── README.md
-```
-
-Runtime-Daten werden nicht in Git gespeichert.
-
-Beispiel:
-
-```gitignore
-# Runtime data
-temp/*
-logs/*
-videos/*
-```
-
----
-
-## Architektur
-
-Die Verantwortlichkeiten sind bewusst getrennt.
-
-### `src/main.py`
-
-`main.py` ist der zentrale Koordinator.
-
-Aufgaben:
-
-- CLI-Argumente verarbeiten
-- Konfiguration laden
-- Kamera-Mount prüfen
-- global ignorierte Kameras filtern
-- File-Logging konfigurieren
-- Manual oder automatischen Workflow starten
+- Config-Tests für Pfad, JSON-Syntax und Struktur
+- Ruff für Linting und Formatierung
 
 Der automatische Workflow läuft in dieser Reihenfolge:
 
 ```text
 Daily
 → Weekly
+→ Monthly
+→ Yearly
 ```
 
-Ein Manual-Lauf bleibt davon getrennt.
-
-### `src/jobs/daily.py`
-
-Enthält ausschließlich Daily-Businesslogik.
-
-Aufgaben:
-
-- Zieldatum = gestern in der konfigurierten Zeitzone
-- Sonnenaufgang und Sonnenuntergang bestimmen
-- passende Bilder auswählen
-- Daily-Video erzeugen
-- Fehler pro Kamera behandeln
-- Daily-Retention anwenden
-
-### `src/jobs/manual.py`
-
-Enthält Manual-Businesslogik.
-
-Aufgaben:
-
-- explizites Datum verarbeiten
-- optional bestimmte Kameras auswählen
-- Reihenfolge beibehalten
-- doppelte Kameranamen entfernen
-- unbekannte Kameras loggen
-- bereits vorhandene Manual-Videos überspringen
-- historische Manual-Videos behalten
-
-### `src/jobs/weekly.py`
-
-Enthält Weekly-Businesslogik.
-
-Aufgaben:
-
-- exaktes rollierendes 7-Tage-Fenster bestimmen
-- passende Daily-Videos suchen
-- fehlende Dailys protokollieren
-- vorhandene Dailys chronologisch zusammenfügen
-- bei 0 vorhandenen Dailys die Kamera überspringen
-- bestehendes Weekly erst nach erfolgreicher Neuerstellung ersetzen
-
-### `src/diagnostics.py`
-
-Enthält gemeinsame Diagnosefunktionen.
-
-Die Image-Range-Diagnose läuft in einem isolierten Prozess.
-
-Grund:
-
-Dateisystemzugriffe wie `stat()` können bei einer nicht erreichbaren oder abgeschalteten Kameraquelle blockieren.
-
-Die Diagnose besitzt deshalb einen Timeout und darf niemals den vollständigen Daily- oder Manual-Job dauerhaft blockieren.
-
-### `src/images.py`
-
-Verantwortlich für:
-
-- Kameraerkennung
-- Bildsuche
-- Dateinamens-Parsing
-- Datums- und Uhrzeitextraktion
-- daylight-basierte Bildauswahl
-- Image-Range-Diagnosedaten
-
-### `src/video.py`
-
-Technische Video- und FFmpeg-Schicht.
-
-Enthält keine Daily-, Manual- oder Weekly-Businessregeln.
-
-Verantwortlich für:
-
-- lokale Temp-Verzeichnisse
-- Kopieren und Normalisieren von Frames
-- Bild-Timelapses
-- Concat-Dateien
-- Video-Concat
-- sichere temporäre Ausgabedateien
-- FFmpeg-Prozessüberwachung
-- CPU- und RAM-Messungen
-
----
-
-## Kameraerkennung
-
-Kameras werden dynamisch anhand ihrer Verzeichnisse unter
-
-```text
-/mnt/cameras
-```
-
-erkannt.
-
-Beispiel:
-
-```text
-/mnt/cameras/
-├── Alter-Winkel-Promenade/
-├── BSV-Steinhude/
-├── Nordufer_tele/
-├── Nordufer_wide/
-├── Scheunenviertel/
-└── ...
-```
-
-Versteckte Verzeichnisse werden ignoriert.
-
-Wenn der globale Kamera-Mount nicht erreichbar ist und `get_cameras()` einen `OSError` auslöst, wird der komplette Lauf abgebrochen.
-
----
-
-## Ignorierte Kameras
-
-Bestimmte Kameras können zentral in der Konfiguration ausgeschlossen werden.
-
-Beispiel:
-
-```json
-{
-  "ignored_cameras": [
-    "Reolink"
-  ]
-}
-```
-
-Diese Kameras werden global herausgefiltert, bevor Daily, Manual oder Weekly gestartet werden.
-
-Die Entscheidung in der Konfiguration hat Vorrang. Eine explizite Manual-Auswahl hebt die Ignore-Liste nicht auf.
-
----
-
-## Unterstützte Dateinamensformate
-
-Die Kameraarchive enthalten mehrere historisch gewachsene Formate.
-
-Neue bzw. bekannte Formate werden explizit unterstützt.
-
-Beispiele:
-
-```text
-<Kameraname>_YY-MM-DD_HH-MM-SS-MS.jpg
-20260915T145103.jpg
-scheunenviertel-26-09-15_14-29-56-39.jpg
-aw10_26-08-27_15-52-07-75.jpg
-see-26-09-15_14-44-58-48.jpg
-bsv_steinhude_2510091630.jpg
-bsv_steinhude_202410020900.jpg
-image_241030_010043.jpg
-P23091411034310.jpg
-T23091315270800.jpg
-Nordufer_tele_20250419T094017.jpg
-Nordufer_wide_20250419T100009.jpg
-sam-Reolink_00_20251024145546.jpg
-```
-
-### Designentscheidung
-
-Unbekannte Formate werden nicht geraten.
-
-```text
-bekanntes Format
-→ Datum/Zeit extrahieren
-
-unbekanntes Format
-→ nicht raten
-→ als nicht erkannt behandeln
-```
-
-Neue Formate sollen nur über ein explizites Parser-Pattern mit passenden Tests ergänzt werden.
-
----
-
-## Daylight-Auswahl
-
-Daily- und Manual-Timelapses orientieren sich an Sonnenaufgang und Sonnenuntergang.
-
-Die geografischen Daten und die Zeitzone kommen aus der Konfiguration.
-
-Beispiel:
-
-```json
-{
-  "location": {
-    "latitude": 52.45,
-    "longitude": 9.38,
-    "timezone": "Europe/Berlin"
-  },
-  "daylight_buffer_minutes": 90
-}
-```
-
-Der verwendete Zeitraum ist:
-
-```text
-sunrise - daylight_buffer
-bis
-sunset + daylight_buffer
-```
-
-Der Buffer bleibt damit konfigurierbar, ohne die Bildauswahl in `images.py` zu verändern.
-
----
-
-## Temporäre Frames
-
-Ausgewählte Originalbilder werden lokal kopiert und fortlaufend umbenannt.
-
-Beispiel:
-
-```text
-temp/
-└── Scheunenviertel/
-    └── 2026-09-17/
-        ├── frame_000001.jpg
-        ├── frame_000002.jpg
-        ├── frame_000003.jpg
-        └── ...
-```
-
-FFmpeg erhält dadurch unabhängig vom ursprünglichen Kameranamen eine konsistente Eingabe:
-
-```text
-frame_%06d.jpg
-```
-
-Originalbilder unter `/mnt/cameras` werden nicht verändert.
-
-Nach erfolgreicher Verarbeitung wird das Temp-Verzeichnis entfernt.
-
-Bei einem Fehler während der Videoerstellung bleiben relevante temporäre Daten zur Diagnose erhalten.
-
----
-
-## Videoerstellung
-
-Bildbasierte Timelapses werden mit FFmpeg und H.264 erzeugt.
-
-Konzeptionell:
-
-```bash
-ffmpeg -y   -framerate 10   -i frame_%06d.jpg   -c:v libx264   -pix_fmt yuv420p   output.mp4
-```
-
-Aktuelle Framerate:
-
-```text
-10 fps
-```
-
-Damit gilt:
-
-```text
-10 Bilder   = 1 Sekunde
-100 Bilder  = 10 Sekunden
-1000 Bilder = 100 Sekunden
-```
-
-Die Länge eines Timelapses hängt damit von der Anzahl der vorhandenen Bilder ab.
-
----
-
-## Sichere Videoersetzung
-
-Bestehende Videos werden nicht direkt überschrieben.
-
-FFmpeg schreibt zunächst in eine temporäre MP4-Datei im Zielverzeichnis.
-
-Beispiel:
-
-```text
-.Scheunenviertel_2026-09-17.tmp.mp4
-```
-
-bzw. für Weekly:
-
-```text
-.Scheunenviertel_weekly.tmp.mp4
-```
-
-Nur wenn FFmpeg erfolgreich beendet wurde, ersetzt die temporäre Datei das endgültige Video.
-
-Dadurch bleibt ein vorheriges funktionierendes Video erhalten, wenn die Neuerstellung fehlschlägt.
-
----
-
-## Daily
-
-Der automatische Daily verarbeitet immer den vorherigen Kalendertag in der konfigurierten Zeitzone.
-
-Ausgabe:
-
-```text
-videos/<camera>/daily/<camera>_YYYY-MM-DD.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/daily/Scheunenviertel_2026-09-17.mp4
-```
-
-### Daily-Retention
-
-Pro Kamera wird ein exaktes rollierendes 7-Tage-Fenster gehalten.
-
-Wenn das Zieldatum beispielsweise `2026-09-17` ist, gehören ausschließlich diese Tage zum Fenster:
-
-```text
-2026-09-11
-2026-09-12
-2026-09-13
-2026-09-14
-2026-09-15
-2026-09-16
-2026-09-17
-```
-
-Fehlende Tage werden nicht mit älteren Videos aufgefüllt.
-
-Die Retention wird erst angewendet, nachdem das neue Daily erfolgreich erstellt wurde.
-
----
-
-## Manual
-
-Manual-Timelapses verarbeiten ein explizit angegebenes Datum.
-
-Ausgabe:
-
-```text
-videos/<camera>/manual/<camera>_YYYY-MM-DD.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/manual/Scheunenviertel_2026-08-15.mp4
-```
-
-Manual-Videos sind historische Ergebnisse und werden nicht automatisch gelöscht.
-
-Existiert das exakte Manual-Video bereits, wird die Kamera bereits vor Bildsuche, Kopieren und FFmpeg übersprungen.
-
-### Bestimmte Kameras auswählen
-
-Mehrere Kameras können angegeben werden:
-
-```bash
-python3 -m src.main   --date 2026-08-15   --cameras Scheunenviertel SVG
-```
-
-`--cameras` ist nur zusammen mit `--date` gültig.
-
----
-
-## Weekly
-
-Weekly ist ein rollierendes 7-Tage-Timelapse.
-
-Quelle sind ausschließlich die Daily-Videos der exakten letzten sieben Kalendertage.
-
-Ausgabe:
-
-```text
-videos/<camera>/weekly/<camera>_weekly.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/weekly/Scheunenviertel_weekly.mp4
-```
-
-Regeln:
-
-- Daily-Videos werden chronologisch verarbeitet.
-- Daily-Videos außerhalb des 7-Tage-Fensters werden ignoriert.
-- Fehlende Tage werden protokolliert.
-- Fehlende Tage werden nicht durch ältere Dailys ersetzt.
-- Wenn mindestens ein Daily vorhanden ist, wird daraus ein Weekly gebaut.
-- Wenn kein Daily vorhanden ist, wird Weekly für diese Kamera übersprungen.
-- Das bestehende Weekly bleibt erhalten, bis das neue Concat erfolgreich abgeschlossen wurde.
-
-Weekly verwendet FFmpeg-Stream-Copy und re-encodiert die Daily-Videos nicht:
-
-```bash
-ffmpeg -y   -f concat   -safe 0   -i concat.txt   -c copy   output.mp4
-```
-
----
-
-## Diagnose bei fehlenden Bildern
-
-Wenn für ein Datum keine passenden Bilder gefunden werden, kann zusätzlich der vorhandene Bildbestand untersucht werden.
-
-`get_image_range()` liefert:
-
-```text
-earliest_date
-latest_date
-total_files
-recognized_files
-unrecognized_files
-```
-
-Damit kann beispielsweise unterschieden werden zwischen:
-
-```text
-keine erkannten Bilder vorhanden
-Bilder nur außerhalb des gewünschten Datums
-unbekannte Dateinamensformate
-gemischte bekannte und unbekannte Formate
-```
-
-### Timeout und Isolation
-
-Der Image-Range-Scan kann bei großen oder nicht erreichbaren Kameraquellen teuer oder blockierend sein.
-
-Deshalb läuft die Diagnose in `src/diagnostics.py` in einem separaten Prozess.
-
-Aktuelles Verhalten:
-
-```text
-Diagnose starten
-→ maximal 10 Sekunden warten
-→ bei Timeout Prozess beenden
-→ Warnung loggen
-→ nächste Kamera verarbeiten
-```
-
-Die Diagnose ist optional und darf den vollständigen Job nicht dauerhaft blockieren.
-
----
-
-## Logging
-
-Logs werden nach Job-Typ und Ausführungstag getrennt gespeichert.
-
-```text
-logs/
-├── daily/YYYY-MM-DD.log
-├── manual/YYYY-MM-DD.log
-├── weekly/YYYY-MM-DD.log
-└── yearly/YYYY-MM-DD.log
-```
-
-Die Datumsangabe im Log-Dateinamen beschreibt den Ausführungstag, nicht zwingend den verarbeiteten Tag.
-
-Beispielhafte Log-Level:
-
-```text
-DEBUG    technische Detailinformationen
-INFO     normaler Programmablauf
-WARNING  ungewöhnliche, aber behandelbare Zustände
-ERROR    fehlgeschlagene Verarbeitung
-```
-
-Global ignorierte Kameras werden ebenfalls geloggt.
-
----
-
-## Performance-Monitoring
-
-Während FFmpeg läuft, werden Peak-Werte protokolliert für:
-
-```text
-FFmpeg CPU
-FFmpeg RAM
-System CPU
-System RAM
-```
-
-Beispiel:
-
-```text
-Peak hardware usage | FFmpeg CPU: 404.2% | FFmpeg RAM: 496.2 MB | System CPU: 100.0% | System RAM: 91.9%
-```
-
-Bei `psutil.Process.cpu_percent()` können auf einem Mehrkernsystem Werte über 100 % auftreten.
-
----
-
-# Programm starten
-
-Alle Befehle werden aus dem Projektverzeichnis ausgeführt.
-
-```bash
-cd ~/timelapse
-source .venv/bin/activate
-```# Timelapse
-
-Automatisierte Erstellung von Timelapse-Videos aus den Bildbeständen mehrerer Kameras auf einem Raspberry Pi.
-
-Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kameraordnern, wählt passende Bilder aus, bereitet sie lokal auf und erzeugt daraus MP4-Timelapses mit FFmpeg.
-
-Die Originalbilder unter `/mnt/cameras` werden niemals verändert.
-
----
-
-## Aktueller Produktionsstand
-
-Der aktuelle automatische Ablauf besteht aus:
-
-```text
-main.py
-   ↓
-Daily für gestern
-   ↓
-Daily-Retention
-   ↓
-Weekly für das rollierende 7-Tage-Fenster
-```
-
-Zusätzlich können Manual-Timelapses für ein explizit angegebenes Datum erzeugt werden.
-
-Aktuell implementiert:
-
-- Daily-Timelapses
-- Manual-Timelapses
-- Weekly-Timelapses
-- globale Kamera-Ausschlussliste über die Konfiguration
-- daylight-basierte Bildauswahl
-- Unterstützung mehrerer historischer Dateinamensformate
-- single-pass Bildsuche mit `os.scandir()`
-- isolierte Daily-/Manual-Bildsuche mit Stall-Timeout statt Gesamt-Timeout
-- Validierung ausgewählter Bilder auf 0-Byte-Dateien
-- Erkennung und Logging byte-identischer Quelldaten
-- sichere temporäre Videoerstellung vor dem Ersetzen bestehender Dateien
-- getrennte Logs für Daily, Manual und Weekly
-- automatische Log-Retention
-- FFmpeg- und System-Performance-Logging
-- isolierte Image-Range-Diagnose mit Timeout für nicht erreichbare Kameraquellen
-- 7-Tage-Retention für Daily-Videos
-
-Geplant:
-
-- Yearly-Timelapse über ein rollierendes 365-Tage-Fenster
-
-Monthly ist derzeit nicht festgelegt.
+Manual-Läufe sind davon unabhängig und werden nur über `--date` gestartet.
 
 ---
 
@@ -665,171 +49,167 @@ Monthly ist derzeit nicht festgelegt.
 ```text
 timelapse/
 ├── config/
-│   └── cameras.json
+│   ├── cameras.json
+│   └── mount.env.example
 ├── src/
 │   ├── jobs/
-│   │   ├── __init__.py
 │   │   ├── daily.py
 │   │   ├── manual.py
-│   │   └── weekly.py
+│   │   ├── weekly.py
+│   │   ├── monthly.py
+│   │   └── yearly.py
 │   ├── config.py
 │   ├── diagnostics.py
+│   ├── image_worker.py
 │   ├── images.py
 │   ├── logger.py
 │   ├── main.py
 │   ├── solar.py
-│   └── video.py
+│   ├── video.py
+│   └── yearly_selection.py
 ├── tests/
+│   ├── config_test.py
+│   ├── daily_test.py
+│   ├── diagnostics_test.py
 │   ├── images_test.py
-│   ├── daily_test.py
-│   ├── diagnostics_test.py
+│   ├── logger_test.py
 │   ├── main_test.py
 │   ├── manual_test.py
+│   ├── monthly_test.py
 │   ├── video_test.py
 │   ├── weekly_test.py
+│   ├── yearly_selection_test.py
+│   ├── yearly_test.py
 │   └── conftest.py
+├── logs/
 ├── temp/
 ├── videos/
-├── logs/
+├── pyproject.toml
+├── requirements.txt
 └── README.md
 ```
 
-Runtime-Daten werden nicht in Git gespeichert.
-
-Beispiel:
-
-```gitignore
-# Runtime data
-temp/*
-logs/*
-videos/*
-```
+Runtime-Daten unter `logs/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
 
 ---
 
 ## Architektur
 
-Die Verantwortlichkeiten sind bewusst getrennt.
-
 ### `src/main.py`
 
-`main.py` ist der zentrale Koordinator.
+Zentraler Koordinator.
 
-Aufgaben:
+Verantwortlich für:
 
-- CLI-Argumente verarbeiten
+- CLI-Argumente
 - Konfiguration laden
-- Kamera-Mount prüfen
-- global ignorierte Kameras filtern
-- File-Logging konfigurieren
-- Manual oder automatischen Workflow starten
+- Kamera-Storage prüfen
+- ignorierte Kameras filtern
+- Logging konfigurieren
+- Manual- oder Automatic-Workflow starten
+- Framerates aus der Config an die Jobs weiterreichen
 
-Der automatische Workflow läuft in dieser Reihenfolge:
+### `src/jobs/`
 
-```text
-Daily
-→ Weekly
-```
+Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 
-Ein Manual-Lauf bleibt davon getrennt.
+`daily.py`
+- verarbeitet gestern
+- nutzt Sunrise/Sunset inklusive konfigurierbarem Buffer
+- erstellt Daily-Videos
+- hält ein exaktes rollierendes 7-Tage-Fenster
 
-### `src/jobs/daily.py`
+`manual.py`
+- verarbeitet ein explizites Datum
+- kann auf bestimmte Kameras eingeschränkt werden
+- behält historische Videos
+- überspringt bereits vorhandene exakte Manual-Ausgaben
 
-Enthält ausschließlich Daily-Businesslogik.
+`weekly.py`
+- verwendet ausschließlich vorhandene Daily-Videos
+- verarbeitet das exakte rollierende 7-Tage-Fenster
+- füllt fehlende Tage nicht mit älteren Videos auf
+- verwendet FFmpeg-Concat ohne Re-Encoding
 
-Aufgaben:
+`monthly.py`
+- verarbeitet ein rollierendes 30-Tage-Fenster
+- Ende ist immer gestern in der konfigurierten Zeitzone
+- verwendet Originalbilder
+- berücksichtigt alle validen Bilder im täglichen Zielzeitfenster um 12:00 Uhr
+- Toleranz: ±90 Minuten
 
-- Zieldatum = gestern in der konfigurierten Zeitzone
-- Sonnenaufgang und Sonnenuntergang bestimmen
-- passende Bilder auswählen
-- Daily-Video erzeugen
-- Fehler pro Kamera behandeln
-- Daily-Retention anwenden
-
-### `src/jobs/manual.py`
-
-Enthält Manual-Businesslogik.
-
-Aufgaben:
-
-- explizites Datum verarbeiten
-- optional bestimmte Kameras auswählen
-- Reihenfolge beibehalten
-- doppelte Kameranamen entfernen
-- unbekannte Kameras loggen
-- bereits vorhandene Manual-Videos überspringen
-- historische Manual-Videos behalten
-
-### `src/jobs/weekly.py`
-
-Enthält Weekly-Businesslogik.
-
-Aufgaben:
-
-- exaktes rollierendes 7-Tage-Fenster bestimmen
-- passende Daily-Videos suchen
-- fehlende Dailys protokollieren
-- vorhandene Dailys chronologisch zusammenfügen
-- bei 0 vorhandenen Dailys die Kamera überspringen
-- bestehendes Weekly erst nach erfolgreicher Neuerstellung ersetzen
-
-### `src/diagnostics.py`
-
-Enthält gemeinsame Diagnosefunktionen.
-
-Die Image-Range-Diagnose läuft in einem isolierten Prozess.
-
-Grund:
-
-Dateisystemzugriffe wie `stat()` können bei einer nicht erreichbaren oder abgeschalteten Kameraquelle blockieren.
-
-Die Diagnose besitzt deshalb einen Timeout und darf niemals den vollständigen Daily- oder Manual-Job dauerhaft blockieren.
+`yearly.py`
+- verarbeitet ein rollierendes 365-Tage-Fenster
+- Ende ist immer gestern in der konfigurierten Zeitzone
+- verwendet Originalbilder
+- delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py`
 
 ### `src/images.py`
 
-Verantwortlich für:
+Allgemeine Bildlogik:
 
 - Kameraerkennung
-- single-pass Bildsuche mit `os.scandir()`
-- Dateinamens-Parsing
-- Datums- und Uhrzeitextraktion
-- daylight-basierte Bildauswahl
-- Image-Range-Diagnosedaten
-- isolierte Bildsuche mit Fortschritts-/Stall-Überwachung
-- Validierung ausgewählter Bilder
-- 0-Byte-Erkennung
-- Erkennung byte-identischer Quelldaten
+- `os.scandir()`-basierte Bildsuche
+- Datums- und Uhrzeitextraktion aus bekannten Dateinamensformaten
+- daylight-basierte Auswahl
+- Interval-Suche
+- 0-Byte-Filterung
+- SHA-256-Hashing
+- Duplicate-Diagnose
 
-Daily und Manual verwenden `find_images_isolated(...)`. Ein Scan besitzt keine maximale Gesamtlaufzeit; abgebrochen wird nur, wenn für die konfigurierte Zeit kein Fortschritt mehr gemeldet wird.
+Unbekannte Dateinamensformate werden nicht geraten.
 
-Beispiel:
+### `src/image_worker.py`
 
-```json
-"image_scan_stall_timeout_seconds": 10
-```
+Gemeinsame Infrastruktur für isolierte Worker-Prozesse.
 
-Die Validierung findet innerhalb desselben Worker-Prozesses statt. Dadurch sind auch blockierende Metadaten- oder Datei-Lesezugriffe gegenüber dem Hauptprozess isoliert.
+Der Supervisor übernimmt:
+
+- `Process` und `Queue`
+- Fortschrittsmeldungen
+- Stall-Timeout
+- `terminate()`
+- bei Bedarf `kill()`
+- Erkennung unerwartet beendeter Worker
+- Weitergabe erwarteter `OSError`
+
+Der Timeout misst **Inaktivität**, nicht die Gesamtlaufzeit. Lange Scans dürfen weiterlaufen, solange Fortschritt gemeldet wird.
+
+### `src/yearly_selection.py`
+
+Yearly-spezifische Frame-Auswahl.
+
+Pro Kalendertag:
+
+1. Kandidaten nach Abstand zu 12:00 Uhr priorisieren.
+2. Bildinhalt per SHA-256 prüfen.
+3. Byte-identische Kandidaten überspringen.
+4. Bei Duplikaten den nächsten Kandidaten nachziehen.
+5. Bis zu fünf eindeutige Frames auswählen.
+6. Ausgewählte Frames innerhalb des Tages chronologisch sortieren.
+
+Die Hash-Auswahl läuft ebenfalls isoliert über den gemeinsamen Worker-Supervisor.
 
 ### `src/video.py`
 
-Technische Video- und FFmpeg-Schicht.
+Technische Video- und FFmpeg-Schicht:
 
-Enthält keine Daily-, Manual- oder Weekly-Businessregeln.
-
-Verantwortlich für:
-
-- lokale Temp-Verzeichnisse
-- Kopieren und Normalisieren von Frames
-- Bild-Timelapses
-- Concat-Dateien
-- Video-Concat
-- sichere temporäre Ausgabedateien
-- FFmpeg-Prozessüberwachung
+- Frames lokal vorbereiten
+- Bild-Timelapses erstellen
+- Videos zusammenfügen
+- temporäre Ausgabedateien
+- bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen
 - CPU- und RAM-Messungen
 
 ---
 
-## Relevante Konfiguration
+## Konfiguration
+
+Die produktive Konfiguration liegt fest unter:
+
+```text
+config/cameras.json
+```
 
 Beispiel:
 
@@ -843,13 +223,25 @@ Beispiel:
   "daylight_buffer_minutes": 90,
   "image_scan_stall_timeout_seconds": 10,
   "log_retention_days": 30,
-  "ignored_cameras": []
+  "ignored_cameras": [
+    "Reolink"
+  ],
+  "timelapse": {
+    "daily_framerate": 10,
+    "manual_framerate": 10,
+    "monthly_framerate": 20,
+    "yearly_framerate": 20
+  }
 }
 ```
 
-`image_scan_stall_timeout_seconds` begrenzt ausschließlich die erlaubte Inaktivität eines isolierten Bildscans. Ein langer Scan darf weiterlaufen, solange Fortschritt gemeldet wird.
+Die Tests prüfen unter anderem:
 
-`log_retention_days` steuert die automatische Aufbewahrungsdauer der Anwendungslogs.
+- erwarteten Config-Pfad
+- Existenz der Datei
+- gültige JSON-Syntax
+- erwartete Schlüssel
+- grundlegende Datentypen
 
 ---
 
@@ -877,666 +269,134 @@ Beispiel:
 
 Versteckte Verzeichnisse werden ignoriert.
 
-Wenn der globale Kamera-Mount nicht erreichbar ist und `get_cameras()` einen `OSError` auslöst, wird der komplette Lauf abgebrochen.
+Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Operative Fehler einer einzelnen Kamera werden dagegen pro Kamera behandelt, sodass spätere Kameras weiterverarbeitet werden können.
 
 ---
 
-## Ignorierte Kameras
+## Bildvalidierung und Duplikate
 
-Bestimmte Kameras können zentral in der Konfiguration ausgeschlossen werden.
+0-Byte-Dateien werden vor der weiteren Verarbeitung entfernt und geloggt.
 
-Beispiel:
+Bei Daily und Manual werden byte-identische Quelldaten erkannt und protokolliert, aber nicht automatisch entfernt.
 
-```json
-{
-  "ignored_cameras": [
-    "Reolink"
-  ]
-}
+Yearly behandelt Duplikate anders:
+
+```text
+Kandidat nahe 12:00
+→ Hash prüfen
+→ bereits gleicher Inhalt an diesem Tag?
+   → ja: nächsten Kandidaten prüfen
+   → nein: Frame übernehmen
+→ bis zu 5 eindeutige Frames
 ```
 
-Diese Kameras werden global herausgefiltert, bevor Daily, Manual oder Weekly gestartet werden.
-
-Die Entscheidung in der Konfiguration hat Vorrang. Eine explizite Manual-Auswahl hebt die Ignore-Liste nicht auf.
+Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollständig hashen, bevor die eigentliche Auswahl stattfindet.
 
 ---
 
-## Unterstützte Dateinamensformate
-
-Die Kameraarchive enthalten mehrere historisch gewachsene Formate.
-
-Neue bzw. bekannte Formate werden explizit unterstützt.
-
-Beispiele:
-
-```text
-<Kameraname>_YY-MM-DD_HH-MM-SS-MS.jpg
-20260915T145103.jpg
-scheunenviertel-26-09-15_14-29-56-39.jpg
-aw10_26-08-27_15-52-07-75.jpg
-see-26-09-15_14-44-58-48.jpg
-bsv_steinhude_2510091630.jpg
-bsv_steinhude_202410020900.jpg
-image_241030_010043.jpg
-P23091411034310.jpg
-T23091315270800.jpg
-Nordufer_tele_20250419T094017.jpg
-Nordufer_wide_20250419T100009.jpg
-sam-Reolink_00_20251024145546.jpg
-```
-
-### Designentscheidung
-
-Unbekannte Formate werden nicht geraten.
-
-```text
-bekanntes Format
-→ Datum/Zeit extrahieren
-
-unbekanntes Format
-→ nicht raten
-→ als nicht erkannt behandeln
-```
-
-Neue Formate sollen nur über ein explizites Parser-Pattern mit passenden Tests ergänzt werden.
-
----
-
-## Daylight-Auswahl
-
-Daily- und Manual-Timelapses orientieren sich an Sonnenaufgang und Sonnenuntergang.
-
-Die geografischen Daten und die Zeitzone kommen aus der Konfiguration.
-
-Beispiel:
-
-```json
-{
-  "location": {
-    "latitude": 52.45,
-    "longitude": 9.38,
-    "timezone": "Europe/Berlin"
-  },
-  "daylight_buffer_minutes": 90
-}
-```
-
-Der verwendete Zeitraum ist:
-
-```text
-sunrise - daylight_buffer
-bis
-sunset + daylight_buffer
-```
-
-Der Buffer bleibt damit konfigurierbar, ohne die Bildauswahl in `images.py` zu verändern.
-
----
-
-## Temporäre Frames
-
-Ausgewählte Originalbilder werden lokal kopiert und fortlaufend umbenannt.
-
-Beispiel:
-
-```text
-temp/
-└── Scheunenviertel/
-    └── 2026-09-17/
-        ├── frame_000001.jpg
-        ├── frame_000002.jpg
-        ├── frame_000003.jpg
-        └── ...
-```
-
-FFmpeg erhält dadurch unabhängig vom ursprünglichen Kameranamen eine konsistente Eingabe:
-
-```text
-frame_%06d.jpg
-```
-
-Originalbilder unter `/mnt/cameras` werden nicht verändert.
-
-Nach erfolgreicher Verarbeitung wird das Temp-Verzeichnis entfernt.
-
-Bei einem Fehler während der Videoerstellung bleiben relevante temporäre Daten zur Diagnose erhalten.
-
----
-
-## Videoerstellung
-
-Bildbasierte Timelapses werden mit FFmpeg und H.264 erzeugt.
-
-Konzeptionell:
-
-```bash
-ffmpeg -y   -framerate 10   -i frame_%06d.jpg   -c:v libx264   -pix_fmt yuv420p   output.mp4
-```
-
-Aktuelle Framerate:
-
-```text
-10 fps
-```
-
-Damit gilt:
-
-```text
-10 Bilder   = 1 Sekunde
-100 Bilder  = 10 Sekunden
-1000 Bilder = 100 Sekunden
-```
-
-Die Länge eines Timelapses hängt damit von der Anzahl der vorhandenen Bilder ab.
-
----
-
-## Sichere Videoersetzung
-
-Bestehende Videos werden nicht direkt überschrieben.
-
-FFmpeg schreibt zunächst in eine temporäre MP4-Datei im Zielverzeichnis.
-
-Beispiel:
-
-```text
-.Scheunenviertel_2026-09-17.tmp.mp4
-```
-
-bzw. für Weekly:
-
-```text
-.Scheunenviertel_weekly.tmp.mp4
-```
-
-Nur wenn FFmpeg erfolgreich beendet wurde, ersetzt die temporäre Datei das endgültige Video.
-
-Dadurch bleibt ein vorheriges funktionierendes Video erhalten, wenn die Neuerstellung fehlschlägt.
-
----
-
-## Daily
-
-Der automatische Daily verarbeitet immer den vorherigen Kalendertag in der konfigurierten Zeitzone.
-
-Ausgabe:
-
-```text
-videos/<camera>/daily/<camera>_YYYY-MM-DD.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/daily/Scheunenviertel_2026-09-17.mp4
-```
-
-### Daily-Retention
-
-Pro Kamera wird ein exaktes rollierendes 7-Tage-Fenster gehalten.
-
-Wenn das Zieldatum beispielsweise `2026-09-17` ist, gehören ausschließlich diese Tage zum Fenster:
-
-```text
-2026-09-11
-2026-09-12
-2026-09-13
-2026-09-14
-2026-09-15
-2026-09-16
-2026-09-17
-```
-
-Fehlende Tage werden nicht mit älteren Videos aufgefüllt.
-
-Die Retention wird erst angewendet, nachdem das neue Daily erfolgreich erstellt wurde.
-
----
-
-## Manual
-
-Manual-Timelapses verarbeiten ein explizit angegebenes Datum.
-
-Ausgabe:
-
-```text
-videos/<camera>/manual/<camera>_YYYY-MM-DD.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/manual/Scheunenviertel_2026-08-15.mp4
-```
-
-Manual-Videos sind historische Ergebnisse und werden nicht automatisch gelöscht.
-
-Existiert das exakte Manual-Video bereits, wird die Kamera bereits vor Bildsuche, Kopieren und FFmpeg übersprungen.
-
-### Bestimmte Kameras auswählen
-
-Mehrere Kameras können angegeben werden:
-
-```bash
-python3 -m src.main   --date 2026-08-15   --cameras Scheunenviertel SVG
-```
-
-`--cameras` ist nur zusammen mit `--date` gültig.
-
----
-
-## Weekly
-
-Weekly ist ein rollierendes 7-Tage-Timelapse.
-
-Quelle sind ausschließlich die Daily-Videos der exakten letzten sieben Kalendertage.
-
-Ausgabe:
-
-```text
-videos/<camera>/weekly/<camera>_weekly.mp4
-```
-
-Beispiel:
-
-```text
-videos/Scheunenviertel/weekly/Scheunenviertel_weekly.mp4
-```
-
-Regeln:
-
-- Daily-Videos werden chronologisch verarbeitet.
-- Daily-Videos außerhalb des 7-Tage-Fensters werden ignoriert.
-- Fehlende Tage werden protokolliert.
-- Fehlende Tage werden nicht durch ältere Dailys ersetzt.
-- Wenn mindestens ein Daily vorhanden ist, wird daraus ein Weekly gebaut.
-- Wenn kein Daily vorhanden ist, wird Weekly für diese Kamera übersprungen.
-- Das bestehende Weekly bleibt erhalten, bis das neue Concat erfolgreich abgeschlossen wurde.
-
-Weekly verwendet FFmpeg-Stream-Copy und re-encodiert die Daily-Videos nicht:
-
-```bash
-ffmpeg -y   -f concat   -safe 0   -i concat.txt   -c copy   output.mp4
-```
-
----
-
-## Bildsuche, Validierung und Diagnose
-
-Die eigentliche Bildsuche für Daily und Manual läuft in einem separaten Worker-Prozess. Der Worker meldet periodisch Fortschritt. Bleibt dieser Fortschritt länger als `image_scan_stall_timeout_seconds` aus, wird nur der betroffene Kamera-Scan beendet und der Job kann mit späteren Kameras fortfahren.
-
-Nach der daylight-basierten Auswahl werden nur die tatsächlich verwendeten Bilder validiert:
-
-```text
-0 Byte
-→ aus der Verarbeitung entfernen und loggen
-
-identische Dateigröße
-→ als Duplikat-Kandidat betrachten
-→ Inhalt mit SHA-256 vergleichen
-→ byte-identische Gruppen loggen, aber nicht automatisch entfernen
-```
-
-Dadurch werden nicht komplette Kameraarchive unnötig per `stat()` oder Hashing geprüft.
-
-Wenn für ein Datum keine passenden bzw. nutzbaren Bilder gefunden werden, kann zusätzlich der vorhandene Bildbestand untersucht werden.
-
-`get_image_range()` liefert:
-
-```text
-earliest_date
-latest_date
-total_files
-recognized_files
-unrecognized_files
-```
-
-Damit kann beispielsweise unterschieden werden zwischen:
-
-```text
-keine erkannten Bilder vorhanden
-Bilder nur außerhalb des gewünschten Datums
-unbekannte Dateinamensformate
-gemischte bekannte und unbekannte Formate
-```
-
-### Timeout und Isolation
-
-Der Image-Range-Scan kann bei großen oder nicht erreichbaren Kameraquellen blockierend sein.
-
-`get_image_range()` verwendet deshalb nur einen `os.scandir()`-Durchlauf über Dateinamen und vermeidet unnötige `is_file()`-/`stat()`-Zugriffe. Zusätzlich läuft die Diagnose in `src/diagnostics.py` weiterhin in einem separaten Prozess.
-
-Aktuelles Verhalten:
-
-```text
-Diagnose starten
-→ maximal 10 Sekunden warten
-→ bei Timeout Prozess beenden
-→ Warnung loggen
-→ nächste Kamera verarbeiten
-```
-
-Die Diagnose ist optional und darf den vollständigen Job nicht dauerhaft blockieren.
+## Timelapse-Typen
+
+### Daily
+
+- Zieldatum: gestern
+- Quelle: Originalbilder
+- Auswahl: Sunrise bis Sunset inklusive Buffer
+- Framerate: `daily_framerate`
+- Retention: exaktes rollierendes 7-Tage-Fenster
+
+### Manual
+
+- Zieldatum: explizit per CLI
+- Quelle: Originalbilder
+- Auswahl: wie Daily
+- Framerate: `manual_framerate`
+- keine automatische Retention
+
+### Weekly
+
+- Fenster: letzte 7 abgeschlossene Kalendertage
+- Quelle: vorhandene Daily-Videos
+- fehlende Dailys werden protokolliert
+- kein älteres Backfill
+- mindestens ein Daily genügt für die Erstellung
+
+### Monthly
+
+- Fenster: rollierende 30 Tage
+- Quelle: Originalbilder
+- täglich 10:30 bis 13:30 Uhr
+- verwendet alle validen Intervallbilder
+- Framerate: `monthly_framerate`
+
+### Yearly
+
+- Fenster: rollierende 365 Tage
+- Quelle: Originalbilder
+- tägliche Kandidaten aus 10:30 bis 13:30 Uhr
+- Zielzeit: 12:00 Uhr
+- bis zu 5 eindeutige Frames pro Tag
+- bei Duplikaten werden weitere Kandidaten nachgezogen
+- Framerate: `yearly_framerate`
 
 ---
 
 ## Logging
 
-Logs werden nach Job-Typ und Ausführungstag getrennt gespeichert.
+Logs werden nach Job-Typ getrennt:
 
 ```text
 logs/
 ├── daily/YYYY-MM-DD.log
 ├── manual/YYYY-MM-DD.log
 ├── weekly/YYYY-MM-DD.log
+├── monthly/YYYY-MM-DD.log
 └── yearly/YYYY-MM-DD.log
 ```
 
-Die Datumsangabe im Log-Dateinamen beschreibt den Ausführungstag, nicht zwingend den verarbeiteten Tag.
+Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert.
 
-Beispielhafte Log-Level:
-
-```text
-DEBUG    technische Detailinformationen
-INFO     normaler Programmablauf
-WARNING  ungewöhnliche, aber behandelbare Zustände
-ERROR    fehlgeschlagene Verarbeitung
-```
-
-Global ignorierte Kameras werden ebenfalls geloggt.
-
-Zusätzlich werden auffällige Quelldaten protokolliert:
+Operative Fehler wie
 
 ```text
-WARNING  entfernte 0-Byte-Bilder
-WARNING  byte-identische Quelldaten / Duplikatgruppen
-DEBUG    konkret betroffene Dateinamen
-```
-
-### Log-Retention
-
-Die Aufbewahrungsdauer wird zentral konfiguriert:
-
-```json
-"log_retention_days": 30
-```
-
-Beim Programmstart entfernt `cleanup_old_logs(...)` Anwendungslogs, deren im Dateinamen enthaltenes ISO-Datum älter als die konfigurierte Retention ist. Es wird bewusst nicht das Dateisystem-`mtime` verwendet. Dateien, die nicht dem Schema `YYYY-MM-DD.log` entsprechen, werden nicht automatisch gelöscht.
-
----
-
-## Performance-Monitoring
-
-Während FFmpeg läuft, werden Peak-Werte protokolliert für:
-
-```text
-FFmpeg CPU
-FFmpeg RAM
-System CPU
-System RAM
-```
-
-Beispiel:
-
-```text
-Peak hardware usage | FFmpeg CPU: 404.2% | FFmpeg RAM: 496.2 MB | System CPU: 100.0% | System RAM: 91.9%
-```
-
-Bei `psutil.Process.cpu_percent()` können auf einem Mehrkernsystem Werte über 100 % auftreten.
-
----
-
-# Programm starten
-
-Alle Befehle werden aus dem Projektverzeichnis ausgeführt.
-
-```bash
-cd ~/timelapse
-source .venv/bin/activate
-```
-
-## Automatischer Produktionslauf
-
-Der normale Produktionslauf startet zuerst Daily und anschließend Weekly:
-
-```bash
-python3 -m src.main
-```
-
-Ablauf:
-
-```text
-Daily für gestern
-→ Weekly für das rollierende 7-Tage-Fenster bis gestern
-```
-
----
-
-## Manual-Timelapse starten
-
-Alle verfügbaren, nicht ignorierten Kameras für ein bestimmtes Datum:
-
-```bash
-python3 -m src.main --date 2026-08-15
-```
-
-Nur bestimmte Kameras:
-
-```bash
-python3 -m src.main   --date 2026-08-15   --cameras Scheunenviertel SVG
-```
-
-Mehrfach angegebene Kameras werden dedupliziert, ihre Reihenfolge bleibt erhalten.
-
-Unbekannte Kameranamen werden geloggt und übersprungen.
-
----
-
-# Jobs einzeln ausführen
-
-Für Entwicklung und Fehleranalyse können Daily und Weekly unabhängig vom kompletten `main.py`-Workflow gestartet werden.
-
-## Nur Daily
-
-```bash
-python3 - <<'PY'
-from src.config import load_config
-from src.images import get_cameras
-from src.jobs.daily import run_daily_job
-from src.logger import configure_file_logging
-
-config = load_config()
-
-ignored_cameras = set(
-    config.get(
-        "ignored_cameras",
-        [],
-    )
-)
-
-cameras = [
-    camera
-    for camera in get_cameras()
-    if camera not in ignored_cameras
-]
-
-configure_file_logging("daily")
-
-run_daily_job(
-    config=config,
-    cameras=cameras,
-)
-PY
-```
-
-## Nur Weekly
-
-```bash
-python3 - <<'PY'
-from src.config import load_config
-from src.images import get_cameras
-from src.jobs.weekly import run_weekly_job
-from src.logger import configure_file_logging
-
-config = load_config()
-
-ignored_cameras = set(
-    config.get(
-        "ignored_cameras",
-        [],
-    )
-)
-
-cameras = [
-    camera
-    for camera in get_cameras()
-    if camera not in ignored_cameras
-]
-
-configure_file_logging("weekly")
-
-run_weekly_job(
-    config=config,
-    cameras=cameras,
-)
-PY
-```
-
----
-
-# Tests
-
-Das Projekt verwendet `pytest`.
-
-Komplette Testsuite:
-
-```bash
-python3 -m pytest
-```
-
-Ausführliche Ausgabe:
-
-```bash
-python3 -m pytest -v
-```
-
-Einzelne Testdatei:
-
-```bash
-python3 -m pytest tests/daily_test.py
-```
-
-Einzelner Test:
-
-```bash
-python3 -m pytest tests/images_test.py::test_get_image_range -v
-```
-
-Aktuell verifizierter Stand:
-
-```text
-64 passed
-```
-
-Die Tests sind nach Modulverantwortung getrennt:
-
-```text
-images_test.py
-→ Bildsuche, Parsing, Isolation, Validierung und Stall-Handling
-
-daily_test.py
-→ Daily-Businesslogik und Retention
-
-diagnostics_test.py
-→ gemeinsame Diagnose-Logik
-
-main_test.py
-→ Orchestrierung, Routing und globale Fehler
-
-manual_test.py
-→ Manual-Businesslogik
-
-video_test.py
-→ technische Video-/FFmpeg-Funktionen
-
-weekly_test.py
-→ Weekly-Businesslogik
-```
-
-Tests deaktivieren das produktive File-Logging über:
-
-```text
-TIMELAPSE_DISABLE_FILE_LOGGING=1
-```
-
----
-
-## Fehlerbehandlung
-
-Globale und kamerabezogene Fehler werden bewusst unterschiedlich behandelt.
-
-### Globaler Fehler
-
-Wenn der Kamera-Root `/mnt/cameras` nicht erreichbar ist, wird der komplette Job abgebrochen.
-
-### Fehler einer einzelnen Kamera
-
-Operative Fehler wie:
-
-```python
 OSError
 TimeoutError
 subprocess.CalledProcessError
 ```
 
-werden pro Kamera geloggt. `TimeoutError` steht dabei für einen festgefahrenen isolierten Bildscan, nicht für eine maximale Gesamtlaufzeit.
+werden pro Kamera behandelt.
 
-Danach wird mit der nächsten Kamera weitergearbeitet.
-
-Programmierfehler wie `TypeError` oder `AttributeError` sollen nicht pauschal verschluckt werden.
+Programmierfehler wie `TypeError` oder `AttributeError` werden nicht pauschal verschluckt.
 
 ---
 
-## Sicherheit und Datenintegrität
+## Installation
 
-Grundregeln:
+Virtuelle Umgebung erstellen und aktivieren:
 
-- Originalbilder unter `/mnt/cameras` niemals verändern.
-- Frames immer lokal unter `temp/` vorbereiten.
-- Unbekannte Dateiformate niemals erraten.
-- Bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen.
-- Daily-Retention erst nach erfolgreicher Videoerstellung anwenden.
-- Eine fehlerhafte Kamera darf andere Kameras möglichst nicht blockieren.
-- Diagnosefunktionen dürfen den Produktionslauf nicht dauerhaft blockieren.
-
----
-
-## Geplante Weiterentwicklung
-
-Die zentrale Robustheitsarbeit am Bildpfad und die Log-Retention sind implementiert. Ein realer Kamera-Disconnect-Test kann später nachgeholt werden, sobald die betroffene Hardware wieder gezielt verfügbar ist; bis dahin schützt die Prozess-Isolation bereits grundsätzlich vor einem dauerhaft blockierenden Kamera-Scan.
-
-Als nächster größerer Timelapse-Typ ist Yearly vorgesehen.
-
-Aktuelles Konzept:
-
-```text
-rollierende letzte 365 Kalendertage
-→ Originalbilder untersuchen
-→ pro Tag ein Bild auswählen
-→ Bild möglichst nahe an einer einheitlichen lokalen Zielzeit
-→ daraus ein image-basiertes Timelapse erstellen
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-Yearly soll nicht aus Daily- oder Weekly-Videos zusammengesetzt werden.
+Abhängigkeiten installieren:
 
-Die genaue Zielzeit und Toleranz sind noch festzulegen.
+```bash
+python3 -m pip install -r requirements.txt
+```
 
-Die automatische zeitgesteuerte Ausführung soll später über das Betriebssystem erfolgen, vorzugsweise mit `systemd`-Timern statt mit einem internen Python-Scheduler.
+Ruff ist als Entwicklungswerkzeug über `pyproject.toml` konfiguriert. Falls es nicht bereits installiert ist:
 
+```bash
+python3 -m pip install ruff
+```
 
-## Automatischer Produktionslauf
+FFmpeg muss systemweit verfügbar sein.
 
-Der normale Produktionslauf startet zuerst Daily und anschließend Weekly:
+---
+
+## Programm starten
+
+Automatischer Produktionslauf:
 
 ```bash
 python3 -m src.main
@@ -1545,107 +405,29 @@ python3 -m src.main
 Ablauf:
 
 ```text
-Daily für gestern
-→ Weekly für das rollierende 7-Tage-Fenster bis gestern
+Daily
+→ Weekly
+→ Monthly
+→ Yearly
 ```
 
----
-
-## Manual-Timelapse starten
-
-Alle verfügbaren, nicht ignorierten Kameras für ein bestimmtes Datum:
+Manual für ein bestimmtes Datum:
 
 ```bash
 python3 -m src.main --date 2026-08-15
 ```
 
-Nur bestimmte Kameras:
+Manual nur für bestimmte Kameras:
 
 ```bash
-python3 -m src.main   --date 2026-08-15   --cameras Scheunenviertel SVG
+python3 -m src.main --date 2026-08-15 --cameras Scheunenviertel Nordufer_wide
 ```
 
-Mehrfach angegebene Kameras werden dedupliziert, ihre Reihenfolge bleibt erhalten.
-
-Unbekannte Kameranamen werden geloggt und übersprungen.
+`--cameras` ist nur gemeinsam mit `--date` gültig.
 
 ---
 
-# Jobs einzeln ausführen
-
-Für Entwicklung und Fehleranalyse können Daily und Weekly unabhängig vom kompletten `main.py`-Workflow gestartet werden.
-
-## Nur Daily
-
-```bash
-python3 - <<'PY'
-from src.config import load_config
-from src.images import get_cameras
-from src.jobs.daily import run_daily_job
-from src.logger import configure_file_logging
-
-config = load_config()
-
-ignored_cameras = set(
-    config.get(
-        "ignored_cameras",
-        [],
-    )
-)
-
-cameras = [
-    camera
-    for camera in get_cameras()
-    if camera not in ignored_cameras
-]
-
-configure_file_logging("daily")
-
-run_daily_job(
-    config=config,
-    cameras=cameras,
-)
-PY
-```
-
-## Nur Weekly
-
-```bash
-python3 - <<'PY'
-from src.config import load_config
-from src.images import get_cameras
-from src.jobs.weekly import run_weekly_job
-from src.logger import configure_file_logging
-
-config = load_config()
-
-ignored_cameras = set(
-    config.get(
-        "ignored_cameras",
-        [],
-    )
-)
-
-cameras = [
-    camera
-    for camera in get_cameras()
-    if camera not in ignored_cameras
-]
-
-configure_file_logging("weekly")
-
-run_weekly_job(
-    config=config,
-    cameras=cameras,
-)
-PY
-```
-
----
-
-# Tests
-
-Das Projekt verwendet `pytest`.
+## Tests
 
 Komplette Testsuite:
 
@@ -1653,118 +435,92 @@ Komplette Testsuite:
 python3 -m pytest
 ```
 
-Ausführliche Ausgabe:
+Ausführlich:
 
 ```bash
 python3 -m pytest -v
 ```
 
-Einzelne Testdatei:
+Einzelne Datei:
 
 ```bash
-python3 -m pytest tests/daily_test.py
+python3 -m pytest tests/yearly_selection_test.py -v
 ```
 
-Einzelner Test:
-
-```bash
-python3 -m pytest tests/camera_test.py::test_get_image_range -v
-```
-
-Aktuell verifizierter Stand:
-
-```text
-52 passed
-```
-
-Die Tests sind nach Modulverantwortung getrennt:
-
-```text
-camera_test.py
-→ Kameraerkennung, Dateinamen, Bildauswahl
-
-daily_test.py
-→ Daily-Businesslogik und Retention
-
-diagnostics_test.py
-→ gemeinsame Diagnose-Logik
-
-main_test.py
-→ Orchestrierung, Routing und globale Fehler
-
-manual_test.py
-→ Manual-Businesslogik
-
-video_test.py
-→ technische Video-/FFmpeg-Funktionen
-
-weekly_test.py
-→ Weekly-Businesslogik
-```
-
-Tests deaktivieren das produktive File-Logging über:
-
-```text
-TIMELAPSE_DISABLE_FILE_LOGGING=1
-```
+Tests deaktivieren das produktive File-Logging über `tests/conftest.py`.
 
 ---
 
-## Fehlerbehandlung
+## Linting und Formatierung
 
-Globale und kamerabezogene Fehler werden bewusst unterschiedlich behandelt.
+Das Projekt verwendet Ruff.
 
-### Globaler Fehler
+Die Konfiguration liegt in:
 
-Wenn der Kamera-Root `/mnt/cameras` nicht erreichbar ist, wird der komplette Job abgebrochen.
-
-### Fehler einer einzelnen Kamera
-
-Operative Fehler wie:
-
-```python
-OSError
-subprocess.CalledProcessError
+```text
+pyproject.toml
 ```
 
-werden pro Kamera geloggt.
+Python-Code wird mit Tabs eingerückt:
 
-Danach wird mit der nächsten Kamera weitergearbeitet.
+```toml
+[tool.ruff.format]
+indent-style = "tab"
+```
 
-Programmierfehler wie `TypeError` oder `AttributeError` sollen nicht pauschal verschluckt werden.
+Gemischte Tabs und Spaces werden über die Ruff-Regeln erkannt. `W191` ist bewusst deaktiviert, da Tabs im Projekt der gewünschte Einrückungsstil sind.
+
+Code automatisch formatieren:
+
+```bash
+ruff format .
+```
+
+Linting ausführen:
+
+```bash
+ruff check .
+```
+
+Nur prüfen, ohne Dateien zu verändern:
+
+```bash
+ruff format --check .
+ruff check .
+```
+
+Empfohlener Entwicklungsablauf:
+
+```text
+Code ändern
+→ ruff format .
+→ ruff check .
+→ python3 -m pytest
+```
 
 ---
 
 ## Sicherheit und Datenintegrität
 
-Grundregeln:
+Grundregeln des Projekts:
 
 - Originalbilder unter `/mnt/cameras` niemals verändern.
-- Frames immer lokal unter `temp/` vorbereiten.
-- Unbekannte Dateiformate niemals erraten.
+- Frames nur lokal unter `temp/` vorbereiten.
+- Unbekannte Dateinamensformate niemals erraten.
 - Bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen.
 - Daily-Retention erst nach erfolgreicher Videoerstellung anwenden.
-- Eine fehlerhafte Kamera darf andere Kameras möglichst nicht blockieren.
-- Diagnosefunktionen dürfen den Produktionslauf nicht dauerhaft blockieren.
+- Fehler einer Kamera dürfen spätere Kameras nicht unnötig blockieren.
+- Blockierende Dateisystemzugriffe möglichst in isolierten Workern ausführen.
+- Automatische Jobs verwenden ausschließlich abgeschlossene Kalendertage.
 
 ---
 
-## Geplante Weiterentwicklung
+## Noch offen
 
-Als nächster größerer Timelapse-Typ ist Yearly vorgesehen.
+Für den produktiven Dauerbetrieb fehlen insbesondere noch:
 
-Aktuelles Konzept:
+- zeitgesteuerte automatische Ausführung
+- Upload der erzeugten Videos zum Webserver
+- endgültige Retention-/Dateinamensstrategie für rollierende Monthly- und Yearly-Ausgaben
 
-```text
-rollierende letzte 365 Kalendertage
-→ Originalbilder untersuchen
-→ pro Tag ein Bild auswählen
-→ Bild möglichst nahe an einer einheitlichen lokalen Zielzeit
-→ daraus ein image-basiertes Timelapse erstellen
-```
-
-Yearly soll nicht aus Daily- oder Weekly-Videos zusammengesetzt werden.
-
-Die genaue Zielzeit und Toleranz sind noch festzulegen.
-
-Die automatische zeitgesteuerte Ausführung soll später über das Betriebssystem erfolgen, vorzugsweise mit `systemd`-Timern statt mit einem internen Python-Scheduler.
+Die Architektur ist so aufgebaut, dass weitere periodische Jobs ergänzt werden können, ohne den zentralen Coordinator unnötig mit Businesslogik zu belasten.
