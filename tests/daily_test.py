@@ -538,3 +538,90 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 	)
 
 	assert created_cameras == ["Working-Camera"]
+
+
+def test_run_daily_job_uses_explicit_target_date(
+	monkeypatch,
+):
+	target_date = date(
+		2026,
+		8,
+		15,
+	)
+
+	images = [Path("image.jpg")]
+
+	sun_calls = []
+	image_calls = []
+	video_calls = []
+	retention_calls = []
+
+	def fake_get_sun_times(
+		**kwargs,
+	):
+		sun_calls.append(kwargs)
+
+		return (
+			TEST_SUNRISE,
+			TEST_SUNSET,
+		)
+
+	def fake_find_images_isolated(
+		**kwargs,
+	):
+		image_calls.append(kwargs)
+
+		return images
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		video_calls.append(kwargs)
+
+		return Path("videos/Test-Camera/daily/test.mp4")
+
+	def fake_cleanup_daily_retention(
+		**kwargs,
+	):
+		retention_calls.append(kwargs)
+
+	monkeypatch.setattr(
+		daily_module,
+		"get_sun_times",
+		fake_get_sun_times,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"find_images_isolated",
+		fake_find_images_isolated,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"create_timelapse",
+		fake_create_timelapse,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"cleanup_daily_retention",
+		fake_cleanup_daily_retention,
+	)
+
+	daily_module.run_daily_job(
+		config=TEST_CONFIG,
+		cameras=[
+			"Test-Camera",
+		],
+		framerate=DAILY_FRAMERATE,
+		target_date=target_date,
+	)
+
+	assert sun_calls[0]["target_date"] == target_date
+
+	assert image_calls[0]["target_date"] == target_date
+
+	assert video_calls[0]["target_date"] == target_date
+
+	assert retention_calls[0]["target_date"] == target_date

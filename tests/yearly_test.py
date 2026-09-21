@@ -311,3 +311,45 @@ def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 
 	# Complete coverage does not need a missing-frames warning.
 	assert "Yearly will be created with" not in caplog.text
+
+
+def test_run_yearly_job_uses_explicit_target_date(
+	monkeypatch,
+):
+	target_date = date(
+		2026,
+		9,
+		15,
+	)
+
+	interval_calls = []
+
+	def fake_find_interval_images_isolated(
+		**kwargs,
+	):
+		interval_calls.append(kwargs)
+
+		return []
+
+	monkeypatch.setattr(
+		yearly_module,
+		"find_interval_images_isolated",
+		fake_find_interval_images_isolated,
+	)
+
+	yearly_module.run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=[
+			"Camera-A",
+		],
+		framerate=YEARLY_FRAMERATE,
+		target_date=target_date,
+	)
+
+	assert interval_calls[0]["start_date"] == date(
+		2025,
+		9,
+		16,
+	)
+
+	assert interval_calls[0]["end_date"] == target_date

@@ -25,12 +25,15 @@ def run_monthly_job(
 	config: dict,
 	cameras: list[str],
 	framerate: int,
+	target_date: date | None = None,
 ) -> None:
 	timezone = ZoneInfo(config["location"]["timezone"])
 
-	end_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+	# Default to the latest completed calendar day.
+	if target_date is None:
+		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
 
-	start_date, end_date = get_monthly_date_range(end_date)
+	start_date, end_date = get_monthly_date_range(target_date)
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 

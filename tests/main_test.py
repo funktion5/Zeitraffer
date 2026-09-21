@@ -1,5 +1,6 @@
 from argparse import Namespace
 from datetime import date
+import sys
 
 import pytest
 
@@ -24,36 +25,50 @@ TEST_CONFIG = {
 }
 
 DAILY_FRAMERATE = TEST_CONFIG["timelapse"]["daily_framerate"]
-
 MANUAL_FRAMERATE = TEST_CONFIG["timelapse"]["manual_framerate"]
-
 MONTHLY_FRAMERATE = TEST_CONFIG["timelapse"]["monthly_framerate"]
-
 YEARLY_FRAMERATE = TEST_CONFIG["timelapse"]["yearly_framerate"]
 
 
-# Without a date, main must coordinate all automatic jobs.
-def test_main_runs_automatic_job(
+def make_arguments(
+	date_value: date | None = None,
+	cameras: list[str] | None = None,
+	jobs: list[str] | None = None,
+	target_date: date | None = None,
+) -> Namespace:
+	return Namespace(
+		date=date_value,
+		cameras=cameras,
+		jobs=jobs,
+		target_date=target_date,
+	)
+
+
+def patch_common_runtime(
 	monkeypatch,
-):
-	cameras = [
-		"Camera-A",
-		"Camera-B",
-	]
+	arguments: Namespace,
+	config: dict | None = None,
+	cameras: list[str] | None = None,
+) -> tuple[list[str], list[dict]]:
+	if config is None:
+		config = TEST_CONFIG
+
+	if cameras is None:
+		cameras = [
+			"Camera-A",
+			"Camera-B",
+		]
 
 	monkeypatch.setattr(
 		main_module,
 		"parse_arguments",
-		lambda: Namespace(
-			date=None,
-			cameras=None,
-		),
+		lambda: arguments,
 	)
 
 	monkeypatch.setattr(
 		main_module,
 		"load_config",
-		lambda: TEST_CONFIG,
+		lambda: config,
 	)
 
 	monkeypatch.setattr(
@@ -62,7 +77,7 @@ def test_main_runs_automatic_job(
 		lambda: cameras,
 	)
 
-	configured_log_types = []
+	configured_log_types: list[str] = []
 
 	monkeypatch.setattr(
 		main_module,
@@ -70,26 +85,63 @@ def test_main_runs_automatic_job(
 		lambda log_type: configured_log_types.append(log_type),
 	)
 
-	# Main tests must not remove real application log files.
+	cleanup_calls: list[dict] = []
+
 	monkeypatch.setattr(
 		main_module,
 		"cleanup_old_logs",
-		lambda **kwargs: None,
+		lambda **kwargs: cleanup_calls.append(kwargs),
 	)
 
-	daily_calls = []
+	return (
+		configured_log_types,
+		cleanup_calls,
+	)
+
+
+def patch_automatic_jobs(
+	monkeypatch,
+) -> list[tuple[str, dict]]:
+	job_calls: list[tuple[str, dict]] = []
 
 	def fake_run_daily_job(
-		config,
-		cameras,
-		framerate,
+		**kwargs,
 	):
-		daily_calls.append(
-			{
-				"config": config,
-				"cameras": cameras,
-				"framerate": framerate,
-			}
+		job_calls.append(
+			(
+				"daily",
+				kwargs,
+			)
+		)
+
+	def fake_run_weekly_job(
+		**kwargs,
+	):
+		job_calls.append(
+			(
+				"weekly",
+				kwargs,
+			)
+		)
+
+	def fake_run_monthly_job(
+		**kwargs,
+	):
+		job_calls.append(
+			(
+				"monthly",
+				kwargs,
+			)
+		)
+
+	def fake_run_yearly_job(
+		**kwargs,
+	):
+		job_calls.append(
+			(
+				"yearly",
+				kwargs,
+			)
 		)
 
 	monkeypatch.setattr(
@@ -98,39 +150,11 @@ def test_main_runs_automatic_job(
 		fake_run_daily_job,
 	)
 
-	weekly_calls = []
-
-	def fake_run_weekly_job(
-		config,
-		cameras,
-	):
-		weekly_calls.append(
-			{
-				"config": config,
-				"cameras": cameras,
-			}
-		)
-
 	monkeypatch.setattr(
 		main_module,
 		"run_weekly_job",
 		fake_run_weekly_job,
 	)
-
-	monthly_calls = []
-
-	def fake_run_monthly_job(
-		config,
-		cameras,
-		framerate,
-	):
-		monthly_calls.append(
-			{
-				"config": config,
-				"cameras": cameras,
-				"framerate": framerate,
-			}
-		)
 
 	monkeypatch.setattr(
 		main_module,
@@ -138,26 +162,113 @@ def test_main_runs_automatic_job(
 		fake_run_monthly_job,
 	)
 
-	yearly_calls = []
-
-	def fake_run_yearly_job(
-		config,
-		cameras,
-		framerate,
-	):
-		yearly_calls.append(
-			{
-				"config": config,
-				"cameras": cameras,
-				"framerate": framerate,
-			}
-		)
-
 	monkeypatch.setattr(
 		main_module,
 		"run_yearly_job",
 		fake_run_yearly_job,
 	)
+
+	return job_calls
+
+
+# Parse multiple automatic jobs and an explicit target date.
+def test_parse_arguments_accepts_jobs_and_target_date(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--jobs",
+			"daily",
+			"yearly",
+			"--target-date",
+			"2026-09-15",
+		],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.date is None
+	assert args.cameras is None
+	assert args.jobs == [
+		"daily",
+		"yearly",
+	]
+	assert args.target_date == date(
+		2026,
+		9,
+		15,
+	)
+
+
+# Parse a manual date and optional camera selection.
+def test_parse_arguments_accepts_manual_date_and_cameras(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--date",
+			"2026-09-15",
+			"--cameras",
+			"Camera-B",
+			"Camera-A",
+		],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.date == date(
+		2026,
+		9,
+		15,
+	)
+	assert args.cameras == [
+		"Camera-B",
+		"Camera-A",
+	]
+	assert args.jobs is None
+	assert args.target_date is None
+
+
+# Argparse must reject unknown automatic job names.
+def test_parse_arguments_rejects_unknown_job(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--jobs",
+			"invalid-job",
+		],
+	)
+
+	with pytest.raises(SystemExit):
+		main_module.parse_arguments()
+
+
+# Without --jobs, main must preserve the complete automatic workflow.
+def test_main_runs_all_automatic_jobs_by_default(
+	monkeypatch,
+):
+	cameras = [
+		"Camera-A",
+		"Camera-B",
+	]
+
+	configured_log_types, cleanup_calls = patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(),
+		cameras=cameras,
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
 
 	manual_called = False
 
@@ -182,41 +293,207 @@ def test_main_runs_automatic_job(
 		"yearly",
 	]
 
-	assert daily_calls == [
+	assert cleanup_calls == [
 		{
-			"config": TEST_CONFIG,
-			"cameras": cameras,
-			"framerate": DAILY_FRAMERATE,
+			"retention_days": 30,
 		}
 	]
 
-	assert weekly_calls == [
-		{
-			"config": TEST_CONFIG,
-			"cameras": cameras,
-		}
-	]
-
-	assert monthly_calls == [
-		{
-			"config": TEST_CONFIG,
-			"cameras": cameras,
-			"framerate": MONTHLY_FRAMERATE,
-		}
-	]
-
-	assert yearly_calls == [
-		{
-			"config": TEST_CONFIG,
-			"cameras": cameras,
-			"framerate": YEARLY_FRAMERATE,
-		}
+	assert job_calls == [
+		(
+			"daily",
+			{
+				"config": TEST_CONFIG,
+				"cameras": cameras,
+				"framerate": DAILY_FRAMERATE,
+				"target_date": None,
+			},
+		),
+		(
+			"weekly",
+			{
+				"config": TEST_CONFIG,
+				"cameras": cameras,
+				"target_date": None,
+			},
+		),
+		(
+			"monthly",
+			{
+				"config": TEST_CONFIG,
+				"cameras": cameras,
+				"framerate": MONTHLY_FRAMERATE,
+				"target_date": None,
+			},
+		),
+		(
+			"yearly",
+			{
+				"config": TEST_CONFIG,
+				"cameras": cameras,
+				"framerate": YEARLY_FRAMERATE,
+				"target_date": None,
+			},
+		),
 	]
 
 	assert manual_called is False
 
 
-# A supplied date must coordinate a manual job.
+# Main must run only explicitly selected automatic jobs.
+def test_main_runs_only_selected_jobs(
+	monkeypatch,
+):
+	configured_log_types, _ = patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"weekly",
+				"yearly",
+			],
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [job for job, _ in job_calls] == [
+		"weekly",
+		"yearly",
+	]
+
+	assert configured_log_types == [
+		"weekly",
+		"yearly",
+	]
+
+
+# Selected jobs must always execute in the defined workflow order.
+def test_main_keeps_defined_job_order(
+	monkeypatch,
+):
+	configured_log_types, _ = patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"yearly",
+				"daily",
+				"monthly",
+			],
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [job for job, _ in job_calls] == [
+		"daily",
+		"monthly",
+		"yearly",
+	]
+
+	assert configured_log_types == [
+		"daily",
+		"monthly",
+		"yearly",
+	]
+
+
+# Duplicate job arguments must not execute a job more than once.
+def test_main_deduplicates_selected_jobs(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"daily",
+				"daily",
+				"yearly",
+				"yearly",
+			],
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [job for job, _ in job_calls] == [
+		"daily",
+		"yearly",
+	]
+
+
+# Explicit target dates must reach every selected automatic job.
+def test_main_passes_target_date_to_selected_jobs(
+	monkeypatch,
+):
+	target_date = date(
+		2026,
+		9,
+		15,
+	)
+
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"daily",
+				"monthly",
+				"yearly",
+			],
+			target_date=target_date,
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert job_calls == [
+		(
+			"daily",
+			{
+				"config": TEST_CONFIG,
+				"cameras": [
+					"Camera-A",
+					"Camera-B",
+				],
+				"framerate": DAILY_FRAMERATE,
+				"target_date": target_date,
+			},
+		),
+		(
+			"monthly",
+			{
+				"config": TEST_CONFIG,
+				"cameras": [
+					"Camera-A",
+					"Camera-B",
+				],
+				"framerate": MONTHLY_FRAMERATE,
+				"target_date": target_date,
+			},
+		),
+		(
+			"yearly",
+			{
+				"config": TEST_CONFIG,
+				"cameras": [
+					"Camera-A",
+					"Camera-B",
+				],
+				"framerate": YEARLY_FRAMERATE,
+				"target_date": target_date,
+			},
+		),
+	]
+
+
+# A supplied manual date must stay independent from automatic jobs.
 def test_main_runs_manual_job(
 	monkeypatch,
 ):
@@ -235,60 +512,21 @@ def test_main_runs_manual_job(
 		"Camera-B",
 	]
 
-	monkeypatch.setattr(
-		main_module,
-		"parse_arguments",
-		lambda: Namespace(
-			date=target_date,
+	configured_log_types, _ = patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			date_value=target_date,
 			cameras=requested_cameras,
 		),
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"load_config",
-		lambda: TEST_CONFIG,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"get_cameras",
-		lambda: cameras,
-	)
-
-	configured_log_types = []
-
-	monkeypatch.setattr(
-		main_module,
-		"configure_file_logging",
-		lambda log_type: configured_log_types.append(log_type),
-	)
-
-	# Main tests must not remove real application log files.
-	monkeypatch.setattr(
-		main_module,
-		"cleanup_old_logs",
-		lambda **kwargs: None,
+		cameras=cameras,
 	)
 
 	manual_calls = []
 
 	def fake_run_manual_job(
-		config,
-		available_cameras,
-		target_date,
-		requested_cameras,
-		framerate,
+		**kwargs,
 	):
-		manual_calls.append(
-			{
-				"config": config,
-				"available_cameras": available_cameras,
-				"target_date": target_date,
-				"requested_cameras": requested_cameras,
-				"framerate": framerate,
-			}
-		)
+		manual_calls.append(kwargs)
 
 	monkeypatch.setattr(
 		main_module,
@@ -296,55 +534,13 @@ def test_main_runs_manual_job(
 		fake_run_manual_job,
 	)
 
-	automatic_jobs_called = []
-
-	def fake_run_daily_job(
-		**kwargs,
-	):
-		automatic_jobs_called.append("daily")
-
-	def fake_run_weekly_job(
-		**kwargs,
-	):
-		automatic_jobs_called.append("weekly")
-
-	def fake_run_monthly_job(
-		**kwargs,
-	):
-		automatic_jobs_called.append("monthly")
-
-	def fake_run_yearly_job(
-		**kwargs,
-	):
-		automatic_jobs_called.append("yearly")
-
-	monkeypatch.setattr(
-		main_module,
-		"run_daily_job",
-		fake_run_daily_job,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_weekly_job",
-		fake_run_weekly_job,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_monthly_job",
-		fake_run_monthly_job,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_yearly_job",
-		fake_run_yearly_job,
-	)
+	job_calls = patch_automatic_jobs(monkeypatch)
 
 	main_module.main()
 
-	assert configured_log_types == ["manual"]
+	assert configured_log_types == [
+		"manual",
+	]
 
 	assert manual_calls == [
 		{
@@ -356,8 +552,7 @@ def test_main_runs_manual_job(
 		}
 	]
 
-	# Manual runs must stay independent from all automatic jobs.
-	assert automatic_jobs_called == []
+	assert job_calls == []
 
 
 # Camera filters without a manual date must be rejected.
@@ -367,35 +562,132 @@ def test_main_rejects_camera_filter_without_date(
 	monkeypatch.setattr(
 		main_module,
 		"parse_arguments",
-		lambda: Namespace(
-			date=None,
-			cameras=["Camera-A"],
+		lambda: make_arguments(
+			cameras=[
+				"Camera-A",
+			],
 		),
 	)
 
 	with pytest.raises(
 		ValueError,
-		match=("--cameras can only be used together with --date."),
+		match="--cameras can only be used together with --date.",
 	):
 		main_module.main()
 
 
-# Failure to access the complete camera storage must stop the job.
-def test_main_logs_and_raises_camera_storage_error(
+# Manual mode and automatic job selection must not be mixed.
+def test_main_rejects_manual_date_with_jobs(
 	monkeypatch,
 ):
-	target_date = date(
-		2026,
-		9,
-		16,
-	)
-
 	monkeypatch.setattr(
 		main_module,
 		"parse_arguments",
-		lambda: Namespace(
-			date=target_date,
-			cameras=None,
+		lambda: make_arguments(
+			date_value=date(
+				2026,
+				9,
+				15,
+			),
+			jobs=[
+				"daily",
+			],
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--date cannot be used together with --jobs.",
+	):
+		main_module.main()
+
+
+# Manual mode and an automatic target date must not be mixed.
+def test_main_rejects_manual_date_with_target_date(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			date_value=date(
+				2026,
+				9,
+				15,
+			),
+			target_date=date(
+				2026,
+				9,
+				14,
+			),
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--date cannot be used together with --target-date.",
+	):
+		main_module.main()
+
+
+# An automatic target date has no meaning without selected jobs.
+def test_main_rejects_target_date_without_jobs(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			target_date=date(
+				2026,
+				9,
+				15,
+			),
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--target-date can only be used together with --jobs.",
+	):
+		main_module.main()
+
+
+# Camera filters remain exclusive to manual mode.
+def test_main_rejects_camera_filter_for_automatic_jobs(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			cameras=[
+				"Camera-A",
+			],
+			jobs=[
+				"daily",
+			],
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--cameras can only be used together with --date.",
+	):
+		main_module.main()
+
+
+# Failure to access complete camera storage must stop the run.
+def test_main_logs_and_raises_camera_storage_error(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			jobs=[
+				"yearly",
+			],
 		),
 	)
 
@@ -405,7 +697,14 @@ def test_main_logs_and_raises_camera_storage_error(
 		lambda: TEST_CONFIG,
 	)
 
-	# Main tests must not remove real application log files.
+	configured_log_types = []
+
+	monkeypatch.setattr(
+		main_module,
+		"configure_file_logging",
+		lambda log_type: configured_log_types.append(log_type),
+	)
+
 	monkeypatch.setattr(
 		main_module,
 		"cleanup_old_logs",
@@ -423,15 +722,10 @@ def test_main_logs_and_raises_camera_storage_error(
 
 	logged_errors = []
 
-	def fake_logger_exception(
-		message,
-	):
-		logged_errors.append(message)
-
 	monkeypatch.setattr(
 		main_module.logger,
 		"exception",
-		fake_logger_exception,
+		lambda message: logged_errors.append(message),
 	)
 
 	with pytest.raises(
@@ -440,11 +734,17 @@ def test_main_logs_and_raises_camera_storage_error(
 	):
 		main_module.main()
 
-	assert logged_errors == ["Failed to access camera storage."]
+	assert configured_log_types == [
+		"yearly",
+	]
+
+	assert logged_errors == [
+		"Failed to access camera storage.",
+	]
 
 
-# Globally ignored cameras must not be passed to Daily jobs.
-def test_main_filters_ignored_cameras_for_daily(
+# Globally ignored cameras must be filtered before automatic jobs start.
+def test_main_filters_ignored_cameras_for_automatic_jobs(
 	monkeypatch,
 ):
 	config = {
@@ -454,83 +754,31 @@ def test_main_filters_ignored_cameras_for_daily(
 		],
 	}
 
-	monkeypatch.setattr(
-		main_module,
-		"parse_arguments",
-		lambda: Namespace(
-			date=None,
-			cameras=None,
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"daily",
+				"yearly",
+			],
 		),
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"load_config",
-		lambda: config,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"get_cameras",
-		lambda: [
+		config=config,
+		cameras=[
 			"Camera-A",
 			"Camera-B",
 			"Camera-C",
 		],
 	)
 
-	monkeypatch.setattr(
-		main_module,
-		"configure_file_logging",
-		lambda log_type: None,
-	)
-
-	# Main tests must not remove real application log files.
-	monkeypatch.setattr(
-		main_module,
-		"cleanup_old_logs",
-		lambda **kwargs: None,
-	)
-
-	received_cameras = []
-
-	def fake_run_daily_job(
-		config,
-		cameras,
-		framerate,
-	):
-		received_cameras.extend(cameras)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_daily_job",
-		fake_run_daily_job,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_weekly_job",
-		lambda **kwargs: None,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_monthly_job",
-		lambda **kwargs: None,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_yearly_job",
-		lambda **kwargs: None,
-	)
+	job_calls = patch_automatic_jobs(monkeypatch)
 
 	main_module.main()
 
-	assert received_cameras == [
-		"Camera-A",
-		"Camera-C",
-	]
+	for _, kwargs in job_calls:
+		assert kwargs["cameras"] == [
+			"Camera-A",
+			"Camera-C",
+		]
 
 
 # Globally ignored cameras must stay ignored even when requested manually.
@@ -550,63 +798,29 @@ def test_main_filters_ignored_cameras_for_manual(
 		],
 	}
 
-	monkeypatch.setattr(
-		main_module,
-		"parse_arguments",
-		lambda: Namespace(
-			date=target_date,
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			date_value=target_date,
 			cameras=[
 				"Camera-B",
 				"Camera-C",
 			],
 		),
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"load_config",
-		lambda: config,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"get_cameras",
-		lambda: [
+		config=config,
+		cameras=[
 			"Camera-A",
 			"Camera-B",
 			"Camera-C",
 		],
 	)
 
-	monkeypatch.setattr(
-		main_module,
-		"configure_file_logging",
-		lambda log_type: None,
-	)
-
-	# Main tests must not remove real application log files.
-	monkeypatch.setattr(
-		main_module,
-		"cleanup_old_logs",
-		lambda **kwargs: None,
-	)
-
 	manual_calls = []
 
 	def fake_run_manual_job(
-		config,
-		available_cameras,
-		target_date,
-		requested_cameras,
-		framerate,
+		**kwargs,
 	):
-		manual_calls.append(
-			{
-				"available_cameras": available_cameras,
-				"requested_cameras": requested_cameras,
-				"framerate": framerate,
-			}
-		)
+		manual_calls.append(kwargs)
 
 	monkeypatch.setattr(
 		main_module,
@@ -618,10 +832,12 @@ def test_main_filters_ignored_cameras_for_manual(
 
 	assert manual_calls == [
 		{
+			"config": config,
 			"available_cameras": [
 				"Camera-A",
 				"Camera-C",
 			],
+			"target_date": target_date,
 			"requested_cameras": [
 				"Camera-B",
 				"Camera-C",
@@ -631,69 +847,27 @@ def test_main_filters_ignored_cameras_for_manual(
 	]
 
 
-# Main must pass the configured retention period to log cleanup.
+# Main must pass the configured retention period to log cleanup once.
 def test_main_passes_log_retention_to_cleanup(
 	monkeypatch,
 ):
-	monkeypatch.setattr(
-		main_module,
-		"parse_arguments",
-		lambda: Namespace(
-			date=None,
-			cameras=None,
+	_, cleanup_calls = patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"monthly",
+				"yearly",
+			],
 		),
+		cameras=[],
 	)
 
-	monkeypatch.setattr(
-		main_module,
-		"load_config",
-		lambda: TEST_CONFIG,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"get_cameras",
-		list,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"configure_file_logging",
-		lambda log_type: None,
-	)
-
-	cleanup_calls = []
-
-	monkeypatch.setattr(
-		main_module,
-		"cleanup_old_logs",
-		lambda **kwargs: cleanup_calls.append(kwargs),
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_daily_job",
-		lambda **kwargs: None,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_weekly_job",
-		lambda **kwargs: None,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_monthly_job",
-		lambda **kwargs: None,
-	)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_yearly_job",
-		lambda **kwargs: None,
-	)
+	patch_automatic_jobs(monkeypatch)
 
 	main_module.main()
 
-	assert cleanup_calls == [{"retention_days": 30}]
+	assert cleanup_calls == [
+		{
+			"retention_days": 30,
+		}
+	]

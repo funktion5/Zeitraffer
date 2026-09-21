@@ -61,7 +61,7 @@ def find_images_for_date(
 			if progress_callback is not None:
 				now = time.monotonic()
 
-		# Report only periodic progress while directory entries are still arriving.
+				# Report only periodic progress while directory entries are still arriving.
 				if now - last_progress_report >= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS:
 					progress_callback()
 					last_progress_report = now

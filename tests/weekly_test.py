@@ -612,3 +612,54 @@ def test_run_weekly_job_uses_yesterday(
 			),
 		},
 	]
+
+
+def test_run_weekly_job_uses_explicit_target_date(
+	monkeypatch,
+):
+	target_date = date(
+		2026,
+		8,
+		15,
+	)
+
+	weekly_calls = []
+
+	def fake_create_weekly_video(
+		camera,
+		end_date,
+	):
+		weekly_calls.append(
+			{
+				"camera": camera,
+				"end_date": end_date,
+			}
+		)
+
+		return Path(f"videos/{camera}/weekly/{camera}_weekly.mp4")
+
+	monkeypatch.setattr(
+		weekly_module,
+		"create_weekly_video",
+		fake_create_weekly_video,
+	)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=[
+			"Camera-A",
+			"Camera-B",
+		],
+		target_date=target_date,
+	)
+
+	assert weekly_calls == [
+		{
+			"camera": "Camera-A",
+			"end_date": target_date,
+		},
+		{
+			"camera": "Camera-B",
+			"end_date": target_date,
+		},
+	]

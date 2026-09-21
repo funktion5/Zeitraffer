@@ -34,6 +34,30 @@ def parse_arguments():
 		),
 	)
 
+	parser.add_argument(
+		"--jobs",
+		nargs="+",
+		choices=(
+			"daily",
+			"weekly",
+			"monthly",
+			"yearly",
+		),
+		help=(
+			"Run only the specified automatic jobs. "
+			"Jobs always execute in their defined workflow order."
+		),
+	)
+
+	parser.add_argument(
+		"--target-date",
+		type=date.fromisoformat,
+		help=(
+			"Use an explicit end date for selected automatic jobs. "
+			"Can only be used together with --jobs."
+		),
+	)
+
 	return parser.parse_args()
 
 
@@ -41,13 +65,29 @@ def parse_arguments():
 def main():
 	args = parse_arguments()
 
+	if args.date and args.jobs:
+		raise ValueError("--date cannot be used together with --jobs.")
+
+	if args.date and args.target_date:
+		raise ValueError("--date cannot be used together with --target-date.")
+
+	if args.target_date and not args.jobs:
+		raise ValueError("--target-date can only be used together with --jobs.")
+
 	if args.cameras and not args.date:
 		raise ValueError("--cameras can only be used together with --date.")
-
 	config = load_config()
 
+	job_order = (
+		"daily",
+		"weekly",
+		"monthly",
+		"yearly",
+	)
+
+	selected_jobs = [job for job in job_order if args.jobs is None or job in args.jobs]
 	# Configure logging before camera discovery and filtering.
-	log_type = "manual" if args.date else "daily"
+	log_type = "manual" if args.date else selected_jobs[0]
 
 	configure_file_logging(log_type)
 
@@ -90,37 +130,44 @@ def main():
 
 		return
 
-	# Automatic runs always create Daily videos first.
-	run_daily_job(
-		config=config,
-		cameras=available_cameras,
-		framerate=config["timelapse"]["daily_framerate"],
-	)
+	first_job = True
 
-	# Weekly videos depend on the updated Daily videos.
-	configure_file_logging("weekly")
+	for job in selected_jobs:
+		if not first_job:
+			configure_file_logging(job)
 
-	run_weekly_job(
-		config=config,
-		cameras=available_cameras,
-	)
+		first_job = False
 
-	# Monthly uses the same updated camera source state.
-	configure_file_logging("monthly")
-	run_monthly_job(
-		config=config,
-		cameras=available_cameras,
-		framerate=config["timelapse"]["monthly_framerate"],
-	)
+		if job == "daily":
+			run_daily_job(
+				config=config,
+				cameras=available_cameras,
+				framerate=config["timelapse"]["daily_framerate"],
+				target_date=args.target_date,
+			)
 
-	# Yearly uses the same updated camera source state.
-	configure_file_logging("yearly")
+		elif job == "weekly":
+			run_weekly_job(
+				config=config,
+				cameras=available_cameras,
+				target_date=args.target_date,
+			)
 
-	run_yearly_job(
-		config=config,
-		cameras=available_cameras,
-		framerate=config["timelapse"]["yearly_framerate"],
-	)
+		elif job == "monthly":
+			run_monthly_job(
+				config=config,
+				cameras=available_cameras,
+				framerate=config["timelapse"]["monthly_framerate"],
+				target_date=args.target_date,
+			)
+
+		elif job == "yearly":
+			run_yearly_job(
+				config=config,
+				cameras=available_cameras,
+				framerate=config["timelapse"]["yearly_framerate"],
+				target_date=args.target_date,
+			)
 
 
 if __name__ == "__main__":

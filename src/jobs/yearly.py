@@ -123,15 +123,17 @@ def run_yearly_job(
 	config: dict,
 	cameras: list[str],
 	framerate: int,
+	target_date: date | None = None,
 ) -> None:
 	location = config["location"]
 
 	timezone = ZoneInfo(location["timezone"])
 
-	# Yearly ends on the latest completed calendar day.
-	end_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+	# Default to the latest completed calendar day.
+	if target_date is None:
+		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
 
-	start_date, end_date = get_yearly_date_range(end_date=end_date)
+	start_date, end_date = get_yearly_date_range(end_date=target_date)
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 

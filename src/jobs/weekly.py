@@ -131,13 +131,17 @@ def create_weekly_video(
 def run_weekly_job(
 	config: dict,
 	cameras: list[str],
+	target_date: date | None = None,
 ) -> None:
 	location = config["location"]
 
 	timezone = ZoneInfo(location["timezone"])
 
-	# Weekly uses the same latest completed calendar day as the Daily job.
-	end_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+	# Default to the latest completed calendar day.
+	if target_date is None:
+		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+
+	end_date = target_date
 
 	logger.info("-" * 80)
 

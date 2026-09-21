@@ -42,13 +42,22 @@ def run_daily_job(
 	config: dict,
 	cameras: list[str],
 	framerate: int,
+	target_date: date | None = None,
 ) -> None:
 	location = config["location"]
 
-	timezone = ZoneInfo(location["timezone"])
+	timezone = ZoneInfo(
+		location["timezone"]
+	)
 
-	# Daily jobs always process the previous calendar day.
-	target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+	# Default to the latest completed calendar day.
+	if target_date is None:
+		target_date = (
+			datetime.now(
+				tz=timezone
+			).date()
+			- timedelta(days=1)
+		)
 
 	logger.info("-" * 80)
 
