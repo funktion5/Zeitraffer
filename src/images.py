@@ -5,19 +5,16 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from pathlib import Path
-from queue import Empty
 
+from src.image_worker import run_isolated_worker
 from src.logger import logger
 
 CAMERA_ROOT = Path("/mnt/cameras")
 
 # Report scan progress at most once per second.
 IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS = 1
-
-# Give a worker process a short grace period before forcing termination.
-IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS = 1
 
 
 @dataclass
@@ -410,7 +407,7 @@ def find_interval_images(
 		) in images
 	]
 # Calculate an image content hash without loading the complete file into memory.
-def _get_image_hash(
+def get_image_hash(
 	image_path: Path,
 	progress_callback: Callable[[], None] | None = None,
 ) -> str:
@@ -439,14 +436,13 @@ def _get_image_hash(
 	return hasher.hexdigest()
 
 
-## Validate selected images before they are passed to video processing.
-def validate_images(
+# Remove empty files before images are passed to further processing.
+def filter_empty_images(
 	camera: str,
 	images: list[Path],
 	progress_callback: Callable[[], None] | None = None,
 ) -> list[Path]:
 	valid_images = []
-	images_by_size: dict[int, list[Path]] = {}
 	empty_images = []
 
 	for image_path in images:
@@ -455,7 +451,6 @@ def validate_images(
 		if progress_callback is not None:
 			progress_callback()
 
-		# Empty files cannot be used as video frames.
 		if file_size == 0:
 			empty_images.append(
 				image_path
@@ -463,13 +458,6 @@ def validate_images(
 			continue
 
 		valid_images.append(
-			image_path
-		)
-
-		images_by_size.setdefault(
-			file_size,
-			[],
-		).append(
 			image_path
 		)
 
@@ -484,6 +472,30 @@ def validate_images(
 				f"Empty image: {image_path.name}"
 			)
 
+	return valid_images
+
+
+# Log byte-identical source images without removing them.
+def log_duplicate_source_data(
+	camera: str,
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> None:
+	images_by_size: dict[int, list[Path]] = {}
+
+	for image_path in images:
+		file_size = image_path.stat().st_size
+
+		if progress_callback is not None:
+			progress_callback()
+
+		images_by_size.setdefault(
+			file_size,
+			[],
+		).append(
+			image_path
+		)
+
 	duplicate_groups = []
 
 	# Only equal-sized files can contain identical source data.
@@ -494,13 +506,10 @@ def validate_images(
 		images_by_hash: dict[str, list[Path]] = {}
 
 		for image_path in same_size_images:
-			image_hash = _get_image_hash(
+			image_hash = get_image_hash(
 				image_path=image_path,
 				progress_callback=progress_callback,
 			)
-
-			if progress_callback is not None:
-				progress_callback()
 
 			images_by_hash.setdefault(
 				image_hash,
@@ -535,6 +544,25 @@ def validate_images(
 					for image_path in group
 				)
 			)
+
+
+# Validate selected images before they are passed to video processing.
+def validate_images(
+	camera: str,
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+	valid_images = filter_empty_images(
+		camera=camera,
+		images=images,
+		progress_callback=progress_callback,
+	)
+
+	log_duplicate_source_data(
+		camera=camera,
+		images=valid_images,
+		progress_callback=progress_callback,
+	)
 
 	return valid_images
 
@@ -620,8 +648,8 @@ def _find_interval_images_worker(
 			progress_callback=report_progress,
 		)
 
-		# Validate before Monthly or Yearly applies job-specific selection.
-		images = validate_images(
+				# Remove unusable files before job-specific selection.
+		images = filter_empty_images(
 			camera=camera,
 			images=images,
 			progress_callback=report_progress,
@@ -642,120 +670,28 @@ def _find_interval_images_worker(
 			)
 		)
 
-# Stop a stalled worker and force-kill it only if termination is not enough.
-def _stop_image_scan_process(
-    process: Process,
-) -> None:
-    process.terminate()
-
-    process.join(
-        IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
-    )
-
-    if process.is_alive():
-        process.kill()
-
-        process.join(
-            IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
-        )
-
 # Run image discovery with a stall timeout that resets whenever progress arrives.
 def find_images_isolated(
-    camera: str,
-    target_date: date,
-    sunrise: datetime,
-    sunset: datetime,
-    daylight_buffer_minutes: int,
-    stall_timeout_seconds: float,
+	camera: str,
+	target_date: date,
+	sunrise: datetime,
+	sunset: datetime,
+	daylight_buffer_minutes: int,
+	stall_timeout_seconds: float,
 ) -> list[Path]:
-    result_queue = Queue()
-
-    process = Process(
-        target=_find_images_worker,
-        args=(
-            camera,
-            target_date,
-            sunrise,
-            sunset,
-            daylight_buffer_minutes,
-            result_queue,
-        ),
-        daemon=True,
-    )
-
-    process.start()
-
-    # Measure inactivity, not total scan duration.
-    last_progress = time.monotonic()
-    # Poll in larger intervals because immediate failure detection is not required.
-    poll_interval_seconds = 5
-
-    while True:
-        remaining_time = (
-            stall_timeout_seconds
-            - (
-                time.monotonic()
-                - last_progress
-            )
-        )
-
-        # The worker is still alive but has stopped reporting progress.
-        if remaining_time <= 0:
-            _stop_image_scan_process(
-                process
-            )
-
-            result_queue.close()
-
-            raise TimeoutError(
-                f"Image scan stalled for camera: {camera}"
-            )
-
-        try:
-            status, result = result_queue.get(
-                timeout=min(
-                    poll_interval_seconds,
-                    remaining_time,
-                )
-            )
-
-        except Empty:
-            # A dead worker indicates an unexpected failure, not a filesystem stall.
-            if not process.is_alive():
-                process.join()
-
-                result_queue.close()
-
-                raise RuntimeError(
-                    "Image scan worker exited unexpectedly "
-                    f"for camera: {camera} "
-                    f"(exit code: {process.exitcode})"
-                )
-
-            continue
-
-        if status == "progress":
-            last_progress = time.monotonic()
-            continue
-
-        process.join(
-            IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
-        )
-
-        if process.is_alive():
-            _stop_image_scan_process(
-                process
-            )
-
-        result_queue.close()
-
-        if status == "error":
-            raise OSError(
-                result
-            )
-
-        return result
-
+	return run_isolated_worker(
+		camera=camera,
+		target=_find_images_worker,
+		args=(
+			camera,
+			target_date,
+			sunrise,
+			sunset,
+			daylight_buffer_minutes,
+		),
+		stall_timeout_seconds=stall_timeout_seconds,
+		operation_name="Image scan",
+	)
 
 # Run interval discovery and validation with an inactivity timeout.
 def find_interval_images_isolated(
@@ -767,9 +703,8 @@ def find_interval_images_isolated(
 	target_minute: int = 0,
 	tolerance_minutes: int = 90,
 ) -> list[Path]:
-	result_queue = Queue()
-
-	process = Process(
+	return run_isolated_worker(
+		camera=camera,
 		target=_find_interval_images_worker,
 		args=(
 			camera,
@@ -778,78 +713,7 @@ def find_interval_images_isolated(
 			target_hour,
 			target_minute,
 			tolerance_minutes,
-			result_queue,
 		),
-		daemon=True,
+		stall_timeout_seconds=stall_timeout_seconds,
+		operation_name="Interval image scan",
 	)
-
-	process.start()
-
-	# Measure inactivity, not total processing time.
-	last_progress = time.monotonic()
-	poll_interval_seconds = 5
-
-	while True:
-		remaining_time = (
-			stall_timeout_seconds
-			- (
-				time.monotonic()
-				- last_progress
-			)
-		)
-
-		if remaining_time <= 0:
-			_stop_image_scan_process(
-				process
-			)
-
-			result_queue.close()
-
-			raise TimeoutError(
-				f"Interval image scan stalled for camera: {camera}"
-			)
-
-		try:
-			status, result = result_queue.get(
-				timeout=min(
-					poll_interval_seconds,
-					remaining_time,
-				)
-			)
-
-		except Empty:
-			# Unexpected worker failures must remain visible.
-			if not process.is_alive():
-				process.join()
-
-				result_queue.close()
-
-				raise RuntimeError(
-					"Interval image scan worker exited unexpectedly "
-					f"for camera: {camera} "
-					f"(exit code: {process.exitcode})"
-				)
-
-			continue
-
-		if status == "progress":
-			last_progress = time.monotonic()
-			continue
-
-		process.join(
-			IMAGE_SCAN_PROCESS_STOP_TIMEOUT_SECONDS
-		)
-
-		if process.is_alive():
-			_stop_image_scan_process(
-				process
-			)
-
-		result_queue.close()
-
-		if status == "error":
-			raise OSError(
-				result
-			)
-
-		return result

@@ -2,9 +2,9 @@ from datetime import date
 
 from src.config import load_config
 from src.images import find_interval_images_isolated
-from src.jobs.yearly import select_yearly_images
 from src.logger import configure_file_logging, logger
 from src.video import create_timelapse
+from src.yearly_selection import select_unique_yearly_images
 
 CAMERA = "Segelsport-Club-Suedenmeer"
 START_DATE = date(
@@ -51,7 +51,7 @@ def main() -> None:
 		"validated interval images"
 	)
 
-	yearly_images = select_yearly_images(
+	yearly_images = select_unique_yearly_images(
 		interval_images,
     images_per_day=5,
 	)

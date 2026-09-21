@@ -1,4 +1,5 @@
 import subprocess
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -7,9 +8,11 @@ from src.images import (
 	extract_date,
 	extract_time,
 	find_interval_images_isolated,
+	get_image_hash,
 )
 from src.logger import logger
 from src.video import create_timelapse
+from src.yearly_selection import select_yearly_images_isolated
 
 
 # Return the exact rolling 365-day window including the end date.
@@ -27,12 +30,13 @@ def get_yearly_date_range(
 	)
 
 
-# Select up to five images per day, closest to the yearly target time.
-def select_yearly_images(
+
+def select_unique_yearly_images(
 	images: list[Path],
 	target_hour: int = 12,
 	target_minute: int = 0,
-	images_per_day: int = 1,
+	images_per_day: int = 5,
+	progress_callback: Callable[[], None] | None = None,
 ) -> list[Path]:
 	images_by_date: dict[
 		date,
@@ -94,18 +98,48 @@ def select_yearly_images(
 	for image_date in sorted(
 		images_by_date
 	):
-		# Prefer images closest to the target time.
 		candidates = sorted(
 			images_by_date[
 				image_date
 			]
 		)
 
-		daily_images = candidates[
-			:images_per_day
-		]
+		daily_images: list[
+			tuple[
+				int,
+				int,
+				Path,
+			]
+		] = []
 
-		# Keep selected frames in chronological order.
+		seen_hashes: set[str] = set()
+
+		for candidate in candidates:
+			image_path = candidate[2]
+
+			image_hash = get_image_hash(
+				image_path=image_path,
+				progress_callback=progress_callback,
+			)
+
+			if image_hash in seen_hashes:
+				continue
+
+			seen_hashes.add(
+				image_hash
+			)
+
+			daily_images.append(
+				candidate
+			)
+
+			if (
+				len(daily_images)
+				>= images_per_day
+			):
+				break
+
+		# Keep the selected frames chronological within each day.
 		daily_images.sort(
 			key=lambda candidate: (
 				candidate[1],
@@ -119,8 +153,8 @@ def select_yearly_images(
 		)
 
 	return selected_images
-# Run the automatic Yearly timelapse workflow.
 
+# Run the automatic Yearly timelapse workflow.
 def run_yearly_job(
 	config: dict,
 	cameras: list[str],
@@ -184,8 +218,10 @@ def run_yearly_job(
 			)
 
 			yearly_images = (
-				select_yearly_images(
-					interval_images,
+				select_yearly_images_isolated(
+					camera=camera,
+					images=interval_images,
+					stall_timeout_seconds=stall_timeout_seconds,
 					images_per_day=5,
 				)
 			)

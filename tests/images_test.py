@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+import src.image_worker as image_worker_module
 import src.images as images_module
 from src.images import (
     extract_date,
@@ -432,7 +433,7 @@ def test_find_images_isolated_stops_stalled_scan(
                 timeout
             )
 
-            raise images_module.Empty
+            raise image_worker_module.Empty
 
         def close(self):
             self.closed = True
@@ -486,19 +487,19 @@ def test_find_images_isolated_stops_stalled_scan(
     )
 
     monkeypatch.setattr(
-        images_module,
+        image_worker_module,
         "Queue",
         FakeQueue,
     )
 
     monkeypatch.setattr(
-        images_module,
+        image_worker_module,
         "Process",
         FakeProcess,
     )
 
     monkeypatch.setattr(
-        images_module.time,
+        image_worker_module.time,
         "monotonic",
         lambda: next(
             monotonic_values
@@ -642,19 +643,19 @@ def test_find_images_isolated_resets_stall_timeout_on_progress(
 	)
 
 	monkeypatch.setattr(
-		images_module,
+		image_worker_module,
 		"Queue",
 		FakeQueue,
 	)
 
 	monkeypatch.setattr(
-		images_module,
+		image_worker_module,
 		"Process",
 		FakeProcess,
 	)
 
 	monkeypatch.setattr(
-		images_module.time,
+		image_worker_module.time,
 		"monotonic",
 		lambda: next(
 			monotonic_values
@@ -852,7 +853,7 @@ def test_get_image_hash_limits_progress_reports(
 
 	progress_calls = []
 
-	images_module._get_image_hash(
+	images_module.get_image_hash(
 		image_path=image_path,
 		progress_callback=lambda: progress_calls.append(
 			True

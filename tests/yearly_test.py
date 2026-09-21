@@ -5,7 +5,6 @@ import src.jobs.yearly as yearly_module
 from src.jobs.yearly import (
 	get_yearly_date_range,
 	run_yearly_job,
-	select_yearly_images,
 )
 
 TEST_CONFIG = {
@@ -56,96 +55,6 @@ def test_get_yearly_date_range_returns_exact_365_day_window():
 	).days == 364
 
 
-def test_select_yearly_images_selects_closest_image_per_day():
-	images = [
-		Path(
-			"camera_26-09-15_10-45-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_11-40-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_12-05-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_12-40-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_11-30-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_12-10-00-00.jpg"
-		),
-	]
-
-	result = select_yearly_images(
-		images
-	)
-
-	# The selector defaults to one image per day.
-	assert result == [
-		Path(
-			"camera_26-09-15_12-05-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_12-10-00-00.jpg"
-		),
-	]
-
-
-def test_select_yearly_images_prefers_earlier_image_on_equal_distance():
-	images = [
-		Path(
-			"camera_26-09-15_12-05-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_11-55-00-00.jpg"
-		),
-	]
-
-	result = select_yearly_images(
-		images
-	)
-
-	# Prefer the earlier image when both are equally close.
-	assert result == [
-		Path(
-			"camera_26-09-15_11-55-00-00.jpg"
-		)
-	]
-
-
-def test_select_yearly_images_returns_chronological_days():
-	images = [
-		Path(
-			"camera_26-09-17_12-01-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_12-02-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_11-59-00-00.jpg"
-		),
-	]
-
-	result = select_yearly_images(
-		images
-	)
-
-	# Yearly frames must stay in chronological order.
-	assert result == [
-		Path(
-			"camera_26-09-15_12-02-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_11-59-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-17_12-01-00-00.jpg"
-		),
-	]
-
-
 def test_run_yearly_job_creates_video_from_selected_images(
 	monkeypatch,
 ):
@@ -183,6 +92,12 @@ def test_run_yearly_job_creates_video_from_selected_images(
 		yearly_module,
 		"find_interval_images_isolated",
 		fake_find_interval_images_isolated,
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: interval_images,
 	)
 
 	monkeypatch.setattr(
@@ -303,6 +218,12 @@ def test_run_yearly_job_continues_after_camera_timeout(
 		fake_create_timelapse,
 	)
 
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
 	run_yearly_job(
 		config=TEST_CONFIG,
 		cameras=[
@@ -348,6 +269,12 @@ def test_run_yearly_job_logs_warning_when_days_are_missing(
 		lambda **kwargs: Path(
 			"videos/Test-Camera/yearly/test.mp4"
 		),
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
 	)
 
 	run_yearly_job(
