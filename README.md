@@ -17,6 +17,8 @@ Implementiert sind:
 - Weekly-Timelapses
 - Monthly-Timelapses
 - Yearly-Timelapses
+- freie Auswahl automatischer Jobs über `--jobs`
+- historische automatische Läufe über `--target-date`
 - konfigurierbare Framerates
 - globale Kamera-Ausschlussliste
 - daylight-basierte Bildauswahl
@@ -31,7 +33,7 @@ Implementiert sind:
 - Config-Tests für Pfad, JSON-Syntax und Struktur
 - Ruff für Linting und Formatierung
 
-Der automatische Workflow läuft in dieser Reihenfolge:
+Ohne Job-Auswahl läuft der automatische Workflow weiterhin in dieser Reihenfolge:
 
 ```text
 Daily
@@ -40,7 +42,18 @@ Daily
 → Yearly
 ```
 
-Manual-Läufe sind davon unabhängig und werden nur über `--date` gestartet.
+Mit `--jobs` kann jede beliebige Kombination dieser vier automatischen Jobs gewählt werden. Die tatsächliche Ausführungsreihenfolge bleibt immer:
+
+```text
+Daily
+→ Weekly
+→ Monthly
+→ Yearly
+```
+
+Nicht ausgewählte Jobs werden dabei übersprungen.
+
+Manual-Läufe sind davon unabhängig und werden ausschließlich über `--date` gestartet.
 
 ---
 
@@ -107,6 +120,9 @@ Verantwortlich für:
 - ignorierte Kameras filtern
 - Logging konfigurieren
 - Manual- oder Automatic-Workflow starten
+- ausgewählte automatische Jobs koordinieren
+- feste Workflow-Reihenfolge beibehalten
+- optionales `target_date` an automatische Jobs weiterreichen
 - Framerates aus der Config an die Jobs weiterreichen
 
 ### `src/jobs/`
@@ -114,10 +130,11 @@ Verantwortlich für:
 Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 
 `daily.py`
-- verarbeitet gestern
+- verarbeitet standardmäßig gestern
+- kann optional ein explizites `target_date` verarbeiten
 - nutzt Sunrise/Sunset inklusive konfigurierbarem Buffer
 - erstellt Daily-Videos
-- hält ein exaktes rollierendes 7-Tage-Fenster
+- hält ein exaktes rollierendes 7-Tage-Fenster relativ zum verarbeiteten Zieldatum
 
 `manual.py`
 - verarbeitet ein explizites Datum
@@ -127,20 +144,21 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 
 `weekly.py`
 - verwendet ausschließlich vorhandene Daily-Videos
-- verarbeitet das exakte rollierende 7-Tage-Fenster
+- verarbeitet ein exaktes rollierendes 7-Tage-Fenster
+- Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - füllt fehlende Tage nicht mit älteren Videos auf
 - verwendet FFmpeg-Concat ohne Re-Encoding
 
 `monthly.py`
 - verarbeitet ein rollierendes 30-Tage-Fenster
-- Ende ist immer gestern in der konfigurierten Zeitzone
+- Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
 - berücksichtigt alle validen Bilder im täglichen Zielzeitfenster um 12:00 Uhr
 - Toleranz: ±90 Minuten
 
 `yearly.py`
 - verarbeitet ein rollierendes 365-Tage-Fenster
-- Ende ist immer gestern in der konfigurierten Zeitzone
+- Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
 - delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py`
 
@@ -298,15 +316,16 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ### Daily
 
-- Zieldatum: gestern
+- Zieldatum: standardmäßig gestern
+- optional: explizites Zieldatum über `--target-date`
 - Quelle: Originalbilder
 - Auswahl: Sunrise bis Sunset inklusive Buffer
 - Framerate: `daily_framerate`
-- Retention: exaktes rollierendes 7-Tage-Fenster
+- Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
 
 ### Manual
 
-- Zieldatum: explizit per CLI
+- Zieldatum: explizit über `--date`
 - Quelle: Originalbilder
 - Auswahl: wie Daily
 - Framerate: `manual_framerate`
@@ -314,7 +333,8 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ### Weekly
 
-- Fenster: letzte 7 abgeschlossene Kalendertage
+- Fenster: exakt 7 Kalendertage inklusive Enddatum
+- Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: vorhandene Daily-Videos
 - fehlende Dailys werden protokolliert
 - kein älteres Backfill
@@ -322,7 +342,8 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ### Monthly
 
-- Fenster: rollierende 30 Tage
+- Fenster: rollierende 30 Tage inklusive Enddatum
+- Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
 - täglich 10:30 bis 13:30 Uhr
 - verwendet alle validen Intervallbilder
@@ -330,13 +351,157 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ### Yearly
 
-- Fenster: rollierende 365 Tage
+- Fenster: rollierende 365 Tage inklusive Enddatum
+- Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
 - tägliche Kandidaten aus 10:30 bis 13:30 Uhr
 - Zielzeit: 12:00 Uhr
 - bis zu 5 eindeutige Frames pro Tag
 - bei Duplikaten werden weitere Kandidaten nachgezogen
 - Framerate: `yearly_framerate`
+
+---
+
+## CLI und Job-Auswahl
+
+### Vollständiger automatischer Lauf
+
+Ohne weitere Argumente werden alle automatischen Jobs ausgeführt:
+
+```bash
+python3 -m src.main
+```
+
+Reihenfolge:
+
+```text
+Daily
+→ Weekly
+→ Monthly
+→ Yearly
+```
+
+### Einzelnen Job ausführen
+
+```bash
+python3 -m src.main --jobs yearly
+```
+
+oder:
+
+```bash
+python3 -m src.main --jobs daily
+```
+
+### Beliebige Job-Kombination
+
+```bash
+python3 -m src.main --jobs daily monthly
+```
+
+oder:
+
+```bash
+python3 -m src.main --jobs weekly yearly
+```
+
+Die Reihenfolge der Argumente ändert die Workflow-Reihenfolge nicht.
+
+Beispiel:
+
+```bash
+python3 -m src.main --jobs yearly daily
+```
+
+wird intern trotzdem ausgeführt als:
+
+```text
+Daily
+→ Yearly
+```
+
+Doppelt angegebene Jobs werden nicht doppelt ausgeführt.
+
+### Historische automatische Läufe
+
+`--target-date` setzt das Zieldatum bzw. Enddatum aller ausgewählten automatischen Jobs.
+
+Beispiel:
+
+```bash
+python3 -m src.main \
+	--jobs daily monthly \
+	--target-date 2026-09-15
+```
+
+Bedeutung:
+
+```text
+Daily
+→ 2026-09-15
+
+Monthly
+→ 2026-08-17 bis 2026-09-15
+```
+
+Weitere Beispiele:
+
+```bash
+python3 -m src.main \
+	--jobs weekly \
+	--target-date 2026-09-15
+```
+
+ergibt:
+
+```text
+Weekly
+→ 2026-09-09 bis 2026-09-15
+```
+
+und:
+
+```bash
+python3 -m src.main \
+	--jobs yearly \
+	--target-date 2026-09-15
+```
+
+ergibt:
+
+```text
+Yearly
+→ 2025-09-16 bis 2026-09-15
+```
+
+`--target-date` ist nur gemeinsam mit `--jobs` gültig.
+
+### Manual
+
+Manual bleibt bewusst von automatischen Jobs getrennt:
+
+```bash
+python3 -m src.main --date 2026-08-15
+```
+
+Optional können bestimmte Kameras gewählt werden:
+
+```bash
+python3 -m src.main \
+	--date 2026-08-15 \
+	--cameras Scheunenviertel Nordufer_wide
+```
+
+`--cameras` ist nur gemeinsam mit `--date` gültig.
+
+Nicht gültig sind unter anderem:
+
+```text
+--date + --jobs
+--date + --target-date
+--target-date ohne --jobs
+--cameras ohne --date
+```
 
 ---
 
@@ -352,6 +517,8 @@ logs/
 ├── monthly/YYYY-MM-DD.log
 └── yearly/YYYY-MM-DD.log
 ```
+
+Bei einer gezielten Job-Auswahl wird vor dem ersten ausgeführten Job direkt dessen Log aktiviert. Bei mehreren Jobs wird vor jedem weiteren Job auf das passende Log gewechselt.
 
 Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert.
 
@@ -394,39 +561,6 @@ FFmpeg muss systemweit verfügbar sein.
 
 ---
 
-## Programm starten
-
-Automatischer Produktionslauf:
-
-```bash
-python3 -m src.main
-```
-
-Ablauf:
-
-```text
-Daily
-→ Weekly
-→ Monthly
-→ Yearly
-```
-
-Manual für ein bestimmtes Datum:
-
-```bash
-python3 -m src.main --date 2026-08-15
-```
-
-Manual nur für bestimmte Kameras:
-
-```bash
-python3 -m src.main --date 2026-08-15 --cameras Scheunenviertel Nordufer_wide
-```
-
-`--cameras` ist nur gemeinsam mit `--date` gültig.
-
----
-
 ## Tests
 
 Komplette Testsuite:
@@ -444,8 +578,22 @@ python3 -m pytest -v
 Einzelne Datei:
 
 ```bash
-python3 -m pytest tests/yearly_selection_test.py -v
+python3 -m pytest tests/main_test.py -v
 ```
+
+Die `main.py`-Tests decken unter anderem ab:
+
+- vollständigen Default-Workflow
+- einzelne und kombinierte Job-Auswahl
+- feste Workflow-Reihenfolge
+- doppelte Job-Angaben
+- Weitergabe von `target_date`
+- Manual-Isolation
+- ungültige CLI-Kombinationen
+- Kamera-Filterung
+- Logging
+- Storage-Fehler
+- Log-Retention
 
 Tests deaktivieren das produktive File-Logging über `tests/conftest.py`.
 
@@ -511,7 +659,8 @@ Grundregeln des Projekts:
 - Daily-Retention erst nach erfolgreicher Videoerstellung anwenden.
 - Fehler einer Kamera dürfen spätere Kameras nicht unnötig blockieren.
 - Blockierende Dateisystemzugriffe möglichst in isolierten Workern ausführen.
-- Automatische Jobs verwenden ausschließlich abgeschlossene Kalendertage.
+- Automatische Jobs verwenden standardmäßig ausschließlich abgeschlossene Kalendertage.
+- Historische automatische Läufe verwenden das explizit gewählte `--target-date` als Datumsanker.
 
 ---
 
