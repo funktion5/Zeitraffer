@@ -30,38 +30,21 @@ def select_unique_yearly_images(
 		],
 	] = {}
 
-	target_seconds = (
-		target_hour * 60 * 60
-		+ target_minute * 60
-	)
+	target_seconds = target_hour * 60 * 60 + target_minute * 60
 
 	for image_path in images:
-		image_date = extract_date(
-			image_path.name
-		)
+		image_date = extract_date(image_path.name)
 
-		image_time = extract_time(
-			image_path.name
-		)
+		image_time = extract_time(image_path.name)
 
-		if (
-			image_date is None
-			or image_time is None
-		):
+		if image_date is None or image_time is None:
 			continue
 
 		hour, minute, second = image_time
 
-		capture_seconds = (
-			hour * 60 * 60
-			+ minute * 60
-			+ second
-		)
+		capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-		distance_seconds = abs(
-			capture_seconds
-			- target_seconds
-		)
+		distance_seconds = abs(capture_seconds - target_seconds)
 
 		images_by_date.setdefault(
 			image_date,
@@ -76,14 +59,8 @@ def select_unique_yearly_images(
 
 	selected_images: list[Path] = []
 
-	for image_date in sorted(
-		images_by_date
-	):
-		candidates = sorted(
-			images_by_date[
-				image_date
-			]
-		)
+	for image_date in sorted(images_by_date):
+		candidates = sorted(images_by_date[image_date])
 
 		daily_images: list[
 			tuple[
@@ -106,18 +83,11 @@ def select_unique_yearly_images(
 			if image_hash in seen_hashes:
 				continue
 
-			seen_hashes.add(
-				image_hash
-			)
+			seen_hashes.add(image_hash)
 
-			daily_images.append(
-				candidate
-			)
+			daily_images.append(candidate)
 
-			if (
-				len(daily_images)
-				>= images_per_day
-			):
+			if len(daily_images) >= images_per_day:
 				break
 
 		# Keep selected frames chronological within each day.
@@ -128,10 +98,7 @@ def select_unique_yearly_images(
 			)
 		)
 
-		selected_images.extend(
-			candidate[2]
-			for candidate in daily_images
-		)
+		selected_images.extend(candidate[2] for candidate in daily_images)
 
 	return selected_images
 

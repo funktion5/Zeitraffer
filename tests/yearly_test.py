@@ -20,11 +20,7 @@ TEST_CONFIG = {
 	},
 }
 
-YEARLY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"yearly_framerate"
-]
+YEARLY_FRAMERATE = TEST_CONFIG["timelapse"]["yearly_framerate"]
 
 
 def test_get_yearly_date_range_returns_exact_365_day_window():
@@ -34,10 +30,8 @@ def test_get_yearly_date_range_returns_exact_365_day_window():
 		17,
 	)
 
-	start_date, result_end_date = (
-		get_yearly_date_range(
-			end_date=end_date,
-		)
+	start_date, result_end_date = get_yearly_date_range(
+		end_date=end_date,
 	)
 
 	assert start_date == date(
@@ -49,25 +43,16 @@ def test_get_yearly_date_range_returns_exact_365_day_window():
 	# The rolling window must contain exactly 365 calendar days.
 	assert result_end_date == end_date
 
-	assert (
-		result_end_date
-		- start_date
-	).days == 364
+	assert (result_end_date - start_date).days == 364
 
 
 def test_run_yearly_job_creates_video_from_selected_images(
 	monkeypatch,
 ):
 	interval_images = [
-		Path(
-			"camera_26-09-15_11-50-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_12-05-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_12-10-00-00.jpg"
-		),
+		Path("camera_26-09-15_11-50-00-00.jpg"),
+		Path("camera_26-09-15_12-05-00-00.jpg"),
+		Path("camera_26-09-16_12-10-00-00.jpg"),
 	]
 
 	created_videos = []
@@ -80,13 +65,9 @@ def test_run_yearly_job_creates_video_from_selected_images(
 	def fake_create_timelapse(
 		**kwargs,
 	):
-		created_videos.append(
-			kwargs
-		)
+		created_videos.append(kwargs)
 
-		return Path(
-			"videos/Test-Camera/yearly/test.mp4"
-		)
+		return Path("videos/Test-Camera/yearly/test.mp4")
 
 	monkeypatch.setattr(
 		yearly_module,
@@ -108,30 +89,18 @@ def test_run_yearly_job_creates_video_from_selected_images(
 
 	run_yearly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=YEARLY_FRAMERATE,
 	)
 
 	# Yearly keeps up to five selected frames per available day.
-	assert created_videos[0][
-		"images"
-	] == [
-		Path(
-			"camera_26-09-15_11-50-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-15_12-05-00-00.jpg"
-		),
-		Path(
-			"camera_26-09-16_12-10-00-00.jpg"
-		),
+	assert created_videos[0]["images"] == [
+		Path("camera_26-09-15_11-50-00-00.jpg"),
+		Path("camera_26-09-15_12-05-00-00.jpg"),
+		Path("camera_26-09-16_12-10-00-00.jpg"),
 	]
 
-	assert created_videos[0][
-		"framerate"
-	] == YEARLY_FRAMERATE
+	assert created_videos[0]["framerate"] == YEARLY_FRAMERATE
 
 
 def test_run_yearly_job_skips_camera_without_images(
@@ -147,9 +116,7 @@ def test_run_yearly_job_skips_camera_without_images(
 	def fake_create_timelapse(
 		**kwargs,
 	):
-		created_videos.append(
-			kwargs
-		)
+		created_videos.append(kwargs)
 
 	monkeypatch.setattr(
 		yearly_module,
@@ -165,9 +132,7 @@ def test_run_yearly_job_skips_camera_without_images(
 
 	run_yearly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=YEARLY_FRAMERATE,
 	)
 
@@ -185,26 +150,16 @@ def test_run_yearly_job_continues_after_camera_timeout(
 		**kwargs,
 	):
 		if camera == "Broken-Camera":
-			raise TimeoutError(
-				"stalled"
-			)
+			raise TimeoutError("stalled")
 
-		return [
-			Path(
-				"camera_26-09-15_12-00-00-00.jpg"
-			)
-		]
+		return [Path("camera_26-09-15_12-00-00-00.jpg")]
 
 	def fake_create_timelapse(
 		**kwargs,
 	):
-		created_videos.append(
-			kwargs
-		)
+		created_videos.append(kwargs)
 
-		return Path(
-			"videos/Working-Camera/yearly/test.mp4"
-		)
+		return Path("videos/Working-Camera/yearly/test.mp4")
 
 	monkeypatch.setattr(
 		yearly_module,
@@ -234,28 +189,18 @@ def test_run_yearly_job_continues_after_camera_timeout(
 	)
 
 	# One failed camera must not stop later cameras.
-	assert len(
-		created_videos
-	) == 1
+	assert len(created_videos) == 1
 
-	assert created_videos[0][
-		"camera"
-	] == "Working-Camera"
+	assert created_videos[0]["camera"] == "Working-Camera"
 
-	assert created_videos[0][
-		"framerate"
-	] == YEARLY_FRAMERATE
+	assert created_videos[0]["framerate"] == YEARLY_FRAMERATE
 
 
 def test_run_yearly_job_logs_warning_when_days_are_missing(
 	monkeypatch,
 	caplog,
 ):
-	images = [
-		Path(
-			"camera_26-09-15_12-00-00-00.jpg"
-		)
-	]
+	images = [Path("camera_26-09-15_12-00-00-00.jpg")]
 
 	monkeypatch.setattr(
 		yearly_module,
@@ -266,9 +211,7 @@ def test_run_yearly_job_logs_warning_when_days_are_missing(
 	monkeypatch.setattr(
 		yearly_module,
 		"create_timelapse",
-		lambda **kwargs: Path(
-			"videos/Test-Camera/yearly/test.mp4"
-		),
+		lambda **kwargs: Path("videos/Test-Camera/yearly/test.mp4"),
 	)
 
 	monkeypatch.setattr(
@@ -279,18 +222,12 @@ def test_run_yearly_job_logs_warning_when_days_are_missing(
 
 	run_yearly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=YEARLY_FRAMERATE,
 	)
 
 	# Partial coverage must be visible without blocking video creation.
-	assert (
-		"Yearly will be created with "
-		"1 of 1825 possible frames."
-		in caplog.text
-	)
+	assert "Yearly will be created with 1 of 1825 possible frames." in caplog.text
 
 
 def test_run_yearly_job_does_not_log_creation_warning_without_images(
@@ -305,22 +242,14 @@ def test_run_yearly_job_does_not_log_creation_warning_without_images(
 
 	run_yearly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=YEARLY_FRAMERATE,
 	)
 
 	# A skipped Yearly must not claim that a video will be created.
-	assert (
-		"Yearly will be created with"
-		not in caplog.text
-	)
+	assert "Yearly will be created with" not in caplog.text
 
-	assert (
-		"No valid Yearly images available"
-		in caplog.text
-	)
+	assert "No valid Yearly images available" in caplog.text
 
 
 def test_run_yearly_job_does_not_warn_when_all_days_are_available(
@@ -328,22 +257,15 @@ def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 	caplog,
 ):
 	images = [
-		Path(
-			f"camera_{current_date:%y-%m-%d}_"
-			f"{hour:02d}-{minute:02d}-00-00.jpg"
-		)
+		Path(f"camera_{current_date:%y-%m-%d}_{hour:02d}-{minute:02d}-00-00.jpg")
 		for current_date in (
 			date(
 				2025,
 				9,
 				18,
 			)
-			+ timedelta(
-				days=offset
-			)
-			for offset in range(
-				365
-			)
+			+ timedelta(days=offset)
+			for offset in range(365)
 		)
 		for hour, minute in [
 			(
@@ -378,21 +300,14 @@ def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 	monkeypatch.setattr(
 		yearly_module,
 		"create_timelapse",
-		lambda **kwargs: Path(
-			"videos/Test-Camera/yearly/test.mp4"
-		),
+		lambda **kwargs: Path("videos/Test-Camera/yearly/test.mp4"),
 	)
 
 	run_yearly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=YEARLY_FRAMERATE,
 	)
 
 	# Complete coverage does not need a missing-frames warning.
-	assert (
-		"Yearly will be created with"
-		not in caplog.text
-	)
+	assert "Yearly will be created with" not in caplog.text

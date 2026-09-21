@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 
 from src.config import (
 	CONFIG_PATH,
@@ -9,11 +8,7 @@ from src.config import (
 
 
 def test_config_path_points_to_expected_location():
-	assert CONFIG_PATH == (
-		PROJECT_ROOT
-		/ "config"
-		/ "cameras.json"
-	)
+	assert CONFIG_PATH == (PROJECT_ROOT / "config" / "cameras.json")
 
 
 def test_config_file_exists():
@@ -26,9 +21,7 @@ def test_config_file_contains_valid_json():
 		"r",
 		encoding="utf-8",
 	) as file:
-		config = json.load(
-			file
-		)
+		config = json.load(file)
 
 	assert isinstance(
 		config,
@@ -39,9 +32,7 @@ def test_config_file_contains_valid_json():
 def test_load_config_returns_expected_structure():
 	config = load_config()
 
-	assert set(
-		config
-	) == {
+	assert set(config) == {
 		"location",
 		"daylight_buffer_minutes",
 		"image_scan_stall_timeout_seconds",
@@ -50,9 +41,7 @@ def test_load_config_returns_expected_structure():
 		"timelapse",
 	}
 
-	assert set(
-		config["location"]
-	) == {
+	assert set(config["location"]) == {
 		"latitude",
 		"longitude",
 		"timezone",
@@ -107,14 +96,10 @@ def test_load_config_returns_expected_structure():
 			camera,
 			str,
 		)
-		for camera in config[
-			"ignored_cameras"
-		]
+		for camera in config["ignored_cameras"]
 	)
 
-	assert set(
-		config["timelapse"]
-	) == {
+	assert set(config["timelapse"]) == {
 		"daily_framerate",
 		"manual_framerate",
 		"monthly_framerate",
@@ -126,7 +111,5 @@ def test_load_config_returns_expected_structure():
 			framerate,
 			int,
 		)
-		for framerate in config[
-			"timelapse"
-		].values()
+		for framerate in config["timelapse"].values()
 	)

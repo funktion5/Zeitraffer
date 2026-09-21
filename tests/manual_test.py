@@ -21,11 +21,7 @@ TEST_CONFIG = {
 	},
 }
 
-MANUAL_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"manual_framerate"
-]
+MANUAL_FRAMERATE = TEST_CONFIG["timelapse"]["manual_framerate"]
 
 TEST_SUNRISE = datetime(
 	2026,
@@ -128,8 +124,7 @@ def test_run_manual_job_creates_timelapse(
 		)
 
 		return Path(
-			f"videos/{camera}/{timelapse_type}/"
-			f"{camera}_{target_date.isoformat()}.mp4"
+			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
 		)
 
 	monkeypatch.setattr(
@@ -177,11 +172,7 @@ def test_run_manual_job_skips_existing_video(
 	)
 
 	existing_video = (
-		tmp_path
-		/ "videos"
-		/ "Camera-A"
-		/ "manual"
-		/ "Camera-A_2026-09-16.mp4"
+		tmp_path / "videos" / "Camera-A" / "manual" / "Camera-A_2026-09-16.mp4"
 	)
 
 	existing_video.parent.mkdir(
@@ -200,9 +191,7 @@ def test_run_manual_job_skips_existing_video(
 		nonlocal find_images_isolated_called
 		find_images_isolated_called = True
 
-		return [
-			Path("image.jpg")
-		]
+		return [Path("image.jpg")]
 
 	def fake_create_timelapse(
 		**kwargs,
@@ -241,11 +230,7 @@ def test_run_manual_job_skips_existing_video(
 	assert find_images_isolated_called is False
 	assert create_timelapse_called is False
 
-	assert (
-		"Manual video already exists - "
-		"skipping camera"
-		in caplog.text
-	)
+	assert "Manual video already exists - skipping camera" in caplog.text
 
 
 # A manual camera filter must process only explicitly requested cameras.
@@ -270,15 +255,9 @@ def test_run_manual_job_processes_only_requested_cameras(
 		camera,
 		**kwargs,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
-		return [
-			Path(
-				f"{camera}_2026-09-16.jpg"
-			)
-		]
+		return [Path(f"{camera}_2026-09-16.jpg")]
 
 	monkeypatch.setattr(
 		manual_module,
@@ -290,8 +269,7 @@ def test_run_manual_job_processes_only_requested_cameras(
 		manual_module,
 		"create_timelapse",
 		lambda **kwargs: Path(
-			f"videos/{kwargs['camera']}/manual/"
-			f"{kwargs['camera']}_2026-09-16.mp4"
+			f"videos/{kwargs['camera']}/manual/{kwargs['camera']}_2026-09-16.mp4"
 		),
 	)
 
@@ -339,15 +317,9 @@ def test_run_manual_job_logs_unknown_camera_and_continues(
 		camera,
 		**kwargs,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
-		return [
-			Path(
-				f"{camera}_2026-09-16.jpg"
-			)
-		]
+		return [Path(f"{camera}_2026-09-16.jpg")]
 
 	monkeypatch.setattr(
 		manual_module,
@@ -359,8 +331,7 @@ def test_run_manual_job_logs_unknown_camera_and_continues(
 		manual_module,
 		"create_timelapse",
 		lambda **kwargs: Path(
-			f"videos/{kwargs['camera']}/manual/"
-			f"{kwargs['camera']}_2026-09-16.mp4"
+			f"videos/{kwargs['camera']}/manual/{kwargs['camera']}_2026-09-16.mp4"
 		),
 	)
 
@@ -382,15 +353,9 @@ def test_run_manual_job_logs_unknown_camera_and_continues(
 			framerate=MANUAL_FRAMERATE,
 		)
 
-	assert (
-		"Requested camera not found: "
-		"Camera-Missing"
-		in caplog.text
-	)
+	assert "Requested camera not found: Camera-Missing" in caplog.text
 
-	assert processed_cameras == [
-		"Camera-B"
-	]
+	assert processed_cameras == ["Camera-B"]
 
 
 # Duplicate requested camera names must only be processed once.
@@ -415,13 +380,9 @@ def test_run_manual_job_deduplicates_requested_cameras(
 		camera,
 		**kwargs,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
-		return [
-			Path("image.jpg")
-		]
+		return [Path("image.jpg")]
 
 	monkeypatch.setattr(
 		manual_module,
@@ -433,8 +394,7 @@ def test_run_manual_job_deduplicates_requested_cameras(
 		manual_module,
 		"create_timelapse",
 		lambda **kwargs: Path(
-			f"videos/{kwargs['camera']}/manual/"
-			f"{kwargs['camera']}_2026-09-16.mp4"
+			f"videos/{kwargs['camera']}/manual/{kwargs['camera']}_2026-09-16.mp4"
 		),
 	)
 
@@ -471,9 +431,7 @@ def test_run_manual_job_continues_after_video_error(
 		16,
 	)
 
-	images = [
-		Path("image_1.jpg")
-	]
+	images = [Path("image_1.jpg")]
 
 	mock_manual_dependencies(
 		monkeypatch,
@@ -495,9 +453,7 @@ def test_run_manual_job_continues_after_video_error(
 		timelapse_type,
 		framerate,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
 		if camera == "Camera-A":
 			raise subprocess.CalledProcessError(
@@ -506,8 +462,7 @@ def test_run_manual_job_continues_after_video_error(
 			)
 
 		return Path(
-			f"videos/{camera}/{timelapse_type}/"
-			f"{camera}_{target_date.isoformat()}.mp4"
+			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
 		)
 
 	monkeypatch.setattr(
@@ -521,9 +476,7 @@ def test_run_manual_job_continues_after_video_error(
 	def fake_logger_exception(
 		message,
 	):
-		logged_errors.append(
-			message
-		)
+		logged_errors.append(message)
 
 	monkeypatch.setattr(
 		manual_module.logger,
@@ -547,9 +500,7 @@ def test_run_manual_job_continues_after_video_error(
 		"Camera-B",
 	]
 
-	assert logged_errors == [
-		"Failed to process timelapse for camera: Camera-A"
-	]
+	assert logged_errors == ["Failed to process timelapse for camera: Camera-A"]
 
 
 # A read error for one camera must not stop later cameras.
@@ -563,9 +514,7 @@ def test_run_manual_job_continues_after_image_selection_error(
 		16,
 	)
 
-	images = [
-		Path("image_1.jpg")
-	]
+	images = [Path("image_1.jpg")]
 
 	mock_manual_dependencies(
 		monkeypatch,
@@ -577,9 +526,7 @@ def test_run_manual_job_continues_after_image_selection_error(
 		**kwargs,
 	):
 		if camera == "Camera-A":
-			raise OSError(
-				"Failed to read camera images"
-			)
+			raise OSError("Failed to read camera images")
 
 		return images
 
@@ -595,13 +542,9 @@ def test_run_manual_job_continues_after_image_selection_error(
 		camera,
 		**kwargs,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
-		return Path(
-			f"videos/{camera}/manual/video.mp4"
-		)
+		return Path(f"videos/{camera}/manual/video.mp4")
 
 	monkeypatch.setattr(
 		manual_module,
@@ -620,9 +563,7 @@ def test_run_manual_job_continues_after_image_selection_error(
 		framerate=MANUAL_FRAMERATE,
 	)
 
-	assert processed_cameras == [
-		"Camera-B"
-	]
+	assert processed_cameras == ["Camera-B"]
 
 
 # A stalled camera must not prevent later manual cameras from being processed.
@@ -636,9 +577,7 @@ def test_run_manual_job_continues_after_image_scan_timeout(
 		16,
 	)
 
-	images = [
-		Path("image.jpg")
-	]
+	images = [Path("image.jpg")]
 
 	mock_manual_dependencies(
 		monkeypatch,
@@ -651,9 +590,7 @@ def test_run_manual_job_continues_after_image_scan_timeout(
 	):
 		# Simulate one camera whose image scan stops making progress.
 		if camera == "Camera-A":
-			raise TimeoutError(
-				"Image scan stalled"
-			)
+			raise TimeoutError("Image scan stalled")
 
 		return images
 
@@ -669,13 +606,9 @@ def test_run_manual_job_continues_after_image_scan_timeout(
 		camera,
 		**kwargs,
 	):
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
-		return Path(
-			f"videos/{camera}/manual/video.mp4"
-		)
+		return Path(f"videos/{camera}/manual/video.mp4")
 
 	monkeypatch.setattr(
 		manual_module,
@@ -694,6 +627,4 @@ def test_run_manual_job_continues_after_image_scan_timeout(
 		framerate=MANUAL_FRAMERATE,
 	)
 
-	assert processed_cameras == [
-		"Camera-B"
-	]
+	assert processed_cameras == ["Camera-B"]

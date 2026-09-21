@@ -20,11 +20,7 @@ TEST_CONFIG = {
 	},
 }
 
-MONTHLY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"monthly_framerate"
-]
+MONTHLY_FRAMERATE = TEST_CONFIG["timelapse"]["monthly_framerate"]
 
 
 def test_get_monthly_date_range_returns_30_day_window():
@@ -75,15 +71,9 @@ def test_run_monthly_job_creates_video_from_all_images(
 	monkeypatch,
 ):
 	monthly_images = [
-		Path(
-			"camera_26-08-10_10-45-00-00.jpg"
-		),
-		Path(
-			"camera_26-08-10_12-00-00-00.jpg"
-		),
-		Path(
-			"camera_26-08-10_13-15-00-00.jpg"
-		),
+		Path("camera_26-08-10_10-45-00-00.jpg"),
+		Path("camera_26-08-10_12-00-00-00.jpg"),
+		Path("camera_26-08-10_13-15-00-00.jpg"),
 	]
 
 	created_videos = []
@@ -96,13 +86,9 @@ def test_run_monthly_job_creates_video_from_all_images(
 	def fake_create_timelapse(
 		**kwargs,
 	):
-		created_videos.append(
-			kwargs
-		)
+		created_videos.append(kwargs)
 
-		return Path(
-			"videos/Test-Camera/monthly/test.mp4"
-		)
+		return Path("videos/Test-Camera/monthly/test.mp4")
 
 	monkeypatch.setattr(
 		monthly_module,
@@ -118,28 +104,18 @@ def test_run_monthly_job_creates_video_from_all_images(
 
 	run_monthly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
 	)
 
-	assert len(
-		created_videos
-	) == 1
+	assert len(created_videos) == 1
 
 	# Monthly keeps every validated image from the interval.
-	assert created_videos[0][
-		"images"
-	] == monthly_images
+	assert created_videos[0]["images"] == monthly_images
 
-	assert created_videos[0][
-		"timelapse_type"
-	] == "monthly"
+	assert created_videos[0]["timelapse_type"] == "monthly"
 
-	assert created_videos[0][
-		"framerate"
-	] == MONTHLY_FRAMERATE
+	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
 
 
 def test_run_monthly_job_skips_camera_without_images(
@@ -156,16 +132,12 @@ def test_run_monthly_job_skips_camera_without_images(
 	monkeypatch.setattr(
 		monthly_module,
 		"create_timelapse",
-		lambda **kwargs: created_videos.append(
-			kwargs
-		),
+		lambda **kwargs: created_videos.append(kwargs),
 	)
 
 	run_monthly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
 	)
 
@@ -181,35 +153,21 @@ def test_run_monthly_job_continues_after_camera_timeout(
 	def fake_find_interval_images_isolated(
 		**kwargs,
 	):
-		camera = kwargs[
-			"camera"
-		]
+		camera = kwargs["camera"]
 
-		processed_cameras.append(
-			camera
-		)
+		processed_cameras.append(camera)
 
 		if camera == "Broken-Camera":
-			raise TimeoutError(
-				"test timeout"
-			)
+			raise TimeoutError("test timeout")
 
-		return [
-			Path(
-				"camera_26-08-10_12-00-00-00.jpg"
-			)
-		]
+		return [Path("camera_26-08-10_12-00-00-00.jpg")]
 
 	def fake_create_timelapse(
 		**kwargs,
 	):
-		created_videos.append(
-			kwargs
-		)
+		created_videos.append(kwargs)
 
-		return Path(
-			"videos/Working-Camera/monthly/test.mp4"
-		)
+		return Path("videos/Working-Camera/monthly/test.mp4")
 
 	monkeypatch.setattr(
 		monthly_module,
@@ -237,17 +195,11 @@ def test_run_monthly_job_continues_after_camera_timeout(
 		"Working-Camera",
 	]
 
-	assert len(
-		created_videos
-	) == 1
+	assert len(created_videos) == 1
 
-	assert created_videos[0][
-		"camera"
-	] == "Working-Camera"
+	assert created_videos[0]["camera"] == "Working-Camera"
 
-	assert created_videos[0][
-		"framerate"
-	] == MONTHLY_FRAMERATE
+	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
 
 
 def test_run_monthly_job_uses_rolling_30_day_window(
@@ -258,9 +210,7 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 	def fake_find_interval_images_isolated(
 		**kwargs,
 	):
-		captured_calls.append(
-			kwargs
-		)
+		captured_calls.append(kwargs)
 
 		return []
 
@@ -272,23 +222,17 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 
 	run_monthly_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Test-Camera"
-		],
+		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
 	)
 
-	assert captured_calls[0][
-		"start_date"
-	] == date(
+	assert captured_calls[0]["start_date"] == date(
 		2026,
 		8,
 		22,
 	)
 
-	assert captured_calls[0][
-		"end_date"
-	] == date(
+	assert captured_calls[0]["end_date"] == date(
 		2026,
 		9,
 		20,

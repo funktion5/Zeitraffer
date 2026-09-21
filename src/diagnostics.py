@@ -9,116 +9,98 @@ IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS = 1
 
 
 def _get_image_range_worker(
-    camera: str,
-    result_queue: Queue,
+	camera: str,
+	result_queue: Queue,
 ) -> None:
-    try:
-        image_range = get_image_range(camera)
+	try:
+		image_range = get_image_range(camera)
 
-        result_queue.put(
-            (
-                "success",
-                image_range,
-            )
-        )
+		result_queue.put(
+			(
+				"success",
+				image_range,
+			)
+		)
 
-    except OSError as error:
-        result_queue.put(
-            (
-                "error",
-                str(error),
-            )
-        )
+	except OSError as error:
+		result_queue.put(
+			(
+				"error",
+				str(error),
+			)
+		)
 
 
 def _stop_diagnostic_process(
-    process: Process,
+	process: Process,
 ) -> None:
-    process.terminate()
-    process.join(
-        IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS
-    )
+	process.terminate()
+	process.join(IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS)
 
-    if process.is_alive():
-        process.kill()
-        process.join(
-            IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS
-        )
+	if process.is_alive():
+		process.kill()
+		process.join(IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS)
 
 
 def log_missing_images_diagnostic(
-    camera: str,
+	camera: str,
 ) -> None:
-    result_queue = Queue()
+	result_queue = Queue()
 
-    process = Process(
-        target=_get_image_range_worker,
-        args=(
-            camera,
-            result_queue,
-        ),
-        daemon=True,
-    )
+	process = Process(
+		target=_get_image_range_worker,
+		args=(
+			camera,
+			result_queue,
+		),
+		daemon=True,
+	)
 
-    process.start()
-    process.join(
-        IMAGE_RANGE_TIMEOUT_SECONDS
-    )
+	process.start()
+	process.join(IMAGE_RANGE_TIMEOUT_SECONDS)
 
-    if process.is_alive():
-        _stop_diagnostic_process(
-            process
-        )
+	if process.is_alive():
+		_stop_diagnostic_process(process)
 
-        logger.warning(
-            f"Image range diagnostic timed out for {camera} "
-            f"after {IMAGE_RANGE_TIMEOUT_SECONDS} seconds."
-        )
+		logger.warning(
+			f"Image range diagnostic timed out for {camera} "
+			f"after {IMAGE_RANGE_TIMEOUT_SECONDS} seconds."
+		)
 
-        result_queue.close()
-        return
+		result_queue.close()
+		return
 
-    try:
-        status, result = result_queue.get(
-            timeout=1
-        )
+	try:
+		status, result = result_queue.get(timeout=1)
 
-    except Empty:
-        logger.warning(
-            f"Image range diagnostic failed for {camera}."
-        )
+	except Empty:
+		logger.warning(f"Image range diagnostic failed for {camera}.")
 
-        result_queue.close()
-        return
+		result_queue.close()
+		return
 
-    result_queue.close()
+	result_queue.close()
 
-    if status == "error":
-        logger.warning(
-            f"Could not determine available image range "
-            f"for {camera}: {result}"
-        )
-        return
+	if status == "error":
+		logger.warning(
+			f"Could not determine available image range for {camera}: {result}"
+		)
+		return
 
-    image_range = result
+	image_range = result
 
-    if (
-        image_range.earliest_date is None
-        or image_range.latest_date is None
-    ):
-        logger.warning(
-            "No recognized image files available."
-        )
+	if image_range.earliest_date is None or image_range.latest_date is None:
+		logger.warning("No recognized image files available.")
 
-    else:
-        logger.warning(
-            f"Available image range: "
-            f"{image_range.earliest_date} - "
-            f"{image_range.latest_date}"
-        )
+	else:
+		logger.warning(
+			f"Available image range: "
+			f"{image_range.earliest_date} - "
+			f"{image_range.latest_date}"
+		)
 
-    if image_range.unrecognized_files > 0:
-        logger.warning(
-            f"{image_range.unrecognized_files} files use "
-            "an unsupported filename format."
-        )
+	if image_range.unrecognized_files > 0:
+		logger.warning(
+			f"{image_range.unrecognized_files} files use "
+			"an unsupported filename format."
+		)

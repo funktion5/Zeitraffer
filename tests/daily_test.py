@@ -20,11 +20,7 @@ TEST_CONFIG = {
 	},
 }
 
-DAILY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"daily_framerate"
-]
+DAILY_FRAMERATE = TEST_CONFIG["timelapse"]["daily_framerate"]
 
 TEST_SUNRISE = datetime(
 	2026,
@@ -116,8 +112,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 		)
 
 		return Path(
-			f"videos/{camera}/{timelapse_type}/"
-			f"{camera}_{target_date.isoformat()}.mp4"
+			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
 		)
 
 	monkeypatch.setattr(
@@ -156,10 +151,7 @@ def test_cleanup_daily_retention_keeps_seven_day_window(
 	tmp_path: Path,
 	monkeypatch,
 ):
-	video_root = (
-		tmp_path
-		/ "videos"
-	)
+	video_root = tmp_path / "videos"
 
 	monkeypatch.setattr(
 		daily_module,
@@ -175,15 +167,9 @@ def test_cleanup_daily_retention_keeps_seven_day_window(
 		16,
 	)
 
-	daily_directory = (
-		video_root
-		/ camera
-		/ "daily"
-	)
+	daily_directory = video_root / camera / "daily"
 
-	daily_directory.mkdir(
-		parents=True
-	)
+	daily_directory.mkdir(parents=True)
 
 	expected_dates = [
 		date(
@@ -200,37 +186,22 @@ def test_cleanup_daily_retention_keeps_seven_day_window(
 	expected_videos = []
 
 	for current_date in expected_dates:
-		video = (
-			daily_directory
-			/ f"{camera}_{current_date.isoformat()}.mp4"
-		)
+		video = daily_directory / f"{camera}_{current_date.isoformat()}.mp4"
 
-		video.write_bytes(
-			b"daily video"
-		)
+		video.write_bytes(b"daily video")
 
-		expected_videos.append(
-			video
-		)
+		expected_videos.append(video)
 
-	outdated_video = (
-		daily_directory
-		/ f"{camera}_2026-09-09.mp4"
-	)
+	outdated_video = daily_directory / f"{camera}_2026-09-09.mp4"
 
-	outdated_video.write_bytes(
-		b"outdated video"
-	)
+	outdated_video.write_bytes(b"outdated video")
 
 	daily_module.cleanup_daily_retention(
 		camera=camera,
 		target_date=target_date,
 	)
 
-	assert all(
-		video.exists()
-		for video in expected_videos
-	)
+	assert all(video.exists() for video in expected_videos)
 
 	assert not outdated_video.exists()
 
@@ -240,10 +211,7 @@ def test_cleanup_daily_retention_does_not_fill_gaps(
 	tmp_path: Path,
 	monkeypatch,
 ):
-	video_root = (
-		tmp_path
-		/ "videos"
-	)
+	video_root = tmp_path / "videos"
 
 	monkeypatch.setattr(
 		daily_module,
@@ -259,15 +227,9 @@ def test_cleanup_daily_retention_does_not_fill_gaps(
 		16,
 	)
 
-	daily_directory = (
-		video_root
-		/ camera
-		/ "daily"
-	)
+	daily_directory = video_root / camera / "daily"
 
-	daily_directory.mkdir(
-		parents=True
-	)
+	daily_directory.mkdir(parents=True)
 
 	existing_dates = [
 		date(
@@ -303,21 +265,13 @@ def test_cleanup_daily_retention_does_not_fill_gaps(
 	]
 
 	for current_date in existing_dates:
-		(
-			daily_directory
-			/ f"{camera}_{current_date.isoformat()}.mp4"
-		).write_bytes(
+		(daily_directory / f"{camera}_{current_date.isoformat()}.mp4").write_bytes(
 			b"daily video"
 		)
 
-	older_video = (
-		daily_directory
-		/ f"{camera}_2026-09-09.mp4"
-	)
+	older_video = daily_directory / f"{camera}_2026-09-09.mp4"
 
-	older_video.write_bytes(
-		b"older video"
-	)
+	older_video.write_bytes(b"older video")
 
 	daily_module.cleanup_daily_retention(
 		camera=camera,
@@ -326,15 +280,9 @@ def test_cleanup_daily_retention_does_not_fill_gaps(
 
 	assert not older_video.exists()
 
-	remaining_videos = list(
-		daily_directory.glob(
-			"*.mp4"
-		)
-	)
+	remaining_videos = list(daily_directory.glob("*.mp4"))
 
-	assert len(
-		remaining_videos
-	) == 6
+	assert len(remaining_videos) == 6
 
 
 # Retention must run after a daily video was created successfully.
@@ -347,9 +295,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 		16,
 	)
 
-	images = [
-		Path("image.jpg")
-	]
+	images = [Path("image.jpg")]
 
 	class FakeDateTime:
 		@classmethod
@@ -391,8 +337,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 		daily_module,
 		"create_timelapse",
 		lambda **kwargs: Path(
-			"videos/Scheunenviertel/daily/"
-			"Scheunenviertel_2026-09-16.mp4"
+			"videos/Scheunenviertel/daily/Scheunenviertel_2026-09-16.mp4"
 		),
 	)
 
@@ -417,9 +362,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 
 	daily_module.run_daily_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Scheunenviertel"
-		],
+		cameras=["Scheunenviertel"],
 		framerate=DAILY_FRAMERATE,
 	)
 
@@ -435,9 +378,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 	monkeypatch,
 ):
-	images = [
-		Path("image.jpg")
-	]
+	images = [Path("image.jpg")]
 
 	class FakeDateTime:
 		@classmethod
@@ -506,9 +447,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 
 	daily_module.run_daily_job(
 		config=TEST_CONFIG,
-		cameras=[
-			"Scheunenviertel"
-		],
+		cameras=["Scheunenviertel"],
 		framerate=DAILY_FRAMERATE,
 	)
 
@@ -519,9 +458,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 def test_run_daily_job_continues_after_image_scan_timeout(
 	monkeypatch,
 ):
-	images = [
-		Path("image.jpg")
-	]
+	images = [Path("image.jpg")]
 
 	class FakeDateTime:
 		@classmethod
@@ -559,9 +496,7 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 	):
 		# Simulate one camera whose image scan stops making progress.
 		if camera == "Stalled-Camera":
-			raise TimeoutError(
-				"Image scan stalled"
-			)
+			raise TimeoutError("Image scan stalled")
 
 		return images
 
@@ -577,13 +512,9 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 		camera,
 		**kwargs,
 	):
-		created_cameras.append(
-			camera
-		)
+		created_cameras.append(camera)
 
-		return Path(
-			f"videos/{camera}/daily/video.mp4"
-		)
+		return Path(f"videos/{camera}/daily/video.mp4")
 
 	monkeypatch.setattr(
 		daily_module,
@@ -606,6 +537,4 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 		framerate=DAILY_FRAMERATE,
 	)
 
-	assert created_cameras == [
-		"Working-Camera"
-	]
+	assert created_cameras == ["Working-Camera"]

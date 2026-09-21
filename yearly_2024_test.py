@@ -22,52 +22,33 @@ END_DATE = date(
 def main() -> None:
 	config = load_config()
 
-	configure_file_logging(
-		"yearly"
-	)
+	configure_file_logging("yearly")
 
-	logger.info(
-		"-" * 80
-	)
+	logger.info("-" * 80)
 
-	logger.info(
-		"Starting fixed Yearly test "
-		f"for {CAMERA}: "
-		f"{START_DATE} to {END_DATE}"
-	)
+	logger.info(f"Starting fixed Yearly test for {CAMERA}: {START_DATE} to {END_DATE}")
 
 	# Search and validate all images inside the configured daily time window.
 	interval_images = find_interval_images_isolated(
 		camera=CAMERA,
 		start_date=START_DATE,
 		end_date=END_DATE,
-		stall_timeout_seconds=config[
-			"image_scan_stall_timeout_seconds"
-		],
+		stall_timeout_seconds=config["image_scan_stall_timeout_seconds"],
 	)
 
-	logger.info(
-		f"Found {len(interval_images)} "
-		"validated interval images"
-	)
+	logger.info(f"Found {len(interval_images)} validated interval images")
 
 	yearly_images = select_unique_yearly_images(
 		interval_images,
-    images_per_day=5,
+		images_per_day=5,
 	)
 
 	if not yearly_images:
-		logger.warning(
-			"No valid Yearly images available - "
-			"test stopped."
-		)
+		logger.warning("No valid Yearly images available - test stopped.")
 
 		return
 
-	logger.info(
-		f"Selected {len(yearly_images)} "
-		"Yearly images"
-	)
+	logger.info(f"Selected {len(yearly_images)} Yearly images")
 
 	if len(yearly_images) < 366:
 		logger.warning(
@@ -81,13 +62,10 @@ def main() -> None:
 		target_date=END_DATE,
 		images=yearly_images,
 		timelapse_type="yearly",
-    framerate=20
+		framerate=20,
 	)
 
-	logger.info(
-		f"Fixed Yearly test finished: "
-		f"{video_path}"
-	)
+	logger.info(f"Fixed Yearly test finished: {video_path}")
 
 
 if __name__ == "__main__":

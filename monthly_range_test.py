@@ -22,39 +22,23 @@ FRAMERATE = 10
 def main() -> None:
 	config = load_config()
 
-	configure_file_logging(
-		"monthly"
-	)
+	configure_file_logging("monthly")
 
-	logger.info(
-		"-" * 80
-	)
+	logger.info("-" * 80)
 
-	logger.info(
-		"Starting fixed Monthly test for "
-		f"{CAMERA}: "
-		f"{START_DATE} to {END_DATE}"
-	)
+	logger.info(f"Starting fixed Monthly test for {CAMERA}: {START_DATE} to {END_DATE}")
 
 	monthly_images = find_interval_images_isolated(
 		camera=CAMERA,
 		start_date=START_DATE,
 		end_date=END_DATE,
-		stall_timeout_seconds=config[
-			"image_scan_stall_timeout_seconds"
-		],
+		stall_timeout_seconds=config["image_scan_stall_timeout_seconds"],
 	)
 
-	logger.info(
-		f"Found {len(monthly_images)} "
-		"validated Monthly images"
-	)
+	logger.info(f"Found {len(monthly_images)} validated Monthly images")
 
 	if not monthly_images:
-		logger.warning(
-			"No valid Monthly images available - "
-			"test stopped."
-		)
+		logger.warning("No valid Monthly images available - test stopped.")
 		return
 
 	video_path = create_timelapse(
@@ -65,12 +49,8 @@ def main() -> None:
 		framerate=FRAMERATE,
 	)
 
-	logger.info(
-		"Fixed Monthly test finished: "
-		f"{video_path}"
-	)
+	logger.info(f"Fixed Monthly test finished: {video_path}")
 
 
 if __name__ == "__main__":
 	main()
-  

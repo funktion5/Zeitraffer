@@ -17,16 +17,12 @@ def _stop_worker_process(
 ) -> None:
 	process.terminate()
 
-	process.join(
-		WORKER_PROCESS_STOP_TIMEOUT_SECONDS
-	)
+	process.join(WORKER_PROCESS_STOP_TIMEOUT_SECONDS)
 
 	if process.is_alive():
 		process.kill()
 
-		process.join(
-			WORKER_PROCESS_STOP_TIMEOUT_SECONDS
-		)
+		process.join(WORKER_PROCESS_STOP_TIMEOUT_SECONDS)
 
 
 # Run a worker with an inactivity timeout that resets on progress.
@@ -53,24 +49,14 @@ def run_isolated_worker(
 	last_progress = time.monotonic()
 
 	while True:
-		remaining_time = (
-			stall_timeout_seconds
-			- (
-				time.monotonic()
-				- last_progress
-			)
-		)
+		remaining_time = stall_timeout_seconds - (time.monotonic() - last_progress)
 
 		if remaining_time <= 0:
-			_stop_worker_process(
-				process
-			)
+			_stop_worker_process(process)
 
 			result_queue.close()
 
-			raise TimeoutError(
-				f"{operation_name} stalled for camera: {camera}"
-			)
+			raise TimeoutError(f"{operation_name} stalled for camera: {camera}")
 
 		try:
 			status, result = result_queue.get(
@@ -99,20 +85,14 @@ def run_isolated_worker(
 			last_progress = time.monotonic()
 			continue
 
-		process.join(
-			WORKER_PROCESS_STOP_TIMEOUT_SECONDS
-		)
+		process.join(WORKER_PROCESS_STOP_TIMEOUT_SECONDS)
 
 		if process.is_alive():
-			_stop_worker_process(
-				process
-			)
+			_stop_worker_process(process)
 
 		result_queue.close()
 
 		if status == "error":
-			raise OSError(
-				result
-			)
+			raise OSError(result)
 
 		return result

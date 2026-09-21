@@ -9,29 +9,15 @@ def test_cleanup_old_logs_removes_expired_files(
 	tmp_path,
 	monkeypatch,
 ):
-	log_root = (
-		tmp_path
-		/ "logs"
-	)
+	log_root = tmp_path / "logs"
 
-	daily_directory = (
-		log_root
-		/ "daily"
-	)
+	daily_directory = log_root / "daily"
 
-	daily_directory.mkdir(
-		parents=True
-	)
+	daily_directory.mkdir(parents=True)
 
-	expired_log = (
-		daily_directory
-		/ "2026-08-01.log"
-	)
+	expired_log = daily_directory / "2026-08-01.log"
 
-	recent_log = (
-		daily_directory
-		/ "2026-09-10.log"
-	)
+	recent_log = daily_directory / "2026-09-10.log"
 
 	expired_log.write_text(
 		"old log",
@@ -55,9 +41,7 @@ def test_cleanup_old_logs_removes_expired_files(
 				18,
 				12,
 				0,
-				tzinfo=ZoneInfo(
-					"Europe/Berlin"
-				),
+				tzinfo=ZoneInfo("Europe/Berlin"),
 			)
 
 	monkeypatch.setattr(
@@ -72,9 +56,7 @@ def test_cleanup_old_logs_removes_expired_files(
 		FakeDateTime,
 	)
 
-	logger_module.cleanup_old_logs(
-		retention_days=30
-	)
+	logger_module.cleanup_old_logs(retention_days=30)
 
 	assert not expired_log.exists()
 	assert recent_log.exists()
@@ -85,24 +67,13 @@ def test_cleanup_old_logs_ignores_unknown_filenames(
 	tmp_path,
 	monkeypatch,
 ):
-	log_root = (
-		tmp_path
-		/ "logs"
-	)
+	log_root = tmp_path / "logs"
 
-	daily_directory = (
-		log_root
-		/ "daily"
-	)
+	daily_directory = log_root / "daily"
 
-	daily_directory.mkdir(
-		parents=True
-	)
+	daily_directory.mkdir(parents=True)
 
-	unknown_log = (
-		daily_directory
-		/ "important.log"
-	)
+	unknown_log = daily_directory / "important.log"
 
 	unknown_log.write_text(
 		"keep this file",
@@ -115,8 +86,6 @@ def test_cleanup_old_logs_ignores_unknown_filenames(
 		log_root,
 	)
 
-	logger_module.cleanup_old_logs(
-		retention_days=30
-	)
+	logger_module.cleanup_old_logs(retention_days=30)
 
 	assert unknown_log.exists()

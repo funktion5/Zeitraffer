@@ -23,29 +23,13 @@ TEST_CONFIG = {
 	},
 }
 
-DAILY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"daily_framerate"
-]
+DAILY_FRAMERATE = TEST_CONFIG["timelapse"]["daily_framerate"]
 
-MANUAL_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"manual_framerate"
-]
+MANUAL_FRAMERATE = TEST_CONFIG["timelapse"]["manual_framerate"]
 
-MONTHLY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"monthly_framerate"
-]
+MONTHLY_FRAMERATE = TEST_CONFIG["timelapse"]["monthly_framerate"]
 
-YEARLY_FRAMERATE = TEST_CONFIG[
-	"timelapse"
-][
-	"yearly_framerate"
-]
+YEARLY_FRAMERATE = TEST_CONFIG["timelapse"]["yearly_framerate"]
 
 
 # Without a date, main must coordinate all automatic jobs.
@@ -83,9 +67,7 @@ def test_main_runs_automatic_job(
 	monkeypatch.setattr(
 		main_module,
 		"configure_file_logging",
-		lambda log_type: configured_log_types.append(
-			log_type
-		),
+		lambda log_type: configured_log_types.append(log_type),
 	)
 
 	# Main tests must not remove real application log files.
@@ -279,9 +261,7 @@ def test_main_runs_manual_job(
 	monkeypatch.setattr(
 		main_module,
 		"configure_file_logging",
-		lambda log_type: configured_log_types.append(
-			log_type
-		),
+		lambda log_type: configured_log_types.append(log_type),
 	)
 
 	# Main tests must not remove real application log files.
@@ -321,30 +301,22 @@ def test_main_runs_manual_job(
 	def fake_run_daily_job(
 		**kwargs,
 	):
-		automatic_jobs_called.append(
-			"daily"
-		)
+		automatic_jobs_called.append("daily")
 
 	def fake_run_weekly_job(
 		**kwargs,
 	):
-		automatic_jobs_called.append(
-			"weekly"
-		)
+		automatic_jobs_called.append("weekly")
 
 	def fake_run_monthly_job(
 		**kwargs,
 	):
-		automatic_jobs_called.append(
-			"monthly"
-		)
+		automatic_jobs_called.append("monthly")
 
 	def fake_run_yearly_job(
 		**kwargs,
 	):
-		automatic_jobs_called.append(
-			"yearly"
-		)
+		automatic_jobs_called.append("yearly")
 
 	monkeypatch.setattr(
 		main_module,
@@ -372,9 +344,7 @@ def test_main_runs_manual_job(
 
 	main_module.main()
 
-	assert configured_log_types == [
-		"manual"
-	]
+	assert configured_log_types == ["manual"]
 
 	assert manual_calls == [
 		{
@@ -399,18 +369,13 @@ def test_main_rejects_camera_filter_without_date(
 		"parse_arguments",
 		lambda: Namespace(
 			date=None,
-			cameras=[
-				"Camera-A"
-			],
+			cameras=["Camera-A"],
 		),
 	)
 
 	with pytest.raises(
 		ValueError,
-		match=(
-			"--cameras can only be used "
-			"together with --date."
-		),
+		match=("--cameras can only be used together with --date."),
 	):
 		main_module.main()
 
@@ -448,9 +413,7 @@ def test_main_logs_and_raises_camera_storage_error(
 	)
 
 	def fake_get_cameras():
-		raise OSError(
-			"Camera storage unavailable"
-		)
+		raise OSError("Camera storage unavailable")
 
 	monkeypatch.setattr(
 		main_module,
@@ -463,9 +426,7 @@ def test_main_logs_and_raises_camera_storage_error(
 	def fake_logger_exception(
 		message,
 	):
-		logged_errors.append(
-			message
-		)
+		logged_errors.append(message)
 
 	monkeypatch.setattr(
 		main_module.logger,
@@ -479,9 +440,7 @@ def test_main_logs_and_raises_camera_storage_error(
 	):
 		main_module.main()
 
-	assert logged_errors == [
-		"Failed to access camera storage."
-	]
+	assert logged_errors == ["Failed to access camera storage."]
 
 
 # Globally ignored cameras must not be passed to Daily jobs.
@@ -540,9 +499,7 @@ def test_main_filters_ignored_cameras_for_daily(
 		cameras,
 		framerate,
 	):
-		received_cameras.extend(
-			cameras
-		)
+		received_cameras.extend(cameras)
 
 	monkeypatch.setattr(
 		main_module,
@@ -710,9 +667,7 @@ def test_main_passes_log_retention_to_cleanup(
 	monkeypatch.setattr(
 		main_module,
 		"cleanup_old_logs",
-		lambda **kwargs: cleanup_calls.append(
-			kwargs
-		),
+		lambda **kwargs: cleanup_calls.append(kwargs),
 	)
 
 	monkeypatch.setattr(
@@ -741,8 +696,4 @@ def test_main_passes_log_retention_to_cleanup(
 
 	main_module.main()
 
-	assert cleanup_calls == [
-		{
-			"retention_days": 30
-		}
-	]
+	assert cleanup_calls == [{"retention_days": 30}]

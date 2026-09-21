@@ -19,16 +19,12 @@ from src.yearly_selection import select_yearly_images_isolated
 def get_yearly_date_range(
 	end_date: date,
 ) -> tuple[date, date]:
-	start_date = (
-		end_date
-		- timedelta(days=364)
-	)
+	start_date = end_date - timedelta(days=364)
 
 	return (
 		start_date,
 		end_date,
 	)
-
 
 
 def select_unique_yearly_images(
@@ -49,38 +45,21 @@ def select_unique_yearly_images(
 		],
 	] = {}
 
-	target_seconds = (
-		target_hour * 60 * 60
-		+ target_minute * 60
-	)
+	target_seconds = target_hour * 60 * 60 + target_minute * 60
 
 	for image_path in images:
-		image_date = extract_date(
-			image_path.name
-		)
+		image_date = extract_date(image_path.name)
 
-		image_time = extract_time(
-			image_path.name
-		)
+		image_time = extract_time(image_path.name)
 
-		if (
-			image_date is None
-			or image_time is None
-		):
+		if image_date is None or image_time is None:
 			continue
 
 		hour, minute, second = image_time
 
-		capture_seconds = (
-			hour * 60 * 60
-			+ minute * 60
-			+ second
-		)
+		capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-		distance_seconds = abs(
-			capture_seconds
-			- target_seconds
-		)
+		distance_seconds = abs(capture_seconds - target_seconds)
 
 		images_by_date.setdefault(
 			image_date,
@@ -95,14 +74,8 @@ def select_unique_yearly_images(
 
 	selected_images: list[Path] = []
 
-	for image_date in sorted(
-		images_by_date
-	):
-		candidates = sorted(
-			images_by_date[
-				image_date
-			]
-		)
+	for image_date in sorted(images_by_date):
+		candidates = sorted(images_by_date[image_date])
 
 		daily_images: list[
 			tuple[
@@ -125,18 +98,11 @@ def select_unique_yearly_images(
 			if image_hash in seen_hashes:
 				continue
 
-			seen_hashes.add(
-				image_hash
-			)
+			seen_hashes.add(image_hash)
 
-			daily_images.append(
-				candidate
-			)
+			daily_images.append(candidate)
 
-			if (
-				len(daily_images)
-				>= images_per_day
-			):
+			if len(daily_images) >= images_per_day:
 				break
 
 		# Keep the selected frames chronological within each day.
@@ -147,12 +113,10 @@ def select_unique_yearly_images(
 			)
 		)
 
-		selected_images.extend(
-			candidate[2]
-			for candidate in daily_images
-		)
+		selected_images.extend(candidate[2] for candidate in daily_images)
 
 	return selected_images
+
 
 # Run the automatic Yearly timelapse workflow.
 def run_yearly_job(
@@ -160,76 +124,45 @@ def run_yearly_job(
 	cameras: list[str],
 	framerate: int,
 ) -> None:
-	location = config[
-		"location"
-	]
+	location = config["location"]
 
-	timezone = ZoneInfo(
-		location["timezone"]
-	)
+	timezone = ZoneInfo(location["timezone"])
 
 	# Yearly ends on the latest completed calendar day.
-	end_date = (
-		datetime.now(
-			tz=timezone
-		).date()
-		- timedelta(days=1)
-	)
+	end_date = datetime.now(tz=timezone).date() - timedelta(days=1)
 
-	start_date, end_date = (
-		get_yearly_date_range(
-			end_date=end_date
-		)
-	)
+	start_date, end_date = get_yearly_date_range(end_date=end_date)
 
-	stall_timeout_seconds = config[
-		"image_scan_stall_timeout_seconds"
-	]
+	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 
-	logger.info(
-		"-" * 80
-	)
+	logger.info("-" * 80)
 
-	logger.info(
-		"Starting Yearly timelapse job "
-		f"for {start_date} to {end_date}"
-	)
+	logger.info(f"Starting Yearly timelapse job for {start_date} to {end_date}")
 
 	for camera in cameras:
-		logger.info(
-			f"Processing Yearly for camera: "
-			f"{camera}"
-		)
+		logger.info(f"Processing Yearly for camera: {camera}")
 
 		try:
 			# Search and validate source images before Yearly selection.
-			interval_images = (
-				find_interval_images_isolated(
-					camera=camera,
-					start_date=start_date,
-					end_date=end_date,
-					stall_timeout_seconds=stall_timeout_seconds,
-				)
+			interval_images = find_interval_images_isolated(
+				camera=camera,
+				start_date=start_date,
+				end_date=end_date,
+				stall_timeout_seconds=stall_timeout_seconds,
 			)
 
-			logger.info(
-				f"Found {len(interval_images)} "
-				"validated interval images"
-			)
+			logger.info(f"Found {len(interval_images)} validated interval images")
 
-			yearly_images = (
-				select_yearly_images_isolated(
-					camera=camera,
-					images=interval_images,
-					stall_timeout_seconds=stall_timeout_seconds,
-					images_per_day=5,
-				)
+			yearly_images = select_yearly_images_isolated(
+				camera=camera,
+				images=interval_images,
+				stall_timeout_seconds=stall_timeout_seconds,
+				images_per_day=5,
 			)
 
 			if not yearly_images:
 				logger.warning(
-					"No valid Yearly images available - "
-					f"skipping camera: {camera}"
+					f"No valid Yearly images available - skipping camera: {camera}"
 				)
 
 				continue
@@ -237,15 +170,13 @@ def run_yearly_job(
 			# Yearly uses five frames per day across the rolling 365-day window.
 			expected_yearly_frames = 365 * 5
 
-			logger.info(
-				f"Selected {len(yearly_images)} Yearly images"
-			)
+			logger.info(f"Selected {len(yearly_images)} Yearly images")
 
 			if len(yearly_images) < expected_yearly_frames:
 				logger.warning(
-				"Yearly will be created with "
-				f"{len(yearly_images)} of "
-				f"{expected_yearly_frames} possible frames."
+					"Yearly will be created with "
+					f"{len(yearly_images)} of "
+					f"{expected_yearly_frames} possible frames."
 				)
 
 			video_path = create_timelapse(
@@ -262,23 +193,12 @@ def run_yearly_job(
 			subprocess.CalledProcessError,
 		):
 			# Operational errors only skip the affected camera.
-			logger.exception(
-				"Failed to process Yearly "
-				f"for camera: {camera}"
-			)
+			logger.exception(f"Failed to process Yearly for camera: {camera}")
 
 			continue
 
-		logger.info(
-			f"Finished Yearly for camera: "
-			f"{camera}"
-		)
+		logger.info(f"Finished Yearly for camera: {camera}")
 
-		logger.debug(
-			f"Video path: {video_path}"
-		)
+		logger.debug(f"Video path: {video_path}")
 
-	logger.info(
-		"Yearly timelapse job finished "
-		f"for {start_date} to {end_date}"
-	)
+	logger.info(f"Yearly timelapse job finished for {start_date} to {end_date}")
