@@ -57,6 +57,7 @@ def cleanup_daily_retention(
 def run_daily_job(
     config: dict,
     cameras: list[str],
+    framerate: int,
 ) -> None:
     location = config["location"]
 
@@ -158,6 +159,7 @@ def run_daily_job(
                 target_date=target_date,
                 images=images,
                 timelapse_type="daily",
+                framerate=framerate,
             )
 
             # Retention is only updated after a new daily video was

@@ -8,6 +8,25 @@ from src.jobs.yearly import (
 	select_yearly_images,
 )
 
+TEST_CONFIG = {
+	"location": {
+		"timezone": "Europe/Berlin",
+	},
+	"image_scan_stall_timeout_seconds": 10,
+	"timelapse": {
+		"daily_framerate": 10,
+		"manual_framerate": 10,
+		"monthly_framerate": 20,
+		"yearly_framerate": 20,
+	},
+}
+
+YEARLY_FRAMERATE = TEST_CONFIG[
+	"timelapse"
+][
+	"yearly_framerate"
+]
+
 
 def test_get_yearly_date_range_returns_exact_365_day_window():
 	end_date = date(
@@ -28,7 +47,7 @@ def test_get_yearly_date_range_returns_exact_365_day_window():
 		18,
 	)
 
-  # The rolling window must contain exactly 365 calendar days.
+	# The rolling window must contain exactly 365 calendar days.
 	assert result_end_date == end_date
 
 	assert (
@@ -63,7 +82,7 @@ def test_select_yearly_images_selects_closest_image_per_day():
 		images
 	)
 
-  # Keep exactly one image per day, closest to the target time.
+	# The selector defaults to one image per day.
 	assert result == [
 		Path(
 			"camera_26-09-15_12-05-00-00.jpg"
@@ -72,7 +91,7 @@ def test_select_yearly_images_selects_closest_image_per_day():
 			"camera_26-09-16_12-10-00-00.jpg"
 		),
 	]
-  
+
 
 def test_select_yearly_images_prefers_earlier_image_on_equal_distance():
 	images = [
@@ -88,12 +107,13 @@ def test_select_yearly_images_prefers_earlier_image_on_equal_distance():
 		images
 	)
 
-  # Prefer the earlier image when both are equally close.
+	# Prefer the earlier image when both are equally close.
 	assert result == [
 		Path(
 			"camera_26-09-15_11-55-00-00.jpg"
 		)
 	]
+
 
 def test_select_yearly_images_returns_chronological_days():
 	images = [
@@ -112,7 +132,7 @@ def test_select_yearly_images_returns_chronological_days():
 		images
 	)
 
-  # Yearly frames must stay in chronological order.
+	# Yearly frames must stay in chronological order.
 	assert result == [
 		Path(
 			"camera_26-09-15_12-02-00-00.jpg"
@@ -124,6 +144,7 @@ def test_select_yearly_images_returns_chronological_days():
 			"camera_26-09-17_12-01-00-00.jpg"
 		),
 	]
+
 
 def test_run_yearly_job_creates_video_from_selected_images(
 	monkeypatch,
@@ -170,24 +191,21 @@ def test_run_yearly_job_creates_video_from_selected_images(
 		fake_create_timelapse,
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Test-Camera"
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
-	# Yearly must pass only one selected frame per available day.
+	# Yearly keeps up to five selected frames per available day.
 	assert created_videos[0][
 		"images"
 	] == [
+		Path(
+			"camera_26-09-15_11-50-00-00.jpg"
+		),
 		Path(
 			"camera_26-09-15_12-05-00-00.jpg"
 		),
@@ -197,8 +215,8 @@ def test_run_yearly_job_creates_video_from_selected_images(
 	]
 
 	assert created_videos[0][
-		"timelapse_type"
-	] == "yearly"
+		"framerate"
+	] == YEARLY_FRAMERATE
 
 
 def test_run_yearly_job_skips_camera_without_images(
@@ -230,22 +248,17 @@ def test_run_yearly_job_skips_camera_without_images(
 		fake_create_timelapse,
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Test-Camera"
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
 	# A camera without usable frames must not create a Yearly video.
 	assert created_videos == []
+
 
 def test_run_yearly_job_continues_after_camera_timeout(
 	monkeypatch,
@@ -290,27 +303,28 @@ def test_run_yearly_job_continues_after_camera_timeout(
 		fake_create_timelapse,
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Broken-Camera",
 			"Working-Camera",
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
 	# One failed camera must not stop later cameras.
-	assert len(created_videos) == 1
+	assert len(
+		created_videos
+	) == 1
 
 	assert created_videos[0][
 		"camera"
 	] == "Working-Camera"
+
+	assert created_videos[0][
+		"framerate"
+	] == YEARLY_FRAMERATE
+
 
 def test_run_yearly_job_logs_warning_when_days_are_missing(
 	monkeypatch,
@@ -336,26 +350,21 @@ def test_run_yearly_job_logs_warning_when_days_are_missing(
 		),
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Test-Camera"
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
 	# Partial coverage must be visible without blocking video creation.
 	assert (
 		"Yearly will be created with "
-		"1 of 365 possible daily frames."
+		"1 of 1825 possible frames."
 		in caplog.text
 	)
+
 
 def test_run_yearly_job_does_not_log_creation_warning_without_images(
 	monkeypatch,
@@ -367,18 +376,12 @@ def test_run_yearly_job_does_not_log_creation_warning_without_images(
 		lambda **kwargs: [],
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Test-Camera"
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
 	# A skipped Yearly must not claim that a video will be created.
@@ -392,13 +395,15 @@ def test_run_yearly_job_does_not_log_creation_warning_without_images(
 		in caplog.text
 	)
 
+
 def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 	monkeypatch,
 	caplog,
 ):
 	images = [
 		Path(
-			f"camera_{current_date:%y-%m-%d}_12-00-00-00.jpg"
+			f"camera_{current_date:%y-%m-%d}_"
+			f"{hour:02d}-{minute:02d}-00-00.jpg"
 		)
 		for current_date in (
 			date(
@@ -413,6 +418,28 @@ def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 				365
 			)
 		)
+		for hour, minute in [
+			(
+				11,
+				50,
+			),
+			(
+				11,
+				55,
+			),
+			(
+				12,
+				0,
+			),
+			(
+				12,
+				5,
+			),
+			(
+				12,
+				10,
+			),
+		]
 	]
 
 	monkeypatch.setattr(
@@ -429,21 +456,15 @@ def test_run_yearly_job_does_not_warn_when_all_days_are_available(
 		),
 	)
 
-	config = {
-		"location": {
-			"timezone": "Europe/Berlin",
-		},
-		"image_scan_stall_timeout_seconds": 10,
-	}
-
 	run_yearly_job(
-		config=config,
+		config=TEST_CONFIG,
 		cameras=[
 			"Test-Camera"
 		],
+		framerate=YEARLY_FRAMERATE,
 	)
 
-	# Complete coverage does not need a missing-days warning.
+	# Complete coverage does not need a missing-frames warning.
 	assert (
 		"Yearly will be created with"
 		not in caplog.text

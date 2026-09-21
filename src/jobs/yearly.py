@@ -27,18 +27,21 @@ def get_yearly_date_range(
 	)
 
 
-# Select one image per day, closest to the yearly target time.
+# Select up to five images per day, closest to the yearly target time.
 def select_yearly_images(
 	images: list[Path],
 	target_hour: int = 12,
 	target_minute: int = 0,
+	images_per_day: int = 1,
 ) -> list[Path]:
-	best_images: dict[
+	images_by_date: dict[
 		date,
-		tuple[
-			int,
-			int,
-			Path,
+		list[
+			tuple[
+				int,
+				int,
+				Path,
+			]
 		],
 	] = {}
 
@@ -75,39 +78,53 @@ def select_yearly_images(
 			- target_seconds
 		)
 
-		candidate = (
-			distance_seconds,
-			capture_seconds,
-			image_path,
+		images_by_date.setdefault(
+			image_date,
+			[],
+		).append(
+			(
+				distance_seconds,
+				capture_seconds,
+				image_path,
+			)
 		)
 
-		current_best = best_images.get(
-			image_date
-		)
+	selected_images: list[Path] = []
 
-		# Prefer the closest image and the earlier one on equal distance.
-		if (
-			current_best is None
-			or candidate < current_best
-		):
-			best_images[
+	for image_date in sorted(
+		images_by_date
+	):
+		# Prefer images closest to the target time.
+		candidates = sorted(
+			images_by_date[
 				image_date
-			] = candidate
-
-	return [
-		best_images[
-			image_date
-		][2]
-		for image_date in sorted(
-			best_images
+			]
 		)
-	]
 
+		daily_images = candidates[
+			:images_per_day
+		]
 
+		# Keep selected frames in chronological order.
+		daily_images.sort(
+			key=lambda candidate: (
+				candidate[1],
+				candidate[2],
+			)
+		)
+
+		selected_images.extend(
+			candidate[2]
+			for candidate in daily_images
+		)
+
+	return selected_images
 # Run the automatic Yearly timelapse workflow.
+
 def run_yearly_job(
 	config: dict,
 	cameras: list[str],
+	framerate: int,
 ) -> None:
 	location = config[
 		"location"
@@ -168,7 +185,8 @@ def run_yearly_job(
 
 			yearly_images = (
 				select_yearly_images(
-					interval_images
+					interval_images,
+					images_per_day=5,
 				)
 			)
 
@@ -180,17 +198,18 @@ def run_yearly_job(
 
 				continue
 
+			# Yearly uses five frames per day across the rolling 365-day window.
+			expected_yearly_frames = 365 * 5
+
 			logger.info(
-				f"Selected {len(yearly_images)} "
-				"Yearly images"
+				f"Selected {len(yearly_images)} Yearly images"
 			)
 
-			# Missing days reduce the frame count but do not block Yearly.
-			if len(yearly_images) < 365:
+			if len(yearly_images) < expected_yearly_frames:
 				logger.warning(
-					"Yearly will be created with "
-					f"{len(yearly_images)} of "
-					"365 possible daily frames."
+				"Yearly will be created with "
+				f"{len(yearly_images)} of "
+				f"{expected_yearly_frames} possible frames."
 				)
 
 			video_path = create_timelapse(
@@ -198,6 +217,7 @@ def run_yearly_job(
 				target_date=end_date,
 				images=yearly_images,
 				timelapse_type="yearly",
+				framerate=framerate,
 			)
 
 		except (

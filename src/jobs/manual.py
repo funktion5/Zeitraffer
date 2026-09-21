@@ -14,6 +14,7 @@ def run_manual_job(
     available_cameras: list[str],
     target_date: date,
     requested_cameras: list[str] | None,
+    framerate: int,
 ) -> None:
     location = config["location"]
 
@@ -140,6 +141,7 @@ def run_manual_job(
                 target_date=target_date,
                 images=images,
                 timelapse_type="manual",
+                framerate=framerate,
             )
 
         except (

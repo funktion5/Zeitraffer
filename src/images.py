@@ -499,6 +499,9 @@ def validate_images(
 				progress_callback=progress_callback,
 			)
 
+			if progress_callback is not None:
+				progress_callback()
+
 			images_by_hash.setdefault(
 				image_hash,
 				[],

@@ -226,6 +226,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
         target_date=date(2026, 9, 14),
         temp_directory=temp_directory,
         timelapse_type="manual",
+        framerate=10,
     )
 
     assert result == expected_output
@@ -317,6 +318,7 @@ def test_create_image_timelapse_keeps_existing_output_on_error(
             target_date=date(2026, 9, 14),
             temp_directory=temp_directory,
             timelapse_type="daily",
+            framerate=10,
         )
 
     assert output_path.exists()
@@ -376,6 +378,7 @@ def test_create_timelapse(
         target_date,
         temp_directory,
         timelapse_type,
+        framerate,
     ):
         calls.append(
             "create_image_timelapse"
@@ -419,6 +422,7 @@ def test_create_timelapse(
         target_date=date(2026, 9, 14),
         images=images,
         timelapse_type="manual",
+        framerate=10,
     )
 
     assert calls == [
@@ -460,6 +464,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
         target_date,
         temp_directory,
         timelapse_type,
+        framerate,
     ):
         raise subprocess.CalledProcessError(
             returncode=1,
@@ -504,6 +509,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
             target_date=date(2026, 9, 14),
             images=[],
             timelapse_type="daily",
+            framerate=10,
         )
 
     assert cleanup_called is False

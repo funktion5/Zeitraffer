@@ -5,7 +5,9 @@ from src.config import load_config
 from src.images import get_cameras
 from src.jobs.daily import run_daily_job
 from src.jobs.manual import run_manual_job
+from src.jobs.monthly import run_monthly_job
 from src.jobs.weekly import run_weekly_job
+from src.jobs.yearly import run_yearly_job
 from src.logger import cleanup_old_logs, configure_file_logging, logger
 
 
@@ -98,6 +100,7 @@ def main():
             available_cameras=available_cameras,
             target_date=args.date,
             requested_cameras=args.cameras,
+            framerate= config["timelapse"]["manual_framerate"],
         )
 
         return
@@ -106,6 +109,7 @@ def main():
     run_daily_job(
         config=config,
         cameras=available_cameras,
+        framerate= config["timelapse"]["daily_framerate"],
     )
 
     # Weekly videos depend on the updated Daily videos.
@@ -118,6 +122,27 @@ def main():
         cameras=available_cameras,
     )
 
+    # Monthly uses the same updated camera source state.
+    configure_file_logging(
+	    "monthly"
+    )
+    run_monthly_job(
+	    config=config,
+	    cameras=available_cameras,
+	    framerate=config["timelapse"]["monthly_framerate"],
+    )
+    
+
+    # Yearly uses the same updated camera source state.
+    configure_file_logging(
+	    "yearly"
+    )
+
+    run_yearly_job(
+	    config=config,
+	    cameras=available_cameras,
+        framerate=config["timelapse"]["yearly_framerate"],
+    )
 
 if __name__ == "__main__":
     main()

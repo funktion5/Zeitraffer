@@ -12,6 +12,7 @@ LogType = Literal[
     "daily",
     "manual",
     "weekly",
+    "monthly",
     "yearly",
 ]
 

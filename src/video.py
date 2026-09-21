@@ -11,9 +11,10 @@ from src.logger import logger
 
 TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
-VIDEO_FRAMERATE = 10
+FRAMERATE = 10
 
-TimelapseType = Literal["daily", "manual", "yearly"]
+
+TimelapseType = Literal["daily", "manual", "monthly", "yearly"]
 
 
 # Create a clean temporary working directory for a camera and date.
@@ -272,6 +273,7 @@ def create_image_timelapse(
     target_date: date,
     temp_directory: Path,
     timelapse_type: TimelapseType,
+    framerate: int,
 ) -> Path:
     output_path = get_video_path(
         camera=camera,
@@ -299,7 +301,7 @@ def create_image_timelapse(
         "ffmpeg",
         "-y",
         "-framerate",
-        str(VIDEO_FRAMERATE),
+        str(framerate),
         "-i",
         str(
             temp_directory
@@ -430,6 +432,7 @@ def create_timelapse(
     target_date: date,
     images: list[Path],
     timelapse_type: TimelapseType,
+    framerate: int = FRAMERATE,
 ) -> Path:
     temp_directory = (
         create_temp_directory(
@@ -449,6 +452,7 @@ def create_timelapse(
             target_date=target_date,
             temp_directory=temp_directory,
             timelapse_type=timelapse_type,
+            framerate=framerate,
         )
     )
 
