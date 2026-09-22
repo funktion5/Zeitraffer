@@ -36,9 +36,7 @@ def test_cameras_with_known_dates():
 
 		# Verify that the search finds at least one image for every
 		# camera on its known test date.
-		assert len(images) > 0, (
-			f"No images found for camera '{camera}' on {target_date}."
-		)
+		assert len(images) > 0, f"No images found for camera '{camera}' on {target_date}."
 
 
 def test_extract_time_from_camera_filenames():
@@ -64,8 +62,7 @@ def test_extract_time_from_camera_filenames():
 		# Verify that every supported filename format returns
 		# the correct hour, minute and second.
 		assert result == expected_time, (
-			f"Wrong time extracted from '{filename}': "
-			f"expected {expected_time}, got {result}"
+			f"Wrong time extracted from '{filename}': expected {expected_time}, got {result}"
 		)
 
 
@@ -91,8 +88,7 @@ def test_extract_date_from_camera_filenames():
 		result = extract_date(filename)
 
 		assert result == expected_date, (
-			f"Wrong date extracted from '{filename}': "
-			f"expected {expected_date}, got {result}"
+			f"Wrong date extracted from '{filename}': expected {expected_date}, got {result}"
 		)
 
 
@@ -142,9 +138,7 @@ def test_complete_image_selection():
 		)
 
 		# Verify that at least one image remains after daylight filtering.
-		assert len(images) > 0, (
-			f"No daylight images found for camera '{camera}' on {target_date}."
-		)
+		assert len(images) > 0, f"No daylight images found for camera '{camera}' on {target_date}."
 
 
 def test_get_cameras():
@@ -709,13 +703,7 @@ def test_validate_images_logs_duplicate_source_data(
 		different_image,
 	]
 
-	assert warnings == [
-		(
-			"Camera Test-Camera: detected "
-			"2 images with duplicate source data "
-			"in 1 duplicate groups"
-		)
-	]
+	assert warnings == ["Camera Test-Camera: detected 1 duplicate images"]
 
 
 # Hash progress must be rate-limited while large files are processed.

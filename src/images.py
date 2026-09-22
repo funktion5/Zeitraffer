@@ -374,12 +374,7 @@ def filter_empty_images(
 		valid_images.append(image_path)
 
 	if empty_images:
-		logger.warning(
-			f"Camera {camera}: removed {len(empty_images)} empty image files"
-		)
-
-		for image_path in empty_images:
-			logger.debug(f"Empty image: {image_path.name}")
+		logger.warning(f"Camera {camera}: removed {len(empty_images)} empty image files")
 
 	return valid_images
 
@@ -428,19 +423,9 @@ def log_duplicate_source_data(
 				duplicate_groups.append(matching_images)
 
 	if duplicate_groups:
-		duplicate_images = sum(len(group) for group in duplicate_groups)
+		duplicate_images = sum(len(group) - 1 for group in duplicate_groups)
 
-		logger.warning(
-			f"Camera {camera}: detected "
-			f"{duplicate_images} images with duplicate source data "
-			f"in {len(duplicate_groups)} duplicate groups"
-		)
-
-		for group in duplicate_groups:
-			logger.debug(
-				"Duplicate image data: "
-				+ ", ".join(image_path.name for image_path in group)
-			)
+		logger.warning(f"Camera {camera}: detected {duplicate_images} duplicate images")
 
 
 # Validate selected images before they are passed to video processing.
