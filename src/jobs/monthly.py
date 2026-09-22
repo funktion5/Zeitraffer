@@ -5,18 +5,10 @@ from zoneinfo import ZoneInfo
 from src.images import find_interval_images_isolated
 from src.logger import logger
 from src.video import create_timelapse
-
-
-# Use a rolling 30-day window ending yesterday.
-def get_monthly_date_range(
-	end_date: date,
-) -> tuple[date, date]:
-	start_date = end_date - timedelta(days=29)
-
-	return (
-		start_date,
-		end_date,
-	)
+from src.date_coverage import (
+	get_coverage_date_range,
+	get_missing_dates,
+)
 
 
 # Run the automatic Monthly timelapse workflow.
@@ -33,7 +25,10 @@ def run_monthly_job(
 	if target_date is None:
 		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
 
-	start_date, end_date = get_monthly_date_range(target_date)
+	start_date, end_date = get_coverage_date_range(
+		end_date=target_date,
+		coverage_type="monthly",
+	)
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 
@@ -57,6 +52,26 @@ def run_monthly_job(
 			if not monthly_images:
 				logger.warning(f"No valid Monthly images available - skipping camera: {camera}")
 				continue
+
+			missing_dates = get_missing_dates(
+				images=monthly_images,
+				start_date=start_date,
+				end_date=end_date,
+			)
+
+			if missing_dates:
+				logger.warning(
+					f"Monthly coverage incomplete: "
+					f"{30 - len(missing_dates)} of 30 days available - "
+					f"skipping camera: {camera}"
+				)
+
+				for missing_date in missing_dates:
+					logger.debug(f"Missing Monthly date: {missing_date}")
+
+				continue
+
+			logger.info("Monthly coverage complete: 30 of 30 days")
 
 			video_path = create_timelapse(
 				camera=camera,

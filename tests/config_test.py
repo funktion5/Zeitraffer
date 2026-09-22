@@ -1,36 +1,48 @@
 import json
 
-from src.config import (
-	CONFIG_PATH,
-	PROJECT_ROOT,
-	load_config,
-)
+import src.config as config_module
 
 
-def test_config_path_points_to_expected_location():
-	assert CONFIG_PATH == (PROJECT_ROOT / "config" / "cameras.json")
+TEST_CONFIG = {
+	"location": {
+		"latitude": 52.0,
+		"longitude": 9.0,
+		"timezone": "Europe/Berlin",
+	},
+	"daylight_buffer_minutes": 90,
+	"image_scan_stall_timeout_seconds": 10,
+	"log_retention_days": 30,
+	"ignored_cameras": [
+		"Camera-A",
+		"Camera-B",
+	],
+	"timelapse": {
+		"daily_framerate": 10,
+		"manual_framerate": 10,
+		"monthly_framerate": 20,
+		"yearly_framerate": 20,
+	},
+}
 
 
-def test_config_file_exists():
-	assert CONFIG_PATH.exists()
-	assert CONFIG_PATH.is_file()
+def test_load_config_returns_expected_structure(
+	tmp_path,
+	monkeypatch,
+):
+	config_path = tmp_path / "cameras.json"
 
-
-def test_config_file_contains_valid_json():
-	with CONFIG_PATH.open(
-		"r",
+	config_path.write_text(
+		json.dumps(TEST_CONFIG),
 		encoding="utf-8",
-	) as file:
-		config = json.load(file)
-
-	assert isinstance(
-		config,
-		dict,
 	)
 
+	monkeypatch.setattr(
+		config_module,
+		"CONFIG_PATH",
+		config_path,
+	)
 
-def test_load_config_returns_expected_structure():
-	config = load_config()
+	config = config_module.load_config()
 
 	assert set(config) == {
 		"location",
@@ -113,3 +125,29 @@ def test_load_config_returns_expected_structure():
 		)
 		for framerate in config["timelapse"].values()
 	)
+
+
+def test_load_config_uses_mocked_config_path(
+	tmp_path,
+	monkeypatch,
+):
+	config_path = tmp_path / "custom-config.json"
+
+	expected_config = {
+		"test": "mocked-config",
+	}
+
+	config_path.write_text(
+		json.dumps(expected_config),
+		encoding="utf-8",
+	)
+
+	monkeypatch.setattr(
+		config_module,
+		"CONFIG_PATH",
+		config_path,
+	)
+
+	config = config_module.load_config()
+
+	assert config == expected_config

@@ -1,11 +1,9 @@
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import src.jobs.monthly as monthly_module
-from src.jobs.monthly import (
-	get_monthly_date_range,
-	run_monthly_job,
-)
+from src.jobs.monthly import run_monthly_job
+
 
 TEST_CONFIG = {
 	"location": {
@@ -21,67 +19,33 @@ TEST_CONFIG = {
 }
 
 MONTHLY_FRAMERATE = TEST_CONFIG["timelapse"]["monthly_framerate"]
+TARGET_DATE = date(2026, 9, 20)
+START_DATE = date(2026, 8, 22)
 
 
-def test_get_monthly_date_range_returns_30_day_window():
-	start_date, end_date = get_monthly_date_range(
-		date(
-			2026,
-			9,
-			20,
-		)
-	)
-
-	assert start_date == date(
-		2026,
-		8,
-		22,
-	)
-
-	assert end_date == date(
-		2026,
-		9,
-		20,
-	)
+def create_complete_monthly_images() -> list[Path]:
+	return [
+		Path(f"camera_{current_date:%y-%m-%d}_12-00-00-00.jpg")
+		for current_date in (START_DATE + timedelta(days=offset) for offset in range(30))
+	]
 
 
-def test_get_monthly_date_range_handles_year_boundary():
-	start_date, end_date = get_monthly_date_range(
-		date(
-			2026,
-			1,
-			15,
-		)
-	)
-
-	assert start_date == date(
-		2025,
-		12,
-		17,
-	)
-
-	assert end_date == date(
-		2026,
-		1,
-		15,
-	)
-
-
-def test_run_monthly_job_creates_video_from_all_images(
+# A Monthly must be created when every day in the 30-day window is covered.
+def test_run_monthly_job_creates_video_with_complete_coverage(
 	monkeypatch,
 ):
-	monthly_images = [
-		Path("camera_26-08-10_10-45-00-00.jpg"),
-		Path("camera_26-08-10_12-00-00-00.jpg"),
-		Path("camera_26-08-10_13-15-00-00.jpg"),
-	]
+	monthly_images = create_complete_monthly_images()
+
+	# Monthly keeps all validated images, including additional images on covered days.
+	monthly_images.append(Path("camera_26-09-20_13-00-00-00.jpg"))
 
 	created_videos = []
 
-	def fake_find_interval_images_isolated(
-		**kwargs,
-	):
-		return monthly_images
+	monkeypatch.setattr(
+		monthly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: monthly_images,
+	)
 
 	def fake_create_timelapse(
 		**kwargs,
@@ -89,12 +53,6 @@ def test_run_monthly_job_creates_video_from_all_images(
 		created_videos.append(kwargs)
 
 		return Path("videos/Test-Camera/monthly/test.mp4")
-
-	monkeypatch.setattr(
-		monthly_module,
-		"find_interval_images_isolated",
-		fake_find_interval_images_isolated,
-	)
 
 	monkeypatch.setattr(
 		monthly_module,
@@ -106,20 +64,20 @@ def test_run_monthly_job_creates_video_from_all_images(
 		config=TEST_CONFIG,
 		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
 	)
 
 	assert len(created_videos) == 1
 
-	# Monthly keeps every validated image from the interval.
+	assert created_videos[0]["camera"] == "Test-Camera"
+	assert created_videos[0]["target_date"] == TARGET_DATE
 	assert created_videos[0]["images"] == monthly_images
-
 	assert created_videos[0]["timelapse_type"] == "monthly"
-
 	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
-
 	assert created_videos[0]["manual_run"] is False
 
 
+# A Monthly must not be created when no validated images exist.
 def test_run_monthly_job_skips_camera_without_images(
 	monkeypatch,
 ):
@@ -141,16 +99,60 @@ def test_run_monthly_job_skips_camera_without_images(
 		config=TEST_CONFIG,
 		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
 	)
 
 	assert created_videos == []
 
 
+# A Monthly must not be created when at least one required day is missing.
+def test_run_monthly_job_skips_incomplete_coverage(
+	monkeypatch,
+	caplog,
+):
+	monthly_images = create_complete_monthly_images()
+
+	# Remove one required day from the 30-day window.
+	missing_date = date(2026, 9, 5)
+
+	monthly_images = [
+		image for image in monthly_images if missing_date.strftime("%y-%m-%d") not in image.name
+	]
+
+	created_videos = []
+
+	monkeypatch.setattr(
+		monthly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: monthly_images,
+	)
+
+	monkeypatch.setattr(
+		monthly_module,
+		"create_timelapse",
+		lambda **kwargs: created_videos.append(kwargs),
+	)
+
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+	)
+
+	assert created_videos == []
+
+	assert "Monthly coverage incomplete: 29 of 30 days available" in caplog.text
+
+
+# A failed camera must not stop later cameras from being processed.
 def test_run_monthly_job_continues_after_camera_timeout(
 	monkeypatch,
 ):
 	processed_cameras = []
 	created_videos = []
+
+	monthly_images = create_complete_monthly_images()
 
 	def fake_find_interval_images_isolated(
 		**kwargs,
@@ -162,7 +164,7 @@ def test_run_monthly_job_continues_after_camera_timeout(
 		if camera == "Broken-Camera":
 			raise TimeoutError("test timeout")
 
-		return [Path("camera_26-08-10_12-00-00-00.jpg")]
+		return monthly_images
 
 	def fake_create_timelapse(
 		**kwargs,
@@ -190,6 +192,7 @@ def test_run_monthly_job_continues_after_camera_timeout(
 			"Working-Camera",
 		],
 		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
 	)
 
 	assert processed_cameras == [
@@ -198,12 +201,10 @@ def test_run_monthly_job_continues_after_camera_timeout(
 	]
 
 	assert len(created_videos) == 1
-
 	assert created_videos[0]["camera"] == "Working-Camera"
 
-	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
 
-
+# Monthly must request the exact rolling 30-day window from image discovery.
 def test_run_monthly_job_uses_rolling_30_day_window(
 	monkeypatch,
 ):
@@ -226,22 +227,20 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 		config=TEST_CONFIG,
 		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
-		target_date=date(2026, 9, 20),
+		target_date=TARGET_DATE,
 	)
 
-	assert captured_calls[0]["start_date"] == date(
-		2026,
-		8,
-		22,
-	)
-
-	assert captured_calls[0]["end_date"] == date(
-		2026,
-		9,
-		20,
-	)
+	assert captured_calls == [
+		{
+			"camera": "Test-Camera",
+			"start_date": START_DATE,
+			"end_date": TARGET_DATE,
+			"stall_timeout_seconds": TEST_CONFIG["image_scan_stall_timeout_seconds"],
+		}
+	]
 
 
+# Historical Monthly runs must keep the explicit target date and manual output mode.
 def test_run_monthly_job_uses_explicit_target_date(
 	monkeypatch,
 ):
@@ -251,6 +250,17 @@ def test_run_monthly_job_uses_explicit_target_date(
 		15,
 	)
 
+	start_date = date(
+		2026,
+		8,
+		17,
+	)
+
+	monthly_images = [
+		Path(f"camera_{current_date:%y-%m-%d}_12-00-00-00.jpg")
+		for current_date in (start_date + timedelta(days=offset) for offset in range(30))
+	]
+
 	interval_calls = []
 	created_videos = []
 
@@ -259,14 +269,14 @@ def test_run_monthly_job_uses_explicit_target_date(
 	):
 		interval_calls.append(kwargs)
 
-		return [Path("camera_26-09-15_12-00-00-00.jpg")]
+		return monthly_images
 
 	def fake_create_timelapse(
 		**kwargs,
 	):
 		created_videos.append(kwargs)
 
-		return Path("videos/Camera-A/monthly/test.mp4")
+		return Path("videos/Camera-A/manual-runs/monthly/test.mp4")
 
 	monkeypatch.setattr(
 		monthly_module,
@@ -280,7 +290,7 @@ def test_run_monthly_job_uses_explicit_target_date(
 		fake_create_timelapse,
 	)
 
-	monthly_module.run_monthly_job(
+	run_monthly_job(
 		config=TEST_CONFIG,
 		cameras=[
 			"Camera-A",
@@ -290,12 +300,8 @@ def test_run_monthly_job_uses_explicit_target_date(
 		manual_run=True,
 	)
 
-	assert interval_calls[0]["start_date"] == date(
-		2026,
-		8,
-		17,
-	)
-
+	assert interval_calls[0]["start_date"] == start_date
 	assert interval_calls[0]["end_date"] == target_date
 
+	assert created_videos[0]["target_date"] == target_date
 	assert created_videos[0]["manual_run"] is True
