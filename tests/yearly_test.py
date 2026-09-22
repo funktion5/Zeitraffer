@@ -102,6 +102,8 @@ def test_run_yearly_job_creates_video_from_selected_images(
 
 	assert created_videos[0]["framerate"] == YEARLY_FRAMERATE
 
+	assert created_videos[0]["manual_run"] is False
+
 
 def test_run_yearly_job_skips_camera_without_images(
 	monkeypatch,
@@ -323,18 +325,38 @@ def test_run_yearly_job_uses_explicit_target_date(
 	)
 
 	interval_calls = []
+	created_videos = []
 
 	def fake_find_interval_images_isolated(
 		**kwargs,
 	):
 		interval_calls.append(kwargs)
 
-		return []
+		return [Path("camera_26-09-15_12-00-00-00.jpg")]
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Camera-A/yearly/test.mp4")
 
 	monkeypatch.setattr(
 		yearly_module,
 		"find_interval_images_isolated",
 		fake_find_interval_images_isolated,
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"create_timelapse",
+		fake_create_timelapse,
 	)
 
 	yearly_module.run_yearly_job(
@@ -344,6 +366,7 @@ def test_run_yearly_job_uses_explicit_target_date(
 		],
 		framerate=YEARLY_FRAMERATE,
 		target_date=target_date,
+		manual_run=True,
 	)
 
 	assert interval_calls[0]["start_date"] == date(
@@ -353,3 +376,5 @@ def test_run_yearly_job_uses_explicit_target_date(
 	)
 
 	assert interval_calls[0]["end_date"] == target_date
+
+	assert created_videos[0]["manual_run"] is True

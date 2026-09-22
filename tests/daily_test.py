@@ -100,6 +100,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 		images,
 		timelapse_type,
 		framerate,
+		manual_run=False,
 	):
 		create_timelapse_calls.append(
 			{
@@ -108,6 +109,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 				"images": images,
 				"timelapse_type": timelapse_type,
 				"framerate": framerate,
+				"manual_run": manual_run,
 			}
 		)
 
@@ -140,6 +142,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 			"images": images,
 			"timelapse_type": "daily",
 			"framerate": DAILY_FRAMERATE,
+			"manual_run": False,
 		}
 	]
 

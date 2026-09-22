@@ -8,7 +8,6 @@ from src.video import create_timelapse
 
 
 # Use a rolling 30-day window ending yesterday.
-# Use a rolling 30-day window ending yesterday.
 def get_monthly_date_range(
 	end_date: date,
 ) -> tuple[date, date]:
@@ -26,6 +25,7 @@ def run_monthly_job(
 	cameras: list[str],
 	framerate: int,
 	target_date: date | None = None,
+	manual_run: bool = False,
 ) -> None:
 	timezone = ZoneInfo(config["location"]["timezone"])
 
@@ -64,6 +64,7 @@ def run_monthly_job(
 				images=monthly_images,
 				timelapse_type="monthly",
 				framerate=framerate,
+				manual_run=manual_run,
 			)
 
 			logger.info(f"Finished Monthly for camera: {camera}")

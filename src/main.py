@@ -135,6 +135,7 @@ def main():
 				cameras=available_cameras,
 				framerate=config["timelapse"]["daily_framerate"],
 				target_date=args.target_date,
+				manual_run=args.target_date is not None,
 			)
 
 		elif job == "weekly":
@@ -142,6 +143,7 @@ def main():
 				config=config,
 				cameras=available_cameras,
 				target_date=args.target_date,
+				manual_run=args.target_date is not None,
 			)
 
 		elif job == "monthly":
@@ -150,6 +152,7 @@ def main():
 				cameras=available_cameras,
 				framerate=config["timelapse"]["monthly_framerate"],
 				target_date=args.target_date,
+				manual_run=args.target_date is not None,
 			)
 
 		elif job == "yearly":
@@ -158,6 +161,7 @@ def main():
 				cameras=available_cameras,
 				framerate=config["timelapse"]["yearly_framerate"],
 				target_date=args.target_date,
+				manual_run=args.target_date is not None,
 			)
 
 

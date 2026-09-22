@@ -305,6 +305,14 @@ def test_create_weekly_video_uses_available_dailies(
 
 	monkeypatch.setattr(
 		weekly_module,
+		"get_video_path",
+		lambda camera, target_date, timelapse_type, manual_run=False: (
+			video_root / camera / timelapse_type / f"{camera}_{target_date.isoformat()}.mp4"
+		),
+	)
+
+	monkeypatch.setattr(
+		weekly_module,
 		"TEMP_ROOT",
 		temp_root,
 	)
@@ -338,7 +346,7 @@ def test_create_weekly_video_uses_available_dailies(
 		fake_create_concat_file,
 	)
 
-	output_path = video_root / "Scheunenviertel" / "weekly" / "Scheunenviertel_weekly.mp4"
+	output_path = video_root / "Scheunenviertel" / "weekly" / "Scheunenviertel_2026-09-16.mp4"
 
 	concat_video_calls = []
 
@@ -568,13 +576,9 @@ def test_run_weekly_job_uses_yesterday(
 	def fake_create_weekly_video(
 		camera,
 		end_date,
+		manual_run=False,
 	):
-		weekly_calls.append(
-			{
-				"camera": camera,
-				"end_date": end_date,
-			}
-		)
+		weekly_calls.append({"camera": camera, "end_date": end_date, "manual_run": manual_run})
 
 		return Path(f"videos/{camera}/weekly/{camera}_weekly.mp4")
 
@@ -600,6 +604,7 @@ def test_run_weekly_job_uses_yesterday(
 				9,
 				16,
 			),
+			"manual_run": False,
 		},
 		{
 			"camera": "Camera-B",
@@ -608,6 +613,7 @@ def test_run_weekly_job_uses_yesterday(
 				9,
 				16,
 			),
+			"manual_run": False,
 		},
 	]
 
@@ -626,11 +632,13 @@ def test_run_weekly_job_uses_explicit_target_date(
 	def fake_create_weekly_video(
 		camera,
 		end_date,
+		manual_run=False,
 	):
 		weekly_calls.append(
 			{
 				"camera": camera,
 				"end_date": end_date,
+				"manual_run": manual_run,
 			}
 		)
 
@@ -655,9 +663,11 @@ def test_run_weekly_job_uses_explicit_target_date(
 		{
 			"camera": "Camera-A",
 			"end_date": target_date,
+			"manual_run": False,
 		},
 		{
 			"camera": "Camera-B",
 			"end_date": target_date,
+			"manual_run": False,
 		},
 	]

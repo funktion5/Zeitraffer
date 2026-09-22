@@ -63,6 +63,7 @@ def run_manual_job(
 			camera=camera,
 			target_date=target_date,
 			timelapse_type="manual",
+			manual_run=True,
 		)
 
 		# Existing manual videos are never recreated automatically.
@@ -105,6 +106,7 @@ def run_manual_job(
 				images=images,
 				timelapse_type="manual",
 				framerate=framerate,
+				manual_run=True,
 			)
 
 		except (

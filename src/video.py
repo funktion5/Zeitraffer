@@ -14,7 +14,7 @@ VIDEO_ROOT = Path("videos")
 FRAMERATE = 10
 
 
-TimelapseType = Literal["daily", "manual", "monthly", "yearly"]
+TimelapseType = Literal["daily", "manual", "weekly", "monthly", "yearly"]
 
 
 # Create a clean temporary working directory for a camera and date.
@@ -64,12 +64,20 @@ def copy_images_to_temp(
 
 
 # Return the output path for an image-based timelapse video.
+# Return the output path for automatic or explicit-date timelapses.
 def get_video_path(
 	camera: str,
 	target_date: date,
 	timelapse_type: TimelapseType,
+	manual_run: bool = False,
 ) -> Path:
-	return VIDEO_ROOT / camera / timelapse_type / f"{camera}_{target_date.isoformat()}.mp4"
+	if manual_run:
+		output_directory = VIDEO_ROOT / camera / "manual-runs" / timelapse_type
+
+	else:
+		output_directory = VIDEO_ROOT / camera / timelapse_type
+
+	return output_directory / f"{camera}_{target_date.isoformat()}.mp4"
 
 
 # Create an FFmpeg concat file from existing video files.
@@ -203,11 +211,13 @@ def create_image_timelapse(
 	temp_directory: Path,
 	timelapse_type: TimelapseType,
 	framerate: int,
+	manual_run: bool = False,
 ) -> Path:
 	output_path = get_video_path(
 		camera=camera,
 		target_date=target_date,
 		timelapse_type=timelapse_type,
+		manual_run=manual_run,
 	)
 
 	output_path.parent.mkdir(
@@ -323,6 +333,7 @@ def create_timelapse(
 	images: list[Path],
 	timelapse_type: TimelapseType,
 	framerate: int = FRAMERATE,
+	manual_run: bool = False,
 ) -> Path:
 	temp_directory = create_temp_directory(
 		camera,
@@ -340,6 +351,7 @@ def create_timelapse(
 		temp_directory=temp_directory,
 		timelapse_type=timelapse_type,
 		framerate=framerate,
+		manual_run=manual_run,
 	)
 
 	cleanup_temp_directory(temp_directory)

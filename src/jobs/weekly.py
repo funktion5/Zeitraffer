@@ -10,6 +10,7 @@ from src.video import (
 	cleanup_temp_directory,
 	create_concat_file,
 	create_concat_video,
+	get_video_path,
 )
 
 
@@ -52,11 +53,18 @@ def get_missing_weekly_video_paths(
 	return [video_path for video_path in expected_paths if not video_path.exists()]
 
 
-# Return the output path for the current Weekly video.
+# Return the output path for automatic or historical Weekly videos.
 def get_weekly_output_path(
 	camera: str,
+	end_date: date,
+	manual_run: bool = False,
 ) -> Path:
-	return VIDEO_ROOT / camera / "weekly" / f"{camera}_weekly.mp4"
+	return get_video_path(
+		camera=camera,
+		target_date=end_date,
+		timelapse_type="weekly",
+		manual_run=manual_run,
+	)
 
 
 # Return the temporary working directory for a Weekly job.
@@ -71,6 +79,7 @@ def get_weekly_temp_directory(
 def create_weekly_video(
 	camera: str,
 	end_date: date,
+	manual_run: bool = False,
 ) -> Path | None:
 	expected_videos = get_expected_weekly_video_paths(
 		camera=camera,
@@ -108,7 +117,11 @@ def create_weekly_video(
 		temp_directory=temp_directory,
 	)
 
-	output_path = get_weekly_output_path(camera)
+	output_path = get_weekly_output_path(
+		camera=camera,
+		end_date=end_date,
+		manual_run=manual_run,
+	)
 
 	video_path = create_concat_video(
 		concat_path=concat_path,
@@ -126,6 +139,7 @@ def run_weekly_job(
 	config: dict,
 	cameras: list[str],
 	target_date: date | None = None,
+	manual_run: bool = False,
 ) -> None:
 	location = config["location"]
 
@@ -149,6 +163,7 @@ def run_weekly_job(
 			video_path = create_weekly_video(
 				camera=camera,
 				end_date=end_date,
+				manual_run=manual_run,
 			)
 
 		except (

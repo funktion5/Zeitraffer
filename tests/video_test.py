@@ -320,6 +320,7 @@ def test_create_timelapse(
 		temp_directory,
 		timelapse_type,
 		framerate,
+		manual_run=False,
 	):
 		calls.append("create_image_timelapse")
 
@@ -399,6 +400,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		temp_directory,
 		timelapse_type,
 		framerate,
+		manual_run=False,
 	):
 		raise subprocess.CalledProcessError(
 			returncode=1,

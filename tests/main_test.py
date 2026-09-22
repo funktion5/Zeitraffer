@@ -307,6 +307,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"cameras": cameras,
 				"framerate": DAILY_FRAMERATE,
 				"target_date": None,
+				"manual_run": False,
 			},
 		),
 		(
@@ -315,6 +316,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"config": TEST_CONFIG,
 				"cameras": cameras,
 				"target_date": None,
+				"manual_run": False,
 			},
 		),
 		(
@@ -324,6 +326,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"cameras": cameras,
 				"framerate": MONTHLY_FRAMERATE,
 				"target_date": None,
+				"manual_run": False,
 			},
 		),
 		(
@@ -333,6 +336,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"cameras": cameras,
 				"framerate": YEARLY_FRAMERATE,
 				"target_date": None,
+				"manual_run": False,
 			},
 		),
 	]
@@ -464,6 +468,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				],
 				"framerate": DAILY_FRAMERATE,
 				"target_date": target_date,
+				"manual_run": True,
 			},
 		),
 		(
@@ -476,6 +481,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				],
 				"framerate": MONTHLY_FRAMERATE,
 				"target_date": target_date,
+				"manual_run": True,
 			},
 		),
 		(
@@ -488,6 +494,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				],
 				"framerate": YEARLY_FRAMERATE,
 				"target_date": target_date,
+				"manual_run": True,
 			},
 		),
 	]

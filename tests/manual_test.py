@@ -61,7 +61,18 @@ def mock_manual_dependencies(
 		camera,
 		target_date,
 		timelapse_type,
+		manual_run=False,
 	):
+		if manual_run:
+			return (
+				tmp_path
+				/ "videos"
+				/ camera
+				/ "manual-runs"
+				/ timelapse_type
+				/ f"{camera}_{target_date.isoformat()}.mp4"
+			)
+
 		return (
 			tmp_path
 			/ "videos"
@@ -112,6 +123,7 @@ def test_run_manual_job_creates_timelapse(
 		images,
 		timelapse_type,
 		framerate,
+		manual_run=False,
 	):
 		create_timelapse_calls.append(
 			{
@@ -120,6 +132,7 @@ def test_run_manual_job_creates_timelapse(
 				"images": images,
 				"timelapse_type": timelapse_type,
 				"framerate": framerate,
+				"manual_run": manual_run,
 			}
 		)
 
@@ -148,6 +161,7 @@ def test_run_manual_job_creates_timelapse(
 			"images": images,
 			"timelapse_type": "manual",
 			"framerate": MANUAL_FRAMERATE,
+			"manual_run": True,
 		}
 	]
 
@@ -169,7 +183,9 @@ def test_run_manual_job_skips_existing_video(
 		tmp_path,
 	)
 
-	existing_video = tmp_path / "videos" / "Camera-A" / "manual" / "Camera-A_2026-09-16.mp4"
+	existing_video = (
+		tmp_path / "videos" / "Camera-A" / "manual-runs" / "manual" / "Camera-A_2026-09-16.mp4"
+	)
 
 	existing_video.parent.mkdir(
 		parents=True,
@@ -448,6 +464,7 @@ def test_run_manual_job_continues_after_video_error(
 		images,
 		timelapse_type,
 		framerate,
+		manual_run=False,
 	):
 		processed_cameras.append(camera)
 

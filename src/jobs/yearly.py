@@ -124,6 +124,7 @@ def run_yearly_job(
 	cameras: list[str],
 	framerate: int,
 	target_date: date | None = None,
+	manual_run: bool = False,
 ) -> None:
 	location = config["location"]
 
@@ -185,6 +186,7 @@ def run_yearly_job(
 				images=yearly_images,
 				timelapse_type="yearly",
 				framerate=framerate,
+				manual_run=manual_run,
 			)
 
 		except (

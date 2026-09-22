@@ -117,6 +117,8 @@ def test_run_monthly_job_creates_video_from_all_images(
 
 	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
 
+	assert created_videos[0]["manual_run"] is False
+
 
 def test_run_monthly_job_skips_camera_without_images(
 	monkeypatch,
@@ -224,6 +226,7 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 		config=TEST_CONFIG,
 		cameras=["Test-Camera"],
 		framerate=MONTHLY_FRAMERATE,
+		target_date=date(2026, 9, 20),
 	)
 
 	assert captured_calls[0]["start_date"] == date(
@@ -249,18 +252,32 @@ def test_run_monthly_job_uses_explicit_target_date(
 	)
 
 	interval_calls = []
+	created_videos = []
 
 	def fake_find_interval_images_isolated(
 		**kwargs,
 	):
 		interval_calls.append(kwargs)
 
-		return []
+		return [Path("camera_26-09-15_12-00-00-00.jpg")]
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Camera-A/monthly/test.mp4")
 
 	monkeypatch.setattr(
 		monthly_module,
 		"find_interval_images_isolated",
 		fake_find_interval_images_isolated,
+	)
+
+	monkeypatch.setattr(
+		monthly_module,
+		"create_timelapse",
+		fake_create_timelapse,
 	)
 
 	monthly_module.run_monthly_job(
@@ -270,6 +287,7 @@ def test_run_monthly_job_uses_explicit_target_date(
 		],
 		framerate=MONTHLY_FRAMERATE,
 		target_date=target_date,
+		manual_run=True,
 	)
 
 	assert interval_calls[0]["start_date"] == date(
@@ -279,3 +297,5 @@ def test_run_monthly_job_uses_explicit_target_date(
 	)
 
 	assert interval_calls[0]["end_date"] == target_date
+
+	assert created_videos[0]["manual_run"] is True

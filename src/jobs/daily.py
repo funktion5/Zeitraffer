@@ -43,6 +43,7 @@ def run_daily_job(
 	cameras: list[str],
 	framerate: int,
 	target_date: date | None = None,
+	manual_run: bool = False,
 ) -> None:
 	location = config["location"]
 
@@ -114,14 +115,15 @@ def run_daily_job(
 				images=images,
 				timelapse_type="daily",
 				framerate=framerate,
+				manual_run=manual_run,
 			)
 
-			# Retention is only updated after a new daily video was
-			# created successfully.
-			cleanup_daily_retention(
-				camera=camera,
-				target_date=target_date,
-			)
+			# Historical runs must never modify automatic daily retention.
+			if not manual_run:
+				cleanup_daily_retention(
+					camera=camera,
+					target_date=target_date,
+				)
 
 		except (
 			OSError,
