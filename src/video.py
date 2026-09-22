@@ -85,6 +85,26 @@ def get_video_path(
 	return output_directory / f"{camera}_{target_date.isoformat()}.mp4"
 
 
+# Keep only the newest automatic video for the selected timelapse type.
+def cleanup_automatic_video_retention(
+	camera: str,
+	timelapse_type: Literal["weekly", "monthly", "yearly"],
+	current_video: Path,
+) -> None:
+	video_directory = VIDEO_ROOT / camera / timelapse_type
+
+	if not video_directory.exists():
+		return
+
+	for existing_video in video_directory.glob(f"{camera}_*.mp4"):
+		if existing_video == current_video:
+			continue
+
+		logger.debug(f"Removing outdated {timelapse_type} video: {existing_video}")
+
+		existing_video.unlink()
+
+
 # Create an FFmpeg concat file from existing video files.
 def create_concat_file(
 	videos: list[Path],

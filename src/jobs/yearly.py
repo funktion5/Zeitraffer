@@ -12,7 +12,7 @@ from src.images import (
 	find_interval_images_isolated,
 )
 from src.logger import logger
-from src.video import create_timelapse
+from src.video import create_timelapse, cleanup_automatic_video_retention
 from src.yearly_selection import select_yearly_images_isolated
 
 
@@ -104,6 +104,12 @@ def run_yearly_job(
 				framerate=framerate,
 				manual_run=manual_run,
 			)
+			if not manual_run:
+				cleanup_automatic_video_retention(
+					camera=camera,
+					timelapse_type="yearly",
+					current_video=video_path,
+				)
 
 		except (
 			OSError,

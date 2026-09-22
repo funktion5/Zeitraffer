@@ -671,3 +671,76 @@ def test_run_weekly_job_uses_explicit_target_date(
 			"manual_run": False,
 		},
 	]
+
+
+# Automatic Weekly runs must clean up older automatic Weekly videos.
+def test_run_weekly_job_cleans_automatic_retention(
+	monkeypatch,
+):
+	video_path = Path("videos/Scheunenviertel/weekly/Scheunenviertel_2026-09-16.mp4")
+
+	monkeypatch.setattr(
+		weekly_module,
+		"create_weekly_video",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		target_date=date(
+			2026,
+			9,
+			16,
+		),
+	)
+
+	assert retention_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"timelapse_type": "weekly",
+			"current_video": video_path,
+		}
+	]
+
+
+# Historical Weekly runs must never clean up automatic Weekly videos.
+def test_run_weekly_job_skips_retention_for_manual_run(
+	monkeypatch,
+):
+	video_path = Path("videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-16.mp4")
+
+	monkeypatch.setattr(
+		weekly_module,
+		"create_weekly_video",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		target_date=date(
+			2026,
+			9,
+			16,
+		),
+		manual_run=True,
+	)
+
+	assert retention_calls == []

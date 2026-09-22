@@ -13,6 +13,8 @@ from src.video import (
 	create_image_timelapse,
 	create_temp_directory,
 	create_timelapse,
+	cleanup_automatic_video_retention,
+	cleanup_temp_directory,
 )
 
 
@@ -650,3 +652,113 @@ def test_create_concat_video_keeps_existing_output_on_error(
 	assert output_path.exists()
 
 	assert output_path.read_bytes() == b"old working weekly"
+
+
+# Automatic retention must keep only the newly created video.
+def test_cleanup_automatic_video_retention_keeps_current_video(
+	tmp_path: Path,
+	monkeypatch,
+):
+	video_root = tmp_path / "videos"
+
+	monkeypatch.setattr(
+		video_module,
+		"VIDEO_ROOT",
+		video_root,
+	)
+
+	video_directory = video_root / "Scheunenviertel" / "monthly"
+
+	video_directory.mkdir(parents=True)
+
+	old_video = video_directory / "Scheunenviertel_2026-09-20.mp4"
+	current_video = video_directory / "Scheunenviertel_2026-09-21.mp4"
+
+	old_video.touch()
+	current_video.touch()
+
+	cleanup_automatic_video_retention(
+		camera="Scheunenviertel",
+		timelapse_type="monthly",
+		current_video=current_video,
+	)
+
+	assert not old_video.exists()
+	assert current_video.exists()
+
+
+# Automatic retention must remove every older matching video.
+def test_cleanup_automatic_video_retention_removes_multiple_old_videos(
+	tmp_path: Path,
+	monkeypatch,
+):
+	video_root = tmp_path / "videos"
+
+	monkeypatch.setattr(
+		video_module,
+		"VIDEO_ROOT",
+		video_root,
+	)
+
+	video_directory = video_root / "Scheunenviertel" / "yearly"
+
+	video_directory.mkdir(parents=True)
+
+	old_videos = [
+		video_directory / "Scheunenviertel_2024-09-21.mp4",
+		video_directory / "Scheunenviertel_2025-09-21.mp4",
+	]
+
+	current_video = video_directory / "Scheunenviertel_2026-09-21.mp4"
+
+	for video in old_videos:
+		video.touch()
+
+	current_video.touch()
+
+	cleanup_automatic_video_retention(
+		camera="Scheunenviertel",
+		timelapse_type="yearly",
+		current_video=current_video,
+	)
+
+	assert all(not video.exists() for video in old_videos)
+	assert current_video.exists()
+
+
+# Automatic retention must ignore unrelated files and manual-run directories.
+def test_cleanup_automatic_video_retention_ignores_unrelated_files(
+	tmp_path: Path,
+	monkeypatch,
+):
+	video_root = tmp_path / "videos"
+
+	monkeypatch.setattr(
+		video_module,
+		"VIDEO_ROOT",
+		video_root,
+	)
+
+	video_directory = video_root / "Scheunenviertel" / "weekly"
+	manual_directory = video_root / "Scheunenviertel" / "manual-runs" / "weekly"
+
+	video_directory.mkdir(parents=True)
+	manual_directory.mkdir(parents=True)
+
+	current_video = video_directory / "Scheunenviertel_2026-09-21.mp4"
+	unrelated_file = video_directory / "notes.txt"
+	manual_video = manual_directory / "Scheunenviertel_2026-08-01.mp4"
+
+	current_video.touch()
+	unrelated_file.touch()
+	manual_video.touch()
+
+	cleanup_automatic_video_retention(
+		camera="Scheunenviertel",
+		timelapse_type="weekly",
+		current_video=current_video,
+	)
+
+	assert current_video.exists()
+	assert unrelated_file.exists()
+	assert manual_video.exists()

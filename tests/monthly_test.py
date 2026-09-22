@@ -305,3 +305,86 @@ def test_run_monthly_job_uses_explicit_target_date(
 
 	assert created_videos[0]["target_date"] == target_date
 	assert created_videos[0]["manual_run"] is True
+
+
+# Automatic Monthly runs must clean up older automatic Monthly videos.
+def test_run_monthly_job_cleans_automatic_retention(
+	monkeypatch,
+):
+	monthly_images = create_complete_monthly_images()
+
+	video_path = Path("videos/Scheunenviertel/monthly/Scheunenviertel_2026-09-20.mp4")
+
+	monkeypatch.setattr(
+		monthly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: monthly_images,
+	)
+
+	monkeypatch.setattr(
+		monthly_module,
+		"create_timelapse",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		monthly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+	)
+
+	assert retention_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"timelapse_type": "monthly",
+			"current_video": video_path,
+		}
+	]
+
+
+# Historical Monthly runs must never clean up automatic Monthly videos.
+def test_run_monthly_job_skips_retention_for_manual_run(
+	monkeypatch,
+):
+	monthly_images = create_complete_monthly_images()
+
+	video_path = Path("videos/Scheunenviertel/manual-runs/monthly/Scheunenviertel_2026-09-20.mp4")
+
+	monkeypatch.setattr(
+		monthly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: monthly_images,
+	)
+
+	monkeypatch.setattr(
+		monthly_module,
+		"create_timelapse",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		monthly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+	)
+
+	assert retention_calls == []

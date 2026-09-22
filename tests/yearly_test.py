@@ -444,3 +444,98 @@ def test_run_yearly_job_uses_explicit_target_date(
 
 	assert created_videos[0]["target_date"] == target_date
 	assert created_videos[0]["manual_run"] is True
+
+
+# Automatic Yearly runs must clean up older automatic Yearly videos.
+def test_run_yearly_job_cleans_automatic_retention(
+	monkeypatch,
+):
+	interval_images = create_complete_yearly_images()
+
+	video_path = Path("videos/Scheunenviertel/yearly/Scheunenviertel_2026-09-17.mp4")
+
+	monkeypatch.setattr(
+		yearly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: interval_images,
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"create_timelapse",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		yearly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		framerate=YEARLY_FRAMERATE,
+		target_date=TARGET_DATE,
+	)
+
+	assert retention_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"timelapse_type": "yearly",
+			"current_video": video_path,
+		}
+	]
+
+
+# Historical Yearly runs must never clean up automatic Yearly videos.
+def test_run_yearly_job_skips_retention_for_manual_run(
+	monkeypatch,
+):
+	interval_images = create_complete_yearly_images()
+
+	video_path = Path("videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-09-17.mp4")
+
+	monkeypatch.setattr(
+		yearly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: interval_images,
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"create_timelapse",
+		lambda **kwargs: video_path,
+	)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		yearly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		framerate=YEARLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+	)
+
+	assert retention_calls == []

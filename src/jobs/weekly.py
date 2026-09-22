@@ -11,6 +11,7 @@ from src.video import (
 	create_concat_file,
 	create_concat_video,
 	get_video_path,
+	cleanup_automatic_video_retention,
 )
 
 
@@ -166,15 +167,22 @@ def run_weekly_job(
 				manual_run=manual_run,
 			)
 
+			if video_path is None:
+				continue
+
+			if not manual_run:
+				cleanup_automatic_video_retention(
+					camera=camera,
+					timelapse_type="weekly",
+					current_video=video_path,
+				)
+
 		except (
 			OSError,
 			subprocess.CalledProcessError,
 		):
 			logger.exception(f"Failed to process Weekly for camera: {camera}")
 
-			continue
-
-		if video_path is None:
 			continue
 
 		logger.info(f"Finished Weekly for camera: {camera}")

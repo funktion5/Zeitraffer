@@ -5,6 +5,7 @@ from zoneinfo import ZoneInfo
 from src.images import find_interval_images_isolated
 from src.logger import logger
 from src.video import create_timelapse
+from src.video import cleanup_automatic_video_retention
 from src.date_coverage import (
 	get_coverage_date_range,
 	get_missing_dates,
@@ -81,6 +82,13 @@ def run_monthly_job(
 				framerate=framerate,
 				manual_run=manual_run,
 			)
+
+			if not manual_run:
+				cleanup_automatic_video_retention(
+					camera=camera,
+					timelapse_type="monthly",
+					current_video=video_path,
+				)
 
 			logger.info(f"Finished Monthly for camera: {camera}")
 
