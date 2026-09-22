@@ -878,3 +878,112 @@ def test_main_passes_log_retention_to_cleanup(
 			"retention_days": 30,
 		}
 	]
+
+
+def test_main_marks_automatic_production_run_started_and_finished(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(),
+	)
+
+	patch_automatic_jobs(monkeypatch)
+
+	state_calls = []
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_started",
+		lambda: state_calls.append("started"),
+	)
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_finished",
+		lambda: state_calls.append("finished"),
+	)
+
+	main_module.main()
+
+	assert state_calls == [
+		"started",
+		"finished",
+	]
+
+
+def test_main_keeps_run_marker_when_automatic_production_run_fails(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(),
+	)
+
+	state_calls = []
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_started",
+		lambda: state_calls.append("started"),
+	)
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_finished",
+		lambda: state_calls.append("finished"),
+	)
+
+	def fake_run_daily_job(
+		**kwargs,
+	):
+		raise RuntimeError("Daily failed")
+
+	monkeypatch.setattr(
+		main_module,
+		"run_daily_job",
+		fake_run_daily_job,
+	)
+
+	with pytest.raises(
+		RuntimeError,
+		match="Daily failed",
+	):
+		main_module.main()
+
+	assert state_calls == [
+		"started",
+	]
+
+
+def test_main_does_not_mark_selected_job_run(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=[
+				"daily",
+			],
+		),
+	)
+
+	patch_automatic_jobs(monkeypatch)
+
+	state_calls = []
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_started",
+		lambda: state_calls.append("started"),
+	)
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_finished",
+		lambda: state_calls.append("finished"),
+	)
+
+	main_module.main()
+
+	assert state_calls == []

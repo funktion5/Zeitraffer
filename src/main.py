@@ -9,6 +9,10 @@ from src.jobs.monthly import run_monthly_job
 from src.jobs.weekly import run_weekly_job
 from src.jobs.yearly import run_yearly_job
 from src.logger import cleanup_old_logs, configure_file_logging, logger
+from src.run_state import (
+	mark_run_finished,
+	mark_run_started,
+)
 
 
 # Parse optional command-line arguments for the timelapse job.
@@ -121,6 +125,11 @@ def main():
 
 		return
 
+	automatic_production_run = args.jobs is None and args.target_date is None
+
+	if automatic_production_run:
+		mark_run_started()
+
 	first_job = True
 
 	for job in selected_jobs:
@@ -163,6 +172,9 @@ def main():
 				target_date=args.target_date,
 				manual_run=args.target_date is not None,
 			)
+
+	if automatic_production_run:
+		mark_run_finished()
 
 
 if __name__ == "__main__":
