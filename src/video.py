@@ -69,9 +69,7 @@ def get_video_path(
 	target_date: date,
 	timelapse_type: TimelapseType,
 ) -> Path:
-	return (
-		VIDEO_ROOT / camera / timelapse_type / f"{camera}_{target_date.isoformat()}.mp4"
-	)
+	return VIDEO_ROOT / camera / timelapse_type / f"{camera}_{target_date.isoformat()}.mp4"
 
 
 # Create an FFmpeg concat file from existing video files.
@@ -109,9 +107,7 @@ def create_concat_video(
 	)
 
 	# Keep the final video untouched until FFmpeg finishes successfully.
-	temporary_output = (
-		output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
-	)
+	temporary_output = output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
 
 	logger.info(f"Creating concat video: {output_path}")
 
@@ -220,9 +216,7 @@ def create_image_timelapse(
 	)
 
 	# Keep an existing working video untouched until FFmpeg succeeds.
-	temporary_output = (
-		output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
-	)
+	temporary_output = output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
 
 	logger.info(f"Creating video: {output_path}")
 

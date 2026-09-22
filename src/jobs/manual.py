@@ -67,9 +67,7 @@ def run_manual_job(
 
 		# Existing manual videos are never recreated automatically.
 		if existing_video.exists():
-			logger.info(
-				f"Manual video already exists - skipping camera: {existing_video}"
-			)
+			logger.info(f"Manual video already exists - skipping camera: {existing_video}")
 			continue
 
 		try:

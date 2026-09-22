@@ -338,9 +338,7 @@ def test_create_weekly_video_uses_available_dailies(
 		fake_create_concat_file,
 	)
 
-	output_path = (
-		video_root / "Scheunenviertel" / "weekly" / "Scheunenviertel_weekly.mp4"
-	)
+	output_path = video_root / "Scheunenviertel" / "weekly" / "Scheunenviertel_weekly.mp4"
 
 	concat_video_calls = []
 

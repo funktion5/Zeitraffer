@@ -328,10 +328,7 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 
 	assert worker_calls[0]["camera"] == "Test-Camera"
 
-	assert (
-		worker_calls[0]["target"]
-		== yearly_selection_module._select_yearly_images_worker
-	)
+	assert worker_calls[0]["target"] == yearly_selection_module._select_yearly_images_worker
 
 	assert worker_calls[0]["args"] == (
 		images,

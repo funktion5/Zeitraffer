@@ -123,9 +123,7 @@ def test_run_manual_job_creates_timelapse(
 			}
 		)
 
-		return Path(
-			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
-		)
+		return Path(f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4")
 
 	monkeypatch.setattr(
 		manual_module,
@@ -171,9 +169,7 @@ def test_run_manual_job_skips_existing_video(
 		tmp_path,
 	)
 
-	existing_video = (
-		tmp_path / "videos" / "Camera-A" / "manual" / "Camera-A_2026-09-16.mp4"
-	)
+	existing_video = tmp_path / "videos" / "Camera-A" / "manual" / "Camera-A_2026-09-16.mp4"
 
 	existing_video.parent.mkdir(
 		parents=True,
@@ -461,9 +457,7 @@ def test_run_manual_job_continues_after_video_error(
 				cmd=["ffmpeg"],
 			)
 
-		return Path(
-			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
-		)
+		return Path(f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4")
 
 	monkeypatch.setattr(
 		manual_module,

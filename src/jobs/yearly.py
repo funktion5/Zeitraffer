@@ -163,9 +163,7 @@ def run_yearly_job(
 			)
 
 			if not yearly_images:
-				logger.warning(
-					f"No valid Yearly images available - skipping camera: {camera}"
-				)
+				logger.warning(f"No valid Yearly images available - skipping camera: {camera}")
 
 				continue
 

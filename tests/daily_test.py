@@ -111,9 +111,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 			}
 		)
 
-		return Path(
-			f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4"
-		)
+		return Path(f"videos/{camera}/{timelapse_type}/{camera}_{target_date.isoformat()}.mp4")
 
 	monkeypatch.setattr(
 		daily_module,
@@ -265,9 +263,7 @@ def test_cleanup_daily_retention_does_not_fill_gaps(
 	]
 
 	for current_date in existing_dates:
-		(daily_directory / f"{camera}_{current_date.isoformat()}.mp4").write_bytes(
-			b"daily video"
-		)
+		(daily_directory / f"{camera}_{current_date.isoformat()}.mp4").write_bytes(b"daily video")
 
 	older_video = daily_directory / f"{camera}_2026-09-09.mp4"
 
@@ -336,9 +332,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 	monkeypatch.setattr(
 		daily_module,
 		"create_timelapse",
-		lambda **kwargs: Path(
-			"videos/Scheunenviertel/daily/Scheunenviertel_2026-09-16.mp4"
-		),
+		lambda **kwargs: Path("videos/Scheunenviertel/daily/Scheunenviertel_2026-09-16.mp4"),
 	)
 
 	cleanup_calls = []

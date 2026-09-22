@@ -13,25 +13,18 @@ from src.logger import cleanup_old_logs, configure_file_logging, logger
 
 # Parse optional command-line arguments for the timelapse job.
 def parse_arguments():
-	parser = argparse.ArgumentParser(
-		description="Create timelapses for available cameras."
-	)
+	parser = argparse.ArgumentParser(description="Create timelapses for available cameras.")
 
 	parser.add_argument(
 		"--date",
 		type=date.fromisoformat,
-		help=(
-			"Date to process in YYYY-MM-DD format. "
-			"Providing a date creates a manual timelapse."
-		),
+		help=("Date to process in YYYY-MM-DD format. Providing a date creates a manual timelapse."),
 	)
 
 	parser.add_argument(
 		"--cameras",
 		nargs="+",
-		help=(
-			"Process only the specified cameras. Can only be used together with --date."
-		),
+		help=("Process only the specified cameras. Can only be used together with --date."),
 	)
 
 	parser.add_argument(
@@ -114,9 +107,7 @@ def main():
 		if camera in ignored_cameras:
 			logger.info(f"Ignoring configured camera: {camera}")
 
-	available_cameras = [
-		camera for camera in available_cameras if camera not in ignored_cameras
-	]
+	available_cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
 
 	# Manual runs are independent from the automatic workflow.
 	if args.date:

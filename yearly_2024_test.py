@@ -52,9 +52,7 @@ def main() -> None:
 
 	if len(yearly_images) < 366:
 		logger.warning(
-			"Yearly test will be created with "
-			f"{len(yearly_images)} of "
-			"366 possible daily frames."
+			f"Yearly test will be created with {len(yearly_images)} of 366 possible daily frames."
 		)
 
 	video_path = create_timelapse(

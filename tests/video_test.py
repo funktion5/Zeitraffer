@@ -109,9 +109,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 		video_root,
 	)
 
-	expected_output = (
-		video_root / "Scheunenviertel" / "manual" / "Scheunenviertel_2026-09-14.mp4"
-	)
+	expected_output = video_root / "Scheunenviertel" / "manual" / "Scheunenviertel_2026-09-14.mp4"
 
 	temporary_output = (
 		expected_output.parent / f".{expected_output.stem}.tmp{expected_output.suffix}"
@@ -234,9 +232,7 @@ def test_create_image_timelapse_keeps_existing_output_on_error(
 		video_root,
 	)
 
-	output_path = (
-		video_root / "Scheunenviertel" / "daily" / "Scheunenviertel_2026-09-14.mp4"
-	)
+	output_path = video_root / "Scheunenviertel" / "daily" / "Scheunenviertel_2026-09-14.mp4"
 
 	output_path.parent.mkdir(
 		parents=True,
@@ -297,11 +293,7 @@ def test_create_timelapse(
 	temp_directory = tmp_path / "temp"
 
 	video_path = (
-		tmp_path
-		/ "videos"
-		/ "Scheunenviertel"
-		/ "manual"
-		/ "Scheunenviertel_2026-09-14.mp4"
+		tmp_path / "videos" / "Scheunenviertel" / "manual" / "Scheunenviertel_2026-09-14.mp4"
 	)
 
 	calls = []
@@ -497,17 +489,9 @@ def test_create_concat_video(
 
 	concat_path.touch()
 
-	output_path = (
-		tmp_path
-		/ "videos"
-		/ "Scheunenviertel"
-		/ "weekly"
-		/ "Scheunenviertel_weekly.mp4"
-	)
+	output_path = tmp_path / "videos" / "Scheunenviertel" / "weekly" / "Scheunenviertel_weekly.mp4"
 
-	temporary_output = (
-		output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
-	)
+	temporary_output = output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
 
 	popen_calls = []
 
@@ -618,13 +602,7 @@ def test_create_concat_video_keeps_existing_output_on_error(
 
 	concat_path.touch()
 
-	output_path = (
-		tmp_path
-		/ "videos"
-		/ "Scheunenviertel"
-		/ "weekly"
-		/ "Scheunenviertel_weekly.mp4"
-	)
+	output_path = tmp_path / "videos" / "Scheunenviertel" / "weekly" / "Scheunenviertel_weekly.mp4"
 
 	output_path.parent.mkdir(
 		parents=True,

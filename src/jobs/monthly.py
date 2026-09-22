@@ -55,9 +55,7 @@ def run_monthly_job(
 			logger.info(f"Found {len(monthly_images)} validated Monthly images")
 
 			if not monthly_images:
-				logger.warning(
-					f"No valid Monthly images available - skipping camera: {camera}"
-				)
+				logger.warning(f"No valid Monthly images available - skipping camera: {camera}")
 				continue
 
 			video_path = create_timelapse(

@@ -46,18 +46,11 @@ def run_daily_job(
 ) -> None:
 	location = config["location"]
 
-	timezone = ZoneInfo(
-		location["timezone"]
-	)
+	timezone = ZoneInfo(location["timezone"])
 
 	# Default to the latest completed calendar day.
 	if target_date is None:
-		target_date = (
-			datetime.now(
-				tz=timezone
-			).date()
-			- timedelta(days=1)
-		)
+		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
 
 	logger.info("-" * 80)
 

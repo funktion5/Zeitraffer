@@ -82,9 +82,7 @@ def log_missing_images_diagnostic(
 	result_queue.close()
 
 	if status == "error":
-		logger.warning(
-			f"Could not determine available image range for {camera}: {result}"
-		)
+		logger.warning(f"Could not determine available image range for {camera}: {result}")
 		return
 
 	image_range = result
@@ -94,13 +92,10 @@ def log_missing_images_diagnostic(
 
 	else:
 		logger.warning(
-			f"Available image range: "
-			f"{image_range.earliest_date} - "
-			f"{image_range.latest_date}"
+			f"Available image range: {image_range.earliest_date} - {image_range.latest_date}"
 		)
 
 	if image_range.unrecognized_files > 0:
 		logger.warning(
-			f"{image_range.unrecognized_files} files use "
-			"an unsupported filename format."
+			f"{image_range.unrecognized_files} files use an unsupported filename format."
 		)

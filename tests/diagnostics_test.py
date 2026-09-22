@@ -220,7 +220,4 @@ def test_missing_images_diagnostic_timeout_stops_process(
 
 	assert result_queue.closed is True
 
-	assert (
-		"Image range diagnostic timed out for Test-Camera "
-		"after 10 seconds." in caplog.text
-	)
+	assert "Image range diagnostic timed out for Test-Camera after 10 seconds." in caplog.text

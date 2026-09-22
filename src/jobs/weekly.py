@@ -77,13 +77,9 @@ def create_weekly_video(
 		end_date=end_date,
 	)
 
-	available_videos = [
-		video_path for video_path in expected_videos if video_path.exists()
-	]
+	available_videos = [video_path for video_path in expected_videos if video_path.exists()]
 
-	missing_videos = [
-		video_path for video_path in expected_videos if not video_path.exists()
-	]
+	missing_videos = [video_path for video_path in expected_videos if not video_path.exists()]
 
 	# Log every missing Daily video inside the rolling window.
 	for missing_video in missing_videos:
@@ -98,9 +94,7 @@ def create_weekly_video(
 
 	# A Weekly cannot be created when no Daily videos are available.
 	if not available_videos:
-		logger.warning(
-			f"No Daily videos available - skipping Weekly for camera: {camera}"
-		)
+		logger.warning(f"No Daily videos available - skipping Weekly for camera: {camera}")
 
 		return None
 
