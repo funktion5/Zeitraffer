@@ -209,6 +209,8 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 			str(temp_directory / "frame_%06d.jpg"),
 			"-c:v",
 			"libx264",
+			"-threads",
+			"2",
 			"-pix_fmt",
 			"yuv420p",
 			str(temporary_output),

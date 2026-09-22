@@ -7,7 +7,12 @@ from typing import Literal
 
 import psutil
 
+from src.config import load_config
 from src.logger import logger
+
+CONFIG = load_config()
+
+FFMPEG_THREADS = CONFIG["timelapse"]["ffmpeg_threads"]
 
 TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
@@ -239,6 +244,8 @@ def create_image_timelapse(
 		str(temp_directory / "frame_%06d.jpg"),
 		"-c:v",
 		"libx264",
+		"-threads",
+		str(FFMPEG_THREADS),
 		"-pix_fmt",
 		"yuv420p",
 		str(temporary_output),
