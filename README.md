@@ -67,6 +67,8 @@ timelapse/
 ├── config/
 │   ├── config.json
 │   └── mount.env.example
+├── scripts/
+│   └── cameras-sshfs-preflight
 ├── src/
 │   ├── jobs/
 │   │   ├── daily.py
@@ -85,6 +87,8 @@ timelapse/
 │   ├── solar.py
 │   ├── video.py
 │   └── yearly_selection.py
+├── systemd/
+│   └── cameras-sshfs.service
 ├── tests/
 │   ├── config_test.py
 │   ├── daily_test.py
@@ -102,6 +106,7 @@ timelapse/
 │   ├── yearly_test.py
 │   └── conftest.py
 ├── logs/
+├── state/
 ├── temp/
 ├── videos/
 ├── pyproject.toml
@@ -109,7 +114,7 @@ timelapse/
 └── README.md
 ```
 
-Runtime-Daten unter `logs/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
+Runtime-Daten unter `logs/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
 
 ---
 
@@ -131,6 +136,7 @@ Verantwortlich für:
 - feste Workflow-Reihenfolge beibehalten
 - optionales `target_date` an automatische Jobs weiterreichen
 - Framerates aus der Config an die Jobs weiterreichen
+- den persistenten Statusmarker des vollständigen Produktionslaufs verwalten
 
 ### `src/jobs/`
 
@@ -201,6 +207,16 @@ Der Supervisor übernimmt:
 
 Der Timeout misst **Inaktivität**, nicht die Gesamtlaufzeit. Lange Scans dürfen weiterlaufen, solange Fortschritt gemeldet wird.
 
+### `src/date_coverage.py`
+
+Gemeinsame Datumslogik für exakte rollierende Fenster:
+
+- Weekly: 7 Kalendertage inklusive Enddatum
+- Monthly: 30 Kalendertage inklusive Enddatum
+- Yearly: 365 Kalendertage inklusive Enddatum
+- Ermittlung fehlender Kalendertage
+- kompakte Darstellung aufeinanderfolgender fehlender Tage für Logs
+
 ### `src/yearly_selection.py`
 
 Yearly-spezifische Frame-Auswahl.
@@ -227,6 +243,21 @@ Technische Video- und FFmpeg-Schicht:
 - bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen
 - CPU- und RAM-Messungen
 - begrenzte FFmpeg-Fehlerausgabe bei fehlgeschlagenen Encodes
+
+Ausgewählte Originalbilder werden zuerst nach `temp/` kopiert und dort als `frame_000001.jpg`, `frame_000002.jpg`, … normalisiert. FFmpeg schreibt zunächst eine versteckte temporäre MP4-Datei. Erst nach erfolgreichem Abschluss ersetzt diese atomar die endgültige Ausgabe.
+
+### `src/logger.py`
+
+- gemeinsamer Anwendungslogger
+- INFO-Ausgabe auf der Konsole
+- DEBUG-Ausgabe in tagesbasierten Job-Logs
+- Wechsel des File-Handlers zwischen Job-Typen
+- Run-ID pro Prozess
+- konfigurierbare Log-Retention
+
+### `src/run_state.py`
+
+Verwaltet den persistenten Marker `state/run-in-progress` für den vollständigen automatischen Produktionslauf. Details stehen im Abschnitt „Run-State und Wiederanlauf“.
 
 ---
 
@@ -274,6 +305,35 @@ Die Tests prüfen unter anderem:
 ---
 
 ## Kameraerkennung
+
+### Kamera-Storage über SSHFS
+
+Die Originalbilder werden unter `/mnt/cameras` bereitgestellt. Das Repository enthält dafür:
+
+- `systemd/cameras-sshfs.service`
+- `scripts/cameras-sshfs-preflight`
+- `config/mount.env.example`
+
+Der systemd-Service mountet den entfernten Storage mit SSHFS ausschließlich lesend (`-o ro`). Vor dem Mount prüft das Preflight-Skript, ob bereits ein erreichbarer Mount existiert oder ein nicht erreichbarer FUSE-Mount bereinigt werden muss.
+
+Die produktiven Verbindungswerte liegen außerhalb des Repositories unter:
+
+```text
+/etc/timelapse/mount.env
+```
+
+Erwartete Variablen:
+
+```text
+REMOTE_USER=
+REMOTE_HOST=
+REMOTE_PORT=
+REMOTE_SSH_KEY=
+```
+
+Der Service erwartet außerdem den SSH-Schlüssel unter `/home/zruser/.ssh/storagebox_ed25519` und den vorhandenen Mountpoint `/mnt/cameras`.
+
+### Dynamische Kameraerkennung
 
 Kameras werden dynamisch anhand ihrer Verzeichnisse unter
 
@@ -381,6 +441,88 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 - bis zu 5 eindeutige Frames pro Tag
 - bei Duplikaten werden weitere Kandidaten nachgezogen
 - Framerate: `yearly_framerate`
+
+---
+
+## Ausgabe- und Arbeitsverzeichnisse
+
+### Automatische Videos
+
+Automatische Ausgaben liegen unter:
+
+```text
+videos/<camera>/<job>/<camera>_<zieldatum>.mp4
+```
+
+Beispiele:
+
+```text
+videos/Scheunenviertel/daily/Scheunenviertel_2026-09-21.mp4
+videos/Scheunenviertel/weekly/Scheunenviertel_2026-09-21.mp4
+videos/Scheunenviertel/monthly/Scheunenviertel_2026-09-21.mp4
+videos/Scheunenviertel/yearly/Scheunenviertel_2026-09-21.mp4
+```
+
+### Historische und Manual-Ausgaben
+
+Historische `--target-date`-Läufe und Manual Daily werden getrennt gespeichert:
+
+```text
+videos/<camera>/manual-runs/<job>/<camera>_<zieldatum>.mp4
+```
+
+Beispiele:
+
+```text
+videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/monthly/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/manual/Scheunenviertel_2026-08-15.mp4
+```
+
+Historische und Manual-Ausgaben werden von automatischer Retention nicht verändert.
+
+### Temporäre Frames
+
+Bildbasierte Jobs kopieren ausgewählte Quellen nach:
+
+```text
+temp/<camera>/<zieldatum>/frame_000001.jpg
+temp/<camera>/<zieldatum>/frame_000002.jpg
+...
+```
+
+Automatische Weeklys verwenden für die Concat-Datei:
+
+```text
+temp/<camera>/weekly/<enddatum>/concat.txt
+```
+
+Temporäre Arbeitsverzeichnisse werden erst nach erfolgreicher Videoerstellung entfernt. Bei einem Fehler bleiben sie für die Diagnose erhalten.
+
+### Atomarer Austausch
+
+FFmpeg schreibt im Zielverzeichnis zunächst nach:
+
+```text
+.<dateiname>.tmp.mp4
+```
+
+Nur ein erfolgreicher FFmpeg-Lauf ersetzt die endgültige MP4-Datei. Eine fehlgeschlagene Neuerstellung lässt das vorherige Video unverändert.
+
+---
+
+## Automatische Retention
+
+| Job | Aufbewahrung |
+|---|---|
+| Daily | Exaktes rollierendes Fenster der letzten 7 Kalendertage relativ zum Zieldatum |
+| Weekly | Nur das neueste erfolgreich erstellte automatische Weekly pro Kamera |
+| Monthly | Nur das neueste erfolgreich erstellte automatische Monthly pro Kamera |
+| Yearly | Nur das neueste erfolgreich erstellte automatische Yearly pro Kamera |
+
+Retention läuft ausschließlich nach erfolgreicher Videoerstellung. Fehlende Daily-Tage werden nicht durch ältere Videos aufgefüllt. Historische und Manual-Ausgaben unter `manual-runs/` sind ausgeschlossen.
 
 ---
 
@@ -564,6 +706,81 @@ historisches Weekly gemeinsam mit einem weiteren Job
 
 ---
 
+## Run-State und Wiederanlauf
+
+Nur der vollständige Produktionslauf ohne Argumente
+
+```bash
+python3 -m src.main
+```
+
+verwendet den persistenten Marker:
+
+```text
+state/run-in-progress
+```
+
+Ablauf nach erfolgreicher Konfigurations-, Logging- und Kamera-Storage-Prüfung:
+
+```text
+vollständiger Produktionslauf startet
+→ state/run-in-progress wird angelegt
+
+Daily → Weekly → Monthly → Yearly laufen durch
+→ Marker wird nach Abschluss entfernt
+
+Prozessabbruch, Stromausfall oder Neustart vor Abschluss
+→ Marker bleibt bestehen
+```
+
+Explizite `--jobs`-, `--target-date`- und `--date`-Aufrufe erzeugen keinen Marker und gelten nicht als wiederaufzunehmender Produktionslauf.
+
+Der Status ist absichtlich einfach: Es gibt keinen Resume-Punkt pro Kamera oder Job. Bei einer Wiederherstellung startet der komplette automatische Workflow erneut. Bereits vorhandene Videos werden durch atomaren Austausch geschützt, und Retention erfolgt erst nach erfolgreicher Neuerstellung.
+
+Der Marker liegt unter `state/` und nicht unter `/tmp`, damit er einen Neustart überlebt.
+
+Kameralokale operative Fehler werden innerhalb des jeweiligen Jobs behandelt und lassen spätere Kameras weiterlaufen. Ein nicht behandelter Prozessabbruch oder globaler Fehler nach dem Anlegen des Markers lässt ihn für die Reboot-Wiederherstellung bestehen.
+
+---
+
+## Zeitplanung mit Cron
+
+Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Scheduler.
+
+### Nächtlicher Produktionslauf
+
+Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr:
+
+```cron
+0 2 * * * flock -n /tmp/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'
+```
+
+`flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
+
+### Wiederanlauf nach Neustart
+
+Beim Booten wird der Workflow nur gestartet, wenn `state/run-in-progress` existiert. Da der Kamera-Storage eventuell noch nicht bereit ist, wartet Cron zunächst auf einen echten Mount unter `/mnt/cameras`:
+
+```cron
+@reboot if [ -f /home/zruser/timelapse/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n /tmp/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'; fi
+```
+
+Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
+
+```text
+/tmp/zeitraffer-run.lock
+```
+
+Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
+
+Installierte Einträge prüfen:
+
+```bash
+crontab -l
+```
+
+---
+
 ## Logging
 
 Logs werden nach Job-Typ getrennt:
@@ -579,9 +796,22 @@ logs/
 
 Bei einer gezielten Job-Auswahl wird vor dem ersten ausgeführten Job direkt dessen Log aktiviert. Bei mehreren Jobs wird vor jedem weiteren Job auf das passende Log gewechselt.
 
+Die Konsole erhält Meldungen ab INFO. Die Dateien enthalten zusätzlich DEBUG-Meldungen wie ausgewählte Bildgrenzen, temporäre Pfade, FFmpeg-Befehle, fehlende Datumsbereiche und Retention-Cleanup.
+
 Jeder Prozess erhält eine Run-ID. Startmeldungen enthalten Run-ID, Ausführungsmodus und Kameraauswahl. Die Abschlussmeldung jedes Jobs enthält die Anzahl erstellter, übersprungener und fehlgeschlagener Kameras.
 
 Fehlende Monthly- und Yearly-Tage werden als kompakte Datumsbereiche protokolliert. Duplicate-Filter melden die Anzahl ausgeschlossener Frames. Bei einem FFmpeg-Fehler werden die letzten 40 Zeilen der FFmpeg-Fehlerausgabe in das Anwendungslog übernommen.
+
+Während FFmpeg läuft, werden Spitzenwerte für folgende Ressourcen erfasst:
+
+```text
+FFmpeg CPU
+FFmpeg RAM
+System CPU
+System RAM
+```
+
+Auf Mehrkernsystemen kann die FFmpeg-CPU-Auslastung von `psutil` über 100 Prozent liegen. Hohe CPU-Auslastung allein bedeutet daher keinen fehlgeschlagenen Lauf.
 
 Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert.
 
@@ -621,6 +851,47 @@ python3 -m pip install ruff
 ```
 
 FFmpeg muss systemweit verfügbar sein.
+
+### SSHFS-Mount installieren
+
+Voraussetzungen sind `sshfs`, `fusermount3`, ein vorhandener Mountpoint `/mnt/cameras`, ein SSH-Schlüssel und ein passender `known_hosts`-Eintrag für `StrictHostKeyChecking=yes`.
+
+Repository-Dateien installieren:
+
+```bash
+sudo install -m 755 scripts/cameras-sshfs-preflight /usr/local/sbin/cameras-sshfs-preflight
+sudo install -m 644 systemd/cameras-sshfs.service /etc/systemd/system/cameras-sshfs.service
+sudo install -d -m 755 /etc/timelapse
+sudo install -m 600 config/mount.env.example /etc/timelapse/mount.env
+```
+
+Danach `/etc/timelapse/mount.env` mit den produktiven Verbindungswerten befüllen und den Service aktivieren:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now cameras-sshfs.service
+```
+
+Status und Mount prüfen:
+
+```bash
+systemctl status cameras-sshfs.service
+mountpoint /mnt/cameras
+```
+
+### Cron installieren oder prüfen
+
+Die beiden Einträge aus „Zeitplanung mit Cron“ werden über
+
+```bash
+crontab -e
+```
+
+für den Benutzer `zruser` installiert. Anschließend prüfen:
+
+```bash
+crontab -l
+```
 
 ---
 
