@@ -1,5 +1,6 @@
 import shutil
 import subprocess
+import tempfile
 import time
 from datetime import date
 from pathlib import Path
@@ -17,9 +18,96 @@ FFMPEG_THREADS = CONFIG["timelapse"]["ffmpeg_threads"]
 TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
 FRAMERATE = 10
+FFMPEG_ERROR_LOG_LINES = 40
 
 
 TimelapseType = Literal["daily", "manual", "weekly", "monthly", "yearly"]
+
+
+# Run FFmpeg, record peak resource use, and retain failure diagnostics.
+def run_ffmpeg(command: list[str]) -> None:
+	with tempfile.TemporaryFile() as error_output:
+		process = subprocess.Popen(
+			command,
+			stderr=error_output,
+		)
+
+		ffmpeg_process = psutil.Process(process.pid)
+
+		peak_cpu = 0.0
+		peak_memory_mb = 0.0
+		peak_system_cpu = 0.0
+		peak_system_memory = 0.0
+
+		while process.poll() is None:
+			try:
+				ffmpeg_cpu = ffmpeg_process.cpu_percent(
+					interval=0.2,
+				)
+
+				ffmpeg_memory_mb = ffmpeg_process.memory_info().rss / 1024 / 1024
+
+				system_cpu = psutil.cpu_percent()
+
+				system_memory = psutil.virtual_memory().percent
+
+				peak_cpu = max(
+					peak_cpu,
+					ffmpeg_cpu,
+				)
+
+				peak_memory_mb = max(
+					peak_memory_mb,
+					ffmpeg_memory_mb,
+				)
+
+				peak_system_cpu = max(
+					peak_system_cpu,
+					system_cpu,
+				)
+
+				peak_system_memory = max(
+					peak_system_memory,
+					system_memory,
+				)
+
+			except psutil.NoSuchProcess:
+				break
+
+			time.sleep(0.1)
+
+		return_code = process.wait()
+
+		logger.info(
+			"Peak hardware usage | "
+			f"FFmpeg CPU: {peak_cpu:.1f}% | "
+			f"FFmpeg RAM: {peak_memory_mb:.1f} MB | "
+			f"System CPU: {peak_system_cpu:.1f}% | "
+			f"System RAM: {peak_system_memory:.1f}%"
+		)
+
+		if return_code == 0:
+			return
+
+		error_output.seek(0)
+
+		stderr_lines = error_output.read().decode(
+			"utf-8",
+			errors="replace",
+		).splitlines()
+
+		stderr_tail = "\n".join(stderr_lines[-FFMPEG_ERROR_LOG_LINES:])
+
+		if not stderr_tail:
+			stderr_tail = "No FFmpeg error output was captured."
+
+		logger.error(f"FFmpeg failed with exit code {return_code}:\n{stderr_tail}")
+
+		raise subprocess.CalledProcessError(
+			return_code,
+			command,
+			stderr=stderr_tail,
+		)
 
 
 # Create a clean temporary working directory for a camera and date.
@@ -160,67 +248,7 @@ def create_concat_video(
 
 	logger.debug(f"FFmpeg command: {' '.join(command)}")
 
-	process = subprocess.Popen(command)
-
-	ffmpeg_process = psutil.Process(process.pid)
-
-	peak_cpu = 0.0
-	peak_memory_mb = 0.0
-	peak_system_cpu = 0.0
-	peak_system_memory = 0.0
-
-	while process.poll() is None:
-		try:
-			ffmpeg_cpu = ffmpeg_process.cpu_percent(
-				interval=0.2,
-			)
-
-			ffmpeg_memory_mb = ffmpeg_process.memory_info().rss / 1024 / 1024
-
-			system_cpu = psutil.cpu_percent()
-
-			system_memory = psutil.virtual_memory().percent
-
-			peak_cpu = max(
-				peak_cpu,
-				ffmpeg_cpu,
-			)
-
-			peak_memory_mb = max(
-				peak_memory_mb,
-				ffmpeg_memory_mb,
-			)
-
-			peak_system_cpu = max(
-				peak_system_cpu,
-				system_cpu,
-			)
-
-			peak_system_memory = max(
-				peak_system_memory,
-				system_memory,
-			)
-
-		except psutil.NoSuchProcess:
-			break
-
-		time.sleep(0.1)
-
-	return_code = process.wait()
-
-	logger.info(
-		"Peak hardware usage | "
-		f"FFmpeg CPU: {peak_cpu:.1f}% | "
-		f"FFmpeg RAM: {peak_memory_mb:.1f} MB | "
-		f"System CPU: {peak_system_cpu:.1f}% | "
-		f"System RAM: {peak_system_memory:.1f}%"
-	)
-
-	if return_code != 0:
-		raise subprocess.CalledProcessError(
-			return_code,
-			command,
-		)
+	run_ffmpeg(command)
 
 	temporary_output.replace(output_path)
 
@@ -273,67 +301,7 @@ def create_image_timelapse(
 
 	logger.debug(f"FFmpeg command: {' '.join(command)}")
 
-	process = subprocess.Popen(command)
-
-	ffmpeg_process = psutil.Process(process.pid)
-
-	peak_cpu = 0.0
-	peak_memory_mb = 0.0
-	peak_system_cpu = 0.0
-	peak_system_memory = 0.0
-
-	while process.poll() is None:
-		try:
-			ffmpeg_cpu = ffmpeg_process.cpu_percent(
-				interval=0.2,
-			)
-
-			ffmpeg_memory_mb = ffmpeg_process.memory_info().rss / 1024 / 1024
-
-			system_cpu = psutil.cpu_percent()
-
-			system_memory = psutil.virtual_memory().percent
-
-			peak_cpu = max(
-				peak_cpu,
-				ffmpeg_cpu,
-			)
-
-			peak_memory_mb = max(
-				peak_memory_mb,
-				ffmpeg_memory_mb,
-			)
-
-			peak_system_cpu = max(
-				peak_system_cpu,
-				system_cpu,
-			)
-
-			peak_system_memory = max(
-				peak_system_memory,
-				system_memory,
-			)
-
-		except psutil.NoSuchProcess:
-			break
-
-		time.sleep(0.1)
-
-	return_code = process.wait()
-
-	logger.info(
-		"Peak hardware usage | "
-		f"FFmpeg CPU: {peak_cpu:.1f}% | "
-		f"FFmpeg RAM: {peak_memory_mb:.1f} MB | "
-		f"System CPU: {peak_system_cpu:.1f}% | "
-		f"System RAM: {peak_system_memory:.1f}%"
-	)
-
-	if return_code != 0:
-		raise subprocess.CalledProcessError(
-			return_code,
-			command,
-		)
+	run_ffmpeg(command)
 
 	# Replace the final video only after FFmpeg completed successfully.
 	temporary_output.replace(output_path)

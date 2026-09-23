@@ -121,7 +121,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 	class FakeProcess:
 		pid = 12345
 
-		def __init__(self, command):
+		def __init__(self, command, stderr=None):
 			popen_calls.append(command)
 			self.poll_calls = 0
 
@@ -223,6 +223,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 def test_create_image_timelapse_keeps_existing_output_on_error(
 	tmp_path: Path,
 	monkeypatch,
+	caplog,
 ):
 	video_root = tmp_path / "videos"
 	temp_directory = tmp_path / "temp"
@@ -247,8 +248,9 @@ def test_create_image_timelapse_keeps_existing_output_on_error(
 	class FakeProcess:
 		pid = 12345
 
-		def __init__(self, command):
+		def __init__(self, command, stderr=None):
 			self.command = command
+			stderr.write(b"Invalid image data found when processing input\n")
 
 		def poll(self):
 			return 1
@@ -281,6 +283,8 @@ def test_create_image_timelapse_keeps_existing_output_on_error(
 
 	assert output_path.exists()
 	assert output_path.read_bytes() == b"old working daily"
+	assert "FFmpeg failed with exit code 1" in caplog.text
+	assert "Invalid image data found when processing input" in caplog.text
 
 
 # Run the complete image-based timelapse workflow in the expected order.
@@ -503,7 +507,7 @@ def test_create_concat_video(
 	class FakeProcess:
 		pid = 12345
 
-		def __init__(self, command):
+		def __init__(self, command, stderr=None):
 			popen_calls.append(command)
 			self.poll_calls = 0
 
@@ -619,7 +623,7 @@ def test_create_concat_video_keeps_existing_output_on_error(
 	class FakeProcess:
 		pid = 12345
 
-		def __init__(self, command):
+		def __init__(self, command, stderr=None):
 			self.command = command
 
 		def poll(self):
