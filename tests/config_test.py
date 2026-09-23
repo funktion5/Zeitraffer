@@ -1,66 +1,45 @@
 import json
+from pathlib import Path
+
+import pytest
 
 import src.config as config_module
 
 
-TEST_CONFIG = {
-	"location": {
-		"latitude": 52.0,
-		"longitude": 9.0,
-		"timezone": "Europe/Berlin",
-	},
-	"daylight_buffer_minutes": 90,
-	"image_scan_stall_timeout_seconds": 10,
-	"log_retention_days": 30,
-	"ignored_cameras": [
-		"Camera-A",
-		"Camera-B",
-	],
-	"timelapse": {
-		"daily_framerate": 10,
-		"manual_framerate": 10,
-		"monthly_framerate": 20,
-		"yearly_framerate": 20,
-	},
+EXPECTED_ROOT_KEYS = {
+	"location",
+	"daylight_buffer_minutes",
+	"image_scan_stall_timeout_seconds",
+	"log_retention_days",
+	"ignored_cameras",
+	"timelapse",
+}
+
+EXPECTED_LOCATION_KEYS = {
+	"latitude",
+	"longitude",
+	"timezone",
+}
+
+EXPECTED_TIMELAPSE_KEYS = {
+	"daily_framerate",
+	"manual_framerate",
+	"monthly_framerate",
+	"yearly_framerate",
+	"ffmpeg_threads",
 }
 
 
-def test_load_config_returns_expected_structure(
-	tmp_path,
-	monkeypatch,
-):
-	config_path = tmp_path / "cameras.json"
+# Assert the configuration structure required by the application.
+def assert_valid_config_structure(config: dict) -> None:
+	assert set(config) == EXPECTED_ROOT_KEYS
 
-	config_path.write_text(
-		json.dumps(TEST_CONFIG),
-		encoding="utf-8",
-	)
+	location = config["location"]
 
-	monkeypatch.setattr(
-		config_module,
-		"CONFIG_PATH",
-		config_path,
-	)
-
-	config = config_module.load_config()
-
-	assert set(config) == {
-		"location",
-		"daylight_buffer_minutes",
-		"image_scan_stall_timeout_seconds",
-		"log_retention_days",
-		"ignored_cameras",
-		"timelapse",
-	}
-
-	assert set(config["location"]) == {
-		"latitude",
-		"longitude",
-		"timezone",
-	}
+	assert set(location) == EXPECTED_LOCATION_KEYS
 
 	assert isinstance(
-		config["location"]["latitude"],
+		location["latitude"],
 		(
 			int,
 			float,
@@ -68,7 +47,7 @@ def test_load_config_returns_expected_structure(
 	)
 
 	assert isinstance(
-		config["location"]["longitude"],
+		location["longitude"],
 		(
 			int,
 			float,
@@ -76,7 +55,7 @@ def test_load_config_returns_expected_structure(
 	)
 
 	assert isinstance(
-		config["location"]["timezone"],
+		location["timezone"],
 		str,
 	)
 
@@ -111,23 +90,76 @@ def test_load_config_returns_expected_structure(
 		for camera in config["ignored_cameras"]
 	)
 
-	assert set(config["timelapse"]) == {
-		"daily_framerate",
-		"manual_framerate",
-		"monthly_framerate",
-		"yearly_framerate",
-	}
+	timelapse = config["timelapse"]
 
-	assert all(
-		isinstance(
-			framerate,
-			int,
-		)
-		for framerate in config["timelapse"].values()
+	assert set(timelapse) == EXPECTED_TIMELAPSE_KEYS
+
+	assert isinstance(
+		timelapse["daily_framerate"],
+		int,
+	)
+
+	assert isinstance(
+		timelapse["manual_framerate"],
+		int,
+	)
+
+	assert isinstance(
+		timelapse["monthly_framerate"],
+		int,
+	)
+
+	assert isinstance(
+		timelapse["yearly_framerate"],
+		int,
+	)
+
+	assert isinstance(
+		timelapse["ffmpeg_threads"],
+		int,
 	)
 
 
-def test_load_config_uses_mocked_config_path(
+# The production configuration must live at config/config.json.
+def test_config_path_points_to_expected_production_file():
+	expected_path = (
+		Path(config_module.__file__).resolve().parent.parent
+		/ "config"
+		/ "config.json"
+	)
+
+	assert config_module.CONFIG_PATH == expected_path
+
+
+# The production configuration file must exist.
+def test_production_config_file_exists():
+	assert config_module.CONFIG_PATH.exists()
+	assert config_module.CONFIG_PATH.is_file()
+
+
+# The production configuration file must contain valid JSON.
+def test_production_config_contains_valid_json():
+	with config_module.CONFIG_PATH.open(
+		"r",
+		encoding="utf-8",
+	) as config_file:
+		config = json.load(config_file)
+
+	assert isinstance(
+		config,
+		dict,
+	)
+
+
+# The production configuration must contain the structure required by the application.
+def test_production_config_has_expected_structure():
+	config = config_module.load_config()
+
+	assert_valid_config_structure(config)
+
+
+# Loading a custom configuration path must return that file's contents.
+def test_load_config_uses_config_path(
 	tmp_path,
 	monkeypatch,
 ):
@@ -151,3 +183,43 @@ def test_load_config_uses_mocked_config_path(
 	config = config_module.load_config()
 
 	assert config == expected_config
+
+
+# Invalid JSON must propagate the JSON parsing error to the caller.
+def test_load_config_raises_for_invalid_json(
+	tmp_path,
+	monkeypatch,
+):
+	config_path = tmp_path / "invalid-config.json"
+
+	config_path.write_text(
+		"{invalid json",
+		encoding="utf-8",
+	)
+
+	monkeypatch.setattr(
+		config_module,
+		"CONFIG_PATH",
+		config_path,
+	)
+
+	with pytest.raises(json.JSONDecodeError):
+		config_module.load_config()
+
+
+# A missing configuration file must propagate the filesystem error.
+def test_load_config_raises_when_file_is_missing(
+	tmp_path,
+	monkeypatch,
+):
+	config_path = tmp_path / "missing-config.json"
+
+	monkeypatch.setattr(
+		config_module,
+		"CONFIG_PATH",
+		config_path,
+	)
+
+	with pytest.raises(FileNotFoundError):
+		config_module.load_config()
+
