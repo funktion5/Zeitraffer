@@ -28,7 +28,10 @@ def parse_arguments():
 	parser.add_argument(
 		"--cameras",
 		nargs="+",
-		help=("Process specified cameras for Manual Daily, or one camera for a historical Weekly."),
+		help=(
+			"Process specified cameras for Manual Daily or historical jobs. "
+			"Historical Weekly requires exactly one camera."
+		),
 	)
 
 	parser.add_argument(
@@ -78,8 +81,8 @@ def main():
 	if historical_weekly_run and len(args.cameras or []) != 1:
 		raise ValueError("Historical Weekly requires exactly one camera with --cameras.")
 
-	if args.cameras and not args.date and not historical_weekly_run:
-		raise ValueError("--cameras can only be used with --date or a historical Weekly.")
+	if args.cameras and not args.date and not args.target_date:
+		raise ValueError("--cameras can only be used with --date or --target-date.")
 	config = load_config()
 
 	job_order = (
@@ -132,15 +135,19 @@ def main():
 
 		return
 
-	# Historical Weekly processes only its explicitly requested camera.
-	if historical_weekly_run:
-		requested_camera = args.cameras[0]
+	# Historical jobs may process only explicitly requested cameras.
+	if args.target_date and args.cameras:
+		requested_cameras = list(dict.fromkeys(args.cameras))
+		missing_cameras = [
+			camera for camera in requested_cameras if camera not in available_cameras
+		]
 
-		if requested_camera not in available_cameras:
-			logger.error(f"Requested camera not found: {requested_camera}")
-			raise ValueError(f"Requested camera not found: {requested_camera}")
+		if missing_cameras:
+			missing_camera_names = ", ".join(missing_cameras)
+			logger.error(f"Requested cameras not found: {missing_camera_names}")
+			raise ValueError(f"Requested cameras not found: {missing_camera_names}")
 
-		available_cameras = [requested_camera]
+		available_cameras = requested_cameras
 
 	automatic_production_run = args.jobs is None and args.target_date is None
 

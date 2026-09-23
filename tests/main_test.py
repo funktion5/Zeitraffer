@@ -587,7 +587,7 @@ def test_main_runs_manual_job(
 	assert job_calls == []
 
 
-# Camera filters outside supported manual modes must be rejected.
+# Camera filters without a manual or historical date must be rejected.
 def test_main_rejects_camera_filter_without_date(
 	monkeypatch,
 ):
@@ -603,7 +603,7 @@ def test_main_rejects_camera_filter_without_date(
 
 	with pytest.raises(
 		ValueError,
-		match="--cameras can only be used with --date or a historical Weekly.",
+		match="--cameras can only be used with --date or --target-date.",
 	):
 		main_module.main()
 
@@ -685,7 +685,7 @@ def test_main_rejects_target_date_without_jobs(
 		main_module.main()
 
 
-# Camera filters must not apply to automatic selected jobs.
+# Camera filters must not apply to current automatic selected jobs.
 def test_main_rejects_camera_filter_for_automatic_jobs(
 	monkeypatch,
 ):
@@ -704,7 +704,7 @@ def test_main_rejects_camera_filter_for_automatic_jobs(
 
 	with pytest.raises(
 		ValueError,
-		match="--cameras can only be used with --date or a historical Weekly.",
+		match="--cameras can only be used with --date or --target-date.",
 	):
 		main_module.main()
 
@@ -760,6 +760,33 @@ def test_main_requires_historical_weekly_to_be_selected_alone(
 		main_module.main()
 
 
+# Historical jobs must process only their requested cameras.
+def test_main_filters_historical_jobs_to_requested_cameras(
+	monkeypatch,
+):
+	target_date = date(2026, 9, 16)
+
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			cameras=["Camera-C", "Camera-A"],
+			jobs=["daily", "monthly", "yearly"],
+			target_date=target_date,
+		),
+		cameras=["Camera-A", "Camera-B", "Camera-C"],
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [kwargs["cameras"] for _, kwargs in job_calls] == [
+		["Camera-C", "Camera-A"],
+		["Camera-C", "Camera-A"],
+		["Camera-C", "Camera-A"],
+	]
+
+
 # A historical Weekly must process only its requested camera.
 def test_main_filters_historical_weekly_to_requested_camera(
 	monkeypatch,
@@ -812,12 +839,37 @@ def test_main_rejects_unknown_historical_weekly_camera(
 
 	with pytest.raises(
 		ValueError,
-		match="Requested camera not found: Unknown-Camera",
+		match="Requested cameras not found: Unknown-Camera",
 	):
 		main_module.main()
 
 	assert job_calls == []
-	assert "Requested camera not found: Unknown-Camera" in caplog.text
+	assert "Requested cameras not found: Unknown-Camera" in caplog.text
+
+
+# Any unavailable historical camera must reject the complete request.
+def test_main_rejects_unknown_camera_for_historical_jobs(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			cameras=["Camera-A", "Unknown-Camera"],
+			jobs=["monthly", "yearly"],
+			target_date=date(2026, 9, 16),
+		),
+		cameras=["Camera-A", "Camera-B"],
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	with pytest.raises(
+		ValueError,
+		match="Requested cameras not found: Unknown-Camera",
+	):
+		main_module.main()
+
+	assert job_calls == []
 
 
 # Failure to access complete camera storage must stop the run.

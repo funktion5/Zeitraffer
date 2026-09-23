@@ -623,6 +623,15 @@ python3 -m src.main \
 	--target-date 2026-09-15
 ```
 
+Historisches Daily für ausgewählte Kameras:
+
+```bash
+python3 -m src.main \
+	--jobs daily \
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel Nordufer_wide
+```
+
 Historisches Weekly für genau eine Kamera:
 
 ```bash
@@ -644,6 +653,15 @@ python3 -m src.main \
 
 Das Monthly deckt `2026-08-17` bis `2026-09-15` ab.
 
+Historisches Monthly für eine bestimmte Kamera:
+
+```bash
+python3 -m src.main \
+	--jobs monthly \
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel
+```
+
 Historisches Yearly für alle verfügbaren Kameras:
 
 ```bash
@@ -654,12 +672,22 @@ python3 -m src.main \
 
 Das Yearly deckt `2025-09-16` bis `2026-09-15` ab.
 
+Historisches Yearly für ausgewählte Kameras:
+
+```bash
+python3 -m src.main \
+	--jobs yearly \
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel Nordufer_wide
+```
+
 Mehrere historische Jobs können gemeinsam ausgeführt werden, solange kein historisches Weekly enthalten ist:
 
 ```bash
 python3 -m src.main \
 	--jobs daily monthly \
-	--target-date 2026-09-15
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel
 ```
 
 Bedeutung:
@@ -690,8 +718,14 @@ python3 -m src.main \
 	--cameras Scheunenviertel Nordufer_wide
 ```
 
-`--cameras` ist gemeinsam mit `--date` gültig. Ein historisches Weekly benötigt ebenfalls
-`--cameras`, wobei genau eine Kamera angegeben werden muss.
+`--cameras` ist gemeinsam mit `--date` oder `--target-date` gültig. Historische Daily-,
+Monthly- und Yearly-Läufe können eine oder mehrere Kameras verarbeiten. Ohne `--cameras`
+verarbeiten sie alle erkannten und nicht global ignorierten Kameras. Ein historisches Weekly
+benötigt genau eine Kamera.
+
+Angeforderte Kameras müssen unter `/mnt/cameras` vorhanden sein und dürfen nicht über
+`ignored_cameras` ausgeschlossen sein. Ist mindestens eine angeforderte Kamera nicht verfügbar,
+wird der vollständige Aufruf vor dem ersten Job abgebrochen.
 
 Nicht gültig sind unter anderem:
 
@@ -701,7 +735,7 @@ Nicht gültig sind unter anderem:
 --target-date ohne --jobs
 historisches Weekly ohne genau eine Kamera
 historisches Weekly gemeinsam mit einem weiteren Job
---cameras ohne --date oder historisches Weekly
+--cameras ohne --date oder --target-date
 ```
 
 ---
