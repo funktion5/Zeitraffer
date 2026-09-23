@@ -33,6 +33,7 @@ def create_complete_monthly_images() -> list[Path]:
 # A Monthly must be created when every day in the 30-day window is covered.
 def test_run_monthly_job_creates_video_with_complete_coverage(
 	monkeypatch,
+	caplog,
 ):
 	monthly_images = create_complete_monthly_images()
 
@@ -75,6 +76,7 @@ def test_run_monthly_job_creates_video_with_complete_coverage(
 	assert created_videos[0]["timelapse_type"] == "monthly"
 	assert created_videos[0]["framerate"] == MONTHLY_FRAMERATE
 	assert created_videos[0]["manual_run"] is False
+	assert f"Found {len(monthly_images)} selected Monthly images" in caplog.text
 
 
 # A Monthly must not be created when no validated images exist.
@@ -148,6 +150,7 @@ def test_run_monthly_job_skips_incomplete_coverage(
 # A failed camera must not stop later cameras from being processed.
 def test_run_monthly_job_continues_after_camera_timeout(
 	monkeypatch,
+	caplog,
 ):
 	processed_cameras = []
 	created_videos = []
@@ -202,6 +205,7 @@ def test_run_monthly_job_continues_after_camera_timeout(
 
 	assert len(created_videos) == 1
 	assert created_videos[0]["camera"] == "Working-Camera"
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
 
 
 # Monthly must request the exact rolling 30-day window from image discovery.
@@ -236,6 +240,7 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 			"start_date": START_DATE,
 			"end_date": TARGET_DATE,
 			"stall_timeout_seconds": TEST_CONFIG["image_scan_stall_timeout_seconds"],
+			"remove_duplicates_by_date": True,
 		}
 	]
 
@@ -302,6 +307,7 @@ def test_run_monthly_job_uses_explicit_target_date(
 
 	assert interval_calls[0]["start_date"] == start_date
 	assert interval_calls[0]["end_date"] == target_date
+	assert interval_calls[0]["remove_duplicates_by_date"] is True
 
 	assert created_videos[0]["target_date"] == target_date
 	assert created_videos[0]["manual_run"] is True

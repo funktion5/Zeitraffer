@@ -9,7 +9,7 @@ from src.images import (
 	filter_duplicate_images_isolated,
 	find_images_isolated,
 )
-from src.logger import logger
+from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
 from src.video import (
 	TEMP_ROOT,
@@ -55,6 +55,7 @@ def collect_weekly_images(
 			sunset=sunset,
 			daylight_buffer_minutes=daylight_buffer_minutes,
 			stall_timeout_seconds=stall_timeout_seconds,
+			log_duplicates=False,
 		)
 
 		if not daily_images:
@@ -106,7 +107,7 @@ def create_manual_weekly_video(
 		return None
 
 	logger.info("Weekly image coverage complete: 7 of 7 days")
-	logger.info(f"Found {len(weekly_images)} validated Weekly images")
+	logger.info(f"Found {len(weekly_images)} selected Weekly images")
 
 	return create_timelapse(
 		camera=camera,
@@ -259,7 +260,19 @@ def run_weekly_job(
 
 	logger.info("-" * 80)
 
-	logger.info(f"Starting Weekly timelapse job for rolling window ending {end_date}")
+	mode = "historical" if manual_run else "automatic"
+	run_context = format_run_context(
+		mode=mode,
+		cameras=cameras,
+	)
+
+	logger.info(
+		f"Starting Weekly timelapse job for rolling window ending {end_date} | {run_context}"
+	)
+
+	created_count = 0
+	skipped_count = 0
+	failed_count = 0
 
 	# Process each camera independently.
 	for camera in cameras:
@@ -280,6 +293,7 @@ def run_weekly_job(
 				)
 
 			if video_path is None:
+				skipped_count += 1
 				continue
 
 			if not manual_run:
@@ -294,11 +308,18 @@ def run_weekly_job(
 			subprocess.CalledProcessError,
 		):
 			logger.exception(f"Failed to process Weekly for camera: {camera}")
+			failed_count += 1
 
 			continue
+
+		created_count += 1
 
 		logger.info(f"Finished Weekly for camera: {camera}")
 
 		logger.debug(f"Video path: {video_path}")
 
-	logger.info(f"Weekly timelapse job finished for rolling window ending {end_date}")
+	logger.info(
+		f"Weekly timelapse job finished for rolling window ending {end_date} | "
+		f"created={created_count} | skipped={skipped_count} | failed={failed_count} | "
+		f"run_id={RUN_ID}"
+	)

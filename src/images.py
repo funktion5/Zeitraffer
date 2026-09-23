@@ -374,7 +374,7 @@ def filter_empty_images(
 		valid_images.append(image_path)
 
 	if empty_images:
-		logger.warning(f"Camera {camera}: removed {len(empty_images)} empty image files")
+		logger.warning(f"Camera {camera}: excluded {len(empty_images)} empty image files")
 
 	return valid_images
 
@@ -455,11 +455,50 @@ def filter_duplicate_images(
 	return [image_path for image_path in images if image_path not in duplicate_images]
 
 
+# Exclude later byte-identical images independently within each date.
+def filter_duplicate_images_by_date(
+	camera: str,
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+	images_by_date: dict[date, list[Path]] = {}
+
+	for image_path in images:
+		image_date = extract_date(image_path.name)
+
+		if image_date is None:
+			continue
+
+		images_by_date.setdefault(
+			image_date,
+			[],
+		).append(image_path)
+
+	duplicate_images = set()
+
+	for daily_images in images_by_date.values():
+		duplicate_images.update(
+			find_duplicate_images(
+				images=daily_images,
+				progress_callback=progress_callback,
+			)
+		)
+
+	if duplicate_images:
+		logger.warning(
+			f"Camera {camera}: filtered {len(duplicate_images)} duplicate images within dates"
+		)
+
+	return [image_path for image_path in images if image_path not in duplicate_images]
+
+
 # Validate selected images before they are passed to video processing.
 def validate_images(
 	camera: str,
 	images: list[Path],
 	progress_callback: Callable[[], None] | None = None,
+	remove_duplicates: bool = False,
+	log_duplicates: bool = True,
 ) -> list[Path]:
 	valid_images = filter_empty_images(
 		camera=camera,
@@ -467,11 +506,19 @@ def validate_images(
 		progress_callback=progress_callback,
 	)
 
-	log_duplicate_source_data(
-		camera=camera,
-		images=valid_images,
-		progress_callback=progress_callback,
-	)
+	if remove_duplicates:
+		valid_images = filter_duplicate_images(
+			camera=camera,
+			images=valid_images,
+			progress_callback=progress_callback,
+		)
+
+	elif log_duplicates:
+		log_duplicate_source_data(
+			camera=camera,
+			images=valid_images,
+			progress_callback=progress_callback,
+		)
 
 	return valid_images
 
@@ -521,6 +568,8 @@ def _find_images_worker(
 	sunrise: datetime,
 	sunset: datetime,
 	daylight_buffer_minutes: int,
+	remove_duplicates: bool,
+	log_duplicates: bool,
 	result_queue: Queue,
 ) -> None:
 	def report_progress():
@@ -547,6 +596,8 @@ def _find_images_worker(
 			camera=camera,
 			images=images,
 			progress_callback=report_progress,
+			remove_duplicates=remove_duplicates,
+			log_duplicates=log_duplicates,
 		)
 
 		result_queue.put(
@@ -574,6 +625,7 @@ def _find_interval_images_worker(
 	target_hour: int,
 	target_minute: int,
 	tolerance_minutes: int,
+	remove_duplicates_by_date: bool,
 	result_queue: Queue,
 ) -> None:
 	def report_progress():
@@ -602,6 +654,13 @@ def _find_interval_images_worker(
 			progress_callback=report_progress,
 		)
 
+		if remove_duplicates_by_date:
+			images = filter_duplicate_images_by_date(
+				camera=camera,
+				images=images,
+				progress_callback=report_progress,
+			)
+
 		result_queue.put(
 			(
 				"success",
@@ -626,6 +685,8 @@ def find_images_isolated(
 	sunset: datetime,
 	daylight_buffer_minutes: int,
 	stall_timeout_seconds: float,
+	remove_duplicates: bool = False,
+	log_duplicates: bool = True,
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
@@ -636,6 +697,8 @@ def find_images_isolated(
 			sunrise,
 			sunset,
 			daylight_buffer_minutes,
+			remove_duplicates,
+			log_duplicates,
 		),
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Image scan",
@@ -669,6 +732,7 @@ def find_interval_images_isolated(
 	target_hour: int = 12,
 	target_minute: int = 0,
 	tolerance_minutes: int = 90,
+	remove_duplicates_by_date: bool = False,
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
@@ -680,6 +744,7 @@ def find_interval_images_isolated(
 			target_hour,
 			target_minute,
 			tolerance_minutes,
+			remove_duplicates_by_date,
 		),
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Interval image scan",

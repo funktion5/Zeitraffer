@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 
 from src.diagnostics import log_missing_images_diagnostic
 from src.images import find_images_isolated
-from src.logger import logger
+from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
 
@@ -55,7 +55,13 @@ def run_daily_job(
 
 	logger.info("-" * 80)
 
-	logger.info(f"Starting daily timelapse job for {target_date}")
+	mode = "historical" if manual_run else "automatic"
+	run_context = format_run_context(
+		mode=mode,
+		cameras=cameras,
+	)
+
+	logger.info(f"Starting daily timelapse job for {target_date} | {run_context}")
 
 	daylight_buffer_minutes = config["daylight_buffer_minutes"]
 
@@ -76,6 +82,10 @@ def run_daily_job(
 
 	logger.info(f"Sunset: {sunset}")
 
+	created_count = 0
+	skipped_count = 0
+	failed_count = 0
+
 	# Process each camera independently.
 	for camera in cameras:
 		logger.info(f"Processing camera: {camera}")
@@ -90,6 +100,7 @@ def run_daily_job(
 				sunset=sunset,
 				daylight_buffer_minutes=daylight_buffer_minutes,
 				stall_timeout_seconds=image_scan_stall_timeout_seconds,
+				remove_duplicates=True,
 			)
 
 			# Missing images only skip the affected camera.
@@ -100,6 +111,7 @@ def run_daily_job(
 				logger.warning("Found 0 images - skipping camera.")
 
 				log_missing_images_diagnostic(camera)
+				skipped_count += 1
 
 				continue
 
@@ -132,11 +144,18 @@ def run_daily_job(
 		):
 			# Operational errors only skip the affected camera.
 			logger.exception(f"Failed to process timelapse for camera: {camera}")
+			failed_count += 1
 
 			continue
+
+		created_count += 1
 
 		logger.info(f"Finished processing camera: {camera}")
 
 		logger.debug(f"Video path: {video_path}")
 
-	logger.info(f"Daily timelapse job finished for {target_date}")
+	logger.info(
+		f"Daily timelapse job finished for {target_date} | "
+		f"created={created_count} | skipped={skipped_count} | failed={failed_count} | "
+		f"run_id={RUN_ID}"
+	)

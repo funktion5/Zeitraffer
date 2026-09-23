@@ -3,10 +3,11 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.images import find_interval_images_isolated
-from src.logger import logger
+from src.logger import RUN_ID, format_run_context, logger
 from src.video import create_timelapse
 from src.video import cleanup_automatic_video_retention
 from src.date_coverage import (
+	format_date_ranges,
 	get_coverage_date_range,
 	get_missing_dates,
 )
@@ -35,7 +36,19 @@ def run_monthly_job(
 
 	logger.info("-" * 80)
 
-	logger.info(f"Starting Monthly timelapse job for {start_date} to {end_date}")
+	mode = "historical" if manual_run else "automatic"
+	run_context = format_run_context(
+		mode=mode,
+		cameras=cameras,
+	)
+
+	logger.info(
+		f"Starting Monthly timelapse job for {start_date} to {end_date} | {run_context}"
+	)
+
+	created_count = 0
+	skipped_count = 0
+	failed_count = 0
 
 	for camera in cameras:
 		logger.info(f"Processing Monthly for camera: {camera}")
@@ -46,12 +59,14 @@ def run_monthly_job(
 				start_date=start_date,
 				end_date=end_date,
 				stall_timeout_seconds=stall_timeout_seconds,
+				remove_duplicates_by_date=True,
 			)
 
-			logger.info(f"Found {len(monthly_images)} validated Monthly images")
+			logger.info(f"Found {len(monthly_images)} selected Monthly images")
 
 			if not monthly_images:
 				logger.warning(f"No valid Monthly images available - skipping camera: {camera}")
+				skipped_count += 1
 				continue
 
 			missing_dates = get_missing_dates(
@@ -67,8 +82,9 @@ def run_monthly_job(
 					f"skipping camera: {camera}"
 				)
 
-				for missing_date in missing_dates:
-					logger.debug(f"Missing Monthly date: {missing_date}")
+				logger.debug(f"Missing Monthly dates: {format_date_ranges(missing_dates)}")
+
+				skipped_count += 1
 
 				continue
 
@@ -94,11 +110,18 @@ def run_monthly_job(
 
 			logger.debug(f"Video path: {video_path}")
 
+			created_count += 1
+
 		except (
 			OSError,
 			TimeoutError,
 			subprocess.CalledProcessError,
 		):
 			logger.exception(f"Failed to process Monthly for camera: {camera}")
+			failed_count += 1
 
-	logger.info(f"Monthly timelapse job finished for {start_date} to {end_date}")
+	logger.info(
+		f"Monthly timelapse job finished for {start_date} to {end_date} | "
+		f"created={created_count} | skipped={skipped_count} | failed={failed_count} | "
+		f"run_id={RUN_ID}"
+	)

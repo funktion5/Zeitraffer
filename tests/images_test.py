@@ -660,7 +660,7 @@ def test_validate_images_removes_empty_files(
 		second_image,
 	]
 
-	assert warnings == ["Camera Test-Camera: removed 1 empty image files"]
+	assert warnings == ["Camera Test-Camera: excluded 1 empty image files"]
 
 
 # Identical image data must be detected without removing valid files.
@@ -706,6 +706,65 @@ def test_validate_images_logs_duplicate_source_data(
 	assert warnings == ["Camera Test-Camera: detected 1 duplicate images"]
 
 
+# Validation can filter duplicates for jobs that require unique frames.
+def test_validate_images_can_filter_duplicate_source_data(
+	tmp_path,
+	monkeypatch,
+):
+	first_image = tmp_path / "first.jpg"
+	duplicate_image = tmp_path / "duplicate.jpg"
+	different_image = tmp_path / "different.jpg"
+
+	first_image.write_bytes(b"same image data")
+	duplicate_image.write_bytes(b"same image data")
+	different_image.write_bytes(b"different image")
+
+	warnings = []
+
+	monkeypatch.setattr(
+		images_module.logger,
+		"warning",
+		lambda message: warnings.append(message),
+	)
+
+	result = images_module.validate_images(
+		camera="Test-Camera",
+		images=[
+			first_image,
+			duplicate_image,
+			different_image,
+		],
+		remove_duplicates=True,
+	)
+
+	assert result == [
+		first_image,
+		different_image,
+	]
+	assert warnings == ["Camera Test-Camera: filtered 1 duplicate images"]
+
+
+# Validation can defer duplicate detection to a later aggregate pass.
+def test_validate_images_can_skip_duplicate_logging(
+	tmp_path,
+	monkeypatch,
+):
+	image = tmp_path / "image.jpg"
+	image.write_bytes(b"image data")
+
+	monkeypatch.setattr(
+		images_module,
+		"log_duplicate_source_data",
+		lambda **kwargs: pytest.fail("duplicate detection must be deferred"),
+	)
+
+	assert images_module.validate_images(
+		camera="Test-Camera",
+		images=[image],
+		log_duplicates=False,
+	) == [image]
+
+
 # Duplicate filtering must preserve the first image without modifying source files.
 def test_filter_duplicate_images_preserves_first_source_image(
 	tmp_path,
@@ -748,6 +807,47 @@ def test_filter_duplicate_images_preserves_first_source_image(
 	assert duplicate_image.read_bytes() == b"same image data"
 	assert second_duplicate.read_bytes() == b"same image data"
 	assert different_image.read_bytes() == b"different image data"
+
+
+# Per-date filtering must retain identical content captured on another date.
+def test_filter_duplicate_images_by_date_resets_duplicate_tracking_each_day(
+	tmp_path,
+	monkeypatch,
+):
+	first_image = tmp_path / "camera_26-09-15_11-00-00-00.jpg"
+	duplicate_image = tmp_path / "camera_26-09-15_12-00-00-00.jpg"
+	next_day_image = tmp_path / "camera_26-09-16_12-00-00-00.jpg"
+
+	for image_path in [
+		first_image,
+		duplicate_image,
+		next_day_image,
+	]:
+		image_path.write_bytes(b"same image data")
+
+	warnings = []
+
+	monkeypatch.setattr(
+		images_module.logger,
+		"warning",
+		lambda message: warnings.append(message),
+	)
+
+	result = images_module.filter_duplicate_images_by_date(
+		camera="Test-Camera",
+		images=[
+			first_image,
+			duplicate_image,
+			next_day_image,
+		],
+	)
+
+	assert result == [
+		first_image,
+		next_day_image,
+	]
+	assert warnings == ["Camera Test-Camera: filtered 1 duplicate images within dates"]
+	assert all(image_path.exists() for image_path in [first_image, duplicate_image, next_day_image])
 
 
 # Duplicate filtering must use the shared isolated worker supervisor.
@@ -1062,6 +1162,42 @@ def test_find_interval_images_isolated_returns_validated_images(
 	assert result == [valid_image]
 
 
+# Interval validation can filter duplicates independently for each date.
+def test_find_interval_images_isolated_filters_duplicates_by_date(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+
+	first_image = camera_directory / "camera_26-09-15_11-00-00-00.jpg"
+	duplicate_image = camera_directory / "camera_26-09-15_12-00-00-00.jpg"
+	next_day_image = camera_directory / "camera_26-09-16_12-00-00-00.jpg"
+
+	for image_path in [
+		first_image,
+		duplicate_image,
+		next_day_image,
+	]:
+		image_path.write_bytes(b"same image data")
+
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+
+	result = find_interval_images_isolated(
+		camera="Test-Camera",
+		start_date=date(2026, 9, 15),
+		end_date=date(2026, 9, 16),
+		stall_timeout_seconds=2,
+		remove_duplicates_by_date=True,
+	)
+
+	assert result == [
+		first_image,
+		next_day_image,
+	]
+
+
 def test_find_interval_images_isolated_stops_stalled_scan(
 	monkeypatch,
 ):
@@ -1072,6 +1208,7 @@ def test_find_interval_images_isolated_stops_stalled_scan(
 		target_hour,
 		target_minute,
 		tolerance_minutes,
+		remove_duplicates_by_date,
 		result_queue,
 	):
 		while True:

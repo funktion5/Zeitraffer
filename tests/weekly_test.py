@@ -82,6 +82,7 @@ def test_collect_weekly_images_uses_daily_selection_for_seven_dates(
 	assert all(call["camera"] == "Scheunenviertel" for call in image_calls)
 	assert all(call["daylight_buffer_minutes"] == 90 for call in image_calls)
 	assert all(call["stall_timeout_seconds"] == 10 for call in image_calls)
+	assert all(call["log_duplicates"] is False for call in image_calls)
 	assert len(images) == 14
 	assert images[0].name == "Scheunenviertel_26-09-10_07-00-00-00.jpg"
 	assert images[-1].name == "Scheunenviertel_26-09-16_18-00-00-00.jpg"
@@ -206,6 +207,7 @@ def test_collect_weekly_images_reports_date_removed_by_duplicate_filtering(
 # Create a historical Weekly directly from a complete image sequence.
 def test_create_manual_weekly_video_uses_collected_images(
 	monkeypatch,
+	caplog,
 ):
 	end_date = date(2026, 9, 16)
 	weekly_images = [
@@ -263,6 +265,7 @@ def test_create_manual_weekly_video_uses_collected_images(
 			"manual_run": True,
 		}
 	]
+	assert f"Found {len(weekly_images)} selected Weekly images" in caplog.text
 
 
 # Skip a historical Weekly when any date has no usable images.
@@ -1103,6 +1106,8 @@ def test_run_manual_weekly_continues_after_scan_timeout(
 	assert created_cameras == ["Camera-B"]
 	assert retention_calls == []
 	assert "Failed to process Weekly for camera: Camera-A" in caplog.text
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+	assert "mode=historical | cameras=Camera-A,Camera-B" in caplog.text
 
 
 # A historical FFmpeg failure must be logged without running retention.

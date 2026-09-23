@@ -454,6 +454,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 # A stalled camera must not prevent later cameras from being processed.
 def test_run_daily_job_continues_after_image_scan_timeout(
 	monkeypatch,
+	caplog,
 ):
 	images = [Path("image.jpg")]
 
@@ -535,6 +536,7 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 	)
 
 	assert created_cameras == ["Working-Camera"]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
 
 
 def test_run_daily_job_uses_explicit_target_date(
@@ -618,6 +620,7 @@ def test_run_daily_job_uses_explicit_target_date(
 	assert sun_calls[0]["target_date"] == target_date
 
 	assert image_calls[0]["target_date"] == target_date
+	assert image_calls[0]["remove_duplicates"] is True
 
 	assert video_calls[0]["target_date"] == target_date
 
