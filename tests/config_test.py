@@ -122,11 +122,7 @@ def assert_valid_config_structure(config: dict) -> None:
 
 # The production configuration must live at config/config.json.
 def test_config_path_points_to_expected_production_file():
-	expected_path = (
-		Path(config_module.__file__).resolve().parent.parent
-		/ "config"
-		/ "config.json"
-	)
+	expected_path = Path(config_module.__file__).resolve().parent.parent / "config" / "config.json"
 
 	assert config_module.CONFIG_PATH == expected_path
 
@@ -222,4 +218,3 @@ def test_load_config_raises_when_file_is_missing(
 
 	with pytest.raises(FileNotFoundError):
 		config_module.load_config()
-
