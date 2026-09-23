@@ -15,7 +15,7 @@ User=zruser
 Group=zruser
 
 ExecStartPre=/usr/local/sbin/cameras-sshfs-preflight
-ExecStart=/usr/bin/sshfs -f -p ${REMOTE_PORT} -o ro -o IdentityFile=${REMOTE_SSH_KEY} -o BatchMode=yes -o StrictHostKeyChecking=yes -o reconnect -o ServerAliveInterval=30 -o ServerAliveCountMax=3 ${REMOTE_USER}@${REMOTE_HOST}: /mnt/cameras
+ExecStart=/usr/bin/sshfs -f -p ${REMOTE_PORT} -o ro -o IdentityFile=${REMOTE_SSH_KEY} -o BatchMode=yes -o StrictHostKeyChecking=yes -o reconnect -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o allow_other  ${REMOTE_USER}@${REMOTE_HOST}: /mnt/cameras
 
 ExecStop=/usr/bin/fusermount3 -u /mnt/cameras
 
