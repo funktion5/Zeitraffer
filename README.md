@@ -26,10 +26,13 @@ Implementiert sind:
 - isolierte Worker mit Stall-Timeout
 - 0-Byte-Validierung
 - SHA-256-basierte Erkennung byte-identischer Quelldaten
+- Duplicate-Filterung für Daily, historische Weeklys und Monthly
 - Duplicate-aware Yearly-Auswahl
 - sichere temporäre Videoerstellung
 - Log-Retention
 - FFmpeg- und System-Performance-Logging
+- protokollierte FFmpeg-Fehlerausgabe
+- Run-IDs und Ergebniszusammenfassungen pro Job
 - Config-Tests für Pfad, JSON-Syntax und Struktur
 - Ruff für Linting und Formatierung
 
@@ -62,7 +65,7 @@ Manual-Läufe sind davon unabhängig und werden ausschließlich über `--date` g
 ```text
 timelapse/
 ├── config/
-│   ├── cameras.json
+│   ├── config.json
 │   └── mount.env.example
 ├── src/
 │   ├── jobs/
@@ -72,23 +75,27 @@ timelapse/
 │   │   ├── monthly.py
 │   │   └── yearly.py
 │   ├── config.py
+│   ├── date_coverage.py
 │   ├── diagnostics.py
 │   ├── image_worker.py
 │   ├── images.py
 │   ├── logger.py
 │   ├── main.py
+│   ├── run_state.py
 │   ├── solar.py
 │   ├── video.py
 │   └── yearly_selection.py
 ├── tests/
 │   ├── config_test.py
 │   ├── daily_test.py
+│   ├── date_coverage_test.py
 │   ├── diagnostics_test.py
 │   ├── images_test.py
 │   ├── logger_test.py
 │   ├── main_test.py
 │   ├── manual_test.py
 │   ├── monthly_test.py
+│   ├── run_state_test.py
 │   ├── video_test.py
 │   ├── weekly_test.py
 │   ├── yearly_selection_test.py
@@ -143,17 +150,18 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - überspringt bereits vorhandene exakte Manual-Ausgaben
 
 `weekly.py`
-- verwendet ausschließlich vorhandene Daily-Videos
+- erstellt automatische Weeklys aus vorhandenen Daily-Videos
+- erstellt historische Weeklys direkt aus Originalbildern für genau eine Kamera
 - verarbeitet ein exaktes rollierendes 7-Tage-Fenster
-- Fenster endet standardmäßig gestern oder am expliziten `target_date`
-- füllt fehlende Tage nicht mit älteren Videos auf
-- verwendet FFmpeg-Concat ohne Re-Encoding
+- füllt fehlende automatische Dailys nicht mit älteren Videos auf
+- verlangt für historische Weeklys vollständige Bildabdeckung
+- verwendet für automatische Weeklys FFmpeg-Concat ohne Re-Encoding
 
 `monthly.py`
 - verarbeitet ein rollierendes 30-Tage-Fenster
 - Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
-- berücksichtigt alle validen Bilder im täglichen Zielzeitfenster um 12:00 Uhr
+- berücksichtigt alle ausgewählten Bilder im täglichen Zielzeitfenster um 12:00 Uhr
 - Toleranz: ±90 Minuten
 
 `yearly.py`
@@ -173,7 +181,7 @@ Allgemeine Bildlogik:
 - Interval-Suche
 - 0-Byte-Filterung
 - SHA-256-Hashing
-- Duplicate-Diagnose
+- Duplicate-Diagnose und job-spezifische Duplicate-Filterung
 
 Unbekannte Dateinamensformate werden nicht geraten.
 
@@ -218,6 +226,7 @@ Technische Video- und FFmpeg-Schicht:
 - temporäre Ausgabedateien
 - bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen
 - CPU- und RAM-Messungen
+- begrenzte FFmpeg-Fehlerausgabe bei fehlgeschlagenen Encodes
 
 ---
 
@@ -226,7 +235,7 @@ Technische Video- und FFmpeg-Schicht:
 Die produktive Konfiguration liegt fest unter:
 
 ```text
-config/cameras.json
+config/config.json
 ```
 
 Beispiel:
@@ -248,7 +257,8 @@ Beispiel:
     "daily_framerate": 10,
     "manual_framerate": 10,
     "monthly_framerate": 20,
-    "yearly_framerate": 20
+    "yearly_framerate": 20,
+    "ffmpeg_threads": 2
   }
 }
 ```
@@ -293,9 +303,15 @@ Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Oper
 
 ## Bildvalidierung und Duplikate
 
-0-Byte-Dateien werden vor der weiteren Verarbeitung entfernt und geloggt.
+0-Byte-Dateien werden vor der weiteren Verarbeitung ausgeschlossen und geloggt. Die Quelldateien bleiben unverändert.
 
-Bei Daily und Manual werden byte-identische Quelldaten erkannt und protokolliert, aber nicht automatisch entfernt.
+Die Duplicate-Behandlung hängt vom Job ab:
+
+- Daily filtert spätere byte-identische Frames und behält das erste chronologische Bild.
+- Manual erkennt und protokolliert byte-identische Quelldaten, entfernt sie aber nicht aus der Auswahl.
+- Historische Weeklys filtern byte-identische Frames einmal über die vollständige Sieben-Tage-Sequenz.
+- Monthly filtert byte-identische Frames unabhängig innerhalb jedes Kalendertages. Gleicher Inhalt an unterschiedlichen Tagen bleibt erhalten.
+- Yearly wählt pro Tag bis zu fünf inhaltlich eindeutige Frames aus.
 
 Yearly behandelt Duplikate anders:
 
@@ -320,6 +336,7 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 - optional: explizites Zieldatum über `--target-date`
 - Quelle: Originalbilder
 - Auswahl: Sunrise bis Sunset inklusive Buffer
+- byte-identische Bilder werden vor der Erstellung gefiltert
 - Framerate: `daily_framerate`
 - Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
 
@@ -327,7 +344,8 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 - Zieldatum: explizit über `--date`
 - Quelle: Originalbilder
-- Auswahl: wie Daily
+- zeitliche Auswahl: wie Daily
+- byte-identische Bilder werden erkannt und protokolliert, aber nicht gefiltert
 - Framerate: `manual_framerate`
 - keine automatische Retention
 
@@ -349,7 +367,8 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 - Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
 - täglich 10:30 bis 13:30 Uhr
-- verwendet alle validen Intervallbilder
+- verwendet alle ausgewählten Intervallbilder
+- filtert byte-identische Bilder innerhalb jedes einzelnen Tages
 - Framerate: `monthly_framerate`
 
 ### Yearly
@@ -529,6 +548,10 @@ logs/
 
 Bei einer gezielten Job-Auswahl wird vor dem ersten ausgeführten Job direkt dessen Log aktiviert. Bei mehreren Jobs wird vor jedem weiteren Job auf das passende Log gewechselt.
 
+Jeder Prozess erhält eine Run-ID. Startmeldungen enthalten Run-ID, Ausführungsmodus und Kameraauswahl. Die Abschlussmeldung jedes Jobs enthält die Anzahl erstellter, übersprungener und fehlgeschlagener Kameras.
+
+Fehlende Monthly- und Yearly-Tage werden als kompakte Datumsbereiche protokolliert. Duplicate-Filter melden die Anzahl ausgeschlossener Frames. Bei einem FFmpeg-Fehler werden die letzten 40 Zeilen der FFmpeg-Fehlerausgabe in das Anwendungslog übernommen.
+
 Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert.
 
 Operative Fehler wie
@@ -677,8 +700,8 @@ Grundregeln des Projekts:
 
 Für den produktiven Dauerbetrieb fehlen insbesondere noch:
 
-- zeitgesteuerte automatische Ausführung
 - Upload der erzeugten Videos zum Webserver
-- endgültige Retention-/Dateinamensstrategie für rollierende Monthly- und Yearly-Ausgaben
+- Synchronisierung und Lebenszyklus der Videos auf dem Zielserver
+- weiterführende Deployment-Automatisierung
 
 Die Architektur ist so aufgebaut, dass weitere periodische Jobs ergänzt werden können, ohne den zentralen Coordinator unnötig mit Businesslogik zu belasten.
