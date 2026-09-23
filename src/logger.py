@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 LOG_ROOT = Path("logs")
 LOG_TIMEZONE = ZoneInfo("Europe/Berlin")
+RUN_ID = f"{datetime.now(tz=LOG_TIMEZONE):%Y%m%dT%H%M%S}-{os.getpid()}"
 
 LogType = Literal[
 	"daily",
@@ -15,6 +16,16 @@ LogType = Literal[
 	"monthly",
 	"yearly",
 ]
+
+
+# Format identifying details shared by job boundary messages.
+def format_run_context(
+	mode: str,
+	cameras: list[str],
+) -> str:
+	camera_names = ",".join(cameras) if cameras else "none"
+
+	return f"run_id={RUN_ID} | mode={mode} | cameras={camera_names}"
 
 
 def get_log_path(log_type: LogType) -> Path:

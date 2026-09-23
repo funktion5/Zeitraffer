@@ -33,6 +33,7 @@ def create_complete_yearly_images() -> list[Path]:
 # A Yearly must be created when every day in the 365-day window is covered.
 def test_run_yearly_job_creates_video_with_complete_coverage(
 	monkeypatch,
+	caplog,
 ):
 	interval_images = create_complete_yearly_images()
 
@@ -96,6 +97,7 @@ def test_run_yearly_job_creates_video_with_complete_coverage(
 	assert created_videos[0]["timelapse_type"] == "yearly"
 	assert created_videos[0]["framerate"] == YEARLY_FRAMERATE
 	assert created_videos[0]["manual_run"] is False
+	assert f"Found {len(interval_images)} selected interval images" in caplog.text
 
 
 # A Yearly must not be created when no validated images exist.
@@ -240,6 +242,7 @@ def test_run_yearly_job_skips_when_selection_returns_no_images(
 # A failed camera must not stop later cameras from being processed.
 def test_run_yearly_job_continues_after_camera_timeout(
 	monkeypatch,
+	caplog,
 ):
 	interval_images = create_complete_yearly_images()
 
@@ -299,6 +302,7 @@ def test_run_yearly_job_continues_after_camera_timeout(
 
 	assert len(created_videos) == 1
 	assert created_videos[0]["camera"] == "Working-Camera"
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
 
 
 # Complete coverage must be logged and must not emit the old partial-frame warning.

@@ -436,6 +436,7 @@ def test_run_manual_job_deduplicates_requested_cameras(
 def test_run_manual_job_continues_after_video_error(
 	monkeypatch,
 	tmp_path,
+	caplog,
 ):
 	target_date = date(
 		2026,
@@ -512,6 +513,7 @@ def test_run_manual_job_continues_after_video_error(
 	]
 
 	assert logged_errors == ["Failed to process timelapse for camera: Camera-A"]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
 
 
 # A read error for one camera must not stop later cameras.

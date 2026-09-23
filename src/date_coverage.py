@@ -51,3 +51,30 @@ def get_missing_dates(
 		for offset in range((end_date - start_date).days + 1)
 		if start_date + timedelta(days=offset) not in available_dates
 	]
+
+
+# Format dates as compact consecutive ranges for diagnostic logs.
+def format_date_ranges(dates: list[date]) -> str:
+	if not dates:
+		return "none"
+
+	sorted_dates = sorted(set(dates))
+	ranges = []
+	range_start = sorted_dates[0]
+	range_end = sorted_dates[0]
+
+	for current_date in sorted_dates[1:]:
+		if current_date == range_end + timedelta(days=1):
+			range_end = current_date
+			continue
+
+		ranges.append((range_start, range_end))
+		range_start = current_date
+		range_end = current_date
+
+	ranges.append((range_start, range_end))
+
+	return ", ".join(
+		start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
+		for start, end in ranges
+	)

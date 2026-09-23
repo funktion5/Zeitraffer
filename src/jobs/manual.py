@@ -3,7 +3,7 @@ from datetime import date
 
 from src.diagnostics import log_missing_images_diagnostic
 from src.images import find_images_isolated
-from src.logger import logger
+from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
 from src.video import create_timelapse, get_video_path
 
@@ -25,9 +25,19 @@ def run_manual_job(
 
 	logger.info("-" * 80)
 
-	logger.info(f"Starting manual timelapse job for {target_date}")
+	requested_camera_context = list(dict.fromkeys(requested_cameras or available_cameras))
+	run_context = format_run_context(
+		mode="manual",
+		cameras=requested_camera_context,
+	)
+
+	logger.info(f"Starting manual timelapse job for {target_date} | {run_context}")
 
 	logger.info(f"Daylight buffer: {daylight_buffer_minutes} minutes")
+
+	created_count = 0
+	skipped_count = 0
+	failed_count = 0
 
 	if requested_cameras:
 		cameras = []
@@ -36,6 +46,7 @@ def run_manual_job(
 		for requested_camera in dict.fromkeys(requested_cameras):
 			if requested_camera not in available_cameras:
 				logger.error(f"Requested camera not found: {requested_camera}")
+				skipped_count += 1
 				continue
 
 			cameras.append(requested_camera)
@@ -69,6 +80,7 @@ def run_manual_job(
 		# Existing manual videos are never recreated automatically.
 		if existing_video.exists():
 			logger.info(f"Manual video already exists - skipping camera: {existing_video}")
+			skipped_count += 1
 			continue
 
 		try:
@@ -91,6 +103,7 @@ def run_manual_job(
 				logger.warning("Found 0 images - skipping camera.")
 
 				log_missing_images_diagnostic(camera)
+				skipped_count += 1
 
 				continue
 
@@ -116,10 +129,17 @@ def run_manual_job(
 		):
 			# Operational errors only skip the affected camera.
 			logger.exception(f"Failed to process timelapse for camera: {camera}")
+			failed_count += 1
 			continue
+
+		created_count += 1
 
 		logger.info(f"Finished processing camera: {camera}")
 
 		logger.debug(f"Video path: {video_path}")
 
-	logger.info(f"Manual timelapse job finished for {target_date}")
+	logger.info(
+		f"Manual timelapse job finished for {target_date} | "
+		f"created={created_count} | skipped={skipped_count} | failed={failed_count} | "
+		f"run_id={RUN_ID}"
+	)

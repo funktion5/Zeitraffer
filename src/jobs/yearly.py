@@ -5,13 +5,14 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.date_coverage import (
+	format_date_ranges,
 	get_coverage_date_range,
 	get_missing_dates,
 )
 from src.images import (
 	find_interval_images_isolated,
 )
-from src.logger import logger
+from src.logger import RUN_ID, format_run_context, logger
 from src.video import create_timelapse, cleanup_automatic_video_retention
 from src.yearly_selection import select_yearly_images_isolated
 
@@ -41,7 +42,19 @@ def run_yearly_job(
 
 	logger.info("-" * 80)
 
-	logger.info(f"Starting Yearly timelapse job for {start_date} to {end_date}")
+	mode = "historical" if manual_run else "automatic"
+	run_context = format_run_context(
+		mode=mode,
+		cameras=cameras,
+	)
+
+	logger.info(
+		f"Starting Yearly timelapse job for {start_date} to {end_date} | {run_context}"
+	)
+
+	created_count = 0
+	skipped_count = 0
+	failed_count = 0
 
 	for camera in cameras:
 		logger.info(f"Processing Yearly for camera: {camera}")
@@ -55,10 +68,11 @@ def run_yearly_job(
 				stall_timeout_seconds=stall_timeout_seconds,
 			)
 
-			logger.info(f"Found {len(interval_images)} validated interval images")
+			logger.info(f"Found {len(interval_images)} selected interval images")
 
 			if not interval_images:
 				logger.warning(f"No valid Yearly images available - skipping camera: {camera}")
+				skipped_count += 1
 
 				continue
 
@@ -75,8 +89,9 @@ def run_yearly_job(
 					f"skipping camera: {camera}"
 				)
 
-				for missing_date in missing_dates:
-					logger.debug(f"Missing Yearly date: {missing_date}")
+				logger.debug(f"Missing Yearly dates: {format_date_ranges(missing_dates)}")
+
+				skipped_count += 1
 
 				continue
 
@@ -91,6 +106,7 @@ def run_yearly_job(
 
 			if not yearly_images:
 				logger.warning(f"No valid Yearly images available - skipping camera: {camera}")
+				skipped_count += 1
 
 				continue
 
@@ -118,11 +134,18 @@ def run_yearly_job(
 		):
 			# Operational errors only skip the affected camera.
 			logger.exception(f"Failed to process Yearly for camera: {camera}")
+			failed_count += 1
 
 			continue
+
+		created_count += 1
 
 		logger.info(f"Finished Yearly for camera: {camera}")
 
 		logger.debug(f"Video path: {video_path}")
 
-	logger.info(f"Yearly timelapse job finished for {start_date} to {end_date}")
+	logger.info(
+		f"Yearly timelapse job finished for {start_date} to {end_date} | "
+		f"created={created_count} | skipped={skipped_count} | failed={failed_count} | "
+		f"run_id={RUN_ID}"
+	)
