@@ -14,7 +14,6 @@ from src.video import (
 	create_temp_directory,
 	create_timelapse,
 	cleanup_automatic_video_retention,
-	cleanup_temp_directory,
 )
 
 

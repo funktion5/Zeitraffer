@@ -22,3 +22,9 @@ state/*
 
 # OS
 .DS_Store
+
+# Agent
+AGENTS.md
+
+# tests
+test-output/*
