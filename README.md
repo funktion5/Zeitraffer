@@ -334,11 +334,14 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 ### Weekly
 
 - Fenster: exakt 7 Kalendertage inklusive Enddatum
-- Enddatum: standardmäßig gestern oder explizites `--target-date`
-- Quelle: vorhandene Daily-Videos
-- fehlende Dailys werden protokolliert
-- kein älteres Backfill
-- mindestens ein Daily genügt für die Erstellung
+- automatischer Lauf: vorhandene Daily-Videos, Enddatum standardmäßig gestern
+- fehlende automatische Dailys werden protokolliert
+- der automatische Lauf benötigt mindestens ein Daily und verwendet kein älteres Backfill
+- historischer Lauf: Originalbilder für genau eine Kamera und explizites `--target-date`
+- historische Auswahl: Sunrise bis Sunset inklusive Buffer für jeden einzelnen Tag
+- byte-identische Bilder werden aus der historischen Frame-Sequenz gefiltert
+- ein historisches Weekly erfordert vollständige Bildabdeckung an allen 7 Tagen
+- keine automatische Retention für historische Weeklys
 
 ### Monthly
 
@@ -449,7 +452,8 @@ Weitere Beispiele:
 ```bash
 python3 -m src.main \
 	--jobs weekly \
-	--target-date 2026-09-15
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel
 ```
 
 ergibt:
@@ -457,6 +461,8 @@ ergibt:
 ```text
 Weekly
 → 2026-09-09 bis 2026-09-15
+→ nur Kamera Scheunenviertel
+→ direkte Erstellung aus Originalbildern
 ```
 
 und:
@@ -492,7 +498,8 @@ python3 -m src.main \
 	--cameras Scheunenviertel Nordufer_wide
 ```
 
-`--cameras` ist nur gemeinsam mit `--date` gültig.
+`--cameras` ist gemeinsam mit `--date` gültig. Ein historisches Weekly benötigt ebenfalls
+`--cameras`, wobei genau eine Kamera angegeben werden muss.
 
 Nicht gültig sind unter anderem:
 
@@ -500,7 +507,9 @@ Nicht gültig sind unter anderem:
 --date + --jobs
 --date + --target-date
 --target-date ohne --jobs
---cameras ohne --date
+historisches Weekly ohne genau eine Kamera
+historisches Weekly gemeinsam mit einem weiteren Job
+--cameras ohne --date oder historisches Weekly
 ```
 
 ---

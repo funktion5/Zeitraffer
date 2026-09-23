@@ -28,7 +28,9 @@ def parse_arguments():
 	parser.add_argument(
 		"--cameras",
 		nargs="+",
-		help=("Process only the specified cameras. Can only be used together with --date."),
+		help=(
+			"Process specified cameras for Manual Daily, or one camera for a historical Weekly."
+		),
 	)
 
 	parser.add_argument(
@@ -61,6 +63,11 @@ def parse_arguments():
 # Coordinate the requested timelapse jobs.
 def main():
 	args = parse_arguments()
+	historical_weekly_run = bool(
+		args.target_date
+		and args.jobs
+		and set(args.jobs) == {"weekly"}
+	)
 
 	if args.date and args.jobs:
 		raise ValueError("--date cannot be used together with --jobs.")
@@ -71,8 +78,16 @@ def main():
 	if args.target_date and not args.jobs:
 		raise ValueError("--target-date can only be used together with --jobs.")
 
-	if args.cameras and not args.date:
-		raise ValueError("--cameras can only be used together with --date.")
+	if args.target_date and args.jobs and "weekly" in args.jobs and not historical_weekly_run:
+		raise ValueError("Historical Weekly must be selected as the only job.")
+
+	if historical_weekly_run and len(args.cameras or []) != 1:
+		raise ValueError("Historical Weekly requires exactly one camera with --cameras.")
+
+	if args.cameras and not args.date and not historical_weekly_run:
+		raise ValueError(
+			"--cameras can only be used with --date or a historical Weekly."
+		)
 	config = load_config()
 
 	job_order = (
@@ -124,6 +139,16 @@ def main():
 		)
 
 		return
+
+	# Historical Weekly processes only its explicitly requested camera.
+	if historical_weekly_run:
+		requested_camera = args.cameras[0]
+
+		if requested_camera not in available_cameras:
+			logger.error(f"Requested camera not found: {requested_camera}")
+			raise ValueError(f"Requested camera not found: {requested_camera}")
+
+		available_cameras = [requested_camera]
 
 	automatic_production_run = args.jobs is None and args.target_date is None
 

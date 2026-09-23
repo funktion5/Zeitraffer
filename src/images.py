@@ -379,12 +379,11 @@ def filter_empty_images(
 	return valid_images
 
 
-# Log byte-identical source images without removing them.
-def log_duplicate_source_data(
-	camera: str,
+# Return every byte-identical image after its first occurrence.
+def find_duplicate_images(
 	images: list[Path],
 	progress_callback: Callable[[], None] | None = None,
-) -> None:
+) -> list[Path]:
 	images_by_size: dict[int, list[Path]] = {}
 
 	for image_path in images:
@@ -398,14 +397,14 @@ def log_duplicate_source_data(
 			[],
 		).append(image_path)
 
-	duplicate_groups = []
+	duplicate_images = []
 
 	# Only equal-sized files can contain identical source data.
 	for same_size_images in images_by_size.values():
 		if len(same_size_images) < 2:
 			continue
 
-		images_by_hash: dict[str, list[Path]] = {}
+		seen_hashes = set()
 
 		for image_path in same_size_images:
 			image_hash = get_image_hash(
@@ -413,19 +412,47 @@ def log_duplicate_source_data(
 				progress_callback=progress_callback,
 			)
 
-			images_by_hash.setdefault(
-				image_hash,
-				[],
-			).append(image_path)
+			if image_hash in seen_hashes:
+				duplicate_images.append(image_path)
+				continue
 
-		for matching_images in images_by_hash.values():
-			if len(matching_images) > 1:
-				duplicate_groups.append(matching_images)
+			seen_hashes.add(image_hash)
 
-	if duplicate_groups:
-		duplicate_images = sum(len(group) - 1 for group in duplicate_groups)
+	return duplicate_images
 
-		logger.warning(f"Camera {camera}: detected {duplicate_images} duplicate images")
+
+# Log byte-identical source images without removing them.
+def log_duplicate_source_data(
+	camera: str,
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> None:
+	duplicate_images = find_duplicate_images(
+		images=images,
+		progress_callback=progress_callback,
+	)
+
+	if duplicate_images:
+		logger.warning(f"Camera {camera}: detected {len(duplicate_images)} duplicate images")
+
+
+# Exclude byte-identical images while preserving their first occurrence.
+def filter_duplicate_images(
+	camera: str,
+	images: list[Path],
+	progress_callback: Callable[[], None] | None = None,
+) -> list[Path]:
+	duplicate_images = set(
+		find_duplicate_images(
+			images=images,
+			progress_callback=progress_callback,
+		)
+	)
+
+	if duplicate_images:
+		logger.warning(f"Camera {camera}: filtered {len(duplicate_images)} duplicate images")
+
+	return [image_path for image_path in images if image_path not in duplicate_images]
 
 
 # Validate selected images before they are passed to video processing.
@@ -447,6 +474,43 @@ def validate_images(
 	)
 
 	return valid_images
+
+
+# Filter duplicate images inside an isolated worker.
+def _filter_duplicate_images_worker(
+	camera: str,
+	images: list[Path],
+	result_queue: Queue,
+) -> None:
+	def report_progress():
+		result_queue.put(
+			(
+				"progress",
+				None,
+			)
+		)
+
+	try:
+		unique_images = filter_duplicate_images(
+			camera=camera,
+			images=images,
+			progress_callback=report_progress,
+		)
+
+		result_queue.put(
+			(
+				"success",
+				unique_images,
+			)
+		)
+
+	except OSError as error:
+		result_queue.put(
+			(
+				"error",
+				str(error),
+			)
+		)
 
 
 # Run image discovery in a separate process so blocked filesystem access
@@ -575,6 +639,24 @@ def find_images_isolated(
 		),
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Image scan",
+	)
+
+
+# Filter duplicate images with an inactivity timeout.
+def filter_duplicate_images_isolated(
+	camera: str,
+	images: list[Path],
+	stall_timeout_seconds: float,
+) -> list[Path]:
+	return run_isolated_worker(
+		camera=camera,
+		target=_filter_duplicate_images_worker,
+		args=(
+			camera,
+			images,
+		),
+		stall_timeout_seconds=stall_timeout_seconds,
+		operation_name="Duplicate image filtering",
 	)
 
 

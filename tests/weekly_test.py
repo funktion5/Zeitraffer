@@ -1,7 +1,8 @@
 import subprocess
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import src.images as images_module
 import src.jobs.weekly as weekly_module
 
 TEST_CONFIG = {
@@ -9,8 +10,296 @@ TEST_CONFIG = {
 		"latitude": 52.0,
 		"longitude": 9.0,
 		"timezone": "Europe/Berlin",
-	}
+	},
+	"daylight_buffer_minutes": 90,
+	"image_scan_stall_timeout_seconds": 10,
+	"timelapse": {
+		"daily_framerate": 10,
+	},
 }
+
+
+# Collect Daily-style images for every date in the Weekly window.
+def test_collect_weekly_images_uses_daily_selection_for_seven_dates(
+	monkeypatch,
+):
+	end_date = date(2026, 9, 16)
+	start_date = date(2026, 9, 10)
+	solar_calls = []
+	image_calls = []
+
+	def fake_get_sun_times(**kwargs):
+		solar_calls.append(kwargs)
+
+		target_date = kwargs["target_date"]
+
+		return (
+			datetime(target_date.year, target_date.month, target_date.day, 6, 30),
+			datetime(target_date.year, target_date.month, target_date.day, 19, 30),
+		)
+
+	def fake_find_images_isolated(**kwargs):
+		image_calls.append(kwargs)
+
+		target_date = kwargs["target_date"]
+
+		return [
+			Path(f"Scheunenviertel_{target_date:%y-%m-%d}_18-00-00-00.jpg"),
+			Path(f"Scheunenviertel_{target_date:%y-%m-%d}_07-00-00-00.jpg"),
+		]
+
+	monkeypatch.setattr(weekly_module, "get_sun_times", fake_get_sun_times)
+	monkeypatch.setattr(weekly_module, "find_images_isolated", fake_find_images_isolated)
+
+	duplicate_filter_calls = []
+
+	def fake_filter_duplicate_images_isolated(**kwargs):
+		duplicate_filter_calls.append(kwargs)
+
+		return kwargs["images"]
+
+	monkeypatch.setattr(
+		weekly_module,
+		"filter_duplicate_images_isolated",
+		fake_filter_duplicate_images_isolated,
+	)
+
+	images, missing_dates = weekly_module.collect_weekly_images(
+		camera="Scheunenviertel",
+		end_date=end_date,
+		location=TEST_CONFIG["location"],
+		daylight_buffer_minutes=TEST_CONFIG["daylight_buffer_minutes"],
+		stall_timeout_seconds=TEST_CONFIG["image_scan_stall_timeout_seconds"],
+	)
+
+	expected_dates = [start_date + timedelta(days=offset) for offset in range(7)]
+
+	assert [call["target_date"] for call in solar_calls] == expected_dates
+	assert [call["target_date"] for call in image_calls] == expected_dates
+	assert all(call["latitude"] == 52.0 for call in solar_calls)
+	assert all(call["longitude"] == 9.0 for call in solar_calls)
+	assert all(call["timezone"] == "Europe/Berlin" for call in solar_calls)
+	assert all(call["camera"] == "Scheunenviertel" for call in image_calls)
+	assert all(call["daylight_buffer_minutes"] == 90 for call in image_calls)
+	assert all(call["stall_timeout_seconds"] == 10 for call in image_calls)
+	assert len(images) == 14
+	assert images[0].name == "Scheunenviertel_26-09-10_07-00-00-00.jpg"
+	assert images[-1].name == "Scheunenviertel_26-09-16_18-00-00-00.jpg"
+	assert missing_dates == []
+	assert duplicate_filter_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"images": images,
+			"stall_timeout_seconds": 10,
+		}
+	]
+
+
+# Report every date without usable images while keeping available frames.
+def test_collect_weekly_images_reports_missing_dates(
+	monkeypatch,
+):
+	missing = {
+		date(2026, 9, 12),
+		date(2026, 9, 15),
+	}
+
+	monkeypatch.setattr(
+		weekly_module,
+		"get_sun_times",
+		lambda target_date, **kwargs: (
+			datetime(target_date.year, target_date.month, target_date.day, 6, 30),
+			datetime(target_date.year, target_date.month, target_date.day, 19, 30),
+		),
+	)
+
+	monkeypatch.setattr(
+		weekly_module,
+		"find_images_isolated",
+		lambda target_date, **kwargs: (
+			[]
+			if target_date in missing
+			else [Path(f"Scheunenviertel_{target_date:%y-%m-%d}_12-00-00-00.jpg")]
+		),
+	)
+
+	monkeypatch.setattr(
+		weekly_module,
+		"filter_duplicate_images_isolated",
+		lambda camera, images, stall_timeout_seconds: images,
+	)
+
+	images, missing_dates = weekly_module.collect_weekly_images(
+		camera="Scheunenviertel",
+		end_date=date(2026, 9, 16),
+		location=TEST_CONFIG["location"],
+		daylight_buffer_minutes=90,
+		stall_timeout_seconds=10,
+	)
+
+	assert len(images) == 5
+	assert missing_dates == [
+		date(2026, 9, 12),
+		date(2026, 9, 15),
+	]
+
+
+# Coverage must be checked again after Weekly duplicate filtering.
+def test_collect_weekly_images_reports_date_removed_by_duplicate_filtering(
+	monkeypatch,
+	tmp_path,
+):
+	monkeypatch.setattr(
+		weekly_module,
+		"get_sun_times",
+		lambda target_date, **kwargs: (
+			datetime(target_date.year, target_date.month, target_date.day, 6, 30),
+			datetime(target_date.year, target_date.month, target_date.day, 19, 30),
+		),
+	)
+
+	removed_date = date(2026, 9, 12)
+	images_by_date = {}
+
+	for offset in range(7):
+		current_date = date(2026, 9, 10) + timedelta(days=offset)
+		image_path = tmp_path / f"Scheunenviertel_{current_date:%y-%m-%d}_12-00-00-00.jpg"
+
+		if current_date in {
+			date(2026, 9, 11),
+			removed_date,
+		}:
+			image_path.write_bytes(b"repeated camera frame")
+
+		else:
+			image_path.write_bytes(current_date.isoformat().encode())
+
+		images_by_date[current_date] = image_path
+
+	monkeypatch.setattr(
+		weekly_module,
+		"find_images_isolated",
+		lambda target_date, **kwargs: [images_by_date[target_date]],
+	)
+
+	monkeypatch.setattr(
+		weekly_module,
+		"filter_duplicate_images_isolated",
+		lambda camera, images, stall_timeout_seconds: images_module.filter_duplicate_images(
+			camera=camera,
+			images=images,
+		),
+	)
+
+	images, missing_dates = weekly_module.collect_weekly_images(
+		camera="Scheunenviertel",
+		end_date=date(2026, 9, 16),
+		location=TEST_CONFIG["location"],
+		daylight_buffer_minutes=90,
+		stall_timeout_seconds=10,
+	)
+
+	assert len(images) == 6
+	assert missing_dates == [removed_date]
+
+
+# Create a historical Weekly directly from a complete image sequence.
+def test_create_manual_weekly_video_uses_collected_images(
+	monkeypatch,
+):
+	end_date = date(2026, 9, 16)
+	weekly_images = [
+		Path("Scheunenviertel_26-09-10_07-00-00-00.jpg"),
+		Path("Scheunenviertel_26-09-16_18-00-00-00.jpg"),
+	]
+	collection_calls = []
+
+	def fake_collect_weekly_images(**kwargs):
+		collection_calls.append(kwargs)
+
+		return weekly_images, []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"collect_weekly_images",
+		fake_collect_weekly_images,
+	)
+
+	timelapse_calls = []
+	video_path = Path(
+		"videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-16.mp4"
+	)
+
+	def fake_create_timelapse(**kwargs):
+		timelapse_calls.append(kwargs)
+
+		return video_path
+
+	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
+
+	result = weekly_module.create_manual_weekly_video(
+		config=TEST_CONFIG,
+		camera="Scheunenviertel",
+		end_date=end_date,
+	)
+
+	assert result == video_path
+	assert collection_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"end_date": end_date,
+			"location": TEST_CONFIG["location"],
+			"daylight_buffer_minutes": 90,
+			"stall_timeout_seconds": 10,
+		}
+	]
+	assert timelapse_calls == [
+		{
+			"camera": "Scheunenviertel",
+			"target_date": end_date,
+			"images": weekly_images,
+			"timelapse_type": "weekly",
+			"framerate": 10,
+			"manual_run": True,
+		}
+	]
+
+
+# Skip a historical Weekly when any date has no usable images.
+def test_create_manual_weekly_video_requires_complete_coverage(
+	monkeypatch,
+	caplog,
+):
+	missing_dates = [
+		date(2026, 9, 12),
+		date(2026, 9, 15),
+	]
+
+	monkeypatch.setattr(
+		weekly_module,
+		"collect_weekly_images",
+		lambda **kwargs: ([Path("available.jpg")], missing_dates),
+	)
+
+	timelapse_called = False
+
+	def fake_create_timelapse(**kwargs):
+		nonlocal timelapse_called
+		timelapse_called = True
+
+	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
+
+	result = weekly_module.create_manual_weekly_video(
+		config=TEST_CONFIG,
+		camera="Scheunenviertel",
+		end_date=date(2026, 9, 16),
+	)
+
+	assert result is None
+	assert timelapse_called is False
+	assert "Missing Weekly image date: 2026-09-12" in caplog.text
+	assert "Missing Weekly image date: 2026-09-15" in caplog.text
+	assert "Weekly image coverage incomplete: 5 of 7 days available" in caplog.text
 
 
 # Return exactly seven expected Daily paths for the rolling window.
@@ -289,7 +578,7 @@ def test_get_missing_weekly_video_paths(
 
 
 # Create a Weekly from the available Daily videos even when days are missing.
-def test_create_weekly_video_uses_available_dailies(
+def test_create_automatic_weekly_video_uses_available_dailies(
 	tmp_path: Path,
 	monkeypatch,
 	caplog,
@@ -377,7 +666,7 @@ def test_create_weekly_video_uses_available_dailies(
 		lambda temp_directory: cleanup_calls.append(temp_directory),
 	)
 
-	result = weekly_module.create_weekly_video(
+	result = weekly_module.create_automatic_weekly_video(
 		camera="Scheunenviertel",
 		end_date=date(
 			2026,
@@ -410,7 +699,7 @@ def test_create_weekly_video_uses_available_dailies(
 
 
 # Skip Weekly creation when no Daily videos are available.
-def test_create_weekly_video_skips_when_no_dailies_exist(
+def test_create_automatic_weekly_video_skips_when_no_dailies_exist(
 	tmp_path: Path,
 	monkeypatch,
 ):
@@ -458,7 +747,7 @@ def test_create_weekly_video_skips_when_no_dailies_exist(
 		fake_create_concat_video,
 	)
 
-	result = weekly_module.create_weekly_video(
+	result = weekly_module.create_automatic_weekly_video(
 		camera="Scheunenviertel",
 		end_date=date(
 			2026,
@@ -473,7 +762,7 @@ def test_create_weekly_video_skips_when_no_dailies_exist(
 
 
 # Keep Weekly temporary files when video creation fails.
-def test_create_weekly_video_keeps_temp_on_error(
+def test_create_automatic_weekly_video_keeps_temp_on_error(
 	tmp_path: Path,
 	monkeypatch,
 ):
@@ -534,7 +823,7 @@ def test_create_weekly_video_keeps_temp_on_error(
 	)
 
 	try:
-		weekly_module.create_weekly_video(
+		weekly_module.create_automatic_weekly_video(
 			camera="Scheunenviertel",
 			end_date=date(
 				2026,
@@ -573,19 +862,18 @@ def test_run_weekly_job_uses_yesterday(
 
 	weekly_calls = []
 
-	def fake_create_weekly_video(
+	def fake_create_automatic_weekly_video(
 		camera,
 		end_date,
-		manual_run=False,
 	):
-		weekly_calls.append({"camera": camera, "end_date": end_date, "manual_run": manual_run})
+		weekly_calls.append({"camera": camera, "end_date": end_date})
 
 		return Path(f"videos/{camera}/weekly/{camera}_weekly.mp4")
 
 	monkeypatch.setattr(
 		weekly_module,
-		"create_weekly_video",
-		fake_create_weekly_video,
+		"create_automatic_weekly_video",
+		fake_create_automatic_weekly_video,
 	)
 
 	weekly_module.run_weekly_job(
@@ -604,7 +892,6 @@ def test_run_weekly_job_uses_yesterday(
 				9,
 				16,
 			),
-			"manual_run": False,
 		},
 		{
 			"camera": "Camera-B",
@@ -613,7 +900,6 @@ def test_run_weekly_job_uses_yesterday(
 				9,
 				16,
 			),
-			"manual_run": False,
 		},
 	]
 
@@ -629,16 +915,14 @@ def test_run_weekly_job_uses_explicit_target_date(
 
 	weekly_calls = []
 
-	def fake_create_weekly_video(
+	def fake_create_automatic_weekly_video(
 		camera,
 		end_date,
-		manual_run=False,
 	):
 		weekly_calls.append(
 			{
 				"camera": camera,
 				"end_date": end_date,
-				"manual_run": manual_run,
 			}
 		)
 
@@ -646,8 +930,8 @@ def test_run_weekly_job_uses_explicit_target_date(
 
 	monkeypatch.setattr(
 		weekly_module,
-		"create_weekly_video",
-		fake_create_weekly_video,
+		"create_automatic_weekly_video",
+		fake_create_automatic_weekly_video,
 	)
 
 	weekly_module.run_weekly_job(
@@ -663,12 +947,10 @@ def test_run_weekly_job_uses_explicit_target_date(
 		{
 			"camera": "Camera-A",
 			"end_date": target_date,
-			"manual_run": False,
 		},
 		{
 			"camera": "Camera-B",
 			"end_date": target_date,
-			"manual_run": False,
 		},
 	]
 
@@ -681,7 +963,7 @@ def test_run_weekly_job_cleans_automatic_retention(
 
 	monkeypatch.setattr(
 		weekly_module,
-		"create_weekly_video",
+		"create_automatic_weekly_video",
 		lambda **kwargs: video_path,
 	)
 
@@ -717,11 +999,29 @@ def test_run_weekly_job_skips_retention_for_manual_run(
 	monkeypatch,
 ):
 	video_path = Path("videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-16.mp4")
+	manual_weekly_calls = []
+
+	def fake_create_manual_weekly_video(**kwargs):
+		manual_weekly_calls.append(kwargs)
+
+		return video_path
 
 	monkeypatch.setattr(
 		weekly_module,
-		"create_weekly_video",
-		lambda **kwargs: video_path,
+		"create_manual_weekly_video",
+		fake_create_manual_weekly_video,
+	)
+
+	automatic_weekly_called = False
+
+	def fake_create_automatic_weekly_video(**kwargs):
+		nonlocal automatic_weekly_called
+		automatic_weekly_called = True
+
+	monkeypatch.setattr(
+		weekly_module,
+		"create_automatic_weekly_video",
+		fake_create_automatic_weekly_video,
 	)
 
 	retention_calls = []
@@ -743,4 +1043,101 @@ def test_run_weekly_job_skips_retention_for_manual_run(
 		manual_run=True,
 	)
 
+	assert manual_weekly_calls == [
+		{
+			"config": TEST_CONFIG,
+			"camera": "Scheunenviertel",
+			"end_date": date(2026, 9, 16),
+		}
+	]
 	assert retention_calls == []
+	assert automatic_weekly_called is False
+
+
+# A stalled historical scan must not stop the next camera.
+def test_run_manual_weekly_continues_after_scan_timeout(
+	monkeypatch,
+	caplog,
+):
+	collection_calls = []
+
+	def fake_collect_weekly_images(camera, **kwargs):
+		collection_calls.append(camera)
+
+		if camera == "Camera-A":
+			raise TimeoutError("Image scan stalled")
+
+		return [Path("Camera-B_26-09-16_12-00-00-00.jpg")], []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"collect_weekly_images",
+		fake_collect_weekly_images,
+	)
+
+	created_cameras = []
+
+	def fake_create_timelapse(camera, **kwargs):
+		created_cameras.append(camera)
+
+		return Path(f"videos/{camera}/manual-runs/weekly/{camera}_2026-09-16.mp4")
+
+	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=["Camera-A", "Camera-B"],
+		target_date=date(2026, 9, 16),
+		manual_run=True,
+	)
+
+	assert collection_calls == ["Camera-A", "Camera-B"]
+	assert created_cameras == ["Camera-B"]
+	assert retention_calls == []
+	assert "Failed to process Weekly for camera: Camera-A" in caplog.text
+
+
+# A historical FFmpeg failure must be logged without running retention.
+def test_run_manual_weekly_handles_ffmpeg_error(
+	monkeypatch,
+	caplog,
+):
+	monkeypatch.setattr(
+		weekly_module,
+		"collect_weekly_images",
+		lambda **kwargs: ([Path("Scheunenviertel_26-09-16_12-00-00-00.jpg")], []),
+	)
+
+	def fake_create_timelapse(**kwargs):
+		raise subprocess.CalledProcessError(
+			returncode=1,
+			cmd=["ffmpeg"],
+		)
+
+	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
+
+	retention_calls = []
+
+	monkeypatch.setattr(
+		weekly_module,
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: retention_calls.append(kwargs),
+	)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=["Scheunenviertel"],
+		target_date=date(2026, 9, 16),
+		manual_run=True,
+	)
+
+	assert retention_calls == []
+	assert "Failed to process Weekly for camera: Scheunenviertel" in caplog.text

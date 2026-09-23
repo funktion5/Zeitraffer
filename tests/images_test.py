@@ -706,6 +706,92 @@ def test_validate_images_logs_duplicate_source_data(
 	assert warnings == ["Camera Test-Camera: detected 1 duplicate images"]
 
 
+# Duplicate filtering must preserve the first image without modifying source files.
+def test_filter_duplicate_images_preserves_first_source_image(
+	tmp_path,
+	monkeypatch,
+):
+	first_image = tmp_path / "first.jpg"
+	duplicate_image = tmp_path / "duplicate.jpg"
+	second_duplicate = tmp_path / "second-duplicate.jpg"
+	different_image = tmp_path / "different.jpg"
+
+	first_image.write_bytes(b"same image data")
+	duplicate_image.write_bytes(b"same image data")
+	second_duplicate.write_bytes(b"same image data")
+	different_image.write_bytes(b"different image data")
+
+	warnings = []
+
+	monkeypatch.setattr(
+		images_module.logger,
+		"warning",
+		lambda message: warnings.append(message),
+	)
+
+	result = images_module.filter_duplicate_images(
+		camera="Test-Camera",
+		images=[
+			first_image,
+			duplicate_image,
+			different_image,
+			second_duplicate,
+		],
+	)
+
+	assert result == [
+		first_image,
+		different_image,
+	]
+	assert warnings == ["Camera Test-Camera: filtered 2 duplicate images"]
+	assert first_image.read_bytes() == b"same image data"
+	assert duplicate_image.read_bytes() == b"same image data"
+	assert second_duplicate.read_bytes() == b"same image data"
+	assert different_image.read_bytes() == b"different image data"
+
+
+# Duplicate filtering must use the shared isolated worker supervisor.
+def test_filter_duplicate_images_isolated_uses_shared_worker_supervisor(
+	monkeypatch,
+):
+	images = [
+		Path("first.jpg"),
+		Path("duplicate.jpg"),
+	]
+	worker_calls = []
+
+	def fake_run_isolated_worker(**kwargs):
+		worker_calls.append(kwargs)
+
+		return [images[0]]
+
+	monkeypatch.setattr(
+		images_module,
+		"run_isolated_worker",
+		fake_run_isolated_worker,
+	)
+
+	result = images_module.filter_duplicate_images_isolated(
+		camera="Test-Camera",
+		images=images,
+		stall_timeout_seconds=10,
+	)
+
+	assert result == [images[0]]
+	assert worker_calls == [
+		{
+			"camera": "Test-Camera",
+			"target": images_module._filter_duplicate_images_worker,
+			"args": (
+				"Test-Camera",
+				images,
+			),
+			"stall_timeout_seconds": 10,
+			"operation_name": "Duplicate image filtering",
+		}
+	]
+
+
 # Hash progress must be rate-limited while large files are processed.
 def test_get_image_hash_limits_progress_reports(
 	tmp_path,

@@ -6,17 +6,20 @@ from src.images import extract_date
 
 
 CoverageType = Literal[
+	"weekly",
 	"monthly",
 	"yearly",
 ]
 
 
 COVERAGE_DAYS = {
+	"weekly": 7,
 	"monthly": 30,
 	"yearly": 365,
 }
 
 
+# Return the inclusive rolling date range for the selected coverage type.
 def get_coverage_date_range(
 	end_date: date,
 	coverage_type: CoverageType,
@@ -31,6 +34,7 @@ def get_coverage_date_range(
 	)
 
 
+# Return dates without a recognized image inside the requested range.
 def get_missing_dates(
 	images: list[Path],
 	start_date: date,
