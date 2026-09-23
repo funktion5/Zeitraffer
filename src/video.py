@@ -91,10 +91,14 @@ def run_ffmpeg(command: list[str]) -> None:
 
 		error_output.seek(0)
 
-		stderr_lines = error_output.read().decode(
-			"utf-8",
-			errors="replace",
-		).splitlines()
+		stderr_lines = (
+			error_output.read()
+			.decode(
+				"utf-8",
+				errors="replace",
+			)
+			.splitlines()
+		)
 
 		stderr_tail = "\n".join(stderr_lines[-FFMPEG_ERROR_LOG_LINES:])
 

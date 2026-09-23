@@ -228,9 +228,7 @@ def test_create_manual_weekly_video_uses_collected_images(
 	)
 
 	timelapse_calls = []
-	video_path = Path(
-		"videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-16.mp4"
-	)
+	video_path = Path("videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-16.mp4")
 
 	def fake_create_timelapse(**kwargs):
 		timelapse_calls.append(kwargs)

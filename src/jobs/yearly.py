@@ -48,9 +48,7 @@ def run_yearly_job(
 		cameras=cameras,
 	)
 
-	logger.info(
-		f"Starting Yearly timelapse job for {start_date} to {end_date} | {run_context}"
-	)
+	logger.info(f"Starting Yearly timelapse job for {start_date} to {end_date} | {run_context}")
 
 	created_count = 0
 	skipped_count = 0

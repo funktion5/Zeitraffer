@@ -15,10 +15,13 @@ def test_format_run_context_includes_run_details(
 		"test-run",
 	)
 
-	assert logger_module.format_run_context(
-		mode="historical",
-		cameras=["Scheunenviertel", "SVG"],
-	) == "run_id=test-run | mode=historical | cameras=Scheunenviertel,SVG"
+	assert (
+		logger_module.format_run_context(
+			mode="historical",
+			cameras=["Scheunenviertel", "SVG"],
+		)
+		== "run_id=test-run | mode=historical | cameras=Scheunenviertel,SVG"
+	)
 
 
 # Logger setup must install one INFO console handler on a DEBUG application logger.

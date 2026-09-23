@@ -28,9 +28,7 @@ def parse_arguments():
 	parser.add_argument(
 		"--cameras",
 		nargs="+",
-		help=(
-			"Process specified cameras for Manual Daily, or one camera for a historical Weekly."
-		),
+		help=("Process specified cameras for Manual Daily, or one camera for a historical Weekly."),
 	)
 
 	parser.add_argument(
@@ -63,11 +61,7 @@ def parse_arguments():
 # Coordinate the requested timelapse jobs.
 def main():
 	args = parse_arguments()
-	historical_weekly_run = bool(
-		args.target_date
-		and args.jobs
-		and set(args.jobs) == {"weekly"}
-	)
+	historical_weekly_run = bool(args.target_date and args.jobs and set(args.jobs) == {"weekly"})
 
 	if args.date and args.jobs:
 		raise ValueError("--date cannot be used together with --jobs.")
@@ -85,9 +79,7 @@ def main():
 		raise ValueError("Historical Weekly requires exactly one camera with --cameras.")
 
 	if args.cameras and not args.date and not historical_weekly_run:
-		raise ValueError(
-			"--cameras can only be used with --date or a historical Weekly."
-		)
+		raise ValueError("--cameras can only be used with --date or a historical Weekly.")
 	config = load_config()
 
 	job_order = (

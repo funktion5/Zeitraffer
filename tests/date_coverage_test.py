@@ -12,15 +12,18 @@ from src.date_coverage import (
 
 # Consecutive missing dates must be compacted without hiding isolated dates.
 def test_format_date_ranges_compacts_consecutive_dates():
-	assert format_date_ranges(
-		[
-			date(2026, 9, 5),
-			date(2026, 9, 3),
-			date(2026, 9, 4),
-			date(2026, 9, 8),
-			date(2026, 9, 8),
-		]
-	) == "2026-09-03 to 2026-09-05, 2026-09-08"
+	assert (
+		format_date_ranges(
+			[
+				date(2026, 9, 5),
+				date(2026, 9, 3),
+				date(2026, 9, 4),
+				date(2026, 9, 8),
+				date(2026, 9, 8),
+			]
+		)
+		== "2026-09-03 to 2026-09-05, 2026-09-08"
+	)
 
 
 # Weekly coverage includes the end date and handles calendar boundaries.
