@@ -386,6 +386,13 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ## CLI und Job-Auswahl
 
+Alle Befehle werden im Projektverzeichnis und innerhalb der virtuellen Umgebung ausgeführt:
+
+```bash
+cd ~/timelapse
+source .venv/bin/activate
+```
+
 ### Vollständiger automatischer Lauf
 
 Ohne weitere Argumente werden alle automatischen Jobs ausgeführt:
@@ -403,16 +410,34 @@ Daily
 → Yearly
 ```
 
-### Einzelnen Job ausführen
+### Einzelne automatische Jobs
 
-```bash
-python3 -m src.main --jobs yearly
-```
+Ohne `--target-date` verwenden die ausgewählten Jobs standardmäßig den letzten abgeschlossenen Kalendertag. Die Ausgaben werden unter `videos/<camera>/<job>/` gespeichert und die jeweilige automatische Retention wird angewendet.
 
-oder:
+Nur Daily für alle verfügbaren Kameras:
 
 ```bash
 python3 -m src.main --jobs daily
+```
+
+Nur Weekly für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main --jobs weekly
+```
+
+Dieses automatische Weekly wird aus den vorhandenen Daily-Videos des rollierenden Sieben-Tage-Fensters erstellt.
+
+Nur Monthly für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main --jobs monthly
+```
+
+Nur Yearly für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main --jobs yearly
 ```
 
 ### Beliebige Job-Kombination
@@ -444,11 +469,50 @@ Daily
 
 Doppelt angegebene Jobs werden nicht doppelt ausgeführt.
 
-### Historische automatische Läufe
+### Historische Job-Läufe
 
-`--target-date` setzt das Zieldatum bzw. Enddatum aller ausgewählten automatischen Jobs.
+`--target-date` setzt das Zieldatum bzw. Enddatum der ausgewählten Jobs. Historische Ausgaben werden unter `videos/<camera>/manual-runs/<job>/` gespeichert und lösen keine automatische Retention aus.
 
-Beispiel:
+Historisches Daily für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main \
+	--jobs daily \
+	--target-date 2026-09-15
+```
+
+Historisches Weekly für genau eine Kamera:
+
+```bash
+python3 -m src.main \
+	--jobs weekly \
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel
+```
+
+Das Weekly deckt `2026-09-09` bis `2026-09-15` ab, wird direkt aus Originalbildern erstellt und nur erzeugt, wenn alle sieben Tage abgedeckt sind.
+
+Historisches Monthly für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main \
+	--jobs monthly \
+	--target-date 2026-09-15
+```
+
+Das Monthly deckt `2026-08-17` bis `2026-09-15` ab.
+
+Historisches Yearly für alle verfügbaren Kameras:
+
+```bash
+python3 -m src.main \
+	--jobs yearly \
+	--target-date 2026-09-15
+```
+
+Das Yearly deckt `2025-09-16` bis `2026-09-15` ab.
+
+Mehrere historische Jobs können gemeinsam ausgeführt werden, solange kein historisches Weekly enthalten ist:
 
 ```bash
 python3 -m src.main \
@@ -466,44 +530,11 @@ Monthly
 → 2026-08-17 bis 2026-09-15
 ```
 
-Weitere Beispiele:
-
-```bash
-python3 -m src.main \
-	--jobs weekly \
-	--target-date 2026-09-15 \
-	--cameras Scheunenviertel
-```
-
-ergibt:
-
-```text
-Weekly
-→ 2026-09-09 bis 2026-09-15
-→ nur Kamera Scheunenviertel
-→ direkte Erstellung aus Originalbildern
-```
-
-und:
-
-```bash
-python3 -m src.main \
-	--jobs yearly \
-	--target-date 2026-09-15
-```
-
-ergibt:
-
-```text
-Yearly
-→ 2025-09-16 bis 2026-09-15
-```
-
 `--target-date` ist nur gemeinsam mit `--jobs` gültig.
 
-### Manual
+### Manual Daily
 
-Manual bleibt bewusst von automatischen Jobs getrennt:
+Manual Daily bleibt bewusst von den Job-Läufen getrennt und verarbeitet ein explizites Datum für alle verfügbaren Kameras:
 
 ```bash
 python3 -m src.main --date 2026-08-15
