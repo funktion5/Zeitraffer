@@ -12,8 +12,10 @@ from src.images import (
 	extract_time,
 	find_images,
 	find_images_for_date,
+	find_images_for_dates,
 	find_interval_images,
 	find_interval_images_isolated,
+	filter_duplicate_images_against_reference,
 	get_cameras,
 	get_image_range,
 )
@@ -310,6 +312,186 @@ def test_find_images_for_date_scans_directory_once(
 	assert result == sorted(expected_images)
 
 	assert scandir_calls == [camera_directory]
+
+
+# Multiple requested dates must be grouped during one directory scan.
+def test_find_images_for_dates_groups_supported_formats_in_one_scan(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+
+	first_date = date(2026, 9, 15)
+	second_date = date(2026, 9, 16)
+	first_date_images = [
+		camera_directory / "20260915T120000.jpg",
+		camera_directory / "camera_260915_130000.jpg",
+		camera_directory / "camera-26-09-15_14-00-00-00.jpg",
+	]
+	second_date_images = [
+		camera_directory / "camera_20260916T120000.jpg",
+		camera_directory / "camera_260916_130000.jpg",
+		camera_directory / "camera-26-09-16_14-00-00-00.jpg",
+	]
+
+	for image_path in first_date_images + second_date_images:
+		image_path.touch()
+
+	(camera_directory / "camera_26-09-14_120000.jpg").touch()
+	(camera_directory / "camera_26-09-15_120000.png").touch()
+
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+
+	original_scandir = images_module.os.scandir
+	scandir_calls = []
+
+	def fake_scandir(path):
+		scandir_calls.append(path)
+
+		return original_scandir(path)
+
+	monkeypatch.setattr(images_module.os, "scandir", fake_scandir)
+
+	result = find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[first_date, second_date],
+	)
+
+	assert result == {
+		first_date: sorted(first_date_images),
+		second_date: sorted(second_date_images),
+	}
+	assert scandir_calls == [camera_directory]
+
+
+# Requested dates without images must still receive an empty group.
+def test_find_images_for_dates_returns_empty_requested_date(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+	target_date = date(2026, 9, 16)
+
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+
+	result = find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[target_date],
+	)
+
+	assert result == {target_date: []}
+
+
+# Daily discovery must remove previous-day content in one camera scan.
+def test_find_daily_images_worker_filters_previous_and_current_duplicates(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+	previous_date = date(2026, 9, 15)
+	target_date = date(2026, 9, 16)
+	timezone = ZoneInfo("Europe/Berlin")
+	previous_image = camera_directory / "camera_26-09-15_02-00-00-00.jpg"
+	frozen_opening = camera_directory / "camera_26-09-16_10-00-00-00.jpg"
+	first_current = camera_directory / "camera_26-09-16_11-00-00-00.jpg"
+	current_duplicate = camera_directory / "camera_26-09-16_12-00-00-00.jpg"
+	second_current = camera_directory / "camera_26-09-16_13-00-00-00.jpg"
+	outside_daylight = camera_directory / "camera_26-09-16_15-00-00-00.jpg"
+	previous_image.write_bytes(b"frozen previous-day frame")
+	frozen_opening.write_bytes(b"frozen previous-day frame")
+	first_current.write_bytes(b"first current-day frame")
+	current_duplicate.write_bytes(b"first current-day frame")
+	second_current.write_bytes(b"second current-day frame")
+	outside_daylight.write_bytes(b"outside daylight")
+
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+	original_scandir = images_module.os.scandir
+	scandir_calls = []
+
+	def fake_scandir(path):
+		scandir_calls.append(path)
+
+		return original_scandir(path)
+
+	monkeypatch.setattr(images_module.os, "scandir", fake_scandir)
+
+	class RecordingQueue:
+		def __init__(self):
+			self.messages = []
+
+		def put(self, message):
+			self.messages.append(message)
+
+	result_queue = RecordingQueue()
+
+	images_module._find_daily_images_worker(
+		camera="Test-Camera",
+		target_date=target_date,
+		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
+		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
+		previous_date=previous_date,
+		daylight_buffer_minutes=0,
+		result_queue=result_queue,
+	)
+
+	assert result_queue.messages[-1] == (
+		"success",
+		[first_current, second_current],
+	)
+	assert scandir_calls == [camera_directory]
+	assert all(
+		image_path.exists()
+		for image_path in [
+			previous_image,
+			frozen_opening,
+			first_current,
+			current_duplicate,
+			second_current,
+			outside_daylight,
+		]
+	)
+
+
+# Daily discovery must return no frames when all current content is stale.
+def test_find_daily_images_worker_returns_empty_when_all_current_images_are_references(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+	timezone = ZoneInfo("Europe/Berlin")
+	(camera_directory / "camera_26-09-15_02-00-00-00.jpg").write_bytes(b"frozen frame")
+	(camera_directory / "camera_26-09-16_11-00-00-00.jpg").write_bytes(b"frozen frame")
+	(camera_directory / "camera_26-09-16_12-00-00-00.jpg").write_bytes(b"frozen frame")
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+
+	class RecordingQueue:
+		def __init__(self):
+			self.messages = []
+
+		def put(self, message):
+			self.messages.append(message)
+
+	result_queue = RecordingQueue()
+
+	images_module._find_daily_images_worker(
+		camera="Test-Camera",
+		target_date=date(2026, 9, 16),
+		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
+		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
+		previous_date=date(2026, 9, 15),
+		daylight_buffer_minutes=0,
+		result_queue=result_queue,
+	)
+
+	assert result_queue.messages[-1] == ("success", [])
 
 
 def test_get_image_range_uses_filename_scan_only(
@@ -809,6 +991,110 @@ def test_filter_duplicate_images_preserves_first_source_image(
 	assert different_image.read_bytes() == b"different image data"
 
 
+# Reference matches and later current duplicates must be reported separately.
+def test_filter_duplicate_images_against_reference_separates_duplicate_types(
+	tmp_path,
+	monkeypatch,
+):
+	reference_image = tmp_path / "reference.jpg"
+	reference_image.write_bytes(b"previous-day image")
+	reference_match = tmp_path / "reference-match.jpg"
+	reference_match.write_bytes(b"previous-day image")
+	first_current_image = tmp_path / "first-current.jpg"
+	first_current_image.write_bytes(b"current image")
+	current_duplicate = tmp_path / "current-duplicate.jpg"
+	current_duplicate.write_bytes(b"current image")
+	different_same_size = tmp_path / "different-same-size.jpg"
+	different_same_size.write_bytes(b"different data!")
+
+	warnings = []
+	monkeypatch.setattr(
+		images_module.logger,
+		"warning",
+		lambda message: warnings.append(message),
+	)
+
+	result = filter_duplicate_images_against_reference(
+		camera="Test-Camera",
+		reference_images=[reference_image],
+		images=[
+			reference_match,
+			first_current_image,
+			current_duplicate,
+			different_same_size,
+		],
+	)
+
+	assert result == [first_current_image, different_same_size]
+	assert warnings == [
+		"Camera Test-Camera: filtered 1 images duplicated from reference images",
+		"Camera Test-Camera: filtered 1 duplicate images",
+	]
+
+
+# Filtering against references must never modify any source file.
+def test_filter_duplicate_images_against_reference_preserves_sources(tmp_path):
+	reference_image = tmp_path / "reference.jpg"
+	matching_image = tmp_path / "matching.jpg"
+	unique_image = tmp_path / "unique.jpg"
+	reference_image.write_bytes(b"same image")
+	matching_image.write_bytes(b"same image")
+	unique_image.write_bytes(b"unique image")
+
+	result = filter_duplicate_images_against_reference(
+		camera="Test-Camera",
+		reference_images=[reference_image],
+		images=[matching_image, unique_image],
+	)
+
+	assert result == [unique_image]
+	assert reference_image.read_bytes() == b"same image"
+	assert matching_image.read_bytes() == b"same image"
+	assert unique_image.read_bytes() == b"unique image"
+
+
+# Equal file sizes alone must not cause a current image to be excluded.
+def test_filter_duplicate_images_against_reference_compares_content(tmp_path):
+	reference_image = tmp_path / "reference.jpg"
+	current_image = tmp_path / "current.jpg"
+	reference_image.write_bytes(b"reference")
+	current_image.write_bytes(b"different")
+
+	result = filter_duplicate_images_against_reference(
+		camera="Test-Camera",
+		reference_images=[reference_image],
+		images=[current_image],
+	)
+
+	assert result == [current_image]
+
+
+# Reference-only size groups must not cause unnecessary source hashing.
+def test_filter_duplicate_images_against_reference_skips_unmatched_reference_sizes(
+	tmp_path,
+	monkeypatch,
+):
+	first_reference = tmp_path / "first-reference.jpg"
+	second_reference = tmp_path / "second-reference.jpg"
+	current_image = tmp_path / "current.jpg"
+	first_reference.write_bytes(b"reference data")
+	second_reference.write_bytes(b"reference data")
+	current_image.write_bytes(b"current")
+
+	def fail_hash(**kwargs):
+		raise AssertionError("unmatched size groups must not be hashed")
+
+	monkeypatch.setattr(images_module, "get_image_hash", fail_hash)
+
+	result = filter_duplicate_images_against_reference(
+		camera="Test-Camera",
+		reference_images=[first_reference, second_reference],
+		images=[current_image],
+	)
+
+	assert result == [current_image]
+
+
 # Per-date filtering must retain identical content captured on another date.
 def test_filter_duplicate_images_by_date_resets_duplicate_tracking_each_day(
 	tmp_path,
@@ -888,6 +1174,52 @@ def test_filter_duplicate_images_isolated_uses_shared_worker_supervisor(
 			),
 			"stall_timeout_seconds": 10,
 			"operation_name": "Duplicate image filtering",
+		}
+	]
+
+
+# Daily discovery must use the shared isolated-worker supervisor.
+def test_find_daily_images_isolated_uses_shared_worker_supervisor(monkeypatch):
+	timezone = ZoneInfo("Europe/Berlin")
+	target_date = date(2026, 9, 16)
+	previous_date = date(2026, 9, 15)
+	sunrise = datetime(2026, 9, 16, 7, 0, tzinfo=timezone)
+	sunset = datetime(2026, 9, 16, 19, 0, tzinfo=timezone)
+	expected_images = [Path("current.jpg")]
+	worker_calls = []
+
+	def fake_run_isolated_worker(**kwargs):
+		worker_calls.append(kwargs)
+
+		return expected_images
+
+	monkeypatch.setattr(images_module, "run_isolated_worker", fake_run_isolated_worker)
+
+	result = images_module.find_daily_images_isolated(
+		camera="Test-Camera",
+		target_date=target_date,
+		sunrise=sunrise,
+		sunset=sunset,
+		previous_date=previous_date,
+		daylight_buffer_minutes=90,
+		stall_timeout_seconds=10,
+	)
+
+	assert result == expected_images
+	assert worker_calls == [
+		{
+			"camera": "Test-Camera",
+			"target": images_module._find_daily_images_worker,
+			"args": (
+				"Test-Camera",
+				target_date,
+				sunrise,
+				sunset,
+				previous_date,
+				90,
+			),
+			"stall_timeout_seconds": 10,
+			"operation_name": "Daily image scan",
 		}
 	]
 

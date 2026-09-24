@@ -88,7 +88,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 
 	monkeypatch.setattr(
 		daily_module,
-		"find_images_isolated",
+		"find_daily_images_isolated",
 		lambda **kwargs: images,
 	)
 
@@ -328,7 +328,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 
 	monkeypatch.setattr(
 		daily_module,
-		"find_images_isolated",
+		"find_daily_images_isolated",
 		lambda **kwargs: images,
 	)
 
@@ -409,7 +409,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 
 	monkeypatch.setattr(
 		daily_module,
-		"find_images_isolated",
+		"find_daily_images_isolated",
 		lambda **kwargs: images,
 	)
 
@@ -488,7 +488,7 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 		),
 	)
 
-	def fake_find_images_isolated(
+	def fake_find_daily_images_isolated(
 		camera,
 		**kwargs,
 	):
@@ -500,8 +500,8 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 
 	monkeypatch.setattr(
 		daily_module,
-		"find_images_isolated",
-		fake_find_images_isolated,
+		"find_daily_images_isolated",
+		fake_find_daily_images_isolated,
 	)
 
 	created_cameras = []
@@ -539,6 +539,58 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 	assert "created=1 | skipped=0 | failed=1" in caplog.text
 
 
+# A day containing only previous-day content must not replace a Daily video.
+def test_run_daily_job_skips_when_reference_filter_removes_all_images(
+	monkeypatch,
+	caplog,
+):
+	monkeypatch.setattr(
+		daily_module,
+		"get_sun_times",
+		lambda **kwargs: (
+			TEST_SUNRISE,
+			TEST_SUNSET,
+		),
+	)
+	monkeypatch.setattr(
+		daily_module,
+		"find_daily_images_isolated",
+		lambda **kwargs: [],
+	)
+	monkeypatch.setattr(
+		daily_module,
+		"log_missing_images_diagnostic",
+		lambda camera: None,
+	)
+
+	def fail_video_creation(**kwargs):
+		raise AssertionError("video creation must be skipped")
+
+	def fail_retention_cleanup(**kwargs):
+		raise AssertionError("retention must be skipped")
+
+	monkeypatch.setattr(
+		daily_module,
+		"create_timelapse",
+		fail_video_creation,
+	)
+	monkeypatch.setattr(
+		daily_module,
+		"cleanup_daily_retention",
+		fail_retention_cleanup,
+	)
+
+	daily_module.run_daily_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		framerate=DAILY_FRAMERATE,
+		target_date=date(2026, 9, 16),
+	)
+
+	assert "Found 0 images - skipping camera." in caplog.text
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
 def test_run_daily_job_uses_explicit_target_date(
 	monkeypatch,
 ):
@@ -565,7 +617,7 @@ def test_run_daily_job_uses_explicit_target_date(
 			TEST_SUNSET,
 		)
 
-	def fake_find_images_isolated(
+	def fake_find_daily_images_isolated(
 		**kwargs,
 	):
 		image_calls.append(kwargs)
@@ -592,8 +644,8 @@ def test_run_daily_job_uses_explicit_target_date(
 
 	monkeypatch.setattr(
 		daily_module,
-		"find_images_isolated",
-		fake_find_images_isolated,
+		"find_daily_images_isolated",
+		fake_find_daily_images_isolated,
 	)
 
 	monkeypatch.setattr(
@@ -618,9 +670,10 @@ def test_run_daily_job_uses_explicit_target_date(
 	)
 
 	assert sun_calls[0]["target_date"] == target_date
+	assert len(sun_calls) == 1
 
 	assert image_calls[0]["target_date"] == target_date
-	assert image_calls[0]["remove_duplicates"] is True
+	assert image_calls[0]["previous_date"] == date(2026, 8, 14)
 
 	assert video_calls[0]["target_date"] == target_date
 

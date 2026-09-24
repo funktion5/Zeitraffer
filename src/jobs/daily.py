@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from src.diagnostics import log_missing_images_diagnostic
-from src.images import find_images_isolated
+from src.images import find_daily_images_isolated
 from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
@@ -77,6 +77,7 @@ def run_daily_job(
 		longitude=location["longitude"],
 		timezone=location["timezone"],
 	)
+	previous_date = target_date - timedelta(days=1)
 
 	logger.info(f"Sunrise: {sunrise}")
 
@@ -93,14 +94,14 @@ def run_daily_job(
 		try:
 			# Run image discovery in an isolated worker so a blocked camera
 			# cannot stall the complete daily job.
-			images = find_images_isolated(
+			images = find_daily_images_isolated(
 				camera=camera,
 				target_date=target_date,
 				sunrise=sunrise,
 				sunset=sunset,
+				previous_date=previous_date,
 				daylight_buffer_minutes=daylight_buffer_minutes,
 				stall_timeout_seconds=image_scan_stall_timeout_seconds,
-				remove_duplicates=True,
 			)
 
 			# Missing images only skip the affected camera.
