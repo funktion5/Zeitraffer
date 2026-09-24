@@ -2,10 +2,44 @@
 
 declare(strict_types=1);
 
+function getIgnoredCameras(): array
+{
+	$configPath = "/home/zruser/timelapse/config/config.json";
+
+	if (!is_file($configPath) || !is_readable($configPath)) {
+		return [];
+	}
+
+	$configContent = file_get_contents($configPath);
+
+	if ($configContent === false) {
+		return [];
+	}
+
+	$config = json_decode($configContent, true);
+
+	if (!is_array($config)) {
+		return [];
+	}
+
+	$ignoredCameras = $config["ignored_cameras"] ?? [];
+
+	if (!is_array($ignoredCameras)) {
+		return [];
+	}
+
+	return array_values(
+		array_filter(
+			$ignoredCameras,
+			fn($camera): bool => is_string($camera),
+		),
+	);
+}
 
 function findAvailableCameras(): array
 {
 	$cameraRoot = "/mnt/cameras";
+	$ignoredCameras = getIgnoredCameras();
 
 	if (!is_dir($cameraRoot) || !is_readable($cameraRoot)) {
 		return [];
@@ -19,6 +53,10 @@ function findAvailableCameras(): array
 		}
 
 		if (str_starts_with($entry, ".")) {
+			continue;
+		}
+
+		if (in_array($entry, $ignoredCameras, true)) {
 			continue;
 		}
 
