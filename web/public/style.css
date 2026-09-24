@@ -1,0 +1,569 @@
+/* -------------------------------------------------------------------------- */
+/* Base                                                                       */
+/* -------------------------------------------------------------------------- */
+
+:root {
+	--color-background: #07151d;
+	--color-surface: #0d202b;
+	--color-surface-light: #122b38;
+	--color-surface-hover: #183847;
+
+	--color-border: #214554;
+	--color-border-light: #2b5b6d;
+
+	--color-text: #e5f2f5;
+	--color-text-muted: #8eabb5;
+
+	--color-primary: #37b7c8;
+	--color-primary-hover: #55cad7;
+	--color-primary-dark: #187989;
+
+	--color-success: #52c7a5;
+	--color-danger: #df7171;
+
+	--radius-small: 6px;
+	--radius-medium: 10px;
+
+	--shadow-small: 0 4px 14px rgb(0 0 0 / 18%);
+}
+
+* {
+	box-sizing: border-box;
+}
+
+html {
+	color-scheme: dark;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+
+	background: var(--color-background);
+	color: var(--color-text);
+
+	font-family:
+		system-ui,
+		-apple-system,
+		BlinkMacSystemFont,
+		"Segoe UI",
+		sans-serif;
+
+	line-height: 1.5;
+}
+
+a {
+	color: var(--color-primary);
+	text-decoration: none;
+}
+
+a:hover {
+	color: var(--color-primary-hover);
+}
+
+h1,
+h2,
+h3,
+p {
+	margin-top: 0;
+}
+
+h1 {
+	font-size: 2rem;
+	font-weight: 600;
+}
+
+h2 {
+	font-size: 1.25rem;
+	font-weight: 600;
+}
+
+h3 {
+	font-size: 1rem;
+	font-weight: 600;
+	color: var(--color-text-muted);
+}
+
+ul {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Header                                                                     */
+/* -------------------------------------------------------------------------- */
+
+.main-header {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 2rem;
+
+	min-height: 90px;
+	padding: 1.25rem 2rem;
+
+	background: var(--color-surface);
+	border-bottom: 1px solid var(--color-border);
+}
+
+.main-header nav a {
+	display: inline-flex;
+	align-items: center;
+
+	padding: 0.55rem 0.8rem;
+
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text-muted);
+}
+
+.main-header nav a:hover {
+	background: var(--color-surface-light);
+	color: var(--color-text);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Storage                                                                    */
+/* -------------------------------------------------------------------------- */
+
+.storage-overview {
+	display: flex;
+	align-items: center;
+	gap: 1rem;
+}
+
+.storage-chart {
+	display: grid;
+	place-items: center;
+
+	width: 72px;
+	height: 72px;
+	flex-shrink: 0;
+
+	border-radius: 50%;
+
+	background:
+		conic-gradient(
+			var(--color-primary) 0 var(--storage-used),
+			var(--color-surface-light) var(--storage-used) 100%
+		);
+
+	position: relative;
+}
+
+.storage-chart::after {
+	content: "";
+
+	position: absolute;
+
+	width: 52px;
+	height: 52px;
+
+	background: var(--color-surface);
+
+	border-radius: 50%;
+}
+
+.storage-chart span {
+	position: relative;
+	z-index: 1;
+
+	font-size: 0.8rem;
+	font-weight: 700;
+
+	color: var(--color-text);
+}
+
+.storage-overview dl {
+	display: flex;
+	gap: 0.75rem;
+	margin: 0;
+}
+
+.storage-overview dl > div {
+	min-width: 105px;
+	padding: 0.55rem 0.75rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+}
+
+.storage-overview dt {
+	margin-bottom: 0.15rem;
+
+	color: var(--color-text-muted);
+	font-size: 0.7rem;
+	text-transform: uppercase;
+	letter-spacing: 0.05em;
+}
+
+.storage-overview dd {
+	margin: 0;
+
+	font-size: 0.9rem;
+	font-weight: 600;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Main layout                                                               */
+/* -------------------------------------------------------------------------- */
+
+main {
+	width: min(1500px, calc(100% - 4rem));
+	margin: 0 auto;
+	padding: 2rem 0 4rem;
+}
+
+main > h1 {
+	margin-bottom: 2rem;
+}
+
+
+/* Camera page main grid */
+
+main > div {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) 320px;
+	gap: 1.5rem;
+	align-items: start;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Sections / panels                                                          */
+/* -------------------------------------------------------------------------- */
+
+section {
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-medium);
+
+	box-shadow: var(--shadow-small);
+}
+
+main section {
+	padding: 1.25rem;
+}
+
+section h2 {
+	padding-bottom: 0.75rem;
+	margin-bottom: 1.25rem;
+
+	border-bottom: 1px solid var(--color-border);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Video player                                                               */
+/* -------------------------------------------------------------------------- */
+
+main > div > section:first-child {
+	min-width: 0;
+}
+
+video {
+	display: block;
+
+	width: 100%;
+	max-width: 100%;
+	height: auto;
+
+	background: #000;
+
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Video library                                                              */
+/* -------------------------------------------------------------------------- */
+
+main > div > section:nth-child(2) {
+	grid-column: 2;
+	grid-row: 1;
+
+	max-height: 650px;
+	overflow-y: auto;
+}
+
+main > div > section:nth-child(2) details {
+	margin-bottom: 0.75rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+}
+
+main > div > section:nth-child(2) summary {
+	padding: 0.75rem;
+
+	color: var(--color-text);
+	font-weight: 600;
+
+	cursor: pointer;
+	user-select: none;
+}
+
+main > div > section:nth-child(2) details[open] summary {
+	border-bottom: 1px solid var(--color-border);
+}
+
+main > div > section:nth-child(2) details ul {
+	padding: 0.75rem;
+}
+
+main > div > section:nth-child(2) li + li {
+	margin-top: 0.35rem;
+}
+
+main > div > section:nth-child(2) li a {
+	display: block;
+
+	padding: 0.6rem 0.7rem;
+
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+
+	background: var(--color-surface-light);
+	border: 1px solid transparent;
+	border-radius: var(--radius-small);
+
+	color: var(--color-text-muted);
+
+	font-size: 0.875rem;
+}
+
+main > div > section:nth-child(2) li a:hover {
+	background: var(--color-surface-hover);
+	border-color: var(--color-border-light);
+
+	color: var(--color-text);
+}
+
+main > div > section:nth-child(2) summary {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	padding: 0.75rem;
+
+	color: var(--color-text);
+	font-weight: 600;
+
+	cursor: pointer;
+	user-select: none;
+
+	list-style: none;
+}
+
+main > div > section:nth-child(2) summary::-webkit-details-marker {
+	display: none;
+}
+
+main > div > section:nth-child(2) summary::before {
+	content: "›";
+
+	display: inline-block;
+
+	color: var(--color-primary);
+
+	font-size: 1.1rem;
+	font-weight: 700;
+
+	transition: transform 0.15s ease;
+}
+
+main > div > section:nth-child(2) details[open] summary::before {
+	transform: rotate(90deg);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Video creation                                                             */
+/* -------------------------------------------------------------------------- */
+
+main > div > section:nth-child(3) {
+	grid-column: 1 / -1;
+
+	margin-top: 0.5rem;
+}
+
+form {
+	display: flex;
+	flex-direction: column;
+	gap: 1.25rem;
+}
+
+fieldset {
+	display: flex;
+	gap: 1rem;
+
+	margin: 0;
+	padding: 1rem;
+
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+}
+
+legend {
+	padding: 0 0.5rem;
+
+	color: var(--color-text-muted);
+}
+
+label {
+	color: var(--color-text);
+}
+
+fieldset label {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+
+	cursor: pointer;
+}
+
+input[type="radio"] {
+	accent-color: var(--color-primary);
+}
+
+input[type="date"] {
+	display: block;
+
+	margin-top: 0.4rem;
+	padding: 0.65rem 0.75rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text);
+
+	font: inherit;
+}
+
+input[type="date"]:focus {
+	outline: 2px solid var(--color-primary-dark);
+	outline-offset: 2px;
+}
+
+button {
+	width: fit-content;
+
+	padding: 0.7rem 1.2rem;
+
+	background: var(--color-primary-dark);
+	border: 1px solid var(--color-primary);
+	border-radius: var(--radius-small);
+
+	color: #effcff;
+
+	font: inherit;
+	font-weight: 600;
+
+	cursor: pointer;
+}
+
+button:hover {
+	background: var(--color-primary);
+	color: var(--color-background);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Job status                                                                 */
+/* -------------------------------------------------------------------------- */
+
+#job-live-status {
+	width: fit-content;
+
+	padding: 0.6rem 0.8rem;
+
+	background: rgb(55 183 200 / 10%);
+	border: 1px solid var(--color-primary-dark);
+	border-radius: var(--radius-small);
+
+	color: var(--color-primary);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Dialog                                                                     */
+/* -------------------------------------------------------------------------- */
+
+dialog {
+	width: min(450px, calc(100% - 2rem));
+
+	padding: 1.5rem;
+
+	background: var(--color-surface);
+	border: 1px solid var(--color-border-light);
+	border-radius: var(--radius-medium);
+
+	color: var(--color-text);
+
+	box-shadow: 0 20px 60px rgb(0 0 0 / 45%);
+}
+
+dialog::backdrop {
+	background: rgb(0 10 15 / 70%);
+}
+
+dialog form {
+	margin-top: 1.5rem;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Camera overview                                                            */
+/* -------------------------------------------------------------------------- */
+
+body > section {
+	width: min(900px, calc(100% - 4rem));
+	margin: 2rem auto;
+	padding: 1.25rem;
+}
+
+body > h1 {
+	width: min(900px, calc(100% - 4rem));
+	margin: 3rem auto 0;
+}
+
+body > section li + li {
+	margin-top: 0.5rem;
+}
+
+body > section li a {
+	display: block;
+
+	padding: 0.8rem 1rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text);
+}
+
+body > section li a:hover {
+	background: var(--color-surface-hover);
+	border-color: var(--color-primary-dark);
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Scrollbars                                                                 */
+/* -------------------------------------------------------------------------- */
+
+* {
+	scrollbar-width: thin;
+	scrollbar-color: var(--color-border-light) var(--color-surface);
+}

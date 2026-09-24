@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . "/../src/video-library.php";
 $cameras = findAvailableCameras();
+$storage = getStorageUsage();
 ?>
 
 <!DOCTYPE html>
@@ -11,9 +12,15 @@ $cameras = findAvailableCameras();
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<link rel="stylesheet" href="/style.css">
   <title>Document</title>
 </head>
 <body>
+	<header>
+		
+			<?php require __DIR__ . "/../src/components/header.php"; ?>
+	
+	</header>
 	<h1>Available cameras</h1>
 	
 	<section>

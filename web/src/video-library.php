@@ -119,10 +119,17 @@ function getStorageUsage(): ?array
 		return null;
 	}
 
+	$used = $total - $available;
+
+	$usedPercent = $total > 0
+		? ($used / $total) * 100
+		: 0;
+
 	return [
 		"total" => formatBytes($total),
-		"used" => formatBytes($total - $available),
+		"used" => formatBytes($used),
 		"available" => formatBytes($available),
+		"usedPercent" => round($usedPercent, 1),
 	];
 }
 

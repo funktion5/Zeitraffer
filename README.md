@@ -26,7 +26,7 @@ Implementiert sind:
 - isolierte Worker mit Stall-Timeout
 - 0-Byte-Validierung
 - SHA-256-basierte Erkennung byte-identischer Quelldaten
-- Duplicate-Filterung für Daily, historische Weeklys und Monthly
+- Duplicate-Filterung für Daily inklusive Vortagsreferenz, historische Weeklys und Monthly
 - Duplicate-aware Yearly-Auswahl
 - sichere temporäre Videoerstellung
 - Log-Retention
@@ -35,6 +35,8 @@ Implementiert sind:
 - Run-IDs und Ergebniszusammenfassungen pro Job
 - Config-Tests für Pfad, JSON-Syntax und Struktur
 - Ruff für Linting und Formatierung
+- lokale PHP-Weboberfläche für historische Daily-, Weekly-, Monthly- und Yearly-Läufe
+- asynchrone Web-Jobs mit Statusabfrage und Abschlussdialog
 
 Ohne Job-Auswahl läuft der automatische Workflow weiterhin in dieser Reihenfolge:
 
@@ -56,7 +58,7 @@ Daily
 
 Nicht ausgewählte Jobs werden dabei übersprungen.
 
-Manual-Läufe sind davon unabhängig und werden ausschließlich über `--date` gestartet.
+Der klassische Manual-Daily-Lauf ist davon unabhängig und wird ausschließlich über `--date` gestartet. Historische Daily-, Weekly-, Monthly- und Yearly-Läufe verwenden dagegen `--jobs` zusammen mit `--target-date`.
 
 ---
 
@@ -68,7 +70,11 @@ timelapse/
 │   ├── config.json
 │   └── mount.env.example
 ├── scripts/
-│   └── cameras-sshfs-preflight
+│   ├── cameras-sshfs-preflight
+│   ├── test_workflow.sh
+│   ├── timelapse-web-status.sh
+│   ├── timelapse-web-trigger
+│   └── timelapse-web-worker
 ├── src/
 │   ├── jobs/
 │   │   ├── daily.py
@@ -94,6 +100,7 @@ timelapse/
 │   ├── daily_test.py
 │   ├── date_coverage_test.py
 │   ├── diagnostics_test.py
+│   ├── image_worker_test.py
 │   ├── images_test.py
 │   ├── logger_test.py
 │   ├── main_test.py
@@ -101,20 +108,37 @@ timelapse/
 │   ├── monthly_test.py
 │   ├── run_state_test.py
 │   ├── video_test.py
+│   ├── web_status_endpoint_test.py
+│   ├── web_status_test.py
 │   ├── weekly_test.py
 │   ├── yearly_selection_test.py
 │   ├── yearly_test.py
 │   └── conftest.py
+├── web/
+│   ├── public/
+│   │   ├── camera.php
+│   │   ├── index.php
+│   │   ├── job-status.php
+│   │   └── style.css
+│   └── src/
+│       ├── components/
+│       │   └── header.php
+│       ├── job-runner.php
+│       └── video-library.php
 ├── logs/
 ├── state/
 ├── temp/
 ├── videos/
+├── create_test_video.py
+├── monthly_range_test.py
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
 Runtime-Daten unter `logs/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
+
+`create_test_video.py`, `monthly_range_test.py` und `scripts/test_workflow.sh` sind ältere, manuell ausgeführte Entwicklungs- und Diagnoseskripte. Sie gehören nicht zum produktiven Workflow und nicht zur automatisierten pytest-Suite. `create_test_video.py` verwendet noch eine inzwischen entfernte `create_video`-Schnittstelle und ist im aktuellen Stand nicht lauffähig.
 
 ---
 
@@ -146,6 +170,8 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - verarbeitet standardmäßig gestern
 - kann optional ein explizites `target_date` verarbeiten
 - nutzt Sunrise/Sunset inklusive konfigurierbarem Buffer
+- liest Zieltag und Vortag gemeinsam in einem isolierten Scan
+- entfernt Zieltag-Frames, deren Inhalt bereits am Vortag vorhanden war
 - erstellt Daily-Videos
 - hält ein exaktes rollierendes 7-Tage-Fenster relativ zum verarbeiteten Zieldatum
 
@@ -181,7 +207,7 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 Allgemeine Bildlogik:
 
 - Kameraerkennung
-- `os.scandir()`-basierte Bildsuche
+- `os.scandir()`-basierte Bildsuche für einzelne oder mehrere angeforderte Tage
 - Datums- und Uhrzeitextraktion aus bekannten Dateinamensformaten
 - daylight-basierte Auswahl
 - Interval-Suche
@@ -279,7 +305,7 @@ Beispiel:
     "timezone": "Europe/Berlin"
   },
   "daylight_buffer_minutes": 90,
-  "image_scan_stall_timeout_seconds": 10,
+  "image_scan_stall_timeout_seconds": 60,
   "log_retention_days": 30,
   "ignored_cameras": [
     "Reolink"
@@ -314,7 +340,7 @@ Die Originalbilder werden unter `/mnt/cameras` bereitgestellt. Das Repository en
 - `scripts/cameras-sshfs-preflight`
 - `config/mount.env.example`
 
-Der systemd-Service mountet den entfernten Storage mit SSHFS ausschließlich lesend (`-o ro`). Vor dem Mount prüft das Preflight-Skript, ob bereits ein erreichbarer Mount existiert oder ein nicht erreichbarer FUSE-Mount bereinigt werden muss.
+Der systemd-Service mountet den entfernten Storage mit SSHFS ausschließlich lesend (`-o ro`). Die Option `allow_other` erlaubt dem Apache-Benutzer `www-data`, den Mount im Rahmen der normalen Dateirechte zu lesen. Sie erteilt keine Schreibrechte. Vor dem Mount prüft das Preflight-Skript, ob bereits ein erreichbarer Mount existiert oder ein nicht erreichbarer FUSE-Mount bereinigt werden muss.
 
 Die produktiven Verbindungswerte liegen außerhalb des Repositories unter:
 
@@ -367,7 +393,7 @@ Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Oper
 
 Die Duplicate-Behandlung hängt vom Job ab:
 
-- Daily filtert spätere byte-identische Frames und behält das erste chronologische Bild.
+- Daily scannt Zieltag und Vortag gemeinsam. Byte-identische Zieltag-Frames, deren Inhalt an irgendeinem Zeitpunkt des Vortags vorhanden war, werden entfernt. Danach werden spätere Duplikate innerhalb des Zieltags entfernt.
 - Manual erkennt und protokolliert byte-identische Quelldaten, entfernt sie aber nicht aus der Auswahl.
 - Historische Weeklys filtern byte-identische Frames einmal über die vollständige Sieben-Tage-Sequenz.
 - Monthly filtert byte-identische Frames unabhängig innerhalb jedes Kalendertages. Gleicher Inhalt an unterschiedlichen Tagen bleibt erhalten.
@@ -395,8 +421,12 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 - Zieldatum: standardmäßig gestern
 - optional: explizites Zieldatum über `--target-date`
 - Quelle: Originalbilder
-- Auswahl: Sunrise bis Sunset inklusive Buffer
-- byte-identische Bilder werden vor der Erstellung gefiltert
+- Auswahl: Sunrise-/Sunset-Fenster inklusive Buffer für den Zieltag; der vollständige Vortag dient als Duplicate-Referenz
+- Zieltag und Vortag werden in einem gemeinsamen Verzeichnis-Scan gefunden
+- der Vortag dient ausschließlich als Duplicate-Referenz und wird nicht ins Daily übernommen
+- Zieltag-Frames mit byte-identischem Inhalt vom Vortag werden ausgeschlossen
+- spätere byte-identische Bilder innerhalb des Zieltags werden ebenfalls ausgeschlossen
+- bleibt danach kein Zieltag-Frame übrig, wird die Kamera übersprungen und ein vorhandenes Video bleibt erhalten
 - Framerate: `daily_framerate`
 - Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
 
@@ -786,7 +816,7 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr:
 
 ```cron
-0 2 * * * flock -n /tmp/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'
+0 2 * * * flock -n /home/zruser/timelapse/state/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'
 ```
 
 `flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
@@ -796,13 +826,13 @@ Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 U
 Beim Booten wird der Workflow nur gestartet, wenn `state/run-in-progress` existiert. Da der Kamera-Storage eventuell noch nicht bereit ist, wartet Cron zunächst auf einen echten Mount unter `/mnt/cameras`:
 
 ```cron
-@reboot if [ -f /home/zruser/timelapse/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n /tmp/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'; fi
+@reboot if [ -f /home/zruser/timelapse/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n /home/zruser/timelapse/state/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'; fi
 ```
 
 Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
 
 ```text
-/tmp/zeitraffer-run.lock
+/home/zruser/timelapse/state/zeitraffer-run.lock
 ```
 
 Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
@@ -863,6 +893,179 @@ Programmierfehler wie `TypeError` oder `AttributeError` werden nicht pauschal ve
 
 ---
 
+## Lokale Weboberfläche
+
+Die Weboberfläche ist eine kleine PHP-Anwendung ohne Datenbank und ohne separates API-Framework. Sie ist für das vertrauenswürdige lokale Netzwerk vorgesehen.
+
+```text
+Browser
+  → Apache und PHP
+  → eingeschränkter Wrapper
+  → bestehende Python-CLI
+  → Timelapse-Jobs und FFmpeg
+  → videos/ + logs/ + temp/ + state/
+```
+
+### Aktueller Funktionsumfang
+
+Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die Kameraseite bietet:
+
+- Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
+- Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`
+- Wiedergabe des ausgewählten MP4 direkt im Browser
+- Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum
+- historische Daily-, Weekly-, Monthly- und Yearly-Läufe
+- Live-Status per Polling im Abstand von fünf Sekunden
+- Abschlussdialog nach erfolgreichem oder fehlgeschlagenem Job
+
+Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Automatische Videos werden noch nicht in der Oberfläche aufgelistet. Eine Löschfunktion ist nicht implementiert.
+
+Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse, wertet `ignored_cameras` aus `config/config.json` derzeit aber nicht aus. Dadurch kann eine global ignorierte Kamera in der Oberfläche erscheinen; die Python-CLI lehnt einen Job für diese Kamera anschließend ab.
+
+### Webdateien
+
+```text
+web/public/index.php              Kameraübersicht
+web/public/camera.php             Player, Bibliothek, Formular und Status-Polling
+web/public/job-status.php         read-only JSON-Status-Endpunkt
+web/public/style.css              Darstellung und responsives Layout
+web/src/components/header.php     gemeinsamer Header und Speicheranzeige
+web/src/video-library.php         Kamera-, Video- und Speicherermittlung
+web/src/job-runner.php            Aufruf des fest installierten Triggers
+```
+
+`web/public/` ist der einzige Apache-DocumentRoot. PHP-Quellcode außerhalb dieses Verzeichnisses, Python-Code, Konfiguration, Logs, temporäre Dateien und Statusdateien werden nicht direkt durch Apache veröffentlicht.
+
+### Job-Ausführung und Status
+
+Ein gültiger Formular-POST wird durch einen Session-basierten CSRF-Token geschützt. PHP prüft Kamera, Job-Typ und ISO-Datum und ruft anschließend ohne Shell-Auswertung diesen festen Befehl auf:
+
+```text
+sudo -n -u zruser /usr/local/sbin/timelapse-web-trigger \
+  <job-id> <job> <zieldatum> <kamera>
+```
+
+Die weitere Kette lautet:
+
+```text
+timelapse-web-trigger
+  → validiert Job-ID, Job, Datum und Kamera
+  → belegt state/zeitraffer-run.lock ohne Warten
+  → schreibt running
+  → startet timelapse-web-worker im Hintergrund
+
+timelapse-web-worker
+  → startet python3 -m src.main --jobs ... --target-date ... --cameras ...
+  → prüft, ob die erwartete MP4 neu veröffentlicht oder atomar ersetzt wurde
+  → schreibt completed oder failed
+```
+
+Statusdateien liegen unter:
+
+```text
+state/web-jobs/<32-stellige-job-id>.status
+```
+
+Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Der Browser speichert nur das einmalige Endergebnis in `sessionStorage`, lädt danach die Kameraseite neu und öffnet einen nativen `<dialog>`.
+
+Ein Neuladen der Seite während eines laufenden Jobs verwirft derzeit das aktive Browser-Polling. Der Job läuft weiter und seine Statusdatei bleibt erhalten. Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementiert.
+
+Der Trigger verwendet denselben Lock wie Cron:
+
+```text
+/home/zruser/timelapse/state/zeitraffer-run.lock
+```
+
+Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft.
+
+### Apache-Konfiguration
+
+Die aktive Site verwendet sinngemäß folgende Konfiguration:
+
+```apache
+<VirtualHost *:80>
+    ServerName zeitraffer.local
+
+    DocumentRoot /home/zruser/timelapse/web/public
+    DirectoryIndex index.php
+
+    <Directory /home/zruser/timelapse/web/public>
+        Options -Indexes
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    Alias /videos/ /home/zruser/timelapse/videos/
+
+    <Directory /home/zruser/timelapse/videos>
+        Options -Indexes
+        AllowOverride None
+        Require all granted
+    </Directory>
+
+    ErrorLog ${APACHE_LOG_DIR}/zeitraffer-error.log
+    CustomLog ${APACHE_LOG_DIR}/zeitraffer-access.log combined
+</VirtualHost>
+```
+
+Die Konfiguration wird als `/etc/apache2/sites-available/zeitraffer.conf` gespeichert und anschließend aktiviert:
+
+```bash
+sudo a2dissite 000-default.conf
+sudo a2ensite zeitraffer.conf
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+Die Site wird unter `http://zeitraffer.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
+
+Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte. Der Wrapper wird als root-eigene, für `www-data` nicht beschreibbare Kopie unter `/usr/local` installiert.
+
+Die aktuelle Site besitzt keine Anmeldung und verwendet HTTP. Sie darf deshalb nicht ohne zusätzliche Authentifizierung und Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
+
+### Wrapper installieren
+
+Die versionierten Skripte werden als geschützte Laufzeitkopien installiert:
+
+```bash
+sudo install -d -o root -g root -m 755 /usr/local/libexec
+sudo install -o root -g root -m 644 \
+  scripts/timelapse-web-status.sh \
+  /usr/local/libexec/timelapse-web-status.sh
+sudo install -o root -g root -m 755 \
+  scripts/timelapse-web-worker \
+  /usr/local/libexec/timelapse-web-worker
+sudo install -o root -g root -m 755 \
+  scripts/timelapse-web-trigger \
+  /usr/local/sbin/timelapse-web-trigger
+```
+
+Die sudoers-Regel erlaubt ausschließlich den festen Trigger als `zruser`:
+
+```sudoers
+www-data ALL=(zruser) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
+```
+
+Die Regel wird mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
+
+```bash
+sudo visudo -f /etc/sudoers.d/timelapse-web
+```
+
+Eingaben werden zusätzlich in PHP und im Trigger validiert; die sudoers-Regel allein ersetzt diese Prüfungen nicht.
+
+Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut mit `sudo install` aktualisiert werden.
+
+### Webtests
+
+Die Status-, Lock- und Worker-Logik sowie der PHP-Status-Endpunkt werden mit pytest geprüft:
+
+```bash
+python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py
+```
+
+Die Tests prüfen unter anderem atomare Statuswechsel, ungültige Job-IDs, den gemeinsamen Lock, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs.
+
 ## Installation
 
 Virtuelle Umgebung erstellen und aktivieren:
@@ -888,7 +1091,7 @@ FFmpeg muss systemweit verfügbar sein.
 
 ### SSHFS-Mount installieren
 
-Voraussetzungen sind `sshfs`, `fusermount3`, ein vorhandener Mountpoint `/mnt/cameras`, ein SSH-Schlüssel und ein passender `known_hosts`-Eintrag für `StrictHostKeyChecking=yes`.
+Voraussetzungen sind `sshfs`, `fusermount3`, ein vorhandener Mountpoint `/mnt/cameras`, ein SSH-Schlüssel und ein passender `known_hosts`-Eintrag für `StrictHostKeyChecking=yes`. Weil der Service `allow_other` verwendet, muss in `/etc/fuse.conf` außerdem die Zeile `user_allow_other` aktiviert sein.
 
 Repository-Dateien installieren:
 

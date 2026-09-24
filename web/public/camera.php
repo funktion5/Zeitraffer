@@ -101,27 +101,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="/style.css">
   <title>Camera</title>
 </head>
 <body>
   <header>
-    <nav aria-label="Main navigation">
-      <a href="/">Back to cameras</a>
-    </nav>
-    <dl aria-label="Storage usage">
-	    <div>
-		    <dt>Total storage</dt>
-		    <dd><?= htmlspecialchars($storage["total"], ENT_QUOTES, "UTF-8") ?></dd>
-	    </div>
-	    <div>
-		    <dt>Storage used</dt>
-		    <dd><?= htmlspecialchars($storage["used"], ENT_QUOTES, "UTF-8") ?></dd>
-	    </div>
-	    <div>
-		    <dt>Available storage</dt>
-		    <dd><?= htmlspecialchars($storage["available"], ENT_QUOTES, "UTF-8") ?></dd>
-	    </div>
-    </dl>
+    <?php require __DIR__ . "/../src/components/header.php"; ?>
   </header>
   <main>
     <?php if ($camera === ""): ?>
@@ -151,12 +136,11 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               <p>no manual videos found</p>
             <?php else: ?>
               <?php foreach ($manualVideos as $job => $videos): ?>
-                <section>
-                  <h3>
+                <details>
+                  <summary>
                     <?= htmlspecialchars(ucfirst($job), ENT_QUOTES, "UTF-8") ?>
-                  </h3>
+                  </summary>
                     <ul>
-
 	                      <?php foreach ($videos as $video): ?>
 	                        <li>
 	                          <a href="/camera.php?<?= htmlspecialchars(
@@ -177,7 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                       </li>
                       <?php endforeach; ?>
                     </ul>
-                </section>
+                </details>
               <?php endforeach; ?>
             <?php endif; ?>
           </section>
