@@ -21,7 +21,7 @@ FRAMERATE = 10
 FFMPEG_ERROR_LOG_LINES = 40
 
 
-TimelapseType = Literal["daily", "manual", "weekly", "monthly", "yearly"]
+TimelapseType = Literal["daily", "weekly", "monthly", "yearly"]
 
 
 # Run FFmpeg, record peak resource use, and retain failure diagnostics.

@@ -110,7 +110,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 		video_root,
 	)
 
-	expected_output = video_root / "Scheunenviertel" / "manual" / "Scheunenviertel_2026-09-14.mp4"
+	expected_output = video_root / "Scheunenviertel" / "daily" / "Scheunenviertel_2026-09-14.mp4"
 
 	temporary_output = (
 		expected_output.parent / f".{expected_output.stem}.tmp{expected_output.suffix}"
@@ -191,7 +191,7 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 		camera="Scheunenviertel",
 		target_date=date(2026, 9, 14),
 		temp_directory=temp_directory,
-		timelapse_type="manual",
+		timelapse_type="daily",
 		framerate=10,
 	)
 
@@ -300,7 +300,7 @@ def test_create_timelapse(
 	temp_directory = tmp_path / "temp"
 
 	video_path = (
-		tmp_path / "videos" / "Scheunenviertel" / "manual" / "Scheunenviertel_2026-09-14.mp4"
+		tmp_path / "videos" / "Scheunenviertel" / "daily" / "Scheunenviertel_2026-09-14.mp4"
 	)
 
 	calls = []
@@ -366,7 +366,7 @@ def test_create_timelapse(
 		camera="Scheunenviertel",
 		target_date=date(2026, 9, 14),
 		images=images,
-		timelapse_type="manual",
+		timelapse_type="daily",
 		framerate=10,
 	)
 

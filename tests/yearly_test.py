@@ -12,7 +12,6 @@ TEST_CONFIG = {
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,
-		"manual_framerate": 10,
 		"monthly_framerate": 20,
 		"yearly_framerate": 20,
 	},

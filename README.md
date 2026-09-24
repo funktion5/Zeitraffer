@@ -13,7 +13,6 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
 Implementiert sind:
 
 - Daily-Timelapses
-- Manual-Timelapses
 - Weekly-Timelapses
 - Monthly-Timelapses
 - Yearly-Timelapses
@@ -58,7 +57,7 @@ Daily
 
 Nicht ausgewählte Jobs werden dabei übersprungen.
 
-Der klassische Manual-Daily-Lauf ist davon unabhängig und wird ausschließlich über `--date` gestartet. Historische Daily-, Weekly-, Monthly- und Yearly-Läufe verwenden dagegen `--jobs` zusammen mit `--target-date`.
+`--date` ist ein rückwärtskompatibler Kurzweg für genau einen historischen Daily-Lauf. Historische Daily-, Weekly-, Monthly- und Yearly-Läufe können außerdem über `--jobs` zusammen mit `--target-date` gestartet werden.
 
 ---
 
@@ -78,7 +77,6 @@ timelapse/
 ├── src/
 │   ├── jobs/
 │   │   ├── daily.py
-│   │   ├── manual.py
 │   │   ├── weekly.py
 │   │   ├── monthly.py
 │   │   └── yearly.py
@@ -104,7 +102,6 @@ timelapse/
 │   ├── images_test.py
 │   ├── logger_test.py
 │   ├── main_test.py
-│   ├── manual_test.py
 │   ├── monthly_test.py
 │   ├── run_state_test.py
 │   ├── video_test.py
@@ -155,7 +152,7 @@ Verantwortlich für:
 - Kamera-Storage prüfen
 - ignorierte Kameras filtern
 - Logging konfigurieren
-- Manual- oder Automatic-Workflow starten
+- historische oder automatische Workflows starten
 - ausgewählte automatische Jobs koordinieren
 - feste Workflow-Reihenfolge beibehalten
 - optionales `target_date` an automatische Jobs weiterreichen
@@ -174,12 +171,6 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - entfernt Zieltag-Frames, deren Inhalt bereits am Vortag vorhanden war
 - erstellt Daily-Videos
 - hält ein exaktes rollierendes 7-Tage-Fenster relativ zum verarbeiteten Zieldatum
-
-`manual.py`
-- verarbeitet ein explizites Datum
-- kann auf bestimmte Kameras eingeschränkt werden
-- behält historische Videos
-- überspringt bereits vorhandene exakte Manual-Ausgaben
 
 `weekly.py`
 - erstellt automatische Weeklys aus vorhandenen Daily-Videos
@@ -312,7 +303,6 @@ Beispiel:
   ],
   "timelapse": {
     "daily_framerate": 10,
-    "manual_framerate": 10,
     "monthly_framerate": 20,
     "yearly_framerate": 20,
     "ffmpeg_threads": 2
@@ -394,7 +384,6 @@ Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Oper
 Die Duplicate-Behandlung hängt vom Job ab:
 
 - Daily scannt Zieltag und Vortag gemeinsam. Byte-identische Zieltag-Frames, deren Inhalt an irgendeinem Zeitpunkt des Vortags vorhanden war, werden entfernt. Danach werden spätere Duplikate innerhalb des Zieltags entfernt.
-- Manual erkennt und protokolliert byte-identische Quelldaten, entfernt sie aber nicht aus der Auswahl.
 - Historische Weeklys filtern byte-identische Frames einmal über die vollständige Sieben-Tage-Sequenz.
 - Monthly filtert byte-identische Frames unabhängig innerhalb jedes Kalendertages. Gleicher Inhalt an unterschiedlichen Tagen bleibt erhalten.
 - Yearly wählt pro Tag bis zu fünf inhaltlich eindeutige Frames aus.
@@ -429,15 +418,6 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 - bleibt danach kein Zieltag-Frame übrig, wird die Kamera übersprungen und ein vorhandenes Video bleibt erhalten
 - Framerate: `daily_framerate`
 - Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
-
-### Manual
-
-- Zieldatum: explizit über `--date`
-- Quelle: Originalbilder
-- zeitliche Auswahl: wie Daily
-- byte-identische Bilder werden erkannt und protokolliert, aber nicht gefiltert
-- Framerate: `manual_framerate`
-- keine automatische Retention
 
 ### Weekly
 
@@ -493,9 +473,9 @@ videos/Scheunenviertel/monthly/Scheunenviertel_2026-09-21.mp4
 videos/Scheunenviertel/yearly/Scheunenviertel_2026-09-21.mp4
 ```
 
-### Historische und Manual-Ausgaben
+### Historische Ausgaben
 
-Historische `--target-date`-Läufe und Manual Daily werden getrennt gespeichert:
+Historische `--target-date`-Läufe und der `--date`-Alias werden getrennt von automatischen Ausgaben gespeichert:
 
 ```text
 videos/<camera>/manual-runs/<job>/<camera>_<zieldatum>.mp4
@@ -508,10 +488,9 @@ videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/monthly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15.mp4
-videos/Scheunenviertel/manual-runs/manual/Scheunenviertel_2026-08-15.mp4
 ```
 
-Historische und Manual-Ausgaben werden von automatischer Retention nicht verändert.
+Historische Ausgaben werden von automatischer Retention nicht verändert.
 
 ### Temporäre Frames
 
@@ -552,7 +531,7 @@ Nur ein erfolgreicher FFmpeg-Lauf ersetzt die endgültige MP4-Datei. Eine fehlge
 | Monthly | Nur das neueste erfolgreich erstellte automatische Monthly pro Kamera |
 | Yearly | Nur das neueste erfolgreich erstellte automatische Yearly pro Kamera |
 
-Retention läuft ausschließlich nach erfolgreicher Videoerstellung. Fehlende Daily-Tage werden nicht durch ältere Videos aufgefüllt. Historische und Manual-Ausgaben unter `manual-runs/` sind ausgeschlossen.
+Retention läuft ausschließlich nach erfolgreicher Videoerstellung. Fehlende Daily-Tage werden nicht durch ältere Videos aufgefüllt. Historische Ausgaben unter `manual-runs/` sind ausgeschlossen.
 
 ---
 
@@ -732,9 +711,9 @@ Monthly
 
 `--target-date` ist nur gemeinsam mit `--jobs` gültig.
 
-### Manual Daily
+### Kurzform für historisches Daily
 
-Manual Daily bleibt bewusst von den Job-Läufen getrennt und verarbeitet ein explizites Datum für alle verfügbaren Kameras:
+`--date` ist ein rückwärtskompatibler Alias für `--jobs daily --target-date`. Ohne Kameraauswahl verarbeitet er alle verfügbaren Kameras:
 
 ```bash
 python3 -m src.main --date 2026-08-15
@@ -852,7 +831,6 @@ Logs werden nach Job-Typ getrennt:
 ```text
 logs/
 ├── daily/YYYY-MM-DD.log
-├── manual/YYYY-MM-DD.log
 ├── weekly/YYYY-MM-DD.log
 ├── monthly/YYYY-MM-DD.log
 └── yearly/YYYY-MM-DD.log
@@ -1159,7 +1137,7 @@ Die `main.py`-Tests decken unter anderem ab:
 - feste Workflow-Reihenfolge
 - doppelte Job-Angaben
 - Weitergabe von `target_date`
-- Manual-Isolation
+- `--date` als Alias für historische Daily-Läufe
 - ungültige CLI-Kombinationen
 - Kamera-Filterung
 - Logging

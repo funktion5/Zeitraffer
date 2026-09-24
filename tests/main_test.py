@@ -18,14 +18,12 @@ TEST_CONFIG = {
 	"ignored_cameras": [],
 	"timelapse": {
 		"daily_framerate": 10,
-		"manual_framerate": 10,
 		"monthly_framerate": 20,
 		"yearly_framerate": 20,
 	},
 }
 
 DAILY_FRAMERATE = TEST_CONFIG["timelapse"]["daily_framerate"]
-MANUAL_FRAMERATE = TEST_CONFIG["timelapse"]["manual_framerate"]
 MONTHLY_FRAMERATE = TEST_CONFIG["timelapse"]["monthly_framerate"]
 YEARLY_FRAMERATE = TEST_CONFIG["timelapse"]["yearly_framerate"]
 
@@ -295,20 +293,6 @@ def test_main_runs_all_automatic_jobs_by_default(
 
 	job_calls = patch_automatic_jobs(monkeypatch)
 
-	manual_called = False
-
-	def fake_run_manual_job(
-		**kwargs,
-	):
-		nonlocal manual_called
-		manual_called = True
-
-	monkeypatch.setattr(
-		main_module,
-		"run_manual_job",
-		fake_run_manual_job,
-	)
-
 	main_module.main()
 
 	assert configured_log_types == [
@@ -365,8 +349,6 @@ def test_main_runs_all_automatic_jobs_by_default(
 			},
 		),
 	]
-
-	assert manual_called is False
 
 
 # Main must run only explicitly selected automatic jobs.
@@ -525,8 +507,8 @@ def test_main_passes_target_date_to_selected_jobs(
 	]
 
 
-# A supplied manual date must stay independent from automatic jobs.
-def test_main_runs_manual_job(
+# --date must run the historical Daily path as a backward-compatible alias.
+def test_main_routes_date_alias_to_historical_daily(
 	monkeypatch,
 ):
 	target_date = date(
@@ -553,38 +535,26 @@ def test_main_runs_manual_job(
 		cameras=cameras,
 	)
 
-	manual_calls = []
-
-	def fake_run_manual_job(
-		**kwargs,
-	):
-		manual_calls.append(kwargs)
-
-	monkeypatch.setattr(
-		main_module,
-		"run_manual_job",
-		fake_run_manual_job,
-	)
-
 	job_calls = patch_automatic_jobs(monkeypatch)
 
 	main_module.main()
 
 	assert configured_log_types == [
-		"manual",
+		"daily",
 	]
 
-	assert manual_calls == [
-		{
-			"config": TEST_CONFIG,
-			"available_cameras": cameras,
-			"target_date": target_date,
-			"requested_cameras": requested_cameras,
-			"framerate": MANUAL_FRAMERATE,
-		}
+	assert job_calls == [
+		(
+			"daily",
+			{
+				"config": TEST_CONFIG,
+				"cameras": requested_cameras,
+				"framerate": DAILY_FRAMERATE,
+				"target_date": target_date,
+				"manual_run": True,
+			},
+		)
 	]
-
-	assert job_calls == []
 
 
 # Camera filters without a manual or historical date must be rejected.
@@ -976,8 +946,8 @@ def test_main_filters_ignored_cameras_for_automatic_jobs(
 		]
 
 
-# Globally ignored cameras must stay ignored even when requested manually.
-def test_main_filters_ignored_cameras_for_manual(
+# A globally ignored camera requested through --date must abort before Daily starts.
+def test_main_rejects_ignored_camera_for_date_alias(
 	monkeypatch,
 ):
 	target_date = date(
@@ -1010,36 +980,15 @@ def test_main_filters_ignored_cameras_for_manual(
 		],
 	)
 
-	manual_calls = []
+	job_calls = patch_automatic_jobs(monkeypatch)
 
-	def fake_run_manual_job(
-		**kwargs,
+	with pytest.raises(
+		ValueError,
+		match="Requested cameras not found: Camera-B",
 	):
-		manual_calls.append(kwargs)
+		main_module.main()
 
-	monkeypatch.setattr(
-		main_module,
-		"run_manual_job",
-		fake_run_manual_job,
-	)
-
-	main_module.main()
-
-	assert manual_calls == [
-		{
-			"config": config,
-			"available_cameras": [
-				"Camera-A",
-				"Camera-C",
-			],
-			"target_date": target_date,
-			"requested_cameras": [
-				"Camera-B",
-				"Camera-C",
-			],
-			"framerate": MANUAL_FRAMERATE,
-		}
-	]
+	assert job_calls == []
 
 
 # Main must pass the configured retention period to log cleanup once.

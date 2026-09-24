@@ -11,7 +11,6 @@ RUN_ID = f"{datetime.now(tz=LOG_TIMEZONE):%Y%m%dT%H%M%S}-{os.getpid()}"
 
 LogType = Literal[
 	"daily",
-	"manual",
 	"weekly",
 	"monthly",
 	"yearly",

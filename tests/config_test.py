@@ -23,7 +23,6 @@ EXPECTED_LOCATION_KEYS = {
 
 EXPECTED_TIMELAPSE_KEYS = {
 	"daily_framerate",
-	"manual_framerate",
 	"monthly_framerate",
 	"yearly_framerate",
 	"ffmpeg_threads",
@@ -96,11 +95,6 @@ def assert_valid_config_structure(config: dict) -> None:
 
 	assert isinstance(
 		timelapse["daily_framerate"],
-		int,
-	)
-
-	assert isinstance(
-		timelapse["manual_framerate"],
 		int,
 	)
 

@@ -4,7 +4,6 @@ from datetime import date
 from src.config import load_config
 from src.images import get_cameras
 from src.jobs.daily import run_daily_job
-from src.jobs.manual import run_manual_job
 from src.jobs.monthly import run_monthly_job
 from src.jobs.weekly import run_weekly_job
 from src.jobs.yearly import run_yearly_job
@@ -22,7 +21,7 @@ def parse_arguments():
 	parser.add_argument(
 		"--date",
 		type=date.fromisoformat,
-		help=("Date to process in YYYY-MM-DD format. Providing a date creates a manual timelapse."),
+		help=("Alias for a historical Daily target date in YYYY-MM-DD format."),
 	)
 
 	parser.add_argument(
@@ -92,9 +91,13 @@ def main():
 		"yearly",
 	)
 
-	selected_jobs = [job for job in job_order if args.jobs is None or job in args.jobs]
+	selected_jobs = (
+		["daily"]
+		if args.date
+		else [job for job in job_order if args.jobs is None or job in args.jobs]
+	)
 	# Configure logging before camera discovery and filtering.
-	log_type = "manual" if args.date else selected_jobs[0]
+	log_type = selected_jobs[0]
 
 	configure_file_logging(log_type)
 
@@ -123,20 +126,8 @@ def main():
 
 	available_cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
 
-	# Manual runs are independent from the automatic workflow.
-	if args.date:
-		run_manual_job(
-			config=config,
-			available_cameras=available_cameras,
-			target_date=args.date,
-			requested_cameras=args.cameras,
-			framerate=config["timelapse"]["manual_framerate"],
-		)
-
-		return
-
 	# Historical jobs may process only explicitly requested cameras.
-	if args.target_date and args.cameras:
+	if (args.date or args.target_date) and args.cameras:
 		requested_cameras = list(dict.fromkeys(args.cameras))
 		missing_cameras = [
 			camera for camera in requested_cameras if camera not in available_cameras
@@ -149,7 +140,8 @@ def main():
 
 		available_cameras = requested_cameras
 
-	automatic_production_run = args.jobs is None and args.target_date is None
+	target_date = args.date or args.target_date
+	automatic_production_run = args.date is None and args.jobs is None and args.target_date is None
 
 	if automatic_production_run:
 		mark_run_started()
@@ -167,8 +159,8 @@ def main():
 				config=config,
 				cameras=available_cameras,
 				framerate=config["timelapse"]["daily_framerate"],
-				target_date=args.target_date,
-				manual_run=args.target_date is not None,
+				target_date=target_date,
+				manual_run=target_date is not None,
 			)
 
 		elif job == "weekly":
