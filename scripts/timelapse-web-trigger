@@ -1,0 +1,91 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-/home/zruser/timelapse}"
+LOCK_FILE="${TIMELAPSE_WEB_LOCK_FILE:-${PROJECT_ROOT}/state/zeitraffer-run.lock}"
+CAMERA_ROOT="${TIMELAPSE_CAMERA_ROOT:-/mnt/cameras}"
+STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
+WORKER="${TIMELAPSE_WEB_WORKER:-/usr/local/libexec/timelapse-web-worker}"
+
+if [[ $# -ne 4 ]]; then
+	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera>" >&2
+	exit 64
+fi
+
+JOB_ID="$1"
+JOB="$2"
+TARGET_DATE="$3"
+CAMERA="$4"
+
+if [[ ! -r "$STATUS_HELPER" || ! -x "$WORKER" ]]; then
+	echo "Web job support files are unavailable." >&2
+	exit 69
+fi
+
+# Load job-ID validation and atomic status writes.
+source "$STATUS_HELPER"
+
+if ! is_valid_job_id "$JOB_ID"; then
+	echo "Invalid job ID." >&2
+	exit 64
+fi
+
+case "$JOB" in
+	daily|weekly|monthly|yearly)
+		;;
+	*)
+		echo "Invalid job: $JOB" >&2
+		exit 64
+		;;
+esac
+
+if [[ ! "$TARGET_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+	echo "Invalid date format: $TARGET_DATE" >&2
+	exit 64
+fi
+
+NORMALIZED_DATE="$(date -d "$TARGET_DATE" "+%Y-%m-%d" 2>/dev/null || true)"
+
+if [[ "$NORMALIZED_DATE" != "$TARGET_DATE" ]]; then
+	echo "Invalid calendar date: $TARGET_DATE" >&2
+	exit 64
+fi
+
+if [[ -z "$CAMERA" || "$CAMERA" == *"/"* || "$CAMERA" == "." || "$CAMERA" == ".." ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+if [[ ! -d "${CAMERA_ROOT}/${CAMERA}" ]]; then
+	echo "Camera not found: $CAMERA" >&2
+	exit 66
+fi
+
+COMMAND=(
+	"$WORKER"
+	"$JOB_ID"
+	"$JOB"
+	"$TARGET_DATE"
+	"$CAMERA"
+)
+
+cd "$PROJECT_ROOT"
+
+exec 9>"$LOCK_FILE"
+
+if ! flock -n 9; then
+	echo "Another timelapse job is already running." >&2
+	exit 75
+fi
+
+write_job_status "$JOB_ID" "running"
+
+nohup "${COMMAND[@]}" \
+	</dev/null \
+	>/dev/null \
+	2>&1 &
+
+JOB_PID="$!"
+
+echo "Video job started with PID ${JOB_PID}."

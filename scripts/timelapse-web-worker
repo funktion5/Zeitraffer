@@ -1,0 +1,81 @@
+#!/bin/bash
+
+set -u
+
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-/home/zruser/timelapse}"
+PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
+STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
+
+if [[ $# -ne 4 ]]; then
+	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera>" >&2
+	exit 64
+fi
+
+JOB_ID="$1"
+JOB="$2"
+TARGET_DATE="$3"
+CAMERA="$4"
+
+if [[ ! -r "$STATUS_HELPER" ]]; then
+	echo "Status helper is unavailable." >&2
+	exit 69
+fi
+
+# Load the validated atomic status-file operations.
+source "$STATUS_HELPER"
+
+if ! is_valid_job_id "$JOB_ID"; then
+	echo "Invalid job ID." >&2
+	exit 64
+fi
+
+case "$JOB" in
+	daily|weekly|monthly|yearly)
+		;;
+	*)
+		echo "Invalid job: $JOB" >&2
+		exit 64
+		;;
+esac
+
+COMMAND=(
+	"$PYTHON"
+	-m
+	src.main
+	--jobs
+	"$JOB"
+	--target-date
+	"$TARGET_DATE"
+	--cameras
+	"$CAMERA"
+)
+
+VIDEO_PATH="${PROJECT_ROOT}/videos/${CAMERA}/manual-runs/${JOB}/${CAMERA}_${TARGET_DATE}.mp4"
+previous_video_signature=""
+
+if [[ -f "$VIDEO_PATH" && ! -L "$VIDEO_PATH" ]]; then
+	previous_video_signature="$(stat -Lc '%d:%i' "$VIDEO_PATH")"
+fi
+
+cd "$PROJECT_ROOT" || exit 69
+
+if "${COMMAND[@]}"; then
+	current_video_signature=""
+
+	if [[ -f "$VIDEO_PATH" && ! -L "$VIDEO_PATH" ]]; then
+		current_video_signature="$(stat -Lc '%d:%i' "$VIDEO_PATH")"
+	fi
+
+	if [[ -n "$current_video_signature" && "$current_video_signature" != "$previous_video_signature" ]]; then
+		write_job_status "$JOB_ID" "completed"
+		exit 0
+	fi
+
+	write_job_status "$JOB_ID" "failed" || true
+	echo "The video job finished without publishing a new video." >&2
+	exit 1
+else
+	exit_code="$?"
+	write_job_status "$JOB_ID" "failed" || true
+	exit "$exit_code"
+fi

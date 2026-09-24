@@ -16,17 +16,21 @@ $cameras = findAvailableCameras();
 <body>
 	<h1>Available cameras</h1>
 	
+	<section>
 
-	<?php if ($cameras === []): ?>
-		<p>No cameras found.</p>
-	<?php else: ?>
-		<ul>
-			<?php foreach ($cameras as $camera): ?>
-				<li>
-					<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>
-				</li>
-			<?php endforeach; ?>
-		</ul>
-	<?php endif; ?>
+		<?php if ($cameras === []): ?>
+			<p>No cameras found.</p>
+			<?php else: ?>
+				<ul>
+					<?php foreach ($cameras as $camera): ?>
+						<li>
+							<a href="/camera.php?camera=<?= rawurlencode($camera) ?>">
+									<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>
+							</a>
+						</li>
+						<?php endforeach; ?>
+					</ul>
+					<?php endif; ?>
+		</section>
 </body>
 </html>
