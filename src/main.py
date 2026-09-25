@@ -90,6 +90,16 @@ def main():
 	if historical_weekly_run and len(args.cameras or []) != 1:
 		raise ValueError("Historical Weekly requires exactly one camera with --cameras.")
 
+	if (
+		args.daylight_buffer_minutes is not None
+		and args.jobs
+		and set(args.jobs) & {"monthly", "yearly"}
+	):
+		raise ValueError(
+			"--daylight-buffer-minutes cannot be used with Monthly or Yearly; "
+			"neither job type uses a daylight buffer."
+		)
+
 	if args.cameras and not args.date and not args.target_date:
 		raise ValueError("--cameras can only be used with --date or --target-date.")
 	config = load_config()

@@ -101,17 +101,20 @@ def run_web_worker(
 	python_exit_code: int,
 	publish_video: bool = False,
 	existing_video: bool = False,
+	job: str = "daily",
+	daylight_buffer_minutes: str | None = "60",
 ) -> subprocess.CompletedProcess:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
 	project_root.mkdir()
+	video_suffix = f"_{daylight_buffer_minutes}min" if daylight_buffer_minutes else ""
 	video_path = (
 		project_root
 		/ "videos"
 		/ "Scheunenviertel"
 		/ "manual-runs"
-		/ "daily"
-		/ "Scheunenviertel_2026-09-22.mp4"
+		/ job
+		/ f"Scheunenviertel_2026-09-22{video_suffix}.mp4"
 	)
 
 	if existing_video:
@@ -150,14 +153,19 @@ def run_web_worker(
 		"TIMELAPSE_WEB_STATUS_ROOT": str(status_root),
 	}
 
+	command = [
+		str(WEB_WORKER),
+		job_id,
+		job,
+		"2026-09-22",
+		"Scheunenviertel",
+	]
+
+	if daylight_buffer_minutes:
+		command.append(daylight_buffer_minutes)
+
 	result = subprocess.run(
-		[
-			str(WEB_WORKER),
-			job_id,
-			"daily",
-			"2026-09-22",
-			"Scheunenviertel",
-		],
+		command,
 		capture_output=True,
 		text=True,
 		env=environment,
@@ -265,6 +273,7 @@ def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 			"weekly",
 			"2026-09-22",
 			"Scheunenviertel",
+			"60",
 		],
 		capture_output=True,
 		text=True,
@@ -284,6 +293,7 @@ def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 		"weekly",
 		"2026-09-22",
 		"Scheunenviertel",
+		"60",
 	]
 
 
@@ -302,6 +312,7 @@ def test_web_trigger_rejects_busy_lock(tmp_path):
 				"daily",
 				"2026-09-22",
 				"Scheunenviertel",
+				"60",
 			],
 			capture_output=True,
 			text=True,
@@ -313,3 +324,100 @@ def test_web_trigger_rejects_busy_lock(tmp_path):
 	assert result.stderr.strip() == "Another timelapse job is already running."
 	assert not status_root.exists()
 	assert not invocation_file.exists()
+
+
+# Monthly/Yearly must accept the 4-argument form and never receive a buffer.
+def test_web_trigger_accepts_monthly_without_buffer(tmp_path):
+	environment, status_root, invocation_file = prepare_web_trigger(tmp_path)
+	job_id = "1" * 32
+
+	result = subprocess.run(
+		[
+			str(WEB_TRIGGER),
+			job_id,
+			"monthly",
+			"2026-09-22",
+			"Scheunenviertel",
+		],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	for _ in range(20):
+		if invocation_file.exists():
+			break
+		time.sleep(0.01)
+
+	assert result.returncode == 0
+	assert invocation_file.read_text().splitlines() == [
+		job_id,
+		"monthly",
+		"2026-09-22",
+		"Scheunenviertel",
+	]
+
+
+# A buffer supplied alongside Monthly/Yearly must be rejected outright.
+def test_web_trigger_rejects_buffer_with_monthly(tmp_path):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+	job_id = "2" * 32
+
+	result = subprocess.run(
+		[
+			str(WEB_TRIGGER),
+			job_id,
+			"monthly",
+			"2026-09-22",
+			"Scheunenviertel",
+			"60",
+		],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	assert result.returncode == 64
+	assert result.stderr.strip() == "Monthly/Yearly do not use a daylight buffer."
+	assert not invocation_file.exists()
+
+
+# Daily/Weekly must reject a request missing the required buffer.
+def test_web_trigger_rejects_daily_without_buffer(tmp_path):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+	job_id = "3" * 32
+
+	result = subprocess.run(
+		[
+			str(WEB_TRIGGER),
+			job_id,
+			"daily",
+			"2026-09-22",
+			"Scheunenviertel",
+		],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	assert result.returncode == 64
+	assert result.stderr.strip() == "Invalid daylight buffer:"
+	assert not invocation_file.exists()
+
+
+# A Monthly worker run must publish a video with no buffer suffix at all.
+def test_web_worker_monthly_video_has_no_buffer_suffix(tmp_path):
+	result = run_web_worker(
+		tmp_path,
+		python_exit_code=0,
+		publish_video=True,
+		job="monthly",
+		daylight_buffer_minutes=None,
+	)
+
+	assert result.returncode == 0
+	assert result.status_file.read_text() == "completed\n"
+	assert result.video_path.name == "Scheunenviertel_2026-09-22.mp4"

@@ -95,7 +95,6 @@ def run_monthly_job(
 				timelapse_type="monthly",
 				framerate=framerate,
 				manual_run=manual_run,
-				daylight_buffer_minutes=config["daylight_buffer_minutes"] if manual_run else None,
 			)
 
 			if not manual_run:

@@ -5,11 +5,11 @@ declare(strict_types=1);
 require_once __DIR__ . "/process-runner.php";
 
 
-function startVideoJob(string $job, string $targetDate, string $camera, int $daylightBufferMinutes): array
+function startVideoJob(string $job, string $targetDate, string $camera, ?int $daylightBufferMinutes): array
 {
 	$jobId = bin2hex(random_bytes(16));
 
-	$result = runPrivilegedCommand([
+	$command = [
 		"/usr/bin/sudo",
 		"-n",
 		"-u",
@@ -19,8 +19,15 @@ function startVideoJob(string $job, string $targetDate, string $camera, int $day
 		$job,
 		$targetDate,
 		$camera,
-		(string) $daylightBufferMinutes,
-	]);
+	];
+
+	// Monthly/Yearly don't use a daylight buffer at all, so the argument is
+	// omitted entirely rather than passed as some placeholder value.
+	if ($daylightBufferMinutes !== null) {
+		$command[] = (string) $daylightBufferMinutes;
+	}
+
+	$result = runPrivilegedCommand($command);
 
 	if ($result["exitCode"] === null) {
 		return [

@@ -6,8 +6,8 @@ PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-/home/zruser/timelapse}"
 PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 
-if [[ $# -ne 5 ]]; then
-	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> <daylight-buffer-minutes>" >&2
+if [[ $# -ne 4 && $# -ne 5 ]]; then
+	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> [daylight-buffer-minutes]" >&2
 	exit 64
 fi
 
@@ -15,7 +15,7 @@ JOB_ID="$1"
 JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
-DAYLIGHT_BUFFER_MINUTES="$5"
+DAYLIGHT_BUFFER_MINUTES="${5:-}"
 
 if [[ ! -r "$STATUS_HELPER" ]]; then
 	echo "Status helper is unavailable." >&2
@@ -39,12 +39,22 @@ case "$JOB" in
 		;;
 esac
 
-case "$DAYLIGHT_BUFFER_MINUTES" in
-	30|60|90)
+case "$JOB" in
+	daily|weekly)
+		case "$DAYLIGHT_BUFFER_MINUTES" in
+			30|60|90)
+				;;
+			*)
+				echo "Invalid daylight buffer: $DAYLIGHT_BUFFER_MINUTES" >&2
+				exit 64
+				;;
+		esac
 		;;
-	*)
-		echo "Invalid daylight buffer: $DAYLIGHT_BUFFER_MINUTES" >&2
-		exit 64
+	monthly|yearly)
+		if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
+			echo "Monthly/Yearly do not use a daylight buffer." >&2
+			exit 64
+		fi
 		;;
 esac
 
@@ -63,14 +73,20 @@ COMMAND=(
 	"$TARGET_DATE"
 	--cameras
 	"$CAMERA"
-	--daylight-buffer-minutes
-	"$DAYLIGHT_BUFFER_MINUTES"
 )
 
+VIDEO_SUFFIX=""
+
+if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
+	COMMAND+=(--daylight-buffer-minutes "$DAYLIGHT_BUFFER_MINUTES")
+	VIDEO_SUFFIX="_${DAYLIGHT_BUFFER_MINUTES}min"
+fi
+
 # Must match src.video.get_video_path()'s manual-run filename exactly
-# ({camera}_{date}_{buffer}min.mp4), or this success/failure check below
-# would never see the file the job actually publishes.
-VIDEO_PATH="${PROJECT_ROOT}/videos/${CAMERA}/manual-runs/${JOB}/${CAMERA}_${TARGET_DATE}_${DAYLIGHT_BUFFER_MINUTES}min.mp4"
+# ({camera}_{date}.mp4, or {camera}_{date}_{buffer}min.mp4 for daily/weekly),
+# or this success/failure check below would never see the file the job
+# actually publishes.
+VIDEO_PATH="${PROJECT_ROOT}/videos/${CAMERA}/manual-runs/${JOB}/${CAMERA}_${TARGET_DATE}${VIDEO_SUFFIX}.mp4"
 previous_video_signature=""
 
 if [[ -f "$VIDEO_PATH" && ! -L "$VIDEO_PATH" ]]; then

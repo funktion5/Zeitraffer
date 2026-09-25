@@ -707,6 +707,46 @@ def test_main_rejects_manual_date_with_target_date(
 		main_module.main()
 
 
+# Monthly/Yearly never consult the daylight buffer, so combining it with
+# either must be rejected explicitly rather than silently ignored.
+def test_main_rejects_daylight_buffer_with_monthly(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			jobs=["monthly"],
+			daylight_buffer_minutes=60,
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--daylight-buffer-minutes cannot be used with Monthly or Yearly",
+	):
+		main_module.main()
+
+
+def test_main_rejects_daylight_buffer_with_yearly(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			jobs=["daily", "yearly"],
+			daylight_buffer_minutes=30,
+		),
+	)
+
+	with pytest.raises(
+		ValueError,
+		match="--daylight-buffer-minutes cannot be used with Monthly or Yearly",
+	):
+		main_module.main()
+
+
 # An automatic target date has no meaning without selected jobs.
 def test_main_rejects_target_date_without_jobs(
 	monkeypatch,
