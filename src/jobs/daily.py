@@ -129,6 +129,7 @@ def run_daily_job(
 				timelapse_type="daily",
 				framerate=framerate,
 				manual_run=manual_run,
+				daylight_buffer_minutes=daylight_buffer_minutes if manual_run else None,
 			)
 
 			# Historical runs must never modify automatic daily retention.

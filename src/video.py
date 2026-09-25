@@ -162,17 +162,23 @@ def copy_images_to_temp(
 
 # Return the output path for an image-based timelapse video.
 # Return the output path for automatic or explicit-date timelapses.
+# The daylight buffer is only ever embedded in manual/historical filenames,
+# since it can vary per request there; automatic runs always use the single
+# configured buffer, so their filenames stay exactly as before.
 def get_video_path(
 	camera: str,
 	target_date: date,
 	timelapse_type: TimelapseType,
 	manual_run: bool = False,
+	daylight_buffer_minutes: int | None = None,
 ) -> Path:
 	if manual_run:
 		output_directory = VIDEO_ROOT / camera / "manual-runs" / timelapse_type
+		suffix = f"_{daylight_buffer_minutes}min" if daylight_buffer_minutes is not None else ""
 
-	else:
-		output_directory = VIDEO_ROOT / camera / timelapse_type
+		return output_directory / f"{camera}_{target_date.isoformat()}{suffix}.mp4"
+
+	output_directory = VIDEO_ROOT / camera / timelapse_type
 
 	return output_directory / f"{camera}_{target_date.isoformat()}.mp4"
 
@@ -269,12 +275,14 @@ def create_image_timelapse(
 	timelapse_type: TimelapseType,
 	framerate: int,
 	manual_run: bool = False,
+	daylight_buffer_minutes: int | None = None,
 ) -> Path:
 	output_path = get_video_path(
 		camera=camera,
 		target_date=target_date,
 		timelapse_type=timelapse_type,
 		manual_run=manual_run,
+		daylight_buffer_minutes=daylight_buffer_minutes,
 	)
 
 	output_path.parent.mkdir(
@@ -333,6 +341,7 @@ def create_timelapse(
 	timelapse_type: TimelapseType,
 	framerate: int = FRAMERATE,
 	manual_run: bool = False,
+	daylight_buffer_minutes: int | None = None,
 ) -> Path:
 	temp_directory = create_temp_directory(
 		camera,
@@ -351,6 +360,7 @@ def create_timelapse(
 		timelapse_type=timelapse_type,
 		framerate=framerate,
 		manual_run=manual_run,
+		daylight_buffer_minutes=daylight_buffer_minutes,
 	)
 
 	cleanup_temp_directory(temp_directory)

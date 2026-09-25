@@ -116,6 +116,7 @@ def create_manual_weekly_video(
 		timelapse_type="weekly",
 		framerate=config["timelapse"]["daily_framerate"],
 		manual_run=True,
+		daylight_buffer_minutes=config["daylight_buffer_minutes"],
 	)
 
 

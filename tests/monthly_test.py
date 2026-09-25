@@ -9,6 +9,7 @@ TEST_CONFIG = {
 	"location": {
 		"timezone": "Europe/Berlin",
 	},
+	"daylight_buffer_minutes": 90,
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,

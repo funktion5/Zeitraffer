@@ -261,6 +261,7 @@ def test_create_manual_weekly_video_uses_collected_images(
 			"timelapse_type": "weekly",
 			"framerate": 10,
 			"manual_run": True,
+			"daylight_buffer_minutes": 90,
 		}
 	]
 	assert f"Found {len(weekly_images)} selected Weekly images" in caplog.text

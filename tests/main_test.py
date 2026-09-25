@@ -33,12 +33,14 @@ def make_arguments(
 	cameras: list[str] | None = None,
 	jobs: list[str] | None = None,
 	target_date: date | None = None,
+	daylight_buffer_minutes: int | None = None,
 ) -> Namespace:
 	return Namespace(
 		date=date_value,
 		cameras=cameras,
 		jobs=jobs,
 		target_date=target_date,
+		daylight_buffer_minutes=daylight_buffer_minutes,
 	)
 
 
@@ -276,6 +278,58 @@ def test_parse_arguments_rejects_unknown_job(
 		main_module.parse_arguments()
 
 
+# The daylight buffer override must accept exactly the three allowed values.
+def test_parse_arguments_accepts_daylight_buffer_minutes(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--daylight-buffer-minutes",
+			"60",
+		],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.daylight_buffer_minutes == 60
+
+
+# Any value outside 30/60/90 must be rejected before jobs ever run.
+def test_parse_arguments_rejects_invalid_daylight_buffer_minutes(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--daylight-buffer-minutes",
+			"45",
+		],
+	)
+
+	with pytest.raises(SystemExit):
+		main_module.parse_arguments()
+
+
+# Without the flag, the config's own configured buffer must be left alone.
+def test_parse_arguments_defaults_daylight_buffer_minutes_to_none(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		["main.py"],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.daylight_buffer_minutes is None
+
+
 # Without --jobs, main must preserve the complete automatic workflow.
 def test_main_runs_all_automatic_jobs_by_default(
 	monkeypatch,
@@ -436,6 +490,27 @@ def test_main_deduplicates_selected_jobs(
 		"daily",
 		"yearly",
 	]
+
+
+# The buffer override must reach jobs without mutating the caller's config
+# dict (load_config's own return value must stay untouched for other callers).
+def test_main_applies_daylight_buffer_override_without_mutating_config(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=["daily"],
+			daylight_buffer_minutes=60,
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert job_calls[0][1]["config"]["daylight_buffer_minutes"] == 60
+	assert TEST_CONFIG["daylight_buffer_minutes"] == 90
 
 
 # Explicit target dates must reach every selected automatic job.

@@ -8,8 +8,8 @@ CAMERA_ROOT="${TIMELAPSE_CAMERA_ROOT:-/mnt/cameras}"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 WORKER="${TIMELAPSE_WEB_WORKER:-/usr/local/libexec/timelapse-web-worker}"
 
-if [[ $# -ne 4 ]]; then
-	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera>" >&2
+if [[ $# -ne 5 ]]; then
+	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera> <daylight-buffer-minutes>" >&2
 	exit 64
 fi
 
@@ -17,6 +17,7 @@ JOB_ID="$1"
 JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
+DAYLIGHT_BUFFER_MINUTES="$5"
 
 if [[ ! -r "$STATUS_HELPER" || ! -x "$WORKER" ]]; then
 	echo "Web job support files are unavailable." >&2
@@ -62,12 +63,22 @@ if [[ ! -d "${CAMERA_ROOT}/${CAMERA}" ]]; then
 	exit 66
 fi
 
+case "$DAYLIGHT_BUFFER_MINUTES" in
+	30|60|90)
+		;;
+	*)
+		echo "Invalid daylight buffer: $DAYLIGHT_BUFFER_MINUTES" >&2
+		exit 64
+		;;
+esac
+
 COMMAND=(
 	"$WORKER"
 	"$JOB_ID"
 	"$JOB"
 	"$TARGET_DATE"
 	"$CAMERA"
+	"$DAYLIGHT_BUFFER_MINUTES"
 )
 
 cd "$PROJECT_ROOT"

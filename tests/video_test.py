@@ -14,7 +14,51 @@ from src.video import (
 	create_temp_directory,
 	create_timelapse,
 	cleanup_automatic_video_retention,
+	get_video_path,
 )
+
+
+# A manual/historical video embeds its daylight buffer so two runs for the
+# same date but different buffers don't overwrite each other.
+def test_get_video_path_embeds_buffer_only_for_manual_run():
+	manual_path = get_video_path(
+		camera="Scheunenviertel",
+		target_date=date(2026, 9, 14),
+		timelapse_type="weekly",
+		manual_run=True,
+		daylight_buffer_minutes=60,
+	)
+
+	assert manual_path == Path(
+		"videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-09-14_60min.mp4"
+	)
+
+
+# Automatic videos must never embed the buffer, even if one is passed.
+def test_get_video_path_ignores_buffer_for_automatic_run():
+	automatic_path = get_video_path(
+		camera="Scheunenviertel",
+		target_date=date(2026, 9, 14),
+		timelapse_type="weekly",
+		manual_run=False,
+		daylight_buffer_minutes=60,
+	)
+
+	assert automatic_path == Path("videos/Scheunenviertel/weekly/Scheunenviertel_2026-09-14.mp4")
+
+
+# A manual video without an explicit buffer keeps the pre-existing filename.
+def test_get_video_path_manual_run_without_buffer_omits_suffix():
+	manual_path = get_video_path(
+		camera="Scheunenviertel",
+		target_date=date(2026, 9, 14),
+		timelapse_type="daily",
+		manual_run=True,
+	)
+
+	assert manual_path == Path(
+		"videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-09-14.mp4"
+	)
 
 
 # Copy source images into a normalized sequential frame structure.
@@ -328,6 +372,7 @@ def test_create_timelapse(
 		timelapse_type,
 		framerate,
 		manual_run=False,
+		daylight_buffer_minutes=None,
 	):
 		calls.append("create_image_timelapse")
 
@@ -408,6 +453,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		timelapse_type,
 		framerate,
 		manual_run=False,
+		daylight_buffer_minutes=None,
 	):
 		raise subprocess.CalledProcessError(
 			returncode=1,

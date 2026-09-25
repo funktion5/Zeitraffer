@@ -57,6 +57,16 @@ def parse_arguments():
 		),
 	)
 
+	parser.add_argument(
+		"--daylight-buffer-minutes",
+		type=int,
+		choices=(30, 60, 90),
+		help=(
+			"Override the configured daylight buffer for this run only. "
+			"Never persisted; config.json is unaffected."
+		),
+	)
+
 	return parser.parse_args()
 
 
@@ -83,6 +93,9 @@ def main():
 	if args.cameras and not args.date and not args.target_date:
 		raise ValueError("--cameras can only be used with --date or --target-date.")
 	config = load_config()
+
+	if args.daylight_buffer_minutes is not None:
+		config = {**config, "daylight_buffer_minutes": args.daylight_buffer_minutes}
 
 	job_order = (
 		"daily",
