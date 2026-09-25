@@ -135,6 +135,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	} elseif ($submittedAction === "create-video") {
 		$submittedDate = $_POST["target_date"] ?? null;
 		$submittedBuffer = $_POST["daylight_buffer_minutes"] ?? null;
+		// Only Daily/Weekly's image selection actually consults the daylight
+		// buffer; Monthly/Yearly must never receive one, regardless of what
+		// a client sends (the radio group is only ever shown for the other two).
+		$jobUsesDaylightBuffer = in_array($submittedJob, ["daily", "weekly"], true);
 
 		if (
 			!is_string($submittedJob)
@@ -149,19 +153,23 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			$formMessage = "Das Zieldatum ist ungültig.";
 
 		} elseif (
-			!is_string($submittedBuffer)
-			|| !in_array($submittedBuffer, $allowedDaylightBuffers, true)
+			$jobUsesDaylightBuffer
+			&& (
+				!is_string($submittedBuffer)
+				|| !in_array($submittedBuffer, $allowedDaylightBuffers, true)
+			)
 		) {
 			$formMessage = "Der ausgewählte Zeitpuffer ist ungültig.";
 
 		} else {
 			$formIsValid = true;
+			$daylightBufferMinutes = $jobUsesDaylightBuffer ? (int) $submittedBuffer : null;
 
 			$jobResult = startVideoJob(
 				$submittedJob,
 				$submittedDate,
 				$submittedCamera,
-				(int) $submittedBuffer,
+				$daylightBufferMinutes,
 			);
 
 			$formMessage = $jobResult["message"];
@@ -170,7 +178,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			if ($jobResult["started"]) {
 				$activeJobType = $submittedJob;
 				$activeTargetDate = $submittedDate;
-				$activeDaylightBufferMinutes = (int) $submittedBuffer;
+				$activeDaylightBufferMinutes = $daylightBufferMinutes;
 			}
 		}
 
@@ -478,7 +486,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	                </label>
 	              </fieldset>
 
-	              <fieldset>
+	              <fieldset id="daylight-buffer-fieldset" hidden>
 	                <legend>Zeitpuffer</legend>
 
 	                <label>
@@ -559,6 +567,26 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	      url.searchParams.delete("deleted");
 	      window.history.replaceState(null, "", url);
 	    }
+
+	    // Monthly/Yearly don't use a daylight buffer at all, so the radio
+	    // group starts hidden and only shows for Daily/Weekly. Showing it
+	    // client-side is only a display convenience — the server ignores any
+	    // buffer value submitted alongside Monthly/Yearly regardless.
+	    const daylightBufferFieldset = document.querySelector("#daylight-buffer-fieldset");
+	    const jobRadios = document.querySelectorAll('input[name="job"]');
+
+	    function updateDaylightBufferVisibility() {
+	      const checkedJob = document.querySelector('input[name="job"]:checked');
+	      const showBuffer = checkedJob !== null && ["daily", "weekly"].includes(checkedJob.value);
+
+	      daylightBufferFieldset.hidden = !showBuffer;
+	    }
+
+	    jobRadios.forEach((radio) => {
+	      radio.addEventListener("change", updateDaylightBufferVisibility);
+	    });
+
+	    updateDaylightBufferVisibility();
 
 	    const deleteDialog = document.querySelector("#confirm-delete-dialog");
 	    const deleteDialogMessage = document.querySelector("#confirm-delete-message");
