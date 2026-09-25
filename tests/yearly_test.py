@@ -338,6 +338,48 @@ def test_run_yearly_job_logs_complete_coverage(
 	)
 
 	assert "Yearly coverage complete: 365 of 365 days" in caplog.text
+
+
+# A leap-spanning window must report 366, not a hardcoded 365, confirming
+# the dynamic day count actually reaches the log message.
+def test_run_yearly_job_logs_complete_coverage_with_leap_year_366_days(
+	monkeypatch,
+	caplog,
+):
+	leap_target_date = date(2024, 12, 31)
+	leap_start_date = date(2024, 1, 1)
+
+	interval_images = [
+		Path(f"camera_{current_date:%y-%m-%d}_12-00-00-00.jpg")
+		for current_date in (leap_start_date + timedelta(days=offset) for offset in range(366))
+	]
+
+	monkeypatch.setattr(
+		yearly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: interval_images,
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
+	monkeypatch.setattr(
+		yearly_module,
+		"create_timelapse",
+		lambda **kwargs: Path("videos/Test-Camera/yearly/test.mp4"),
+	)
+
+	run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		framerate=YEARLY_FRAMERATE,
+		target_date=leap_target_date,
+	)
+
+	assert "Yearly coverage complete: 366 of 366 days" in caplog.text
 	assert "Yearly will be created with" not in caplog.text
 
 

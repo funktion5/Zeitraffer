@@ -7,6 +7,7 @@ from src.date_coverage import (
 	format_date_ranges,
 	get_coverage_date_range,
 	get_missing_dates,
+	get_previous_year_date,
 )
 
 
@@ -73,7 +74,7 @@ def test_get_coverage_date_range_returns_30_day_monthly_window():
 	)
 
 
-def test_get_coverage_date_range_returns_365_day_yearly_window():
+def test_get_coverage_date_range_returns_calendar_year_yearly_window():
 	start_date, end_date = get_coverage_date_range(
 		end_date=date(
 			2026,
@@ -94,6 +95,44 @@ def test_get_coverage_date_range_returns_365_day_yearly_window():
 		9,
 		20,
 	)
+
+	assert (end_date - start_date).days == 364
+
+
+# The headline leap-year bug: a fixed 365-day window would start on
+# 2024-01-02, silently dropping Jan 1st from "the year 2024" even though
+# 2024 is a leap year and genuinely has 366 days.
+def test_get_coverage_date_range_yearly_window_is_366_days_when_it_spans_a_leap_day():
+	start_date, end_date = get_coverage_date_range(
+		end_date=date(2024, 12, 31),
+		coverage_type="yearly",
+	)
+
+	assert start_date == date(2024, 1, 1)
+	assert end_date == date(2024, 12, 31)
+	assert (end_date - start_date).days + 1 == 366
+
+
+# A window that doesn't touch any Feb 29 stays the familiar 365 days.
+def test_get_coverage_date_range_yearly_window_is_365_days_without_a_leap_day():
+	start_date, end_date = get_coverage_date_range(
+		end_date=date(2025, 12, 31),
+		coverage_type="yearly",
+	)
+
+	assert start_date == date(2025, 1, 1)
+	assert end_date == date(2025, 12, 31)
+	assert (end_date - start_date).days + 1 == 365
+
+
+def test_get_previous_year_date_returns_same_calendar_date():
+	assert get_previous_year_date(date(2026, 9, 20)) == date(2025, 9, 20)
+
+
+# Feb 29 has no equivalent date one year before it in a non-leap year, so it
+# maps to Feb 28 instead of raising.
+def test_get_previous_year_date_maps_leap_day_to_feb_28():
+	assert get_previous_year_date(date(2024, 2, 29)) == date(2023, 2, 28)
 
 
 def test_get_missing_dates_returns_empty_when_all_days_exist():

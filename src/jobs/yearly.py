@@ -38,6 +38,10 @@ def run_yearly_job(
 		coverage_type="yearly",
 	)
 
+	# Not always 365: this window is a true calendar year, so it's 366 days
+	# whenever a leap day falls inside it.
+	total_days = (end_date - start_date).days + 1
+
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 
 	logger.info("-" * 80)
@@ -83,7 +87,7 @@ def run_yearly_job(
 			if missing_dates:
 				logger.warning(
 					f"Yearly coverage incomplete: "
-					f"{365 - len(missing_dates)} of 365 days available - "
+					f"{total_days - len(missing_dates)} of {total_days} days available - "
 					f"skipping camera: {camera}"
 				)
 
@@ -93,7 +97,7 @@ def run_yearly_job(
 
 				continue
 
-			logger.info("Yearly coverage complete: 365 of 365 days")
+			logger.info(f"Yearly coverage complete: {total_days} of {total_days} days")
 
 			yearly_images = select_yearly_images_isolated(
 				camera=camera,
