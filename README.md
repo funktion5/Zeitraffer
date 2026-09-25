@@ -970,7 +970,10 @@ Die aktive Site verwendet sinngemäß folgende Konfiguration:
     <Directory /home/zruser/timelapse/web/public>
         Options -Indexes
         AllowOverride None
-        Require all granted
+        AuthType Basic
+        AuthName "Zeitraffer"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
     </Directory>
 
     Alias /videos/ /home/zruser/timelapse/videos/
@@ -978,7 +981,10 @@ Die aktive Site verwendet sinngemäß folgende Konfiguration:
     <Directory /home/zruser/timelapse/videos>
         Options -Indexes
         AllowOverride None
-        Require all granted
+        AuthType Basic
+        AuthName "Zeitraffer"
+        AuthUserFile /etc/apache2/.htpasswd
+        Require valid-user
     </Directory>
 
     ErrorLog ${APACHE_LOG_DIR}/zeitraffer-error.log
@@ -999,7 +1005,32 @@ Die Site wird unter `http://zeitraffer.local/` oder über die IP-Adresse des Ras
 
 Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte. Der Wrapper wird als root-eigene, für `www-data` nicht beschreibbare Kopie unter `/usr/local` installiert.
 
-Die aktuelle Site besitzt keine Anmeldung und verwendet HTTP. Sie darf deshalb nicht ohne zusätzliche Authentifizierung und Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
+Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
+
+### Basisauthentifizierung einrichten
+
+Beide Verzeichnisse (`web/public` und der `/videos/`-Alias) werden per `AuthType Basic` geschützt. Die Zugangsdaten liegen in `/etc/apache2/.htpasswd`, außerhalb des Dokumenten-Stammverzeichnisses und damit über HTTP nicht erreichbar; die Datei wird nicht versioniert und darf nicht ins Repository gelangen.
+
+```bash
+sudo htpasswd -cB /etc/apache2/.htpasswd zruser
+```
+
+`-B` erzwingt bcrypt-Hashing (laut `htpasswd --help` „very secure“) anstelle des schwächeren MD5-Standards. `-c` legt die Datei neu an und darf nur beim ersten Benutzer verwendet werden; weitere Benutzer werden ohne `-c` ergänzt.
+
+Nach jeder Änderung an der Apache-Konfiguration:
+
+```bash
+sudo apache2ctl configtest
+sudo systemctl reload apache2
+```
+
+Prüfung:
+
+```bash
+curl -i http://localhost/            # erwartet: 401 Unauthorized
+curl -i http://localhost/videos/     # erwartet: 401 Unauthorized
+curl -i -u zruser http://localhost/  # erwartet: 200 OK nach Passworteingabe
+```
 
 ### Wrapper installieren
 
