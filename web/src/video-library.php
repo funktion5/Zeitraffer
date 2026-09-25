@@ -122,9 +122,12 @@ function findManualVideos(string $camera): array
 				continue;
 			}
 
+			$metadata = extractManualVideoMetadata($camera, $filename);
+
 			$videos[$job][] = [
 				"filename" => $filename,
-				"date" => extractManualVideoDate($camera, $filename),
+				"date" => $metadata["date"],
+				"bufferMinutes" => $metadata["bufferMinutes"],
 				"url" => "/videos/"
 					. rawurlencode($camera)
 					. "/manual-runs/"
@@ -138,8 +141,8 @@ function findManualVideos(string $camera): array
 			usort(
 				$videos[$job],
 				fn(array $left, array $right): int => strcmp(
-					$right["date"] ?? $right["filename"],
-					$left["date"] ?? $left["filename"],
+					($right["date"] ?? $right["filename"]) . ($right["bufferMinutes"] ?? ""),
+					($left["date"] ?? $left["filename"]) . ($left["bufferMinutes"] ?? ""),
 				),
 			);
 		}
@@ -148,20 +151,26 @@ function findManualVideos(string $camera): array
 	return $videos;
 }
 
-// Extracts the ISO target date from a manual-run filename (`{camera}_{date}.mp4`),
-// or null if the filename doesn't match that pattern. Never guesses: an
-// unexpected filename just falls back to sorting/displaying by filename.
-function extractManualVideoDate(string $camera, string $filename): ?string
+// Extracts the ISO target date and, if present, the daylight buffer (in
+// minutes) from a manual-run filename (`{camera}_{date}.mp4` or
+// `{camera}_{date}_{buffer}min.mp4`). Both come back null if the filename
+// doesn't match either pattern. Never guesses: an unexpected filename just
+// falls back to sorting/displaying by the raw filename.
+function extractManualVideoMetadata(string $camera, string $filename): array
 {
-	$prefix = $camera . "_";
+	$pattern = "/^" . preg_quote($camera, "/") . "_(\d{4}-\d{2}-\d{2})(?:_(\d+)min)?\.mp4$/";
 
-	if (!str_starts_with($filename, $prefix) || !str_ends_with($filename, ".mp4")) {
-		return null;
+	if (preg_match($pattern, $filename, $matches) !== 1 || !isValidIsoDate($matches[1])) {
+		return [
+			"date" => null,
+			"bufferMinutes" => null,
+		];
 	}
 
-	$datePart = substr($filename, strlen($prefix), -4);
-
-	return isValidIsoDate($datePart) ? $datePart : null;
+	return [
+		"date" => $matches[1],
+		"bufferMinutes" => isset($matches[2]) && $matches[2] !== "" ? (int) $matches[2] : null,
+	];
 }
 
 function formatGermanDate(string $isoDate): string

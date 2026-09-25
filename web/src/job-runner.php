@@ -5,7 +5,7 @@ declare(strict_types=1);
 require_once __DIR__ . "/process-runner.php";
 
 
-function startVideoJob(string $job, string $targetDate, string $camera): array
+function startVideoJob(string $job, string $targetDate, string $camera, int $daylightBufferMinutes): array
 {
 	$jobId = bin2hex(random_bytes(16));
 
@@ -19,6 +19,7 @@ function startVideoJob(string $job, string $targetDate, string $camera): array
 		$job,
 		$targetDate,
 		$camera,
+		(string) $daylightBufferMinutes,
 	]);
 
 	if ($result["exitCode"] === null) {

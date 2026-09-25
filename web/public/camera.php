@@ -46,11 +46,18 @@ $allowedJobs = [
   "yearly",
 ];
 
+$allowedDaylightBuffers = [
+  "30",
+  "60",
+  "90",
+];
+
 $formMessage = null;
 $formIsValid = false;
 $activeJobId = null;
 $activeJobType = null;
 $activeTargetDate = null;
+$activeDaylightBufferMinutes = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	$submittedAction = $_POST["action"] ?? null;
@@ -127,6 +134,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	// ----------------------------------------------------------------------
 	} elseif ($submittedAction === "create-video") {
 		$submittedDate = $_POST["target_date"] ?? null;
+		$submittedBuffer = $_POST["daylight_buffer_minutes"] ?? null;
 
 		if (
 			!is_string($submittedJob)
@@ -140,6 +148,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		) {
 			$formMessage = "Das Zieldatum ist ungültig.";
 
+		} elseif (
+			!is_string($submittedBuffer)
+			|| !in_array($submittedBuffer, $allowedDaylightBuffers, true)
+		) {
+			$formMessage = "Der ausgewählte Zeitpuffer ist ungültig.";
+
 		} else {
 			$formIsValid = true;
 
@@ -147,6 +161,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				$submittedJob,
 				$submittedDate,
 				$submittedCamera,
+				(int) $submittedBuffer,
 			);
 
 			$formMessage = $jobResult["message"];
@@ -155,6 +170,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			if ($jobResult["started"]) {
 				$activeJobType = $submittedJob;
 				$activeTargetDate = $submittedDate;
+				$activeDaylightBufferMinutes = (int) $submittedBuffer;
 			}
 		}
 
@@ -286,13 +302,18 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
               <p>Keine manuellen Videos gefunden.</p>
             <?php else: ?>
               <?php foreach ($manualVideos as $job => $videos): ?>
-                <details>
+                <details<?= $job === $selectedJob ? " open" : "" ?>>
                   <summary>
                     <?= htmlspecialchars(translateJobLabel($job), ENT_QUOTES, "UTF-8") ?>
                   </summary>
                     <ul>
 	                      <?php foreach ($videos as $video): ?>
-													<?php $videoDisplayLabel = $video["date"] !== null ? formatGermanDate($video["date"]) : $video["filename"]; ?>
+													<?php
+														$videoDisplayLabel = $video["date"] !== null ? formatGermanDate($video["date"]) : $video["filename"];
+														if ($video["bufferMinutes"] !== null) {
+															$videoDisplayLabel .= " ({$video["bufferMinutes"]} Min.)";
+														}
+													?>
 													<li class="video-library-item">
 
 														<a href="/camera.php?<?= htmlspecialchars(
@@ -457,6 +478,25 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	                </label>
 	              </fieldset>
 
+	              <fieldset>
+	                <legend>Zeitpuffer</legend>
+
+	                <label>
+	                  <input type="radio" name="daylight_buffer_minutes" value="30">
+	                  30 Min.
+	                </label>
+
+	                <label>
+	                  <input type="radio" name="daylight_buffer_minutes" value="60">
+	                  60 Min.
+	                </label>
+
+	                <label>
+	                  <input type="radio" name="daylight_buffer_minutes" value="90" checked>
+	                  90 Min.
+	                </label>
+	              </fieldset>
+
 	              <div>
 	                <label for="target-date">Zieldatum</label>
 	                <input
@@ -502,6 +542,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	          job: <?= json_encode($activeJobType, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	          targetDate: <?= json_encode($activeTargetDate, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	          camera: <?= json_encode($camera, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+	          bufferMinutes: <?= json_encode($activeDaylightBufferMinutes, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
 	        }),
 	      );
 	    }

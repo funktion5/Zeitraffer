@@ -45,7 +45,9 @@ $jobWatcherCurrentCamera = $camera ?? "";
 		}
 
 		function buildVideoUrl(pendingJob) {
-			const filename = `${pendingJob.camera}_${pendingJob.targetDate}.mp4`;
+			// Must match src.video.get_video_path()'s manual-run filename exactly.
+			const bufferSuffix = pendingJob.bufferMinutes != null ? `_${pendingJob.bufferMinutes}min` : "";
+			const filename = `${pendingJob.camera}_${pendingJob.targetDate}${bufferSuffix}.mp4`;
 
 			return "/camera.php?" + new URLSearchParams({
 				camera: pendingJob.camera,
