@@ -2,12 +2,14 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . "/process-runner.php";
+
 
 function startVideoJob(string $job, string $targetDate, string $camera): array
 {
 	$jobId = bin2hex(random_bytes(16));
 
-	$command = [
+	$result = runPrivilegedCommand([
 		"/usr/bin/sudo",
 		"-n",
 		"-u",
@@ -17,60 +19,37 @@ function startVideoJob(string $job, string $targetDate, string $camera): array
 		$job,
 		$targetDate,
 		$camera,
-	];
+	]);
 
-	$descriptors = [
-		0 => ["pipe", "r"],
-		1 => ["pipe", "w"],
-		2 => ["pipe", "w"],
-	];
-
-	$process = proc_open(
-		$command,
-		$descriptors,
-		$pipes,
-		null,
-		null,
-		["bypass_shell" => true],
-	);
-
-	if (!is_resource($process)) {
+	if ($result["exitCode"] === null) {
 		return [
 			"started" => false,
 			"jobId" => null,
-			"message" => "The video job could not be started.",
+			"message" => "Der Videoauftrag konnte nicht gestartet werden.",
 		];
 	}
 
-	fclose($pipes[0]);
-	$stdout = trim(stream_get_contents($pipes[1]));
-	$stderr = trim(stream_get_contents($pipes[2]));
-	fclose($pipes[1]);
-	fclose($pipes[2]);
-
-	$exitCode = proc_close($process);
-
-	if ($exitCode === 0) {
+	if ($result["exitCode"] === 0) {
 		return [
 			"started" => true,
 			"jobId" => $jobId,
-			"message" => $stdout !== "" ? $stdout : "The video job was accepted.",
+			"message" => $result["stdout"] !== "" ? $result["stdout"] : "Der Videoauftrag wurde angenommen.",
 		];
 	}
 
-	if ($exitCode === 75) {
+	if ($result["exitCode"] === 75) {
 		return [
 			"started" => false,
 			"jobId" => null,
-			"message" => "Another timelapse job is already running.",
+			"message" => "Es läuft bereits ein anderer Zeitraffer-Auftrag.",
 		];
 	}
 
-	error_log("Video wrapper failed with exit code {$exitCode}: {$stderr}");
+	error_log("Video wrapper failed with exit code {$result["exitCode"]}: {$result["stderr"]}");
 
 	return [
 		"started" => false,
 		"jobId" => null,
-		"message" => "The video job was rejected or could not be started.",
+		"message" => "Der Videoauftrag wurde abgelehnt oder konnte nicht gestartet werden.",
 	];
 }

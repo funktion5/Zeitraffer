@@ -1,0 +1,49 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-/home/zruser/timelapse}"
+
+if [[ $# -ne 3 ]]; then
+	echo "Usage: timelapse-web-delete <camera> <job> <filename>" >&2
+	exit 64
+fi
+
+CAMERA="$1"
+JOB="$2"
+FILENAME="$3"
+
+case "$JOB" in
+	daily|weekly|monthly|yearly)
+		;;
+	*)
+		echo "Invalid job." >&2
+		exit 64
+		;;
+esac
+
+if [[ -z "$CAMERA" || "$CAMERA" == *"/"* || "$CAMERA" == "." || "$CAMERA" == ".." ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+if [[ -z "$FILENAME" || "$FILENAME" == *"/"* || "$FILENAME" == "." || "$FILENAME" == ".." ]]; then
+	echo "Invalid filename." >&2
+	exit 64
+fi
+
+if [[ "${FILENAME##*.}" != "mp4" ]]; then
+	echo "Invalid video type." >&2
+	exit 64
+fi
+
+VIDEO_PATH="${PROJECT_ROOT}/videos/${CAMERA}/manual-runs/${JOB}/${FILENAME}"
+
+if [[ ! -f "$VIDEO_PATH" || -L "$VIDEO_PATH" ]]; then
+	echo "Video not found." >&2
+	exit 66
+fi
+
+rm -- "$VIDEO_PATH"
+
+echo "Video erfolgreich gelöscht."
