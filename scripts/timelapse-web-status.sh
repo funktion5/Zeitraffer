@@ -44,3 +44,34 @@ write_job_status() {
 	chmod 644 "$temporary_file"
 	mv -f "$temporary_file" "${STATUS_ROOT}/${job_id}.status"
 }
+
+
+# Atomically record the PID of the worker process handling a job, so a
+# "running" status can later be checked against whether that process is
+# actually still alive (e.g. after a reboot silently killed it).
+write_job_pid() {
+	local job_id="$1"
+	local pid="$2"
+	local temporary_file
+
+	if ! is_valid_job_id "$job_id"; then
+		echo "Invalid job ID." >&2
+		return 64
+	fi
+
+	if [[ ! "$pid" =~ ^[0-9]+$ ]]; then
+		echo "Invalid PID: $pid" >&2
+		return 64
+	fi
+
+	mkdir -p -m 755 "$STATUS_ROOT"
+	temporary_file="$(mktemp "${STATUS_ROOT}/.${job_id}.pid.XXXXXX")"
+
+	if ! printf '%s\n' "$pid" >"$temporary_file"; then
+		rm -f "$temporary_file"
+		return 1
+	fi
+
+	chmod 644 "$temporary_file"
+	mv -f "$temporary_file" "${STATUS_ROOT}/${job_id}.pid"
+}
