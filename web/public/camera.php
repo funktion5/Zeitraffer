@@ -52,6 +52,11 @@ $allowedDaylightBuffers = [
   "90",
 ];
 
+// Single source of truth for "which job types use a daylight buffer at all" —
+// shared with the client-side visibility toggle via the JSON payload below,
+// so the two never drift out of sync.
+$daylightBufferJobs = ["daily", "weekly"];
+
 $formMessage = null;
 $formIsValid = false;
 $activeJobId = null;
@@ -138,7 +143,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		// Only Daily/Weekly's image selection actually consults the daylight
 		// buffer; Monthly/Yearly must never receive one, regardless of what
 		// a client sends (the radio group is only ever shown for the other two).
-		$jobUsesDaylightBuffer = in_array($submittedJob, ["daily", "weekly"], true);
+		$jobUsesDaylightBuffer = in_array($submittedJob, $daylightBufferJobs, true);
 
 		if (
 			!is_string($submittedJob)
@@ -572,12 +577,15 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	    // group starts hidden and only shows for Daily/Weekly. Showing it
 	    // client-side is only a display convenience — the server ignores any
 	    // buffer value submitted alongside Monthly/Yearly regardless.
+	    // daylightBufferJobs comes from PHP ($daylightBufferJobs) so this list
+	    // can never drift out of sync with what the server actually accepts.
+	    const daylightBufferJobs = <?= json_encode($daylightBufferJobs, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 	    const daylightBufferFieldset = document.querySelector("#daylight-buffer-fieldset");
 	    const jobRadios = document.querySelectorAll('input[name="job"]');
 
 	    function updateDaylightBufferVisibility() {
 	      const checkedJob = document.querySelector('input[name="job"]:checked');
-	      const showBuffer = checkedJob !== null && ["daily", "weekly"].includes(checkedJob.value);
+	      const showBuffer = checkedJob !== null && daylightBufferJobs.includes(checkedJob.value);
 
 	      daylightBufferFieldset.hidden = !showBuffer;
 	    }
