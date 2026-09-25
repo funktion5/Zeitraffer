@@ -61,6 +61,22 @@ def test_get_video_path_manual_run_without_buffer_omits_suffix():
 	)
 
 
+# Monthly/Yearly never use a daylight buffer; this must be a structural
+# guarantee of get_video_path() itself, not just something call sites happen
+# to respect today, so a future caller can't silently produce a mismatched
+# filename.
+@pytest.mark.parametrize("timelapse_type", ["monthly", "yearly"])
+def test_get_video_path_rejects_buffer_for_monthly_and_yearly(timelapse_type):
+	with pytest.raises(ValueError, match="does not use a daylight buffer"):
+		get_video_path(
+			camera="Scheunenviertel",
+			target_date=date(2026, 9, 14),
+			timelapse_type=timelapse_type,
+			manual_run=True,
+			daylight_buffer_minutes=60,
+		)
+
+
 # Copy source images into a normalized sequential frame structure.
 def test_copy_images_to_temp(tmp_path: Path):
 	source_directory = tmp_path / "source"

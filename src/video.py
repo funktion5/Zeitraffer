@@ -172,6 +172,9 @@ def get_video_path(
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
 ) -> Path:
+	if daylight_buffer_minutes is not None and timelapse_type in ("monthly", "yearly"):
+		raise ValueError(f"{timelapse_type} does not use a daylight buffer.")
+
 	if manual_run:
 		output_directory = VIDEO_ROOT / camera / "manual-runs" / timelapse_type
 		suffix = f"_{daylight_buffer_minutes}min" if daylight_buffer_minutes is not None else ""
