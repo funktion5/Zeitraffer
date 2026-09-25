@@ -599,6 +599,10 @@ fieldset {
 	border-radius: var(--radius-small);
 }
 
+fieldset[hidden] {
+	display: none;
+}
+
 legend {
 	padding: 0 0.5rem;
 
