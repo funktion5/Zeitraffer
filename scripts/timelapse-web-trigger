@@ -88,4 +88,4 @@ nohup "${COMMAND[@]}" \
 
 JOB_PID="$!"
 
-echo "Video job started with PID ${JOB_PID}."
+echo "Videoauftrag gestartet (PID ${JOB_PID})."

@@ -5,8 +5,8 @@ declare(strict_types=1);
 ?>
 
 <header class="main-header">
-	<nav aria-label="Main navigation">
-		<a href="/">Cameras</a>
+	<nav aria-label="Hauptnavigation">
+		<a href="/">Kameras</a>
 	</nav>
 
 	<?php if ($storage !== null): ?>
@@ -28,9 +28,9 @@ declare(strict_types=1);
 				</span>
 			</div>
 
-			<dl aria-label="Storage usage">
+			<dl aria-label="Speichernutzung">
 				<div>
-					<dt>Total</dt>
+					<dt>Gesamt</dt>
 					<dd>
 						<?= htmlspecialchars(
 							$storage["total"],
@@ -41,7 +41,7 @@ declare(strict_types=1);
 				</div>
 
 				<div>
-					<dt>Used</dt>
+					<dt>Belegt</dt>
 					<dd>
 						<?= htmlspecialchars(
 							$storage["used"],
@@ -52,7 +52,7 @@ declare(strict_types=1);
 				</div>
 
 				<div>
-					<dt>Available</dt>
+					<dt>Verfügbar</dt>
 					<dd>
 						<?= htmlspecialchars(
 							$storage["available"],

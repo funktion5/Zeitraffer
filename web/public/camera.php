@@ -5,6 +5,7 @@ session_start();
 
 require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/job-runner.php";
+require_once __DIR__ . "/../src/video-delete.php";
 
 $camera = $_GET["camera"] ?? "";
 $availableCameras = findAvailableCameras();
@@ -21,6 +22,7 @@ $manualVideos = $camera === "" ? [] : findManualVideos($camera);
 $selectedJob = $_GET["job"] ?? "";
 $selectedFilename = $_GET["video"] ?? "";
 $selectedVideo = null;
+$videoWasDeleted = ($_GET["deleted"] ?? null) === "1";
 
 if (isset($manualVideos[$selectedJob])) {
   foreach ($manualVideos[$selectedJob] as $video) {
@@ -51,39 +53,102 @@ $activeJobType = null;
 $activeTargetDate = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+	$submittedAction = $_POST["action"] ?? null;
 	$submittedToken = $_POST["csrf_token"] ?? null;
 	$submittedCamera = $_POST["camera"] ?? null;
 	$submittedJob = $_POST["job"] ?? null;
-	$submittedDate = $_POST["target_date"] ?? null;
 
+	// Validate CSRF token first.
 	if (
 		!is_string($submittedToken)
 		|| !hash_equals($csrfToken, $submittedToken)
 	) {
-		$formMessage = "The request token is invalid.";
+		$formMessage = "Die Anfrage ist ungültig (Sicherheitstoken).";
+
+	// Validate that the submitted camera is the current available camera.
 	} elseif (
 		!is_string($submittedCamera)
 		|| $submittedCamera !== $camera
 		|| !in_array($submittedCamera, $availableCameras, true)
 	) {
-		$formMessage = "The selected camera is invalid.";
-	} elseif (
-		!is_string($submittedJob)
-		|| !in_array($submittedJob, $allowedJobs, true)
-	) {
-		$formMessage = "The selected job is invalid.";
-	} elseif (
-		!is_string($submittedDate)
-		|| !isValidIsoDate($submittedDate)
-	) {
-		$formMessage = "The target date is invalid.";
+		$formMessage = "Die ausgewählte Kamera ist ungültig.";
+
+	// ----------------------------------------------------------------------
+	// Delete video
+	// ----------------------------------------------------------------------
+	} elseif ($submittedAction === "delete-video") {
+		$submittedFilename = $_POST["video"] ?? null;
+
+		if (
+			!is_string($submittedJob)
+			|| !in_array($submittedJob, $allowedJobs, true)
+		) {
+			$formMessage = "Der ausgewählte Videotyp ist ungültig.";
+
+		} elseif (!is_string($submittedFilename)) {
+			$formMessage = "Das ausgewählte Video ist ungültig.";
+
+		} else {
+			$videoExists = false;
+
+			foreach ($manualVideos[$submittedJob] ?? [] as $video) {
+				if ($video["filename"] === $submittedFilename) {
+					$videoExists = true;
+					break;
+				}
+			}
+
+			if (!$videoExists) {
+				$formMessage = "Das ausgewählte Video wurde nicht gefunden.";
+
+			} else {
+				$deleteResult = deleteManualVideo(
+					$submittedCamera,
+					$submittedJob,
+					$submittedFilename,
+				);
+
+				$formMessage = $deleteResult["message"];
+
+				if ($deleteResult["deleted"]) {
+					header(
+						"Location: /camera.php?camera="
+						. rawurlencode($camera)
+						. "&deleted=1"
+					);
+
+					exit;
+				}
+			}
+		}
+
+	// ----------------------------------------------------------------------
+	// Create historical video
+	// ----------------------------------------------------------------------
+	} elseif ($submittedAction === "create-video") {
+		$submittedDate = $_POST["target_date"] ?? null;
+
+		if (
+			!is_string($submittedJob)
+			|| !in_array($submittedJob, $allowedJobs, true)
+		) {
+			$formMessage = "Der ausgewählte Auftragstyp ist ungültig.";
+
+		} elseif (
+			!is_string($submittedDate)
+			|| !isValidIsoDate($submittedDate)
+		) {
+			$formMessage = "Das Zieldatum ist ungültig.";
+
 		} else {
 			$formIsValid = true;
+
 			$jobResult = startVideoJob(
 				$submittedJob,
 				$submittedDate,
 				$submittedCamera,
 			);
+
 			$formMessage = $jobResult["message"];
 			$activeJobId = $jobResult["jobId"];
 
@@ -92,17 +157,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				$activeTargetDate = $submittedDate;
 			}
 		}
+
+	} else {
+		$formMessage = "Unbekannte Anfrage.";
+	}
 }
 
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="/style.css">
-  <title>Camera</title>
+  <title><?= $camera !== "" ? htmlspecialchars($camera, ENT_QUOTES, "UTF-8") . " – Zeitraffer" : "Kamera nicht gefunden – Zeitraffer" ?></title>
 </head>
 <body>
   <header>
@@ -110,75 +179,250 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
   </header>
   <main>
     <?php if ($camera === ""): ?>
-      <h1>Camera not found</h1>
+      <h1>Kamera nicht gefunden</h1>
     <?php else: ?>
 	      <h1><?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8")?></h1>
+	        <?php if ($videoWasDeleted): ?>
+	          <p class="delete-success-message">Video erfolgreich gelöscht.</p>
+	        <?php endif; ?>
 	        <div>
 	          <section>
-	            <h2>Video player</h2>
+	            <h2>Videoplayer</h2>
 
 	            <?php if ($selectedVideo === null): ?>
-	              <p>Select a video from the library.</p>
+	              <p>Bitte ein Video aus der Liste auswählen.</p>
 	            <?php else: ?>
 	              <video controls preload="metadata" width="720">
 	                <source
 	                  src="<?= htmlspecialchars($selectedVideo["url"], ENT_QUOTES, "UTF-8") ?>"
 	                  type="video/mp4"
 	                >
-	                Your browser does not support MP4 video playback.
+	                Der Browser unterstützt keine MP4-Wiedergabe.
 	              </video>
+							<div class="video-actions">
+								<a
+									href="<?= htmlspecialchars($selectedVideo["url"], ENT_QUOTES, "UTF-8") ?>"
+									download
+									class="download-video-button"
+									title="Video herunterladen"
+									aria-label="<?= htmlspecialchars(
+										$selectedVideo["filename"],
+										ENT_QUOTES,
+										"UTF-8",
+									) ?> herunterladen"
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 2h14v2H5v-2z" />
+									</svg>
+									<span>Herunterladen</span>
+								</a>
+
+							<form
+								method="post"
+								action="/camera.php?camera=<?= rawurlencode($camera) ?>"
+								class="video-delete-form"
+								data-delete-video
+								data-video-name="<?= htmlspecialchars(
+									$selectedVideo["filename"],
+									ENT_QUOTES,
+									"UTF-8",
+								) ?>"
+							>
+								<input type="hidden" name="action" value="delete-video">
+
+								<input
+									type="hidden"
+									name="csrf_token"
+									value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, "UTF-8") ?>"
+								>
+
+								<input
+									type="hidden"
+									name="camera"
+									value="<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>"
+								>
+
+								<input
+									type="hidden"
+									name="job"
+									value="<?= htmlspecialchars($selectedJob, ENT_QUOTES, "UTF-8") ?>"
+								>
+
+								<input
+									type="hidden"
+									name="video"
+									value="<?= htmlspecialchars(
+										$selectedVideo["filename"],
+										ENT_QUOTES,
+										"UTF-8",
+									) ?>"
+								>
+
+								<button
+									type="submit"
+									class="delete-video-button"
+									title="Video löschen"
+									aria-label="<?= htmlspecialchars(
+										$selectedVideo["filename"],
+										ENT_QUOTES,
+										"UTF-8",
+									) ?> löschen"
+								>
+									<svg viewBox="0 0 24 24" aria-hidden="true">
+										<path
+											d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
+										/>
+									</svg>
+									<span>Löschen</span>
+								</button>
+							</form>
+							</div>
 	            <?php endif; ?>
 	          </section>
 
 	          <section>
-            <h2>Manual Videos</h2>
+            <h2>Manuelle Videos</h2>
             <?php if ($manualVideos === []): ?>
-              <p>no manual videos found</p>
+              <p>Keine manuellen Videos gefunden.</p>
             <?php else: ?>
               <?php foreach ($manualVideos as $job => $videos): ?>
                 <details>
                   <summary>
-                    <?= htmlspecialchars(ucfirst($job), ENT_QUOTES, "UTF-8") ?>
+                    <?= htmlspecialchars(translateJobLabel($job), ENT_QUOTES, "UTF-8") ?>
                   </summary>
                     <ul>
 	                      <?php foreach ($videos as $video): ?>
-	                        <li>
-	                          <a href="/camera.php?<?= htmlspecialchars(
-	                            http_build_query([
-	                              "camera" => $camera,
-	                              "job" => $job,
-	                              "video" => $video["filename"],
-	                            ]),
-	                            ENT_QUOTES,
-	                            "UTF-8",
-	                          ) ?>">
-	                            <?= htmlspecialchars(
-	                              $video["filename"],
-	                              ENT_QUOTES,
-	                              "UTF-8",
-	                            ) ?>
-	                          </a>
-                      </li>
-                      <?php endforeach; ?>
+													<?php $videoDisplayLabel = $video["date"] !== null ? formatGermanDate($video["date"]) : $video["filename"]; ?>
+													<li class="video-library-item">
+
+														<a href="/camera.php?<?= htmlspecialchars(
+															http_build_query([
+																"camera" => $camera,
+																"job" => $job,
+																"video" => $video["filename"],
+															]),
+															ENT_QUOTES,
+															"UTF-8",
+														) ?>">
+															<?= htmlspecialchars(
+																$videoDisplayLabel,
+																ENT_QUOTES,
+																"UTF-8",
+															) ?>
+														</a>
+
+														<form
+															method="post"
+															action="/camera.php?camera=<?= rawurlencode($camera) ?>"
+															class="video-library-delete-form"
+															data-delete-video
+															data-video-name="<?= htmlspecialchars(
+																$video["filename"],
+																ENT_QUOTES,
+																"UTF-8",
+															) ?>"
+														>
+															<input
+																type="hidden"
+																name="action"
+																value="delete-video"
+															>
+
+															<input
+																type="hidden"
+																name="csrf_token"
+																value="<?= htmlspecialchars(
+																	$csrfToken,
+																	ENT_QUOTES,
+																	"UTF-8",
+																) ?>"
+															>
+
+															<input
+																type="hidden"
+																name="camera"
+																value="<?= htmlspecialchars(
+																	$camera,
+																	ENT_QUOTES,
+																	"UTF-8",
+																) ?>"
+															>
+
+															<input
+																type="hidden"
+																name="job"
+																value="<?= htmlspecialchars(
+																	$job,
+																	ENT_QUOTES,
+																	"UTF-8",
+																) ?>"
+															>
+
+															<input
+																type="hidden"
+																name="video"
+																value="<?= htmlspecialchars(
+																	$video["filename"],
+																	ENT_QUOTES,
+																	"UTF-8",
+																) ?>"
+															>
+
+															<button
+																type="submit"
+																class="video-library-delete"
+																title="Video löschen"
+																aria-label="<?= htmlspecialchars(
+																	$video["filename"],
+																	ENT_QUOTES,
+																	"UTF-8",
+																) ?> löschen"
+															>
+																<svg
+																	viewBox="0 0 24 24"
+																	aria-hidden="true"
+																>
+																	<path
+																		d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
+																	/>
+																</svg>
+															</button>
+														</form>
+
+													</li>
+												<?php endforeach; ?>
                     </ul>
                 </details>
               <?php endforeach; ?>
             <?php endif; ?>
           </section>
 	          <section>
-	            <h2>Create historical video</h2>
+	            <h2>Historisches Video erstellen</h2>
+
+	            <div class="job-instructions">
+	              <p>Das Zieldatum ist immer der <strong>letzte Tag</strong> des Zeitraums, nicht der erste.</p>
+	              <ul>
+	                <li><strong>Täglich:</strong> zeigt genau den gewählten Tag.</li>
+	                <li><strong>Wöchentlich:</strong> die 7 Tage bis einschließlich des gewählten Datums.</li>
+	                <li><strong>Monatlich:</strong> die 30 Tage bis einschließlich des gewählten Datums (kein Kalendermonat).</li>
+	                <li><strong>Jährlich:</strong> die 365 Tage bis einschließlich des gewählten Datums. Beispiel: Zieldatum 31.12.2025 ergibt das Jahr 2025.</li>
+	              </ul>
+	              <p>Fehlt an einem einzigen Tag im Zeitraum ein brauchbares Bild, wird für Monatlich/Jährlich kein Video erstellt.</p>
+	            </div>
+
 	              <?php if ($formMessage !== null): ?>
                 <p>
                   <?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?>
                 </p>
 	                <?php endif; ?>
-	              <?php if ($activeJobId !== null): ?>
-	                <p id="job-live-status" role="status" aria-live="polite">
-	                  Video creation is running.
-	                </p>
-	              <?php endif; ?>
+	              <p id="job-live-status" role="status" aria-live="polite" hidden></p>
 	            <form method="post"
                     action="/camera.php?camera=<?= rawurlencode($camera) ?>">
+							<input
+								type="hidden"
+								name="action"
+								value="create-video"
+							>
 	              <input
 	                type="hidden"
 	                name="camera"
@@ -188,33 +432,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	                type="hidden"
 	                name="csrf_token"
 	                value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, "UTF-8") ?>"
-	              >   
+	              >
 	              <fieldset>
-	                <legend>Job type</legend>
+	                <legend>Auftragstyp</legend>
 
 	                <label>
 	                  <input type="radio" name="job" value="daily" required>
-	                  Daily
+	                  Täglich
 	                </label>
 
 	                <label>
 	                  <input type="radio" name="job" value="weekly">
-	                  Weekly
+	                  Wöchentlich
 	                </label>
 
 	                <label>
 	                  <input type="radio" name="job" value="monthly">
-	                  Monthly
+	                  Monatlich
 	                </label>
 
 	                <label>
 	                  <input type="radio" name="job" value="yearly">
-	                  Yearly
+	                  Jährlich
 	                </label>
 	              </fieldset>
 
 	              <div>
-	                <label for="target-date">Target date</label>
+	                <label for="target-date">Zieldatum</label>
 	                <input
 	                  id="target-date"
 	                  type="date"
@@ -224,7 +468,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	              </div>
 
 	              <button type="submit">
-	                Create video
+	                Video erstellen
 	              </button>
 
 	            </form>
@@ -233,105 +477,86 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <?php endif; ?>
 	  </main>
 
-	  <dialog id="job-result-dialog">
-	    <h2 id="job-result-title">Video job finished</h2>
-	    <p id="job-result-message"></p>
+	  <dialog id="confirm-delete-dialog">
+	    <h2 id="confirm-delete-title">Video löschen</h2>
+	    <p id="confirm-delete-message"></p>
 
 	    <form method="dialog">
-	      <button type="submit">Close</button>
+	      <button type="submit">Abbrechen</button>
+	      <button type="button" id="confirm-delete-button">Löschen</button>
 	    </form>
 	  </dialog>
 
 	  <script>
+	    // A job was just started on this exact page load: hand it to the shared
+	    // job-watcher (job-watcher.php, required right below) before it runs,
+	    // so it polls this job to completion from wherever the user happens to
+	    // be, even after navigating away, without needing a page reload here.
 	    const activeJobId = <?= json_encode($activeJobId, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const activeJobType = <?= json_encode($activeJobType, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const activeTargetDate = <?= json_encode($activeTargetDate, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const currentCamera = <?= json_encode($camera, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const resultStorageKey = "timelapseJobResult";
-	    const resultDialog = document.querySelector("#job-result-dialog");
-	    const resultTitle = document.querySelector("#job-result-title");
-	    const resultMessage = document.querySelector("#job-result-message");
-
-	    function showJobResult(result) {
-	      if (result.status === "completed") {
-	        resultTitle.textContent = "Video created";
-	        resultMessage.textContent = `${result.job} for ${result.targetDate} was created successfully.`;
-	      } else {
-	        resultTitle.textContent = "Video creation failed";
-	        resultMessage.textContent = `${result.job} for ${result.targetDate} could not be created. Check the application log.`;
-	      }
-
-	      if (typeof resultDialog.showModal === "function") {
-	        resultDialog.showModal();
-	      }
-	    }
-
-	    const storedResult = sessionStorage.getItem(resultStorageKey);
-
-	    if (storedResult !== null) {
-	      sessionStorage.removeItem(resultStorageKey);
-
-	      try {
-	        showJobResult(JSON.parse(storedResult));
-	      } catch (error) {
-	        console.error("Could not read the stored video-job result.", error);
-	      }
-	    }
 
 	    if (activeJobId !== null) {
-	      const liveStatus = document.querySelector("#job-live-status");
-	      let consecutiveErrors = 0;
-
-	      async function pollJobStatus() {
-	        try {
-	          const response = await fetch(
-	            `/job-status.php?id=${encodeURIComponent(activeJobId)}`,
-	            { cache: "no-store" },
-	          );
-
-	          if (!response.ok) {
-	            throw new Error(`Status request failed with HTTP ${response.status}.`);
-	          }
-
-	          const result = await response.json();
-	          consecutiveErrors = 0;
-
-	          if (result.status === "running") {
-	            liveStatus.textContent = `${activeJobType} for ${activeTargetDate} is running.`;
-	            window.setTimeout(pollJobStatus, 5000);
-	            return;
-	          }
-
-	          if (result.status === "completed" || result.status === "failed") {
-	            sessionStorage.setItem(
-	              resultStorageKey,
-	              JSON.stringify({
-	                status: result.status,
-	                job: activeJobType,
-	                targetDate: activeTargetDate,
-	              }),
-	            );
-
-	            window.location.href = `/camera.php?camera=${encodeURIComponent(currentCamera)}`;
-	            return;
-	          }
-
-	          throw new Error("The server returned an unknown job status.");
-	        } catch (error) {
-	          consecutiveErrors += 1;
-
-	          if (consecutiveErrors >= 3) {
-	            liveStatus.textContent = "Job status could not be checked. Refresh the page later.";
-	            console.error("Video-job polling stopped.", error);
-	            return;
-	          }
-
-	          window.setTimeout(pollJobStatus, 5000);
-	        }
-	      }
-
-	      pollJobStatus();
+	      sessionStorage.setItem(
+	        "timelapsePendingJob",
+	        JSON.stringify({
+	          jobId: activeJobId,
+	          job: <?= json_encode($activeJobType, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+	          targetDate: <?= json_encode($activeTargetDate, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+	          camera: <?= json_encode($camera, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
+	        }),
+	      );
 	    }
+	  </script>
+
+	  <?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
+
+	  <script>
+	    const videoWasDeleted = <?= json_encode($videoWasDeleted, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+
+	    // Drop ?deleted=1 from the URL so a later refresh doesn't re-show the message.
+	    if (videoWasDeleted) {
+	      const url = new URL(window.location.href);
+	      url.searchParams.delete("deleted");
+	      window.history.replaceState(null, "", url);
+	    }
+
+	    const deleteDialog = document.querySelector("#confirm-delete-dialog");
+	    const deleteDialogMessage = document.querySelector("#confirm-delete-message");
+	    const deleteDialogConfirmButton = document.querySelector("#confirm-delete-button");
+	    let pendingDeleteForm = null;
+
+	    function buildDeleteConfirmMessage(videoName) {
+	      return `„${videoName}“ wirklich löschen? Dies kann nicht rückgängig gemacht werden.`;
+	    }
+
+	    // Require an explicit confirm click before any delete form is submitted.
+	    // Falls back to window.confirm() where <dialog>.showModal is unavailable,
+	    // so the delete action never silently does nothing.
+	    document.querySelectorAll("form[data-delete-video]").forEach((form) => {
+	      form.addEventListener("submit", (event) => {
+	        event.preventDefault();
+
+	        if (typeof deleteDialog.showModal !== "function") {
+	          if (window.confirm(buildDeleteConfirmMessage(form.dataset.videoName))) {
+	            form.submit();
+	          }
+
+	          return;
+	        }
+
+	        pendingDeleteForm = form;
+	        deleteDialogMessage.textContent = buildDeleteConfirmMessage(form.dataset.videoName);
+	        deleteDialog.showModal();
+	      });
+	    });
+
+	    deleteDialogConfirmButton.addEventListener("click", () => {
+	      const form = pendingDeleteForm;
+	      pendingDeleteForm = null;
+
+	      if (form !== null) {
+	        form.submit();
+	      }
+	    });
 	  </script>
 	</body>
 </html>

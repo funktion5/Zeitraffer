@@ -387,6 +387,158 @@ main > div > section:nth-child(2) details[open] summary::before {
 
 
 /* -------------------------------------------------------------------------- */
+/* Video delete                                                               */
+/* -------------------------------------------------------------------------- */
+
+.video-library-item {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
+
+.video-library-item a {
+	flex: 1;
+	min-width: 0;
+}
+
+.video-actions {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+
+	margin-top: 0.75rem;
+}
+
+.video-library-delete-form {
+	flex-shrink: 0;
+}
+
+/* Small icon-only delete button used in the Manual Videos list. */
+.video-library-delete {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+
+	width: 1.75rem;
+	height: 1.75rem;
+	padding: 0;
+
+	background: transparent;
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text-muted);
+}
+
+.video-library-delete:hover {
+	background: rgb(223 113 113 / 12%);
+	border-color: var(--color-danger);
+
+	color: var(--color-danger);
+}
+
+.video-library-delete:focus-visible {
+	outline: 2px solid var(--color-primary-dark);
+	outline-offset: 2px;
+}
+
+.video-library-delete svg {
+	width: 14px;
+	height: 14px;
+
+	fill: currentColor;
+}
+
+/* Bigger, labeled delete/download buttons under the video player. */
+.delete-video-button,
+.download-video-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	width: fit-content;
+	padding: 0.6rem 1rem;
+
+	border-radius: var(--radius-small);
+
+	font: inherit;
+	font-weight: 600;
+
+	cursor: pointer;
+}
+
+.download-video-button {
+	background: var(--color-primary-dark);
+	border: 1px solid var(--color-primary);
+
+	color: #effcff;
+}
+
+.download-video-button:hover {
+	background: var(--color-primary);
+	color: var(--color-background);
+}
+
+.delete-video-button {
+	background: transparent;
+	border: 1px solid var(--color-danger);
+
+	color: var(--color-danger);
+}
+
+.delete-video-button:hover {
+	background: rgb(223 113 113 / 12%);
+}
+
+.delete-video-button:focus-visible,
+.download-video-button:focus-visible {
+	outline: 2px solid var(--color-primary-dark);
+	outline-offset: 2px;
+}
+
+.delete-video-button svg,
+.download-video-button svg {
+	width: 18px;
+	height: 18px;
+	flex-shrink: 0;
+
+	fill: currentColor;
+}
+
+#confirm-delete-dialog form,
+#job-result-dialog form {
+	flex-direction: row;
+	justify-content: flex-end;
+}
+
+#confirm-delete-button {
+	background: var(--color-danger);
+	border-color: var(--color-danger);
+
+	color: var(--color-background);
+}
+
+#confirm-delete-button:hover {
+	background: #e88f8f;
+	border-color: #e88f8f;
+}
+
+.delete-success-message {
+	width: fit-content;
+	margin-bottom: 1.5rem;
+
+	padding: 0.6rem 0.8rem;
+
+	background: rgb(82 199 165 / 12%);
+	border: 1px solid var(--color-success);
+	border-radius: var(--radius-small);
+
+	color: var(--color-success);
+}
+
+
+/* -------------------------------------------------------------------------- */
 /* Video creation                                                             */
 /* -------------------------------------------------------------------------- */
 
@@ -394,6 +546,40 @@ main > div > section:nth-child(3) {
 	grid-column: 1 / -1;
 
 	margin-top: 0.5rem;
+}
+
+.job-instructions {
+	margin-bottom: 1.25rem;
+
+	padding: 0.9rem 1rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text-muted);
+
+	font-size: 0.875rem;
+}
+
+.job-instructions p {
+	margin: 0 0 0.5rem;
+}
+
+.job-instructions ul {
+	margin: 0 0 0.5rem;
+	padding-left: 1.1rem;
+
+	list-style: disc;
+}
+
+.job-instructions li + li {
+	margin-top: 0.25rem;
+}
+
+.job-instructions p:last-child,
+.job-instructions ul:last-child {
+	margin-bottom: 0;
 }
 
 form {

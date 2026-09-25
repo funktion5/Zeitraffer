@@ -8,36 +8,38 @@ $storage = getStorageUsage();
 ?>
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="/style.css">
-  <title>Document</title>
+  <title>Kameras – Zeitraffer</title>
 </head>
 <body>
 	<header>
-		
+
 			<?php require __DIR__ . "/../src/components/header.php"; ?>
-	
+
 	</header>
-	<h1>Available cameras</h1>
-	
+	<h1>Verfügbare Kameras</h1>
+
 	<section>
 
 		<?php if ($cameras === []): ?>
-			<p>No cameras found.</p>
+			<p>Keine Kameras gefunden.</p>
 			<?php else: ?>
 				<ul>
-					<?php foreach ($cameras as $camera): ?>
+					<?php foreach ($cameras as $cameraName): ?>
 						<li>
-							<a href="/camera.php?camera=<?= rawurlencode($camera) ?>">
-									<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>
+							<a href="/camera.php?camera=<?= rawurlencode($cameraName) ?>">
+									<?= htmlspecialchars($cameraName, ENT_QUOTES, "UTF-8") ?>
 							</a>
 						</li>
 						<?php endforeach; ?>
 					</ul>
 					<?php endif; ?>
 		</section>
+
+	<?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
 </body>
 </html>
