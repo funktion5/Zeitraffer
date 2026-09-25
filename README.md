@@ -443,7 +443,7 @@ Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollst�
 
 ### Yearly
 
-- Fenster: rollierende 365 Tage inklusive Enddatum
+- Fenster: exaktes Kalenderjahr bis einschließlich Enddatum — 365 oder 366 Tage, je nachdem ob ein Schalttag (29. Februar) im Zeitraum liegt; kein fest codiertes 365-Tage-Fenster mehr
 - Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
 - tägliche Kandidaten aus 10:30 bis 13:30 Uhr
@@ -886,30 +886,34 @@ Browser
 
 ### Aktueller Funktionsumfang
 
-Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die Kameraseite bietet:
+Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
 
 - Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
-- Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`
-- Wiedergabe des ausgewählten MP4 direkt im Browser
-- Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum
+- Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
+- Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung), beide mit Bestätigungsdialog vor dem Absenden
+- Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde
+- kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums, und bei Monthly/Yearly führt ein einziger fehlender Tag im Zeitraum zum Überspringen der Kamera
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
-- Live-Status per Polling im Abstand von fünf Sekunden
-- Abschlussdialog nach erfolgreichem oder fehlgeschlagenem Job
+- Live-Status per Polling im Abstand von fünf Sekunden; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
+- Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung
 
-Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Automatische Videos werden noch nicht in der Oberfläche aufgelistet. Eine Löschfunktion ist nicht implementiert.
+Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
 
 Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse, wertet `ignored_cameras` aus `config/config.json` derzeit aber nicht aus. Dadurch kann eine global ignorierte Kamera in der Oberfläche erscheinen; die Python-CLI lehnt einen Job für diese Kamera anschließend ab.
 
 ### Webdateien
 
 ```text
-web/public/index.php              Kameraübersicht
-web/public/camera.php             Player, Bibliothek, Formular und Status-Polling
-web/public/job-status.php         read-only JSON-Status-Endpunkt
-web/public/style.css              Darstellung und responsives Layout
-web/src/components/header.php     gemeinsamer Header und Speicheranzeige
-web/src/video-library.php         Kamera-, Video- und Speicherermittlung
-web/src/job-runner.php            Aufruf des fest installierten Triggers
+web/public/index.php               Kameraübersicht
+web/public/camera.php              Player, Bibliothek, Formular und Status-Polling
+web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung)
+web/public/style.css               Darstellung und responsives Layout
+web/src/components/header.php      gemeinsamer Header und Speicheranzeige
+web/src/components/job-watcher.php gemeinsamer Abschlussdialog, seitenübergreifendes Polling
+web/src/video-library.php          Kamera-, Video- und Speicherermittlung
+web/src/job-runner.php             Aufruf des fest installierten Triggers
+web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
+web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger und Löschen)
 ```
 
 `web/public/` ist der einzige Apache-DocumentRoot. PHP-Quellcode außerhalb dieses Verzeichnisses, Python-Code, Konfiguration, Logs, temporäre Dateien und Statusdateien werden nicht direkt durch Apache veröffentlicht.
