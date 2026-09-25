@@ -2,6 +2,19 @@
 
 declare(strict_types=1);
 
+// German display label for a job type; the identifier itself (used in
+// form values, URLs, and the CLI) always stays the English lowercase form.
+function translateJobLabel(string $job): string
+{
+	return match ($job) {
+		"daily" => "Täglich",
+		"weekly" => "Wöchentlich",
+		"monthly" => "Monatlich",
+		"yearly" => "Jährlich",
+		default => $job,
+	};
+}
+
 function getIgnoredCameras(): array
 {
 	$configPath = "/home/zruser/timelapse/config/config.json";
@@ -111,6 +124,7 @@ function findManualVideos(string $camera): array
 
 			$videos[$job][] = [
 				"filename" => $filename,
+				"date" => extractManualVideoDate($camera, $filename),
 				"url" => "/videos/"
 					. rawurlencode($camera)
 					. "/manual-runs/"
@@ -123,13 +137,40 @@ function findManualVideos(string $camera): array
 		if (isset($videos[$job])) {
 			usort(
 				$videos[$job],
-				fn(array $left, array $right): int =>
-					strnatcasecmp($right["filename"], $left["filename"]),
+				fn(array $left, array $right): int => strcmp(
+					$right["date"] ?? $right["filename"],
+					$left["date"] ?? $left["filename"],
+				),
 			);
 		}
 	}
 
 	return $videos;
+}
+
+// Extracts the ISO target date from a manual-run filename (`{camera}_{date}.mp4`),
+// or null if the filename doesn't match that pattern. Never guesses: an
+// unexpected filename just falls back to sorting/displaying by filename.
+function extractManualVideoDate(string $camera, string $filename): ?string
+{
+	$prefix = $camera . "_";
+
+	if (!str_starts_with($filename, $prefix) || !str_ends_with($filename, ".mp4")) {
+		return null;
+	}
+
+	$datePart = substr($filename, strlen($prefix), -4);
+
+	return isValidIsoDate($datePart) ? $datePart : null;
+}
+
+function formatGermanDate(string $isoDate): string
+{
+	$parts = explode("-", $isoDate);
+
+	return count($parts) === 3
+		? "{$parts[2]}.{$parts[1]}.{$parts[0]}"
+		: $isoDate;
 }
 
 function formatBytes(float $bytes): string
