@@ -25,6 +25,7 @@ state/*
 
 # Agent
 AGENTS.md
+CLAUDE.md
 WEB_TODO.md
 
 # tests
