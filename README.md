@@ -36,6 +36,7 @@ Implementiert sind:
 - Ruff für Linting und Formatierung
 - lokale PHP-Weboberfläche für historische Daily-, Weekly-, Monthly- und Yearly-Läufe
 - asynchrone Web-Jobs mit Statusabfrage und Abschlussdialog
+- Backup- und Migrationsskripte für eine Neuinstallation des Raspberry Pi
 
 Ohne Job-Auswahl läuft der automatische Workflow weiterhin in dieser Reihenfolge:
 
@@ -71,6 +72,7 @@ timelapse/
 ├── scripts/
 │   ├── cameras-sshfs-preflight
 │   ├── test_workflow.sh
+│   ├── timelapse-web-delete
 │   ├── timelapse-web-status.sh
 │   ├── timelapse-web-trigger
 │   └── timelapse-web-worker
@@ -119,14 +121,19 @@ timelapse/
 │   │   └── style.css
 │   └── src/
 │       ├── components/
-│       │   └── header.php
+│       │   ├── header.php
+│       │   └── job-watcher.php
 │       ├── job-runner.php
+│       ├── process-runner.php
+│       ├── video-delete.php
 │       └── video-library.php
 ├── logs/
 ├── state/
 ├── temp/
 ├── videos/
+├── backup-from-mac.sh
 ├── create_test_video.py
+├── migrate.sh
 ├── monthly_range_test.py
 ├── pyproject.toml
 ├── requirements.txt
@@ -134,6 +141,8 @@ timelapse/
 ```
 
 Runtime-Daten unter `logs/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
+
+`backup-from-mac.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe „Neuinstallation des Raspberry Pi“.
 
 `create_test_video.py`, `monthly_range_test.py` und `scripts/test_workflow.sh` sind ältere, manuell ausgeführte Entwicklungs- und Diagnoseskripte. Sie gehören nicht zum produktiven Workflow und nicht zur automatisierten pytest-Suite. `create_test_video.py` verwendet noch eine inzwischen entfernte `create_video`-Schnittstelle und ist im aktuellen Stand nicht lauffähig.
 
@@ -899,7 +908,7 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
 
 Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
 
-Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse, wertet `ignored_cameras` aus `config/config.json` derzeit aber nicht aus. Dadurch kann eine global ignorierte Kamera in der Oberfläche erscheinen; die Python-CLI lehnt einen Job für diese Kamera anschließend ab.
+Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`.
 
 ### Webdateien
 
@@ -1007,7 +1016,7 @@ sudo systemctl reload apache2
 
 Die Site wird unter `http://zeitraffer.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
 
-Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte. Der Wrapper wird als root-eigene, für `www-data` nicht beschreibbare Kopie unter `/usr/local` installiert.
+Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter „Dateirechte für `www-data`“). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
 Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
 
@@ -1051,23 +1060,60 @@ sudo install -o root -g root -m 755 \
 sudo install -o root -g root -m 755 \
   scripts/timelapse-web-trigger \
   /usr/local/sbin/timelapse-web-trigger
+sudo install -o root -g root -m 755 \
+  scripts/timelapse-web-delete \
+  /usr/local/sbin/timelapse-web-delete
 ```
 
-Die sudoers-Regel erlaubt ausschließlich den festen Trigger als `zruser`:
+Die sudoers-Regeln erlauben ausschließlich den festen Trigger und den festen Lösch-Wrapper, jeweils als `zruser`:
 
 ```sudoers
 www-data ALL=(zruser) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
+www-data ALL=(zruser) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 ```
 
-Die Regel wird mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
+Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`.
+
+Die Regeln werden mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
 
 ```bash
 sudo visudo -f /etc/sudoers.d/timelapse-web
 ```
 
-Eingaben werden zusätzlich in PHP und im Trigger validiert; die sudoers-Regel allein ersetzt diese Prüfungen nicht.
+Eingaben werden zusätzlich in PHP und in den Wrappern validiert; die sudoers-Regeln allein ersetzen diese Prüfungen nicht.
 
 Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut mit `sudo install` aktualisiert werden.
+
+### Dateirechte für `www-data`
+
+`www-data` wird nicht in die Gruppe `zruser` aufgenommen und erhält nur Zugriff auf das, was die Weboberfläche tatsächlich liest. Alles andere – Python-Code, Skripte, Tests, `.git`, `.venv`, Logs, temporäre Dateien und alle übrigen Dateien im Home-Verzeichnis – bleibt für `www-data` gesperrt.
+
+| Pfad | Rechte für „andere“ | Zweck |
+|---|---|---|
+| `/home/zruser` | nur Durchgang (`--x`) | Weg zum Projekt |
+| übrige Einträge in `/home/zruser` | keine | z. B. `pi-backup.tar.gz`, `.ssh`, `Claude-Brain` |
+| `timelapse/` | nur Durchgang (`--x`) | kein Auflisten des Projekts |
+| `web/` | lesen (`r-x` / `r--`) | PHP-Dateien und CSS |
+| `videos/` | lesen (`r-x` / `r--`) | Bibliothek, Wiedergabe, Speicheranzeige |
+| `config/` | nur Durchgang (`--x`) | – |
+| `config/config.json` | lesen (`r--`) | `ignored_cameras` |
+| `state/` | nur Durchgang (`--x`) | – |
+| `state/web-jobs/` | lesen (vom Status-Skript als `755`/`644` angelegt) | Job-Status-Polling |
+| alle übrigen Einträge in `timelapse/` | keine | – |
+
+`logs/` und `temp/` werden mit Modus `770` vorab angelegt, damit die Python-Jobs sie später nicht weltlesbar erzeugen.
+
+Die Rechte setzt der Schritt `permissions` von `migrate.sh`. Er ist wiederholbar und kann jederzeit einzeln ausgeführt werden, etwa nachdem Videos von Hand kopiert wurden:
+
+```bash
+~/timelapse/migrate.sh permissions verify
+```
+
+Warum das nötig ist: Debian 13 legt Home-Verzeichnisse mit Modus `0700` an (`HOME_MODE` in `/etc/login.defs`), und `git clone` erzeugt alle Dateien weltlesbar. Ohne diesen Schritt antwortet Apache mit `403 Forbidden`, und im Fehlerlog steht `AH00035: ... search permissions are missing on a component of the path`.
+
+Die Rechte für „andere“ gelten technisch für alle lokalen Benutzer, nicht nur für `www-data`. Eine Beschränkung auf genau `www-data` wäre nur über ACLs (Paket `acl`) möglich.
+
+Neue Dateien der Python-Jobs sind durch die Standard-`umask` `0002` weltlesbar. Unter `videos/` ist das gewollt; in gesperrten Verzeichnissen wie `logs/` bleibt der Inhalt trotzdem unerreichbar, weil der Durchgang durch das Verzeichnis selbst fehlt.
 
 ### Webtests
 
@@ -1080,6 +1126,8 @@ python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py
 Die Tests prüfen unter anderem atomare Statuswechsel, ungültige Job-IDs, den gemeinsamen Lock, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs.
 
 ## Installation
+
+Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen neu installierten Pi mit vorhandenem Backup übernimmt `migrate.sh` alle Schritte; siehe „Neuinstallation des Raspberry Pi“.
 
 Virtuelle Umgebung erstellen und aktivieren:
 
@@ -1141,6 +1189,299 @@ für den Benutzer `zruser` installiert. Anschließend prüfen:
 
 ```bash
 crontab -l
+```
+
+---
+
+## Neuinstallation des Raspberry Pi
+
+Bei einer Neuinstallation des Betriebssystems gehen alle Dateien verloren, die nicht im Git-Repository liegen. Zwei Skripte übernehmen Sicherung und Wiederherstellung:
+
+| Skript | Läuft auf | Aufgabe |
+|---|---|---|
+| `backup-from-mac.sh` | dem Mac, **vor** der Neuinstallation | holt alle nicht versionierten Dateien vom Pi in einen lokalen Backup-Ordner |
+| `migrate.sh` | dem Pi, **nach** der Neuinstallation | installiert Pakete, klont das Repository, stellt das Backup wieder her und richtet alle Dienste ein |
+
+Die Videos sind nicht Teil von `migrate.sh`, sondern werden nach der Migration von Hand zurückkopiert.
+
+### Was gesichert wird
+
+| Datei auf dem Pi | Im Backup | Wird wiederhergestellt nach |
+|---|---|---|
+| `~/.ssh/storagebox_ed25519` und `.pub` | `pi-backup.tar.gz` | `~/.ssh/` (`600` / `644`) |
+| `~/.ssh/known_hosts` | `pi-backup.tar.gz` | wird zusammengeführt, keine doppelten Zeilen |
+| `/etc/timelapse/mount.env` | `pi-backup.tar.gz` | `root:root 600` |
+| `/etc/sudoers.d/timelapse-web` | `pi-backup.tar.gz` | `root:root 440`, nur nach erfolgreicher `visudo`-Prüfung |
+| `/etc/apache2/.htpasswd` | `pi-backup.tar.gz` | `root:www-data 640` |
+| `/etc/apache2/sites-available/zeitraffer.conf` | `pi-backup.tar.gz` | `root:root 644` |
+| Crontab von `zruser` | `pi-crontab.txt` | Crontab von `zruser` |
+| `config/config.json` | `config.json` | `config/config.json` (überschreibt die Git-Version) |
+| `videos/` | `videos/` | von Hand, siehe Schritt 6 |
+
+`pi-backup.tar.gz` enthält einen privaten SSH-Schlüssel, die Zugangsdaten des Kamera-Storage und einen Passwort-Hash. Der Backup-Ordner auf dem Mac wird deshalb mit Modus `700` angelegt und darf nicht in Cloud-Sync-Ordner oder ins Repository gelangen. Achtung: Der Standardordner liegt unter `~/Documents`. Ist in den macOS-Einstellungen die iCloud-Option „Schreibtisch & Dokumente“ aktiv, wird er in die iCloud hochgeladen – dann über `DEST` einen Ordner außerhalb von `Documents` und `Desktop` wählen und in den folgenden Befehlen denselben Pfad verwenden.
+
+Bewusst nicht gesichert:
+
+- `logs/`, `temp/` und `state/` – reine Laufzeitdaten
+- die SSH-Hostschlüssel des Pi – der neu installierte Pi erhält neue; siehe Schritt 3
+- WLAN-Konfiguration – der Pi läuft ausschließlich über Ethernet, WLAN wird deaktiviert
+
+### Voraussetzungen
+
+- Mac mit Zugriff auf den Pi per SSH (Passwort-Login als `zruser`)
+- ein Checkout dieses Repositorys auf dem Mac, damit `migrate.sh` von dort auf den Pi kopiert werden kann
+- das `sudo`-Passwort von `zruser` auf dem Pi
+- die offiziellen Host-Key-Fingerprints der Storage Box beim Anbieter (nur nötig, wenn das Backup noch kein `known_hosts` enthält)
+- Netzwerkkabel am Pi: `migrate.sh` schaltet WLAN ab
+
+### Schritt 1: Backup auf dem Mac erstellen
+
+Im Repository-Checkout auf dem Mac:
+
+```bash
+./backup-from-mac.sh
+```
+
+Das Skript fragt einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
+
+1. packt es die Geheimnisse auf dem Pi mit `umask 077` nach `/tmp/pi-backup.tar.gz`, lädt das Archiv herunter und löscht es auf dem Pi wieder, auch wenn ein späterer Schritt fehlschlägt,
+2. speichert die Crontab und `config.json`,
+3. synchronisiert `videos/` per `rsync`,
+4. listet den Inhalt des Archivs auf und gibt die Befehle für die Wiederherstellung aus.
+
+Optionen über Umgebungsvariablen:
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `PI_HOST` | `zr-pi.local` | Hostname oder IP des Pi, z. B. `PI_HOST=192.168.178.41`, falls `.local` nicht aufgelöst wird |
+| `PI_USER` | `zruser` | Login-Benutzer auf dem Pi |
+| `DEST` | `/Users/praktikant/Documents/Migration` | Backup-Ordner auf dem Mac |
+| `SKIP_VIDEOS` | `0` | `1` überspringt die Videos |
+
+Danach prüfen, ob der Backup-Ordner vollständig ist:
+
+```bash
+ls -la /Users/praktikant/Documents/Migration
+# erwartet: pi-backup.tar.gz, pi-crontab.txt, config.json, videos/
+tar tzf /Users/praktikant/Documents/Migration/pi-backup.tar.gz
+# erwartet: 7 Einträge, darunter home/zruser/.ssh/known_hosts
+```
+
+Erst weitermachen, wenn das Backup vollständig ist.
+
+### Schritt 2: Betriebssystem neu installieren
+
+Mit dem Raspberry Pi Imager ein 64-Bit-Raspberry-Pi-OS auf Basis von Debian 13 (trixie) schreiben und in den erweiterten Einstellungen festlegen:
+
+- Hostname: `zr-pi`
+- Benutzer: `zruser` – der Name ist in Skripten, Cron, sudoers und Apache fest hinterlegt
+- SSH aktivieren, Anmeldung per Passwort
+- kein WLAN nötig
+
+Den Pi per Netzwerkkabel anschließen und starten.
+
+### Schritt 3: Alten Host-Key auf dem Mac entfernen
+
+Der neu installierte Pi hat neue SSH-Hostschlüssel. Ohne diesen Schritt bricht SSH mit `REMOTE HOST IDENTIFICATION HAS CHANGED` ab:
+
+```bash
+ssh-keygen -R zr-pi.local
+ssh-keygen -R 192.168.178.41   # IP des Pi
+ssh zruser@zr-pi.local          # neuen Fingerprint mit "yes" bestätigen
+```
+
+### Schritt 4: Backup und Installer auf den Pi kopieren
+
+Im Repository-Checkout auf dem Mac:
+
+```bash
+scp /Users/praktikant/Documents/Migration/pi-backup.tar.gz \
+    /Users/praktikant/Documents/Migration/pi-crontab.txt \
+    /Users/praktikant/Documents/Migration/config.json \
+    migrate.sh \
+    zruser@zr-pi.local:~/
+```
+
+`migrate.sh` erwartet die drei Backup-Dateien direkt in `/home/zruser`.
+
+### Schritt 5: Migration auf dem Pi ausführen
+
+Per SSH über Ethernet auf dem Pi:
+
+```bash
+chmod +x ~/migrate.sh
+~/migrate.sh
+```
+
+Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte laufen in dieser Reihenfolge:
+
+| Schritt | Was passiert |
+|---|---|
+| `preflight` | prüft Benutzer `zruser`, die Backup-Dateien und `sudo`-Zugriff (Passwortabfrage) |
+| `packages` | installiert Git, Python, FFmpeg, SSHFS, Apache und PHP; aktiviert `user_allow_other` in `/etc/fuse.conf` |
+| `clone` | klont das Repository nach `/home/zruser/timelapse`; bricht ab, wenn dort bereits ein fremder oder nicht leerer Ordner liegt |
+| `venv` | legt `.venv` an und installiert `requirements.txt` |
+| `restore_backup` | entpackt das Backup in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf beide Regeln, installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
+| `known_hosts` | überspringt, wenn der Storage-Box-Host bereits bekannt ist; sonst werden die Fingerprints angezeigt und müssen mit `y` bestätigt werden |
+| `sshfs_mount` | installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
+| `apache` | aktiviert `zeitraffer.conf`, deaktiviert die Standardseite, führt `apache2ctl configtest` aus und lädt Apache neu |
+| `web_bridge` | installiert Trigger, Lösch-Wrapper, Worker und Status-Skript unter `/usr/local` |
+| `permissions` | setzt die Dateirechte aus „Dateirechte für `www-data`“ |
+| `disable_wifi` | schaltet WLAN per `nmcli` ab und trägt `dtoverlay=disable-wifi` in `/boot/firmware/config.txt` ein; wird übersprungen, wenn die SSH-Sitzung selbst über WLAN läuft |
+| `verify` | führt die Testsuite aus und prüft Mount, Crontab, HTTP-Status `401`, Lese- und Sperrrechte von `www-data`, beide sudoers-Regeln und den WLAN-Status |
+
+Interaktive Abfragen während des Laufs:
+
+- `sudo`-Passwort in `preflight`
+- nur bei älteren Backups ohne `known_hosts`: Bestätigung der Storage-Box-Fingerprints – vorher mit den Angaben des Anbieters vergleichen und bei Abweichung mit `n` abbrechen
+- `git clone` fragt nach Zugangsdaten, falls das Repository nicht öffentlich erreichbar ist
+
+Nach einem Abbruch die Ursache beheben und `~/migrate.sh` einfach erneut starten. Alle Schritte sind wiederholbar: `clone` überspringt einen bereits vorhandenen Checkout desselben Repositorys, `known_hosts` einen bereits bekannten Host, und die übrigen Schritte überschreiben ihre Zieldateien mit denselben Inhalten.
+
+Einzelne Schritte lassen sich auch gezielt ausführen:
+
+```bash
+~/migrate.sh permissions verify
+~/migrate.sh apache
+~/migrate.sh disable_wifi
+```
+
+Optionen über Umgebungsvariablen:
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `REPO_URL` | `https://github.com/funktion5/Zeitraffer.git` | Quelle für `git clone` |
+| `PROJECT_ROOT` | `/home/zruser/timelapse` | Zielordner |
+| `BACKUP_TAR` | `~/pi-backup.tar.gz` | Geheimnis-Archiv |
+| `BACKUP_CRONTAB` | `~/pi-crontab.txt` | Crontab-Sicherung |
+| `BACKUP_CONFIG` | `~/config.json` | optionale `config.json`; fehlt sie, bleibt die Git-Version |
+| `DISABLE_WIFI` | `1` | `0` lässt WLAN unverändert |
+
+Am Ende des Laufs die Ausgabe von `verify` durchsehen: Jede Zeile mit `WARNING` muss geklärt werden, bevor der Pi als fertig gilt.
+
+### Schritt 6: Videos zurückkopieren
+
+Vom Mac aus:
+
+```bash
+rsync -a --progress /Users/praktikant/Documents/Migration/videos/ \
+    zruser@zr-pi.local:/home/zruser/timelapse/videos/
+```
+
+`rsync -a` übernimmt die Dateirechte aus dem Backup. Deshalb danach auf dem Pi die Rechte korrigieren und prüfen:
+
+```bash
+~/migrate.sh permissions verify
+```
+
+### Schritt 7: Abschluss und Aufräumen
+
+1. Neustart, damit `dtoverlay=disable-wifi` greift, und danach prüfen:
+
+   ```bash
+   sudo reboot
+   # nach dem Neustart:
+   nmcli radio wifi                        # erwartet: disabled
+   mountpoint /mnt/cameras                 # erwartet: is a mountpoint
+   ```
+
+2. Weboberfläche im Browser unter `http://zeitraffer.local/` oder `http://192.168.178.41/` öffnen, anmelden und prüfen:
+   - die Kameraliste erscheint, ohne die Kameras aus `ignored_cameras`
+   - ein historisches Video lässt sich abspielen und herunterladen
+   - ein historischer Daily-Lauf läuft durch und öffnet den Abschlussdialog
+   - ein Testvideo lässt sich löschen
+
+3. Die Backup-Dateien auf dem Pi löschen. Sie werden nach der Migration nicht mehr gebraucht und enthalten Geheimnisse:
+
+   ```bash
+   rm ~/pi-backup.tar.gz ~/pi-crontab.txt ~/config.json
+   ```
+
+   Das Backup auf dem Mac bleibt als Sicherung erhalten.
+
+4. Der erste nächtliche Lauf um 02:00 Uhr erzeugt die automatischen Videos. Am nächsten Tag `logs/daily/<datum>.log` prüfen.
+
+### Migration ohne Neuinstallation testen
+
+Nach Änderungen an `migrate.sh` oder `backup-from-mac.sh` lassen sich die Skripte auf dem laufenden Pi prüfen, ohne ihn neu aufzusetzen. Fast alle Schritte schreiben dort dieselben Inhalte, die bereits vorhanden sind; ein erfolgreicher Test endet deshalb mit einem unveränderten System. Nicht ausführen gegen 02:00 Uhr oder während ein Web-Job läuft.
+
+Der Schritt `packages` wird dabei ausgelassen: `apt-get install` aktualisiert die genannten Pakete, wenn neuere Versionen verfügbar sind, und wäre damit eine echte Änderung am System.
+
+1. Frisches Backup erstellen (siehe Schritt 1) und vom Mac auf den Pi kopieren:
+
+   ```bash
+   scp /Users/praktikant/Documents/Migration/{pi-backup.tar.gz,pi-crontab.txt,config.json} zruser@zr-pi.local:~/
+   ```
+
+2. Auf dem Pi einen Rollback-Stand und Prüfsummen aller betroffenen Dateien anlegen:
+
+   ```bash
+   umask 077
+   sudo tar czf ~/pre-test-rollback.tar.gz /etc/sudoers.d/timelapse-web /etc/timelapse/mount.env \
+     /etc/apache2/.htpasswd /etc/apache2/sites-available/zeitraffer.conf /home/zruser/.ssh \
+     /usr/local/sbin/timelapse-web-* /usr/local/libexec/timelapse-web-* /usr/local/sbin/cameras-sshfs-preflight \
+     /etc/systemd/system/cameras-sshfs.service /boot/firmware/config.txt /home/zruser/timelapse/config/config.json
+   crontab -l > ~/pre-test-crontab.txt
+   sudo sha256sum /etc/sudoers.d/timelapse-web /etc/timelapse/mount.env /etc/apache2/.htpasswd \
+     /etc/apache2/sites-available/zeitraffer.conf ~/.ssh/* /usr/local/sbin/timelapse-web-* \
+     /usr/local/libexec/timelapse-web-* ~/timelapse/config/config.json > ~/pre-test.sha256
+   ```
+
+3. Alle Schritte außer `packages` ausführen:
+
+   ```bash
+   ~/timelapse/migrate.sh preflight clone venv restore_backup known_hosts sshfs_mount apache web_bridge permissions disable_wifi verify
+   ```
+
+   Erwartet: `clone` und `known_hosts` melden, dass bereits alles vorhanden ist, und `verify` gibt keine Zeile mit `WARNING` aus. Die Apache-Meldung `AH00558 ... fully qualified domain name` ist harmlos.
+
+4. Vorher und nachher vergleichen:
+
+   ```bash
+   sudo sha256sum -c ~/pre-test.sha256          # erwartet: jede Zeile OK
+   crontab -l | diff ~/pre-test-crontab.txt -   # erwartet: keine Ausgabe
+   ```
+
+Weicht etwas ab, stellt dieser Befehl den Zustand vor dem Test wieder her:
+
+```bash
+sudo tar xzf ~/pre-test-rollback.tar.gz -C / && crontab ~/pre-test-crontab.txt && sudo systemctl reload apache2
+```
+
+Zum Schluss die Test- und Backup-Dateien auf dem Pi löschen, da sie Geheimnisse enthalten. Das Original bleibt auf dem Mac:
+
+```bash
+rm ~/pre-test-crontab.txt ~/pre-test.sha256 ~/pi-backup.tar.gz ~/pi-crontab.txt ~/config.json
+sudo rm ~/pre-test-rollback.tar.gz
+```
+
+Nicht abgedeckt sind der Schritt `packages` und ein Lauf auf einem wirklich leeren System; das lässt sich nur mit einer zweiten SD-Karte oder einem zweiten Pi prüfen.
+
+### Fehlerbehebung
+
+| Symptom | Ursache und Lösung |
+|---|---|
+| Browser zeigt `403 Forbidden` | `www-data` kommt nicht ins Projekt: `~/migrate.sh permissions verify`; Details in `/var/log/apache2/zeitraffer-error.log` |
+| Video-Bibliothek leer oder Videos laden nicht | Videos nach dem Kopieren nicht lesbar: `~/migrate.sh permissions` |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` auf dem Mac | Schritt 3 ausführen |
+| `Backed-up sudoers file does not parse` oder `lacks the ... rule` | sudoers-Datei im Backup beschädigt oder unvollständig; aus dem Backup wurde noch nichts installiert. Archiv reparieren (siehe unten) und `~/migrate.sh` erneut ausführen |
+| `Host key not confirmed` | Fingerprints stimmten nicht oder wurden abgelehnt. Mit dem Anbieter klären, dann `~/migrate.sh known_hosts sshfs_mount` |
+| `cameras-sshfs is not running` | `systemctl status cameras-sshfs.service` und `journalctl -u cameras-sshfs.service`; häufig fehlt der Host-Key oder `mount.env` ist leer |
+| `skipping WiFi disable` | Sitzung lief über WLAN. Per Kabel neu verbinden und `~/migrate.sh disable_wifi` |
+| Web-Job startet nicht oder Löschen schlägt fehl | `sudo -l -U www-data` muss beide Wrapper zeigen; sonst sudoers wie unter „Wrapper installieren“ prüfen |
+| `is already a git repo, but its origin ... doesn't match` | unter `/home/zruser/timelapse` liegt ein anderes Repository; verschieben oder `REPO_URL` korrigieren |
+
+sudoers-Datei im Backup-Archiv reparieren (auf dem Pi):
+
+```bash
+mkdir ~/backup-fix
+sudo tar xzf ~/pi-backup.tar.gz -C ~/backup-fix
+sudo nano ~/backup-fix/etc/sudoers.d/timelapse-web   # beide Regeln aus „Wrapper installieren“
+sudo visudo -cf ~/backup-fix/etc/sudoers.d/timelapse-web
+sudo tar czf ~/pi-backup.tar.gz -C ~/backup-fix .
+sudo chown zruser:zruser ~/pi-backup.tar.gz
+sudo rm -rf ~/backup-fix
+~/migrate.sh
 ```
 
 ---
