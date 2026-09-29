@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Start the storage filter detached from the terminal, so it keeps running after
+# the VS Code or SSH session is closed. Without arguments it scans every camera
+# that is not in ignored_cameras; any arguments are passed to the filter instead,
+# e.g. "scripts/storage-filter-all --cameras Uferstrasse SVG".
+set -euo pipefail
+
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
+if (($# == 0)); then
+	set -- --all-cameras
+fi
+
+# 770 like logs/ itself: www-data must not read the filter output.
+mkdir -p -m 770 logs/filter
+output_path="logs/filter/run_$(date +%Y-%m-%d_%H%M%S).out"
+
+# The console output also catches errors raised before file logging starts,
+# such as a refused run lock.
+nohup .venv/bin/python3 -m src.storage_filter "$@" >"$output_path" 2>&1 </dev/null &
+
+echo "Storage filter started (PID $!)."
+echo "Follow progress:  tail -f $PROJECT_ROOT/$output_path"
+echo "Stop it:          kill -INT $!"

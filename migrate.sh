@@ -231,7 +231,7 @@ step_permissions() {
 	cd "$PROJECT_ROOT"
 
 	# Pre-create runtime dirs closed; Python's later mkdir(exist_ok) keeps the mode.
-	mkdir -p -m 770 logs temp
+	mkdir -p -m 770 logs temp reports
 	mkdir -p videos state
 
 	local entry

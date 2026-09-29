@@ -8,6 +8,7 @@ temp/*
 logs/*
 videos/*
 state/*
+reports/
 
 !temp/.gitkeep
 !logs/.gitkeep
