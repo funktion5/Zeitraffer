@@ -18,8 +18,12 @@ output_path="logs/filter/run_$(date +%Y-%m-%d_%H%M%S).out"
 
 # The console output also catches errors raised before file logging starts,
 # such as a refused run lock.
-nohup .venv/bin/python3 -m src.storage_filter "$@" >"$output_path" 2>&1 </dev/null &
+# setsid gives the run its own process group, so one signal also stops the
+# running ssh calls.
+setsid nohup .venv/bin/python3 -m src.storage_filter "$@" >"$output_path" 2>&1 </dev/null &
 
+# SIGINT is ignored in background jobs, so stopping needs SIGTERM. The report of
+# the camera in progress is not written; finished cameras keep theirs.
 echo "Storage filter started (PID $!)."
 echo "Follow progress:  tail -f $PROJECT_ROOT/$output_path"
-echo "Stop it:          kill -INT $!"
+echo "Stop it:          kill -TERM -- -$!"
