@@ -9,7 +9,6 @@
   "log_retention_days": 30,
   "ignored_cameras": [
     "Reolink",
-    "SKM-Mardorf",
     "Wunstorf-Marktplatz",
     "SVG"
   ],
