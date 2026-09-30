@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# Keep crash evidence on the SD card so the next silent reset leaves a trace.
+# Pi OS keeps the journal in RAM (40-rpi-volatile-storage.conf) and the hardware
+# watchdog resets the board without writing anything, so by default nothing survives.
+#
+#   sudo scripts/pi-crash-logging-setup           install and start
+#   sudo scripts/pi-crash-logging-setup --remove  undo everything
+#
+# After the next reboot:
+#   journalctl -b -1 -e                  end of the previous boot
+#   tail -30 /var/log/pi-health.log      last health samples before the reset
+set -euo pipefail
+
+JOURNALD_DROPIN=/etc/systemd/journald.conf.d/99-persistent.conf
+LOGGER=/usr/local/sbin/pi-health-logger
+UNIT=/etc/systemd/system/pi-health-logger.service
+HEALTH_LOG=/var/log/pi-health.log
+
+if ((EUID != 0)); then
+	echo "Run with sudo." >&2
+	exit 1
+fi
+
+if [[ "${1:-}" == "--remove" ]]; then
+	systemctl disable --now pi-health-logger.service 2>/dev/null || true
+	rm -f "$UNIT" "$LOGGER" "$JOURNALD_DROPIN"
+	systemctl daemon-reload
+	systemctl restart systemd-journald
+	echo "Removed. Journal is volatile again; $HEALTH_LOG and /var/log/journal were kept."
+	exit 0
+fi
+
+# 99- sorts after the Pi OS 40- drop-in, so this one wins.
+# SyncIntervalSec: journald otherwise flushes only every 5 min, and a freeze would
+# take the most interesting minutes with it. 30 s is a compromise with SD wear.
+mkdir -p /etc/systemd/journald.conf.d
+cat >"$JOURNALD_DROPIN" <<'EOF'
+[Journal]
+Storage=persistent
+SystemMaxUse=200M
+SyncIntervalSec=30s
+EOF
+
+mkdir -p /var/log/journal
+systemd-tmpfiles --create --prefix /var/log/journal
+systemctl restart systemd-journald
+journalctl --flush
+
+# The journal can lose its last 30 s; this file is synced after every line, so its
+# last line is at most one interval older than the reset.
+cat >"$LOGGER" <<'EOF'
+#!/usr/bin/env bash
+set -uo pipefail
+
+LOG=/var/log/pi-health.log
+INTERVAL=10
+MAX_BYTES=$((10 * 1024 * 1024))
+
+meminfo_mb() {
+	awk -v key="$1:" '$1 == key { printf "%d", $2 / 1024 }' /proc/meminfo
+}
+
+while true; do
+	if [[ -f "$LOG" ]] && (($(stat -c %s "$LOG") > MAX_BYTES)); then
+		mv -f "$LOG" "$LOG.1"
+	fi
+
+	read -r load1 load5 _ </proc/loadavg
+	top_proc=$(ps -eo rss=,comm= --sort=-rss | awk 'NR == 1 { printf "%s:%dMB", $2, $1 / 1024 }')
+
+	printf '%s up=%ss avail=%sMB swapfree=%s/%sMB load=%s,%s top=%s %s %s\n' \
+		"$(date '+%F %T')" \
+		"$(cut -d. -f1 /proc/uptime)" \
+		"$(meminfo_mb MemAvailable)" \
+		"$(meminfo_mb SwapFree)" "$(meminfo_mb SwapTotal)" \
+		"$load1" "$load5" "$top_proc" \
+		"$(vcgencmd get_throttled 2>/dev/null)" \
+		"$(vcgencmd measure_temp 2>/dev/null)" >>"$LOG"
+	sync -d "$LOG"
+
+	sleep "$INTERVAL"
+done
+EOF
+chmod 755 "$LOGGER"
+
+cat >"$UNIT" <<EOF
+[Unit]
+Description=Log memory, throttling and temperature to the SD card for crash analysis
+
+[Service]
+ExecStart=$LOGGER
+Restart=always
+RestartSec=5
+# Keep sampling under memory pressure; that is exactly when the log matters.
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+systemctl daemon-reload
+systemctl enable --now pi-health-logger.service
+
+sleep 11
+echo "Journal directory:"
+ls -d /var/log/journal/*/
+echo "Health log:"
+tail -2 "$HEALTH_LOG"
