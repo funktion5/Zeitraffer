@@ -191,6 +191,8 @@ def get_image_range(
 # Extracts the capture time from the different camera filename formats.
 def extract_time(filename: str):
 	time_patterns = (
+		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg (see extract_date).
+		r"^bsv_steinhude_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
 		r"^[A-Za-z]\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
 		r"_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
 		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",

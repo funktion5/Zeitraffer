@@ -27,8 +27,8 @@ def test_cameras_with_known_dates():
 	# image search works across different cameras and filename formats.
 	cameras = {
 		"BSV-Steinhude": date(2025, 10, 9),
-		"Nordufer_tele": date(2025, 4, 19),
-		"Nordufer_wide": date(2025, 4, 19),
+		"Nordufer_tele": date(2024, 10, 15),
+		"Nordufer_wide": date(2024, 10, 15),
 		"Reolink": date(2025, 10, 24),
 		"Wunstorf-Marktplatz": date(2024, 10, 30),
 	}
@@ -50,6 +50,7 @@ def test_extract_time_from_camera_filenames():
 		"aw10_26-08-27_15-52-07-75.jpg": (15, 52, 7),
 		"see-26-09-15_14-44-58-48.jpg": (14, 44, 58),
 		"bsv_steinhude_2510091630.jpg": (16, 30, 0),
+		"bsv_steinhude_202302120600.jpg": (6, 0, 0),
 		"image_241030_010043.jpg": (1, 0, 43),
 		"P23091411034310.jpg": (11, 3, 43),
 		"T23091315270800.jpg": (15, 27, 8),
@@ -114,8 +115,8 @@ def test_complete_image_selection():
 	# workflow: find images, extract timestamps and apply the daylight window.
 	cameras = {
 		"BSV-Steinhude": date(2025, 10, 9),
-		"Nordufer_tele": date(2025, 4, 19),
-		"Nordufer_wide": date(2025, 4, 19),
+		"Nordufer_tele": date(2024, 10, 15),
+		"Nordufer_wide": date(2024, 10, 15),
 		"Reolink": date(2025, 10, 24),
 		"Scheunenviertel": date(2026, 9, 14),
 		"Wunstorf-Marktplatz": date(2023, 1, 31),
