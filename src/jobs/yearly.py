@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 from src.date_coverage import (
 	format_date_ranges,
 	get_coverage_date_range,
+	get_min_coverage_days,
 	get_missing_dates,
 )
 from src.images import (
@@ -47,6 +48,12 @@ def run_yearly_job(
 	# Not always 365: this window is a true calendar year, so it's 366 days
 	# whenever a leap day falls inside it.
 	total_days = (end_date - start_date).days + 1
+
+	min_coverage_days = get_min_coverage_days(
+		config=config,
+		coverage_type="yearly",
+		total_days=total_days,
+	)
 
 	# Automatic runs always use the configured default window.
 	window = interval_window or interval_window_from_config(config)
@@ -106,11 +113,13 @@ def run_yearly_job(
 				end_date=end_date,
 			)
 
-			if missing_dates:
+			covered_days = total_days - len(missing_dates)
+
+			if covered_days < min_coverage_days:
 				logger.warning(
-					f"Yearly coverage incomplete: "
-					f"{total_days - len(missing_dates)} of {total_days} days available - "
-					f"skipping camera: {camera}"
+					f"Yearly coverage too low: "
+					f"{covered_days} of {total_days} days available "
+					f"(minimum {min_coverage_days}) - skipping camera: {camera}"
 				)
 
 				logger.debug(f"Missing Yearly dates: {format_date_ranges(missing_dates)}")
@@ -119,7 +128,17 @@ def run_yearly_job(
 
 				continue
 
-			logger.info(f"Yearly coverage complete: {total_days} of {total_days} days")
+			# Missing days are simply absent from the video; log which ones.
+			if missing_dates:
+				logger.warning(
+					f"Yearly coverage partial: "
+					f"{covered_days} of {total_days} days available "
+					f"(minimum {min_coverage_days}) | "
+					f"missing: {format_date_ranges(missing_dates)}"
+				)
+
+			else:
+				logger.info(f"Yearly coverage complete: {total_days} of {total_days} days")
 
 			yearly_images = select_yearly_images_isolated(
 				camera=camera,

@@ -6,6 +6,7 @@ import pytest
 from src.date_coverage import (
 	format_date_ranges,
 	get_coverage_date_range,
+	get_min_coverage_days,
 	get_missing_dates,
 	get_previous_year_date,
 )
@@ -216,3 +217,18 @@ def test_get_missing_dates_counts_multiple_images_on_same_day_once():
 	)
 
 	assert result == []
+
+
+def test_get_min_coverage_days_returns_configured_value():
+	config = {"min_coverage_days": {"monthly": 25, "yearly": 300}}
+
+	assert get_min_coverage_days(config, "monthly", total_days=30) == 25
+	assert get_min_coverage_days(config, "yearly", total_days=366) == 300
+
+
+@pytest.mark.parametrize("value", [0, 31, -1, 25.5, "25", True, None])
+def test_get_min_coverage_days_rejects_invalid_values(value):
+	config = {"min_coverage_days": {"monthly": value}}
+
+	with pytest.raises(ValueError, match="min_coverage_days.monthly"):
+		get_min_coverage_days(config, "monthly", total_days=30)

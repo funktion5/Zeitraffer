@@ -15,6 +15,10 @@ TEST_CONFIG = {
 		"target_time": "12:00",
 		"tolerance_minutes": 90,
 	},
+	"min_coverage_days": {
+		"monthly": 25,
+		"yearly": 300,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,
@@ -149,24 +153,18 @@ def test_run_yearly_job_skips_camera_without_images(
 	assert created_videos == []
 
 
-# A Yearly must not be created when at least one required day is missing.
-def test_run_yearly_job_skips_incomplete_coverage(
+def run_yearly_with_missing_days(
 	monkeypatch,
-	caplog,
-):
-	interval_images = create_complete_yearly_images()
-
-	missing_date = date(
-		2026,
-		4,
-		17,
-	)
-
+	missing_day_count: int,
+) -> tuple[list[dict], list[bool]]:
+	missing_dates = {START_DATE + timedelta(days=offset) for offset in range(missing_day_count)}
+	missing_names = {missing.strftime("%y-%m-%d") for missing in missing_dates}
 	interval_images = [
-		image for image in interval_images if missing_date.strftime("%y-%m-%d") not in image.name
+		image
+		for image in create_complete_yearly_images()
+		if image.name.split("_")[1] not in missing_names
 	]
-
-	selection_called = False
+	selection_calls = []
 	created_videos = []
 
 	monkeypatch.setattr(
@@ -178,21 +176,27 @@ def test_run_yearly_job_skips_incomplete_coverage(
 	def fake_select_yearly_images_isolated(
 		**kwargs,
 	):
-		nonlocal selection_called
-		selection_called = True
+		selection_calls.append(True)
 
 		return kwargs["images"]
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Test-Camera/yearly/test.mp4")
 
 	monkeypatch.setattr(
 		yearly_module,
 		"select_yearly_images_isolated",
 		fake_select_yearly_images_isolated,
 	)
-
+	monkeypatch.setattr(yearly_module, "create_timelapse", fake_create_timelapse)
 	monkeypatch.setattr(
 		yearly_module,
-		"create_timelapse",
-		lambda **kwargs: created_videos.append(kwargs),
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: None,
 	)
 
 	run_yearly_job(
@@ -202,10 +206,87 @@ def test_run_yearly_job_skips_incomplete_coverage(
 		target_date=TARGET_DATE,
 	)
 
-	assert selection_called is False
-	assert created_videos == []
+	return created_videos, selection_calls
 
-	assert "Yearly coverage incomplete: 364 of 365 days available" in caplog.text
+
+# Exactly the configured minimum (300 of 365) still creates the video and logs the gap.
+def test_run_yearly_job_creates_video_at_minimum_coverage(
+	monkeypatch,
+	caplog,
+):
+	created_videos, selection_calls = run_yearly_with_missing_days(
+		monkeypatch,
+		missing_day_count=65,
+	)
+
+	assert len(created_videos) == 1
+	assert selection_calls == [True]
+	assert len(created_videos[0]["images"]) == 300
+	assert (
+		"Yearly coverage partial: 300 of 365 days available (minimum 300) | "
+		"missing: 2025-09-18 to 2025-11-21"
+	) in caplog.text
+
+
+# One day below the minimum must skip the camera before frame selection runs.
+def test_run_yearly_job_skips_below_minimum_coverage(
+	monkeypatch,
+	caplog,
+):
+	created_videos, selection_calls = run_yearly_with_missing_days(
+		monkeypatch,
+		missing_day_count=66,
+	)
+
+	assert created_videos == []
+	assert selection_calls == []
+	assert (
+		"Yearly coverage too low: 299 of 365 days available (minimum 300) - "
+		"skipping camera: Test-Camera"
+	) in caplog.text
+
+
+# Historical runs use the same threshold as automatic ones.
+def test_run_yearly_job_applies_minimum_to_historical_run(
+	monkeypatch,
+	caplog,
+):
+	interval_images = [
+		image for image in create_complete_yearly_images() if "25-09-18" not in image.name
+	]
+	created_videos = []
+
+	monkeypatch.setattr(
+		yearly_module,
+		"find_interval_images_isolated",
+		lambda **kwargs: interval_images,
+	)
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		lambda **kwargs: kwargs["images"],
+	)
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Test-Camera/manual-runs/yearly/test.mp4")
+
+	monkeypatch.setattr(yearly_module, "create_timelapse", fake_create_timelapse)
+
+	run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		framerate=YEARLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+	)
+
+	assert len(created_videos) == 1
+	assert created_videos[0]["manual_run"] is True
+	assert "Yearly coverage partial: 364 of 365 days available (minimum 300)" in caplog.text
 
 
 # A Yearly selection that returns no usable frames must not create a video.

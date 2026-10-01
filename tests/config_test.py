@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 import src.config as config_module
+from src.date_coverage import get_min_coverage_days
 from src.interval_window import interval_window_from_config
 
 
@@ -11,6 +12,7 @@ EXPECTED_ROOT_KEYS = {
 	"location",
 	"daylight_buffer_minutes",
 	"interval_window",
+	"min_coverage_days",
 	"image_scan_stall_timeout_seconds",
 	"log_retention_days",
 	"ignored_cameras",
@@ -26,6 +28,11 @@ EXPECTED_LOCATION_KEYS = {
 EXPECTED_INTERVAL_WINDOW_KEYS = {
 	"target_time",
 	"tolerance_minutes",
+}
+
+EXPECTED_MIN_COVERAGE_KEYS = {
+	"monthly",
+	"yearly",
 }
 
 EXPECTED_TIMELAPSE_KEYS = {
@@ -74,6 +81,12 @@ def assert_valid_config_structure(config: dict) -> None:
 
 	# Parsing also enforces HH:MM/"sunset", tolerance >= 1 and no midnight crossing.
 	interval_window_from_config(config)
+
+	assert set(config["min_coverage_days"]) == EXPECTED_MIN_COVERAGE_KEYS
+
+	# Validated against the shortest window each job can have.
+	get_min_coverage_days(config, "monthly", total_days=30)
+	get_min_coverage_days(config, "yearly", total_days=365)
 
 	assert isinstance(
 		config["image_scan_stall_timeout_seconds"],
@@ -140,6 +153,16 @@ def test_production_config_keeps_default_interval_window():
 	assert config["interval_window"] == {
 		"target_time": "12:00",
 		"tolerance_minutes": 90,
+	}
+
+
+# Agreed thresholds (2026-10-01): Monthly 25 of 30 days, Yearly 300 days.
+def test_production_config_keeps_agreed_min_coverage_days():
+	config = config_module.load_config()
+
+	assert config["min_coverage_days"] == {
+		"monthly": 25,
+		"yearly": 300,
 	}
 
 

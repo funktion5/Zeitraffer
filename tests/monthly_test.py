@@ -15,6 +15,10 @@ TEST_CONFIG = {
 		"target_time": "12:00",
 		"tolerance_minutes": 90,
 	},
+	"min_coverage_days": {
+		"monthly": 25,
+		"yearly": 300,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,
@@ -112,20 +116,16 @@ def test_run_monthly_job_skips_camera_without_images(
 	assert created_videos == []
 
 
-# A Monthly must not be created when at least one required day is missing.
-def test_run_monthly_job_skips_incomplete_coverage(
+def run_monthly_with_missing_days(
 	monkeypatch,
-	caplog,
-):
-	monthly_images = create_complete_monthly_images()
-
-	# Remove one required day from the 30-day window.
-	missing_date = date(2026, 9, 5)
-
+	missing_day_count: int,
+) -> list[dict]:
+	missing_dates = {START_DATE + timedelta(days=offset) for offset in range(missing_day_count)}
 	monthly_images = [
-		image for image in monthly_images if missing_date.strftime("%y-%m-%d") not in image.name
+		image
+		for image in create_complete_monthly_images()
+		if not any(missing.strftime("%y-%m-%d") in image.name for missing in missing_dates)
 	]
-
 	created_videos = []
 
 	monkeypatch.setattr(
@@ -134,10 +134,18 @@ def test_run_monthly_job_skips_incomplete_coverage(
 		lambda **kwargs: monthly_images,
 	)
 
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Test-Camera/monthly/test.mp4")
+
+	monkeypatch.setattr(monthly_module, "create_timelapse", fake_create_timelapse)
 	monkeypatch.setattr(
 		monthly_module,
-		"create_timelapse",
-		lambda **kwargs: created_videos.append(kwargs),
+		"cleanup_automatic_video_retention",
+		lambda **kwargs: None,
 	)
 
 	run_monthly_job(
@@ -147,9 +155,50 @@ def test_run_monthly_job_skips_incomplete_coverage(
 		target_date=TARGET_DATE,
 	)
 
-	assert created_videos == []
+	return created_videos
 
-	assert "Monthly coverage incomplete: 29 of 30 days available" in caplog.text
+
+# Exactly the configured minimum (25 of 30) still creates the video and logs the gap.
+def test_run_monthly_job_creates_video_at_minimum_coverage(
+	monkeypatch,
+	caplog,
+):
+	created_videos = run_monthly_with_missing_days(monkeypatch, missing_day_count=5)
+
+	assert len(created_videos) == 1
+	# The missing days are left out, not filled.
+	assert len(created_videos[0]["images"]) == 25
+	assert (
+		"Monthly coverage partial: 25 of 30 days available (minimum 25) | "
+		"missing: 2026-08-22 to 2026-08-26"
+	) in caplog.text
+
+
+# One day below the minimum must skip the camera.
+def test_run_monthly_job_skips_below_minimum_coverage(
+	monkeypatch,
+	caplog,
+):
+	created_videos = run_monthly_with_missing_days(monkeypatch, missing_day_count=6)
+
+	assert created_videos == []
+	assert (
+		"Monthly coverage too low: 24 of 30 days available (minimum 25) - "
+		"skipping camera: Test-Camera"
+	) in caplog.text
+
+
+# The threshold comes from config.json, not from a hardcoded value.
+def test_run_monthly_job_uses_configured_minimum(
+	monkeypatch,
+	caplog,
+):
+	monkeypatch.setitem(TEST_CONFIG, "min_coverage_days", {"monthly": 30, "yearly": 300})
+
+	created_videos = run_monthly_with_missing_days(monkeypatch, missing_day_count=1)
+
+	assert created_videos == []
+	assert "29 of 30 days available (minimum 30)" in caplog.text
 
 
 # A failed camera must not stop later cameras from being processed.

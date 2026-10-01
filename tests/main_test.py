@@ -18,6 +18,10 @@ TEST_CONFIG = {
 		"target_time": "12:00",
 		"tolerance_minutes": 90,
 	},
+	"min_coverage_days": {
+		"monthly": 25,
+		"yearly": 300,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"log_retention_days": 30,
 	"ignored_cameras": [],

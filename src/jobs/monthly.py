@@ -14,6 +14,7 @@ from src.video import cleanup_automatic_video_retention
 from src.date_coverage import (
 	format_date_ranges,
 	get_coverage_date_range,
+	get_min_coverage_days,
 	get_missing_dates,
 )
 
@@ -36,6 +37,14 @@ def run_monthly_job(
 	start_date, end_date = get_coverage_date_range(
 		end_date=target_date,
 		coverage_type="monthly",
+	)
+
+	total_days = (end_date - start_date).days + 1
+
+	min_coverage_days = get_min_coverage_days(
+		config=config,
+		coverage_type="monthly",
+		total_days=total_days,
 	)
 
 	# Automatic runs always use the configured default window.
@@ -94,11 +103,13 @@ def run_monthly_job(
 				end_date=end_date,
 			)
 
-			if missing_dates:
+			covered_days = total_days - len(missing_dates)
+
+			if covered_days < min_coverage_days:
 				logger.warning(
-					f"Monthly coverage incomplete: "
-					f"{30 - len(missing_dates)} of 30 days available - "
-					f"skipping camera: {camera}"
+					f"Monthly coverage too low: "
+					f"{covered_days} of {total_days} days available "
+					f"(minimum {min_coverage_days}) - skipping camera: {camera}"
 				)
 
 				logger.debug(f"Missing Monthly dates: {format_date_ranges(missing_dates)}")
@@ -107,7 +118,17 @@ def run_monthly_job(
 
 				continue
 
-			logger.info("Monthly coverage complete: 30 of 30 days")
+			# Missing days are simply absent from the video; log which ones.
+			if missing_dates:
+				logger.warning(
+					f"Monthly coverage partial: "
+					f"{covered_days} of {total_days} days available "
+					f"(minimum {min_coverage_days}) | "
+					f"missing: {format_date_ranges(missing_dates)}"
+				)
+
+			else:
+				logger.info(f"Monthly coverage complete: {total_days} of {total_days} days")
 
 			video_path = create_timelapse(
 				camera=camera,

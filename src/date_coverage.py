@@ -49,6 +49,29 @@ def get_previous_year_date(target_date: date) -> date:
 		return date(target_date.year - 1, 2, 28)
 
 
+# Read the configured minimum of covered days a Monthly/Yearly needs. Applies
+# to automatic and historical runs alike; validated against the actual window
+# so a typo can't silently disable the check or make it unreachable.
+def get_min_coverage_days(
+	config: dict,
+	coverage_type: Literal["monthly", "yearly"],
+	total_days: int,
+) -> int:
+	min_coverage_days = config["min_coverage_days"][coverage_type]
+
+	if (
+		isinstance(min_coverage_days, bool)
+		or not isinstance(min_coverage_days, int)
+		or not 1 <= min_coverage_days <= total_days
+	):
+		raise ValueError(
+			f"min_coverage_days.{coverage_type} must be an integer from 1 to {total_days}: "
+			f"{min_coverage_days!r}"
+		)
+
+	return min_coverage_days
+
+
 # Return dates without a recognized image inside the requested range.
 def get_missing_dates(
 	images: list[Path],

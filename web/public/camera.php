@@ -490,7 +490,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	                <li><strong>Monatlich:</strong> die 30 Tage bis einschließlich des gewählten Datums (kein Kalendermonat).</li>
 	                <li><strong>Jährlich:</strong> die 365 Tage bis einschließlich des gewählten Datums. Beispiel: Zieldatum 31.12.2025 ergibt das Jahr 2025.</li>
 	              </ul>
-	              <p>Fehlt an einem einzigen Tag im Zeitraum ein brauchbares Bild, wird für Monatlich/Jährlich kein Video erstellt.</p>
+	              <p>Monatlich braucht mindestens 25 der 30 Tage, Jährlich mindestens 300 Tage mit Bildern im gewählten Zeitfenster. Fehlende Tage werden im Video übersprungen; sind es zu viele, wird kein Video erstellt.</p>
 	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um 12:00 Uhr (±90 Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
 	            </div>
 

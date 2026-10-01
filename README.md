@@ -230,6 +230,10 @@ Beispiel:
     "target_time": "12:00",
     "tolerance_minutes": 90
   },
+  "min_coverage_days": {
+    "monthly": 25,
+    "yearly": 300
+  },
   "image_scan_stall_timeout_seconds": 60,
   "log_retention_days": 30,
   "ignored_cameras": [
@@ -250,6 +254,10 @@ Beispiel:
 `target_time` (`HH:MM` oder `sunset`) ± `tolerance_minutes`. Automatische Läufe verwenden immer
 diesen Wert; historische Läufe können ihn per CLI überschreiben (siehe „Zeitfenster für
 historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reichen.
+
+`min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
+Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
+bis zur Fensterlänge (30 bzw. 365).
 
 Die Tests prüfen unter anderem:
 
@@ -1272,6 +1280,9 @@ Nicht ausgewählte Jobs werden dabei übersprungen.
   `--window-tolerance-minutes` verschiebbar)
 - verwendet alle ausgewählten Intervallbilder
 - filtert byte-identische Bilder innerhalb jedes einzelnen Tages
+- Mindestabdeckung: `min_coverage_days.monthly` (25 von 30 Tagen), automatisch und historisch;
+  darunter wird die Kamera übersprungen. Ein Tag gilt als fehlend, wenn im gewählten Zeitfenster
+  kein brauchbares Bild liegt. Fehlende Tage fehlen im Video und werden als Bereiche geloggt.
 - Framerate: `monthly_framerate`
 
 ### Yearly
@@ -1283,6 +1294,9 @@ Nicht ausgewählte Jobs werden dabei übersprungen.
 - Zielzeit: 12:00 Uhr bzw. die Mitte des gewählten Fensters
 - bis zu 5 eindeutige Frames pro Tag
 - bei Duplikaten werden weitere Kandidaten nachgezogen
+- Mindestabdeckung: `min_coverage_days.yearly` (300 Tage, auch im Schaltjahr), automatisch und
+  historisch; darunter wird die Kamera übersprungen, bevor die Frame-Auswahl läuft. Fehlende
+  Tage fehlen im Video und werden als Bereiche geloggt.
 - Framerate: `yearly_framerate`
 
 ---
@@ -1784,6 +1798,7 @@ Gemeinsame Datumslogik für exakte rollierende Fenster:
 - Monthly: 30 Kalendertage inklusive Enddatum
 - Yearly: 365 Kalendertage inklusive Enddatum
 - Ermittlung fehlender Kalendertage
+- Lesen und Prüfen der Mindestabdeckung (`get_min_coverage_days`)
 - kompakte Darstellung aufeinanderfolgender fehlender Tage für Logs
 
 ### `src/yearly_selection.py`
