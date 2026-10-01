@@ -226,6 +226,10 @@ Beispiel:
     "timezone": "Europe/Berlin"
   },
   "daylight_buffer_minutes": 90,
+  "interval_window": {
+    "target_time": "12:00",
+    "tolerance_minutes": 90
+  },
   "image_scan_stall_timeout_seconds": 60,
   "log_retention_days": 30,
   "ignored_cameras": [
@@ -241,6 +245,11 @@ Beispiel:
   }
 }
 ```
+
+`interval_window` ist das tägliche Bildfenster für Monthly und Yearly: Zielzeit
+`target_time` (`HH:MM` oder `sunset`) ± `tolerance_minutes`. Automatische Läufe verwenden immer
+diesen Wert; historische Läufe können ihn per CLI überschreiben (siehe „Zeitfenster für
+historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reichen.
 
 Die Tests prüfen unter anderem:
 
@@ -454,9 +463,10 @@ Neue Dateien der Python-Jobs sind durch die Standard-`umask` `0002` weltlesbar. 
 Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
 
 - Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
-- Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
+- Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“, bzw. das Zeitfenster bei Monthly/Yearly, z. B. „30.06.2025 (Sonnenuntergang ±60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
 - Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung), beide mit Bestätigungsdialog vor dem Absenden
 - Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde
+- bei Monthly/Yearly eine Radiogruppe „Zeitfenster“: „Mittag (Standard)“ übergibt nichts (es gilt `interval_window` aus der Config), „Sonnenuntergang“ übergibt `sunset` plus eine Fensterbreite von ±30/60/90 Minuten (eigene Radiogruppe, nur bei Sonnenuntergang sichtbar); serverseitig sind nur diese Werte erlaubt
 - kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums, und bei Monthly/Yearly führt ein einziger fehlender Tag im Zeitraum zum Überspringen der Kamera
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
 - Live-Status per Polling im Abstand von fünf Sekunden; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
@@ -489,8 +499,14 @@ Ein gültiger Formular-POST wird durch einen Session-basierten CSRF-Token gesch�
 
 ```text
 sudo -n -u zruser /usr/local/sbin/timelapse-web-trigger \
-  <job-id> <job> <zieldatum> <kamera>
+  <job-id> <job> <zieldatum> <kamera> [<zeitpuffer> | <fenster-zeit> <fenster-toleranz>]
 ```
+
+Daily/Weekly verlangen genau einen Zeitpuffer (30/60/90). Monthly/Yearly erhalten entweder
+nichts oder Fensterzeit (`HH:MM` oder `sunset`) plus Toleranz in Minuten (1–999); Trigger und
+Worker prüfen das Format, `src.main` lehnt Fenster über Mitternacht ab. Der Worker übergibt
+`--window-time` / `--window-tolerance-minutes` und erwartet die Datei
+`<kamera>_<zieldatum>_<HHMM|sunset>-<toleranz>min.mp4`.
 
 Die weitere Kette lautet:
 
@@ -713,6 +729,32 @@ Monthly
 
 `--target-date` ist nur gemeinsam mit `--jobs` gültig.
 
+### Zeitfenster für historisches Monthly und Yearly
+
+Standardmäßig wählen Monthly und Yearly Bilder aus `interval_window` in `config/config.json`
+(12:00 ± 90 Minuten). Für historische Läufe lässt sich das Fenster verschieben:
+
+```bash
+python3 -m src.main \
+	--jobs yearly \
+	--target-date 2025-12-31 \
+	--cameras Scheunenviertel \
+	--window-time 18:30 \
+	--window-tolerance-minutes 60
+```
+
+- `--window-time HH:MM` setzt die Mitte des täglichen Fensters.
+- `--window-time sunset` verwendet den Sonnenuntergang des jeweiligen Tages (berechnet aus
+  `location` mit `astral`). Das Fenster wandert damit mit der Jahreszeit.
+- `--window-tolerance-minutes N` setzt die Minuten vor und nach der Mitte (mindestens 1).
+- Fehlt eines der beiden Flags, gilt der Wert aus `interval_window`.
+- Yearly wählt die fünf Frames pro Tag nach Abstand zu derselben Fenstermitte aus.
+- Ein Fenster, das über Mitternacht reichen würde, wird vor dem Start abgelehnt.
+- Die Ausgabe erhält das Fenster im Dateinamen, damit sie das 12:00-Video nicht überschreibt:
+  `<camera>_<zieldatum>_1830-60min.mp4` bzw. `<camera>_<zieldatum>_sunset-60min.mp4`.
+
+Die Flags gelten nur für historische Läufe (`--target-date`) mit `monthly` und/oder `yearly`.
+
 ### Kurzform für historisches Daily
 
 `--date` ist ein rückwärtskompatibler Alias für `--jobs daily --target-date`. Ohne Kameraauswahl verarbeitet er alle verfügbaren Kameras:
@@ -748,6 +790,8 @@ historisches Weekly ohne genau eine Kamera
 historisches Weekly gemeinsam mit einem weiteren Job
 --cameras ohne --date oder --target-date
 --daylight-buffer-minutes mit monthly oder yearly
+--window-time / --window-tolerance-minutes ohne --target-date
+--window-time / --window-tolerance-minutes mit daily oder weekly
 ```
 
 ---
@@ -1224,7 +1268,8 @@ Nicht ausgewählte Jobs werden dabei übersprungen.
 - Fenster: rollierende 30 Tage inklusive Enddatum
 - Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
-- täglich 10:30 bis 13:30 Uhr
+- täglich 10:30 bis 13:30 Uhr (`interval_window`, historisch per `--window-time` /
+  `--window-tolerance-minutes` verschiebbar)
 - verwendet alle ausgewählten Intervallbilder
 - filtert byte-identische Bilder innerhalb jedes einzelnen Tages
 - Framerate: `monthly_framerate`
@@ -1234,8 +1279,8 @@ Nicht ausgewählte Jobs werden dabei übersprungen.
 - Fenster: exaktes Kalenderjahr bis einschließlich Enddatum — 365 oder 366 Tage, je nachdem ob ein Schalttag (29. Februar) im Zeitraum liegt; kein fest codiertes 365-Tage-Fenster mehr
 - Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
-- tägliche Kandidaten aus 10:30 bis 13:30 Uhr
-- Zielzeit: 12:00 Uhr
+- tägliche Kandidaten aus 10:30 bis 13:30 Uhr (`interval_window`, historisch verschiebbar)
+- Zielzeit: 12:00 Uhr bzw. die Mitte des gewählten Fensters
 - bis zu 5 eindeutige Frames pro Tag
 - bei Duplikaten werden weitere Kandidaten nachgezogen
 - Framerate: `yearly_framerate`
@@ -1332,7 +1377,11 @@ videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/monthly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15_sunset-60min.mp4
 ```
+
+Ein abweichendes Zeitfenster (`--window-time` / `--window-tolerance-minutes`) wird als Suffix
+`_<HHMM|sunset>-<toleranz>min` angehängt.
 
 Historische Ausgaben werden von automatischer Retention nicht verändert.
 
@@ -1687,8 +1736,8 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - verarbeitet ein rollierendes 30-Tage-Fenster
 - Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
-- berücksichtigt alle ausgewählten Bilder im täglichen Zielzeitfenster um 12:00 Uhr
-- Toleranz: ±90 Minuten
+- berücksichtigt alle ausgewählten Bilder im täglichen Zielzeitfenster aus `interval_window`
+  (Standard 12:00 Uhr ±90 Minuten; historisch per CLI überschreibbar, auch `sunset`)
 
 `yearly.py`
 - verarbeitet ein rollierendes 365-Tage-Fenster
@@ -1743,7 +1792,8 @@ Yearly-spezifische Frame-Auswahl.
 
 Pro Kalendertag:
 
-1. Kandidaten nach Abstand zu 12:00 Uhr priorisieren.
+1. Kandidaten nach Abstand zur Fenstermitte priorisieren (Standard 12:00 Uhr, bei `sunset`
+   der Sonnenuntergang des Tages).
 2. Bildinhalt per SHA-256 prüfen.
 3. Byte-identische Kandidaten überspringen.
 4. Bei Duplikaten den nächsten Kandidaten nachziehen.
