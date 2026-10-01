@@ -4,6 +4,8 @@ from pathlib import Path
 import subprocess
 import time
 
+import pytest
+
 
 STATUS_HELPER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-status.sh"
 WEB_WORKER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-worker"
@@ -103,11 +105,19 @@ def run_web_worker(
 	existing_video: bool = False,
 	job: str = "daily",
 	daylight_buffer_minutes: str | None = "60",
+	window: tuple[str, str] | None = None,
+	expected_video_suffix: str | None = None,
 ) -> subprocess.CompletedProcess:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
 	project_root.mkdir()
 	video_suffix = f"_{daylight_buffer_minutes}min" if daylight_buffer_minutes else ""
+
+	# Tests state the expected name literally so the worker can't agree with itself.
+	if expected_video_suffix is not None:
+		video_suffix = expected_video_suffix
+
+	python_arguments_file = tmp_path / "python-arguments"
 	video_path = (
 		project_root
 		/ "videos"
@@ -122,7 +132,10 @@ def run_web_worker(
 		video_path.write_text("existing video")
 
 	fake_python = tmp_path / "fake-python"
-	fake_python_lines = ["#!/bin/bash"]
+	fake_python_lines = [
+		"#!/bin/bash",
+		f'printf "%s\\n" "$@" >"{python_arguments_file}"',
+	]
 
 	if publish_video:
 		fake_python_lines.extend(
@@ -164,6 +177,9 @@ def run_web_worker(
 	if daylight_buffer_minutes:
 		command.append(daylight_buffer_minutes)
 
+	if window is not None:
+		command.extend(window)
+
 	result = subprocess.run(
 		command,
 		capture_output=True,
@@ -174,6 +190,7 @@ def run_web_worker(
 
 	result.status_file = status_root / f"{job_id}.status"
 	result.video_path = video_path
+	result.python_arguments_file = python_arguments_file
 	return result
 
 
@@ -421,3 +438,132 @@ def test_web_worker_monthly_video_has_no_buffer_suffix(tmp_path):
 	assert result.returncode == 0
 	assert result.status_file.read_text() == "completed\n"
 	assert result.video_path.name == "Scheunenviertel_2026-09-22.mp4"
+
+
+# Monthly/Yearly may pass a window time plus tolerance through to the worker.
+@pytest.mark.parametrize("window_time", ["sunset", "18:30"])
+def test_web_trigger_accepts_monthly_with_window(tmp_path, window_time):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+	job_id = "4" * 32
+
+	result = subprocess.run(
+		[
+			str(WEB_TRIGGER),
+			job_id,
+			"yearly",
+			"2026-09-22",
+			"Scheunenviertel",
+			window_time,
+			"60",
+		],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	for _ in range(20):
+		if invocation_file.exists():
+			break
+		time.sleep(0.01)
+
+	assert result.returncode == 0
+	assert invocation_file.read_text().splitlines() == [
+		job_id,
+		"yearly",
+		"2026-09-22",
+		"Scheunenviertel",
+		window_time,
+		"60",
+	]
+
+
+@pytest.mark.parametrize(
+	("job", "window_time", "tolerance", "message"),
+	[
+		("monthly", "24:00", "60", "Invalid window time: 24:00"),
+		("monthly", "9:30", "60", "Invalid window time: 9:30"),
+		("monthly", "sunrise", "60", "Invalid window time: sunrise"),
+		("monthly", "$(id)", "60", "Invalid window time: $(id)"),
+		("yearly", "sunset", "0", "Invalid window tolerance: 0"),
+		("yearly", "sunset", "1000", "Invalid window tolerance: 1000"),
+		("yearly", "sunset", "-5", "Invalid window tolerance: -5"),
+		("daily", "sunset", "60", "Invalid daylight buffer:"),
+	],
+)
+def test_web_trigger_rejects_invalid_window(tmp_path, job, window_time, tolerance, message):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+
+	result = subprocess.run(
+		[
+			str(WEB_TRIGGER),
+			"5" * 32,
+			job,
+			"2026-09-22",
+			"Scheunenviertel",
+			window_time,
+			tolerance,
+		],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	assert result.returncode == 64
+	assert result.stderr.strip() == message
+	assert not invocation_file.exists()
+
+
+# The worker must call the CLI with the window and expect the suffixed filename.
+@pytest.mark.parametrize(
+	("window", "expected_suffix"),
+	[
+		(("sunset", "60"), "_sunset-60min"),
+		(("18:30", "45"), "_1830-45min"),
+	],
+)
+def test_web_worker_passes_window_and_expects_suffixed_video(tmp_path, window, expected_suffix):
+	result = run_web_worker(
+		tmp_path,
+		python_exit_code=0,
+		publish_video=True,
+		job="monthly",
+		daylight_buffer_minutes=None,
+		window=window,
+		expected_video_suffix=expected_suffix,
+	)
+
+	assert result.returncode == 0
+	assert result.status_file.read_text() == "completed\n"
+	assert result.video_path.name == f"Scheunenviertel_2026-09-22{expected_suffix}.mp4"
+	assert result.python_arguments_file.read_text().splitlines() == [
+		"-m",
+		"src.main",
+		"--jobs",
+		"monthly",
+		"--target-date",
+		"2026-09-22",
+		"--cameras",
+		"Scheunenviertel",
+		"--window-time",
+		window[0],
+		"--window-tolerance-minutes",
+		window[1],
+	]
+
+
+# A default-window video must not count as success for a sunset request.
+def test_web_worker_rejects_default_video_for_window_request(tmp_path):
+	result = run_web_worker(
+		tmp_path,
+		python_exit_code=0,
+		publish_video=True,
+		job="monthly",
+		daylight_buffer_minutes=None,
+		window=("sunset", "60"),
+		expected_video_suffix="",
+	)
+
+	assert result.returncode == 1
+	assert result.status_file.read_text() == "failed\n"

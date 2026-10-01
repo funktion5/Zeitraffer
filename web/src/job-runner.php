@@ -5,8 +5,14 @@ declare(strict_types=1);
 require_once __DIR__ . "/process-runner.php";
 
 
-function startVideoJob(string $job, string $targetDate, string $camera, ?int $daylightBufferMinutes): array
-{
+function startVideoJob(
+	string $job,
+	string $targetDate,
+	string $camera,
+	?int $daylightBufferMinutes,
+	?string $windowTime = null,
+	?int $windowToleranceMinutes = null,
+): array {
 	$jobId = bin2hex(random_bytes(16));
 
 	$command = [
@@ -25,6 +31,13 @@ function startVideoJob(string $job, string $targetDate, string $camera, ?int $da
 	// omitted entirely rather than passed as some placeholder value.
 	if ($daylightBufferMinutes !== null) {
 		$command[] = (string) $daylightBufferMinutes;
+	}
+
+	// Monthly/Yearly interval window: both values or neither, so the wrapper
+	// can tell it apart from a daylight buffer by argument count.
+	if ($windowTime !== null && $windowToleranceMinutes !== null) {
+		$command[] = $windowTime;
+		$command[] = (string) $windowToleranceMinutes;
 	}
 
 	$result = runPrivilegedCommand($command);

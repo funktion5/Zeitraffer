@@ -8,9 +8,9 @@ CAMERA_ROOT="${TIMELAPSE_CAMERA_ROOT:-/mnt/cameras}"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 WORKER="${TIMELAPSE_WEB_WORKER:-/usr/local/libexec/timelapse-web-worker}"
 
-if [[ $# -ne 4 && $# -ne 5 ]]; then
-	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera> [daylight-buffer-minutes]" >&2
-	echo "daylight-buffer-minutes is required for daily/weekly and must be omitted for monthly/yearly." >&2
+if [[ $# -lt 4 || $# -gt 6 ]]; then
+	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera> [daylight-buffer-minutes | window-time window-tolerance-minutes]" >&2
+	echo "daylight-buffer-minutes is required for daily/weekly; monthly/yearly take either nothing or a window time (HH:MM or sunset) plus tolerance." >&2
 	exit 64
 fi
 
@@ -19,6 +19,15 @@ JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
 DAYLIGHT_BUFFER_MINUTES="${5:-}"
+WINDOW_TIME=""
+WINDOW_TOLERANCE_MINUTES=""
+
+# Monthly/Yearly reuse positions 5/6 for the optional interval window.
+if [[ $# -eq 6 ]]; then
+	DAYLIGHT_BUFFER_MINUTES=""
+	WINDOW_TIME="$5"
+	WINDOW_TOLERANCE_MINUTES="$6"
+fi
 
 if [[ ! -r "$STATUS_HELPER" || ! -x "$WORKER" ]]; then
 	echo "Web job support files are unavailable." >&2
@@ -83,6 +92,28 @@ case "$JOB" in
 		;;
 esac
 
+if [[ -n "$WINDOW_TIME" ]]; then
+	case "$JOB" in
+		monthly|yearly)
+			;;
+		*)
+			echo "Daily/Weekly do not use an interval window." >&2
+			exit 64
+			;;
+	esac
+
+	# Format only; src.main rejects windows that would cross midnight.
+	if [[ ! "$WINDOW_TIME" =~ ^(([01][0-9]|2[0-3]):[0-5][0-9]|sunset)$ ]]; then
+		echo "Invalid window time: $WINDOW_TIME" >&2
+		exit 64
+	fi
+
+	if [[ ! "$WINDOW_TOLERANCE_MINUTES" =~ ^[1-9][0-9]{0,2}$ ]]; then
+		echo "Invalid window tolerance: $WINDOW_TOLERANCE_MINUTES" >&2
+		exit 64
+	fi
+fi
+
 COMMAND=(
 	"$WORKER"
 	"$JOB_ID"
@@ -93,6 +124,10 @@ COMMAND=(
 
 if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
 	COMMAND+=("$DAYLIGHT_BUFFER_MINUTES")
+fi
+
+if [[ -n "$WINDOW_TIME" ]]; then
+	COMMAND+=("$WINDOW_TIME" "$WINDOW_TOLERANCE_MINUTES")
 fi
 
 cd "$PROJECT_ROOT"

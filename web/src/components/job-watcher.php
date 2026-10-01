@@ -46,8 +46,16 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 		function buildVideoUrl(pendingJob) {
 			// Must match src.video.get_video_path()'s manual-run filename exactly.
-			const bufferSuffix = pendingJob.bufferMinutes != null ? `_${pendingJob.bufferMinutes}min` : "";
-			const filename = `${pendingJob.camera}_${pendingJob.targetDate}${bufferSuffix}.mp4`;
+			let suffix = "";
+
+			if (pendingJob.bufferMinutes != null) {
+				suffix = `_${pendingJob.bufferMinutes}min`;
+			} else if (pendingJob.windowTime != null && pendingJob.windowToleranceMinutes != null) {
+				// IntervalWindow.label(): "18:30" -> "1830", "sunset" stays as is.
+				suffix = `_${pendingJob.windowTime.replace(":", "")}-${pendingJob.windowToleranceMinutes}min`;
+			}
+
+			const filename = `${pendingJob.camera}_${pendingJob.targetDate}${suffix}.mp4`;
 
 			return "/camera.php?" + new URLSearchParams({
 				camera: pendingJob.camera,

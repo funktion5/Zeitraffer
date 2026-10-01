@@ -128,6 +128,7 @@ function findManualVideos(string $camera): array
 				"filename" => $filename,
 				"date" => $metadata["date"],
 				"bufferMinutes" => $metadata["bufferMinutes"],
+				"window" => $metadata["window"],
 				"url" => "/videos/"
 					. rawurlencode($camera)
 					. "/manual-runs/"
@@ -141,8 +142,8 @@ function findManualVideos(string $camera): array
 			usort(
 				$videos[$job],
 				fn(array $left, array $right): int => strcmp(
-					($right["date"] ?? $right["filename"]) . ($right["bufferMinutes"] ?? ""),
-					($left["date"] ?? $left["filename"]) . ($left["bufferMinutes"] ?? ""),
+					($right["date"] ?? $right["filename"]) . ($right["bufferMinutes"] ?? "") . ($right["window"] ?? ""),
+					($left["date"] ?? $left["filename"]) . ($left["bufferMinutes"] ?? "") . ($left["window"] ?? ""),
 				),
 			);
 		}
@@ -152,25 +153,60 @@ function findManualVideos(string $camera): array
 }
 
 // Extracts the ISO target date and, if present, the daylight buffer (in
-// minutes) from a manual-run filename (`{camera}_{date}.mp4` or
-// `{camera}_{date}_{buffer}min.mp4`). Both come back null if the filename
-// doesn't match either pattern. Never guesses: an unexpected filename just
-// falls back to sorting/displaying by the raw filename.
+// minutes) or the Monthly/Yearly interval window from a manual-run filename
+// (`{camera}_{date}.mp4`, `{camera}_{date}_{buffer}min.mp4` or
+// `{camera}_{date}_{HHMM|sunset}-{tolerance}min.mp4`). Everything comes back
+// null if the filename doesn't match. Never guesses: an unexpected filename
+// just falls back to sorting/displaying by the raw filename.
 function extractManualVideoMetadata(string $camera, string $filename): array
 {
-	$pattern = "/^" . preg_quote($camera, "/") . "_(\d{4}-\d{2}-\d{2})(?:_(\d+)min)?\.mp4$/";
+	$noMetadata = [
+		"date" => null,
+		"bufferMinutes" => null,
+		"window" => null,
+	];
+
+	$pattern = "/^"
+		. preg_quote($camera, "/")
+		. "_(\d{4}-\d{2}-\d{2})(?:_(\d+)min|_(\d{4}|sunset)-(\d+)min)?\.mp4$/";
 
 	if (preg_match($pattern, $filename, $matches) !== 1 || !isValidIsoDate($matches[1])) {
-		return [
-			"date" => null,
-			"bufferMinutes" => null,
-		];
+		return $noMetadata;
+	}
+
+	$window = null;
+
+	if (isset($matches[3]) && $matches[3] !== "") {
+		$window = formatIntervalWindowLabel($matches[3], (int) $matches[4]);
+
+		if ($window === null) {
+			return $noMetadata;
+		}
 	}
 
 	return [
 		"date" => $matches[1],
 		"bufferMinutes" => isset($matches[2]) && $matches[2] !== "" ? (int) $matches[2] : null,
+		"window" => $window,
 	];
+}
+
+// German label for a filename window part, e.g. "1830" -> "18:30 ±60 Min.".
+// Returns null for an impossible time so the caller falls back to the filename.
+function formatIntervalWindowLabel(string $target, int $toleranceMinutes): ?string
+{
+	if ($target === "sunset") {
+		return "Sonnenuntergang ±{$toleranceMinutes} Min.";
+	}
+
+	$hour = (int) substr($target, 0, 2);
+	$minute = (int) substr($target, 2, 2);
+
+	if ($hour > 23 || $minute > 59) {
+		return null;
+	}
+
+	return sprintf("%02d:%02d ±%d Min.", $hour, $minute, $toleranceMinutes);
 }
 
 function formatGermanDate(string $isoDate): string

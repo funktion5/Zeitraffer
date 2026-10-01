@@ -6,8 +6,8 @@ PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-/home/zruser/timelapse}"
 PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 
-if [[ $# -ne 4 && $# -ne 5 ]]; then
-	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> [daylight-buffer-minutes]" >&2
+if [[ $# -lt 4 || $# -gt 6 ]]; then
+	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> [daylight-buffer-minutes | window-time window-tolerance-minutes]" >&2
 	exit 64
 fi
 
@@ -16,6 +16,15 @@ JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
 DAYLIGHT_BUFFER_MINUTES="${5:-}"
+WINDOW_TIME=""
+WINDOW_TOLERANCE_MINUTES=""
+
+# Monthly/Yearly reuse positions 5/6 for the optional interval window.
+if [[ $# -eq 6 ]]; then
+	DAYLIGHT_BUFFER_MINUTES=""
+	WINDOW_TIME="$5"
+	WINDOW_TOLERANCE_MINUTES="$6"
+fi
 
 if [[ ! -r "$STATUS_HELPER" ]]; then
 	echo "Status helper is unavailable." >&2
@@ -58,6 +67,28 @@ case "$JOB" in
 		;;
 esac
 
+if [[ -n "$WINDOW_TIME" ]]; then
+	case "$JOB" in
+		monthly|yearly)
+			;;
+		*)
+			echo "Daily/Weekly do not use an interval window." >&2
+			exit 64
+			;;
+	esac
+
+	# Format only; src.main rejects windows that would cross midnight.
+	if [[ ! "$WINDOW_TIME" =~ ^(([01][0-9]|2[0-3]):[0-5][0-9]|sunset)$ ]]; then
+		echo "Invalid window time: $WINDOW_TIME" >&2
+		exit 64
+	fi
+
+	if [[ ! "$WINDOW_TOLERANCE_MINUTES" =~ ^[1-9][0-9]{0,2}$ ]]; then
+		echo "Invalid window tolerance: $WINDOW_TOLERANCE_MINUTES" >&2
+		exit 64
+	fi
+fi
+
 # Record our own PID so job-status.php can detect a "running" status left
 # behind by a worker that died without ever reaching write_job_status below
 # (e.g. the Pi rebooted mid-job).
@@ -82,10 +113,17 @@ if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
 	VIDEO_SUFFIX="_${DAYLIGHT_BUFFER_MINUTES}min"
 fi
 
+if [[ -n "$WINDOW_TIME" ]]; then
+	COMMAND+=(--window-time "$WINDOW_TIME" --window-tolerance-minutes "$WINDOW_TOLERANCE_MINUTES")
+	# IntervalWindow.label(): "18:30" -> "1830", "sunset" stays as is.
+	VIDEO_SUFFIX="_${WINDOW_TIME/:/}-${WINDOW_TOLERANCE_MINUTES}min"
+fi
+
 # Must match src.video.get_video_path()'s manual-run filename exactly
-# ({camera}_{date}.mp4, or {camera}_{date}_{buffer}min.mp4 for daily/weekly),
-# or this success/failure check below would never see the file the job
-# actually publishes.
+# ({camera}_{date}.mp4, {camera}_{date}_{buffer}min.mp4 for daily/weekly, or
+# {camera}_{date}_{HHMM|sunset}-{tolerance}min.mp4 for a monthly/yearly
+# window), or this success/failure check below would never see the file the
+# job actually publishes.
 VIDEO_PATH="${PROJECT_ROOT}/videos/${CAMERA}/manual-runs/${JOB}/${CAMERA}_${TARGET_DATE}${VIDEO_SUFFIX}.mp4"
 previous_video_signature=""
 
