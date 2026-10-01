@@ -32,7 +32,7 @@ from src.storage_filter import acquire_run_lock  # noqa: E402
 from src.video import create_timelapse, get_video_path  # noqa: E402
 from src.yearly_selection import select_yearly_images_isolated  # noqa: E402
 
-DEFAULT_YEARS = [2023, 2024, 2025, 2026]
+DEFAULT_YEARS = [2026]
 REPORT_DIRECTORY = PROJECT_ROOT / "reports" / "yearly-coverage"
 
 
