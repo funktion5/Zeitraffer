@@ -12,6 +12,11 @@ from src.date_coverage import (
 from src.images import (
 	find_interval_images_isolated,
 )
+from src.interval_window import (
+	IntervalWindow,
+	interval_window_from_config,
+	resolve_target_seconds,
+)
 from src.logger import RUN_ID, format_run_context, logger
 from src.video import create_timelapse, cleanup_automatic_video_retention
 from src.yearly_selection import select_yearly_images_isolated
@@ -24,6 +29,7 @@ def run_yearly_job(
 	framerate: int,
 	target_date: date | None = None,
 	manual_run: bool = False,
+	interval_window: IntervalWindow | None = None,
 ) -> None:
 	location = config["location"]
 
@@ -42,6 +48,17 @@ def run_yearly_job(
 	# whenever a leap day falls inside it.
 	total_days = (end_date - start_date).days + 1
 
+	# Automatic runs always use the configured default window.
+	window = interval_window or interval_window_from_config(config)
+
+	# Shared by the scan window and the closest-to-centre ranking.
+	target_seconds_by_date = resolve_target_seconds(
+		window=window,
+		start_date=start_date,
+		end_date=end_date,
+		location=location,
+	)
+
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 
 	logger.info("-" * 80)
@@ -52,7 +69,10 @@ def run_yearly_job(
 		cameras=cameras,
 	)
 
-	logger.info(f"Starting Yearly timelapse job for {start_date} to {end_date} | {run_context}")
+	logger.info(
+		f"Starting Yearly timelapse job for {start_date} to {end_date} | "
+		f"window={window.describe()} | {run_context}"
+	)
 
 	created_count = 0
 	skipped_count = 0
@@ -68,6 +88,8 @@ def run_yearly_job(
 				start_date=start_date,
 				end_date=end_date,
 				stall_timeout_seconds=stall_timeout_seconds,
+				target_seconds_by_date=target_seconds_by_date,
+				tolerance_minutes=window.tolerance_minutes,
 			)
 
 			logger.info(f"Found {len(interval_images)} selected interval images")
@@ -103,6 +125,7 @@ def run_yearly_job(
 				camera=camera,
 				images=interval_images,
 				stall_timeout_seconds=stall_timeout_seconds,
+				target_seconds_by_date=target_seconds_by_date,
 				images_per_day=5,
 			)
 
@@ -121,6 +144,7 @@ def run_yearly_job(
 				timelapse_type="yearly",
 				framerate=framerate,
 				manual_run=manual_run,
+				interval_window=interval_window,
 			)
 			if not manual_run:
 				cleanup_automatic_video_retention(

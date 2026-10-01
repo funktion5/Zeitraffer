@@ -4,11 +4,13 @@ from pathlib import Path
 import pytest
 
 import src.config as config_module
+from src.interval_window import interval_window_from_config
 
 
 EXPECTED_ROOT_KEYS = {
 	"location",
 	"daylight_buffer_minutes",
+	"interval_window",
 	"image_scan_stall_timeout_seconds",
 	"log_retention_days",
 	"ignored_cameras",
@@ -19,6 +21,11 @@ EXPECTED_LOCATION_KEYS = {
 	"latitude",
 	"longitude",
 	"timezone",
+}
+
+EXPECTED_INTERVAL_WINDOW_KEYS = {
+	"target_time",
+	"tolerance_minutes",
 }
 
 EXPECTED_TIMELAPSE_KEYS = {
@@ -62,6 +69,11 @@ def assert_valid_config_structure(config: dict) -> None:
 		config["daylight_buffer_minutes"],
 		int,
 	)
+
+	assert set(config["interval_window"]) == EXPECTED_INTERVAL_WINDOW_KEYS
+
+	# Parsing also enforces HH:MM/"sunset", tolerance >= 1 and no midnight crossing.
+	interval_window_from_config(config)
 
 	assert isinstance(
 		config["image_scan_stall_timeout_seconds"],
@@ -119,6 +131,16 @@ def test_config_path_points_to_expected_production_file():
 	expected_path = Path(config_module.__file__).resolve().parent.parent / "config" / "config.json"
 
 	assert config_module.CONFIG_PATH == expected_path
+
+
+# Automatic Monthly/Yearly must keep selecting around 12:00 +-90 minutes.
+def test_production_config_keeps_default_interval_window():
+	config = config_module.load_config()
+
+	assert config["interval_window"] == {
+		"target_time": "12:00",
+		"tolerance_minutes": 90,
+	}
 
 
 # The production configuration file must exist.

@@ -1,6 +1,6 @@
 """Build historical calendar-year Yearly videos without the full-coverage check.
 
-One-off backfill: same image scan, 0-byte filter, 12:00 +-90 min window and
+One-off backfill: same image scan, 0-byte filter, configured interval window and
 five-images-per-day selection as the Yearly job, but a camera is encoded
 whatever its coverage, so the results can be judged afterwards. Missing days
 are logged and written to a summary CSV instead of skipping the camera.
@@ -27,6 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.date_coverage import format_date_ranges, get_missing_dates  # noqa: E402
 from src.images import find_interval_images_isolated, get_cameras  # noqa: E402
+from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
 from src.storage_filter import acquire_run_lock  # noqa: E402
 from src.video import create_timelapse, get_video_path  # noqa: E402
@@ -97,11 +98,21 @@ def build_year(
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
 
+	window = interval_window_from_config(config)
+	target_seconds_by_date = resolve_target_seconds(
+		window=window,
+		start_date=start_date,
+		end_date=end_date,
+		location=config["location"],
+	)
+
 	interval_images = find_interval_images_isolated(
 		camera=camera,
 		start_date=start_date,
 		end_date=end_date,
 		stall_timeout_seconds=stall_timeout_seconds,
+		target_seconds_by_date=target_seconds_by_date,
+		tolerance_minutes=window.tolerance_minutes,
 	)
 
 	missing_dates = get_missing_dates(
@@ -128,6 +139,7 @@ def build_year(
 		camera=camera,
 		images=interval_images,
 		stall_timeout_seconds=stall_timeout_seconds,
+		target_seconds_by_date=target_seconds_by_date,
 		images_per_day=5,
 	)
 

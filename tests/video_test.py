@@ -1,10 +1,11 @@
 import subprocess
-from datetime import date
+from datetime import date, time
 from pathlib import Path
 
 import pytest
 
 import src.video as video_module
+from src.interval_window import SUNSET, IntervalWindow
 from src.video import (
 	cleanup_temp_directory,
 	copy_images_to_temp,
@@ -389,6 +390,7 @@ def test_create_timelapse(
 		framerate,
 		manual_run=False,
 		daylight_buffer_minutes=None,
+		interval_window=None,
 	):
 		calls.append("create_image_timelapse")
 
@@ -470,6 +472,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		framerate,
 		manual_run=False,
 		daylight_buffer_minutes=None,
+		interval_window=None,
 	):
 		raise subprocess.CalledProcessError(
 			returncode=1,
@@ -827,3 +830,52 @@ def test_cleanup_automatic_video_retention_ignores_unrelated_files(
 	assert current_video.exists()
 	assert unrelated_file.exists()
 	assert manual_video.exists()
+
+
+# A historical Monthly/Yearly with a custom window must not overwrite the default video.
+@pytest.mark.parametrize("timelapse_type", ["monthly", "yearly"])
+def test_get_video_path_embeds_interval_window_for_manual_run(timelapse_type):
+	fixed_path = get_video_path(
+		camera="Cam",
+		target_date=date(2025, 6, 30),
+		timelapse_type=timelapse_type,
+		manual_run=True,
+		interval_window=IntervalWindow(target=time(18, 30), tolerance_minutes=60),
+	)
+	sunset_path = get_video_path(
+		camera="Cam",
+		target_date=date(2025, 6, 30),
+		timelapse_type=timelapse_type,
+		manual_run=True,
+		interval_window=IntervalWindow(target=SUNSET, tolerance_minutes=45),
+	)
+
+	assert fixed_path == Path(
+		f"videos/Cam/manual-runs/{timelapse_type}/Cam_2025-06-30_1830-60min.mp4"
+	)
+	assert sunset_path == Path(
+		f"videos/Cam/manual-runs/{timelapse_type}/Cam_2025-06-30_sunset-45min.mp4"
+	)
+
+
+def test_get_video_path_rejects_interval_window_for_automatic_run():
+	with pytest.raises(ValueError, match="only allowed for manual runs"):
+		get_video_path(
+			camera="Cam",
+			target_date=date(2025, 6, 30),
+			timelapse_type="monthly",
+			manual_run=False,
+			interval_window=IntervalWindow(target=time(18, 30), tolerance_minutes=60),
+		)
+
+
+@pytest.mark.parametrize("timelapse_type", ["daily", "weekly"])
+def test_get_video_path_rejects_interval_window_for_daily_and_weekly(timelapse_type):
+	with pytest.raises(ValueError, match="does not use an interval window"):
+		get_video_path(
+			camera="Cam",
+			target_date=date(2025, 6, 30),
+			timelapse_type=timelapse_type,
+			manual_run=True,
+			interval_window=IntervalWindow(target=time(18, 30), tolerance_minutes=60),
+		)

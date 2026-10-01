@@ -18,6 +18,7 @@ def select_unique_yearly_images(
 	target_minute: int = 0,
 	images_per_day: int = 5,
 	progress_callback: Callable[[], None] | None = None,
+	target_seconds_by_date: dict[date, int] | None = None,
 ) -> list[Path]:
 	images_by_date: dict[
 		date,
@@ -44,7 +45,12 @@ def select_unique_yearly_images(
 
 		capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-		distance_seconds = abs(capture_seconds - target_seconds)
+		# A per-date centre (e.g. sunset) overrides the fixed target time.
+		day_target_seconds = (
+			target_seconds if target_seconds_by_date is None else target_seconds_by_date[image_date]
+		)
+
+		distance_seconds = abs(capture_seconds - day_target_seconds)
 
 		images_by_date.setdefault(
 			image_date,
@@ -108,8 +114,7 @@ def select_unique_yearly_images(
 
 def _select_yearly_images_worker(
 	images: list[Path],
-	target_hour: int,
-	target_minute: int,
+	target_seconds_by_date: dict[date, int],
 	images_per_day: int,
 	result_queue: Queue,
 ) -> None:
@@ -124,10 +129,9 @@ def _select_yearly_images_worker(
 	try:
 		selected_images = select_unique_yearly_images(
 			images=images,
-			target_hour=target_hour,
-			target_minute=target_minute,
 			images_per_day=images_per_day,
 			progress_callback=report_progress,
+			target_seconds_by_date=target_seconds_by_date,
 		)
 
 		result_queue.put(
@@ -150,8 +154,7 @@ def select_yearly_images_isolated(
 	camera: str,
 	images: list[Path],
 	stall_timeout_seconds: float,
-	target_hour: int = 12,
-	target_minute: int = 0,
+	target_seconds_by_date: dict[date, int],
 	images_per_day: int = 5,
 ) -> list[Path]:
 	return run_isolated_worker(
@@ -159,8 +162,7 @@ def select_yearly_images_isolated(
 		target=_select_yearly_images_worker,
 		args=(
 			images,
-			target_hour,
-			target_minute,
+			target_seconds_by_date,
 			images_per_day,
 		),
 		stall_timeout_seconds=stall_timeout_seconds,

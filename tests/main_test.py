@@ -1,10 +1,11 @@
 from argparse import Namespace
-from datetime import date
+from datetime import date, time
 import sys
 
 import pytest
 
 import src.main as main_module
+from src.interval_window import SUNSET, IntervalWindow
 
 TEST_CONFIG = {
 	"location": {
@@ -13,6 +14,10 @@ TEST_CONFIG = {
 		"timezone": "Europe/Berlin",
 	},
 	"daylight_buffer_minutes": 90,
+	"interval_window": {
+		"target_time": "12:00",
+		"tolerance_minutes": 90,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"log_retention_days": 30,
 	"ignored_cameras": [],
@@ -34,6 +39,8 @@ def make_arguments(
 	jobs: list[str] | None = None,
 	target_date: date | None = None,
 	daylight_buffer_minutes: int | None = None,
+	window_time=None,
+	window_tolerance_minutes: int | None = None,
 ) -> Namespace:
 	return Namespace(
 		date=date_value,
@@ -41,6 +48,8 @@ def make_arguments(
 		jobs=jobs,
 		target_date=target_date,
 		daylight_buffer_minutes=daylight_buffer_minutes,
+		window_time=window_time,
+		window_tolerance_minutes=window_tolerance_minutes,
 	)
 
 
@@ -390,6 +399,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"framerate": MONTHLY_FRAMERATE,
 				"target_date": None,
 				"manual_run": False,
+				"interval_window": None,
 			},
 		),
 		(
@@ -400,6 +410,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"framerate": YEARLY_FRAMERATE,
 				"target_date": None,
 				"manual_run": False,
+				"interval_window": None,
 			},
 		),
 	]
@@ -564,6 +575,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				"framerate": MONTHLY_FRAMERATE,
 				"target_date": target_date,
 				"manual_run": True,
+				"interval_window": None,
 			},
 		),
 		(
@@ -577,6 +589,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				"framerate": YEARLY_FRAMERATE,
 				"target_date": target_date,
 				"manual_run": True,
+				"interval_window": None,
 			},
 		),
 	]
@@ -1239,3 +1252,147 @@ def test_main_does_not_mark_selected_job_run(
 	main_module.main()
 
 	assert state_calls == []
+
+
+def test_parse_arguments_accepts_window_flags(
+	monkeypatch,
+):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		["main.py", "--window-time", "sunset", "--window-tolerance-minutes", "45"],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.window_time == SUNSET
+	assert args.window_tolerance_minutes == 45
+
+
+def test_parse_arguments_rejects_invalid_window_time(
+	monkeypatch,
+):
+	monkeypatch.setattr(sys, "argv", ["main.py", "--window-time", "25:00"])
+
+	with pytest.raises(SystemExit):
+		main_module.parse_arguments()
+
+
+def test_parse_arguments_defaults_window_flags_to_none(
+	monkeypatch,
+):
+	monkeypatch.setattr(sys, "argv", ["main.py"])
+
+	args = main_module.parse_arguments()
+
+	assert args.window_time is None
+	assert args.window_tolerance_minutes is None
+
+
+# Automatic runs must never move away from the configured window.
+@pytest.mark.parametrize(
+	"arguments",
+	[
+		make_arguments(window_time=time(18, 0)),
+		make_arguments(jobs=["monthly"], window_tolerance_minutes=30),
+		make_arguments(date_value=date(2026, 9, 15), window_time=time(18, 0)),
+	],
+)
+def test_main_rejects_window_flags_without_target_date(
+	monkeypatch,
+	arguments,
+):
+	monkeypatch.setattr(main_module, "parse_arguments", lambda: arguments)
+
+	with pytest.raises(ValueError):
+		main_module.main()
+
+
+@pytest.mark.parametrize(
+	"jobs",
+	[["daily"], ["daily", "monthly"], ["weekly"]],
+)
+def test_main_rejects_window_flags_for_daily_and_weekly(
+	monkeypatch,
+	jobs,
+):
+	monkeypatch.setattr(
+		main_module,
+		"parse_arguments",
+		lambda: make_arguments(
+			jobs=jobs,
+			target_date=date(2026, 9, 15),
+			cameras=["Camera-A"],
+			window_time=time(18, 0),
+		),
+	)
+
+	with pytest.raises(ValueError, match="only apply to Monthly and Yearly"):
+		main_module.main()
+
+
+# A flag left out falls back to config.json, the given one wins.
+def test_main_passes_interval_window_override_to_monthly_and_yearly(
+	monkeypatch,
+):
+	target_date = date(2026, 9, 15)
+
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=["monthly", "yearly"],
+			target_date=target_date,
+			window_time=SUNSET,
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	expected_window = IntervalWindow(target=SUNSET, tolerance_minutes=90)
+
+	assert [job for job, _kwargs in job_calls] == ["monthly", "yearly"]
+	assert all(kwargs["interval_window"] == expected_window for _job, kwargs in job_calls)
+	assert all(kwargs["manual_run"] for _job, kwargs in job_calls)
+
+
+def test_main_tolerance_only_override_keeps_configured_time(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=["yearly"],
+			target_date=date(2026, 9, 15),
+			window_tolerance_minutes=30,
+		),
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert job_calls[0][1]["interval_window"] == IntervalWindow(
+		target=time(12, 0),
+		tolerance_minutes=30,
+	)
+
+
+def test_main_rejects_window_crossing_midnight(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			jobs=["monthly"],
+			target_date=date(2026, 9, 15),
+			window_time=time(23, 30),
+			window_tolerance_minutes=60,
+		),
+	)
+
+	patch_automatic_jobs(monkeypatch)
+
+	with pytest.raises(ValueError, match="crosses midnight"):
+		main_module.main()

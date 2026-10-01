@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import src.yearly_selection as yearly_selection_module
@@ -319,6 +320,7 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 		camera="Test-Camera",
 		images=images,
 		stall_timeout_seconds=10,
+		target_seconds_by_date={date(2026, 9, 15): 12 * 60 * 60},
 		images_per_day=5,
 	)
 
@@ -332,8 +334,7 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 
 	assert worker_calls[0]["args"] == (
 		images,
-		12,
-		0,
+		{date(2026, 9, 15): 12 * 60 * 60},
 		5,
 	)
 
@@ -370,8 +371,7 @@ def test_select_yearly_images_worker_returns_operational_error(
 
 	yearly_selection_module._select_yearly_images_worker(
 		images=[],
-		target_hour=12,
-		target_minute=0,
+		target_seconds_by_date={},
 		images_per_day=5,
 		result_queue=result_queue,
 	)
@@ -381,4 +381,37 @@ def test_select_yearly_images_worker_returns_operational_error(
 			"error",
 			"storage unavailable",
 		)
+	]
+
+
+# Ranking follows each day's own centre, e.g. a sunset that moves through the year.
+def test_select_unique_yearly_images_ranks_by_per_date_target(
+	monkeypatch,
+):
+	images = [
+		Path("camera_26-06-21_12-00-00-00.jpg"),
+		Path("camera_26-06-21_21-20-00-00.jpg"),
+		Path("camera_26-06-21_21-40-00-00.jpg"),
+		Path("camera_26-12-21_12-00-00-00.jpg"),
+		Path("camera_26-12-21_16-10-00-00.jpg"),
+	]
+
+	monkeypatch.setattr(
+		yearly_selection_module,
+		"get_image_hash",
+		lambda image_path, progress_callback=None: image_path.name,
+	)
+
+	result = select_unique_yearly_images(
+		images=images,
+		images_per_day=1,
+		target_seconds_by_date={
+			date(2026, 6, 21): 21 * 60 * 60 + 35 * 60,
+			date(2026, 12, 21): 16 * 60 * 60,
+		},
+	)
+
+	assert result == [
+		Path("camera_26-06-21_21-40-00-00.jpg"),
+		Path("camera_26-12-21_16-10-00-00.jpg"),
 	]

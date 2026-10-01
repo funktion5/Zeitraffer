@@ -5,6 +5,10 @@
     "timezone": "Europe/Berlin"
   },
   "daylight_buffer_minutes": 90,
+  "interval_window": {
+    "target_time": "12:00",
+    "tolerance_minutes": 90
+  },
   "image_scan_stall_timeout_seconds": 60,
   "log_retention_days": 30,
   "ignored_cameras": [

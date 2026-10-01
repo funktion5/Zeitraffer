@@ -1,8 +1,9 @@
-from datetime import date, timedelta
+from datetime import date, time, timedelta
 from pathlib import Path
 
 import src.jobs.monthly as monthly_module
 from src.jobs.monthly import run_monthly_job
+from src.interval_window import SUNSET, IntervalWindow
 
 
 TEST_CONFIG = {
@@ -10,6 +11,10 @@ TEST_CONFIG = {
 		"timezone": "Europe/Berlin",
 	},
 	"daylight_buffer_minutes": 90,
+	"interval_window": {
+		"target_time": "12:00",
+		"tolerance_minutes": 90,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,
@@ -240,6 +245,11 @@ def test_run_monthly_job_uses_rolling_30_day_window(
 			"start_date": START_DATE,
 			"end_date": TARGET_DATE,
 			"stall_timeout_seconds": TEST_CONFIG["image_scan_stall_timeout_seconds"],
+			"target_seconds_by_date": {
+				START_DATE + timedelta(days=offset): 12 * 60 * 60
+				for offset in range((TARGET_DATE - START_DATE).days + 1)
+			},
+			"tolerance_minutes": 90,
 			"remove_duplicates_by_date": True,
 		}
 	]
@@ -394,3 +404,89 @@ def test_run_monthly_job_skips_retention_for_manual_run(
 	)
 
 	assert retention_calls == []
+
+
+# A historical override moves the scan window and names the video after it.
+def test_run_monthly_job_applies_interval_window_override(
+	monkeypatch,
+):
+	scan_calls = []
+	created_videos = []
+
+	def fake_find_interval_images_isolated(
+		**kwargs,
+	):
+		scan_calls.append(kwargs)
+
+		return create_complete_monthly_images()
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		created_videos.append(kwargs)
+
+		return Path("videos/Test-Camera/manual-runs/monthly/test.mp4")
+
+	monkeypatch.setattr(
+		monthly_module, "find_interval_images_isolated", fake_find_interval_images_isolated
+	)
+	monkeypatch.setattr(monthly_module, "create_timelapse", fake_create_timelapse)
+
+	window = IntervalWindow(target=time(18, 30), tolerance_minutes=60)
+
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+		interval_window=window,
+	)
+
+	assert scan_calls[0]["tolerance_minutes"] == 60
+	assert set(scan_calls[0]["target_seconds_by_date"].values()) == {18 * 60 * 60 + 30 * 60}
+	assert created_videos[0]["interval_window"] == window
+
+
+# Sunset resolves a different centre per day from the configured location.
+def test_run_monthly_job_resolves_sunset_per_day(
+	monkeypatch,
+):
+	scan_calls = []
+
+	def fake_find_interval_images_isolated(
+		**kwargs,
+	):
+		scan_calls.append(kwargs)
+
+		return []
+
+	monkeypatch.setattr(
+		monthly_module, "find_interval_images_isolated", fake_find_interval_images_isolated
+	)
+
+	config = {
+		**TEST_CONFIG,
+		"location": {
+			"latitude": 52.472,
+			"longitude": 9.333,
+			"timezone": "Europe/Berlin",
+		},
+	}
+
+	run_monthly_job(
+		config=config,
+		cameras=["Test-Camera"],
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+		interval_window=IntervalWindow(target=SUNSET, tolerance_minutes=60),
+	)
+
+	target_seconds_by_date = scan_calls[0]["target_seconds_by_date"]
+
+	assert min(target_seconds_by_date) == START_DATE
+	assert max(target_seconds_by_date) == TARGET_DATE
+	# Evening centres that differ between days, never the 12:00 default.
+	assert all(seconds > 16 * 60 * 60 for seconds in target_seconds_by_date.values())
+	assert len(set(target_seconds_by_date.values())) > 1

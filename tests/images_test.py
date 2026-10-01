@@ -1489,6 +1489,8 @@ def test_find_interval_images_isolated_returns_validated_images(
 			15,
 		),
 		stall_timeout_seconds=2,
+		target_seconds_by_date={date(2026, 9, 15): 12 * 60 * 60},
+		tolerance_minutes=90,
 	)
 
 	# The isolated pipeline must return only validated interval images.
@@ -1522,6 +1524,11 @@ def test_find_interval_images_isolated_filters_duplicates_by_date(
 		start_date=date(2026, 9, 15),
 		end_date=date(2026, 9, 16),
 		stall_timeout_seconds=2,
+		target_seconds_by_date={
+			date(2026, 9, 15): 12 * 60 * 60,
+			date(2026, 9, 16): 12 * 60 * 60,
+		},
+		tolerance_minutes=90,
 		remove_duplicates_by_date=True,
 	)
 
@@ -1538,8 +1545,7 @@ def test_find_interval_images_isolated_stops_stalled_scan(
 		camera,
 		start_date,
 		end_date,
-		target_hour,
-		target_minute,
+		target_seconds_by_date,
 		tolerance_minutes,
 		remove_duplicates_by_date,
 		result_queue,
@@ -1569,6 +1575,8 @@ def test_find_interval_images_isolated_stops_stalled_scan(
 				16,
 			),
 			stall_timeout_seconds=0.2,
+			target_seconds_by_date={},
+			tolerance_minutes=90,
 		)
 
 		assert False, "Expected TimeoutError"
@@ -1580,3 +1588,43 @@ def test_find_interval_images_isolated_stops_stalled_scan(
 
 	# A blocked camera must not keep the parent process waiting indefinitely.
 	assert elapsed < 2
+
+
+# A per-date centre (e.g. sunset) replaces the fixed 12:00 target for each day:
+# 18:00 is inside day one's 18:00 +-60 window but outside day two's 19:30 +-60.
+def test_find_interval_images_uses_per_date_target(
+	tmp_path,
+	monkeypatch,
+):
+	camera_root = tmp_path / "cameras"
+	camera_directory = camera_root / "Test-Camera"
+	camera_directory.mkdir(parents=True)
+
+	filenames = [
+		"camera_26-09-15_12-00-00-00.jpg",
+		"camera_26-09-15_18-00-00-00.jpg",
+		"camera_26-09-15_19-01-00-00.jpg",
+		"camera_26-09-16_18-00-00-00.jpg",
+		"camera_26-09-16_19-30-00-00.jpg",
+	]
+
+	for filename in filenames:
+		(camera_directory / filename).touch()
+
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(2026, 9, 15),
+		end_date=date(2026, 9, 16),
+		tolerance_minutes=60,
+		target_seconds_by_date={
+			date(2026, 9, 15): 18 * 60 * 60,
+			date(2026, 9, 16): 19 * 60 * 60 + 30 * 60,
+		},
+	)
+
+	assert result == [
+		camera_directory / "camera_26-09-15_18-00-00-00.jpg",
+		camera_directory / "camera_26-09-16_19-30-00-00.jpg",
+	]

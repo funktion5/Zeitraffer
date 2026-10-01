@@ -3,6 +3,11 @@ from datetime import date
 
 from src.config import load_config
 from src.images import get_cameras
+from src.interval_window import (
+	IntervalWindow,
+	interval_window_from_config,
+	parse_window_time,
+)
 from src.jobs.daily import run_daily_job
 from src.jobs.monthly import run_monthly_job
 from src.jobs.weekly import run_weekly_job
@@ -12,6 +17,15 @@ from src.run_state import (
 	mark_run_finished,
 	mark_run_started,
 )
+
+
+# argparse only turns ArgumentTypeError into a readable usage error.
+def window_time_argument(value: str):
+	try:
+		return parse_window_time(value)
+
+	except ValueError as error:
+		raise argparse.ArgumentTypeError(str(error)) from None
 
 
 # Parse optional command-line arguments for the timelapse job.
@@ -67,6 +81,24 @@ def parse_arguments():
 		),
 	)
 
+	parser.add_argument(
+		"--window-time",
+		type=window_time_argument,
+		help=(
+			"Centre of the daily image window for historical Monthly/Yearly, "
+			"as HH:MM or 'sunset' (that day's sunset). Defaults to config.json."
+		),
+	)
+
+	parser.add_argument(
+		"--window-tolerance-minutes",
+		type=int,
+		help=(
+			"Minutes before and after the window centre for historical Monthly/Yearly. "
+			"Defaults to config.json."
+		),
+	)
+
 	return parser.parse_args()
 
 
@@ -102,10 +134,41 @@ def main():
 
 	if args.cameras and not args.date and not args.target_date:
 		raise ValueError("--cameras can only be used with --date or --target-date.")
+
+	window_override_requested = (
+		args.window_time is not None or args.window_tolerance_minutes is not None
+	)
+
+	# Automatic runs must keep the configured window; only historical runs may move it.
+	if window_override_requested and not args.target_date:
+		raise ValueError(
+			"--window-time and --window-tolerance-minutes can only be used with --target-date."
+		)
+
+	if window_override_requested and set(args.jobs) - {"monthly", "yearly"}:
+		raise ValueError(
+			"--window-time and --window-tolerance-minutes only apply to Monthly and Yearly."
+		)
+
 	config = load_config()
 
 	if args.daylight_buffer_minutes is not None:
 		config = {**config, "daylight_buffer_minutes": args.daylight_buffer_minutes}
+
+	interval_window = None
+
+	if window_override_requested:
+		default_window = interval_window_from_config(config)
+
+		# A flag left out falls back to its config value, never to a hardcoded one.
+		interval_window = IntervalWindow(
+			target=args.window_time if args.window_time is not None else default_window.target,
+			tolerance_minutes=(
+				args.window_tolerance_minutes
+				if args.window_tolerance_minutes is not None
+				else default_window.tolerance_minutes
+			),
+		)
 
 	job_order = (
 		"daily",
@@ -201,6 +264,7 @@ def main():
 				framerate=config["timelapse"]["monthly_framerate"],
 				target_date=args.target_date,
 				manual_run=args.target_date is not None,
+				interval_window=interval_window,
 			)
 
 		elif job == "yearly":
@@ -210,6 +274,7 @@ def main():
 				framerate=config["timelapse"]["yearly_framerate"],
 				target_date=args.target_date,
 				manual_run=args.target_date is not None,
+				interval_window=interval_window,
 			)
 
 	if automatic_production_run:

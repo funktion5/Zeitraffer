@@ -9,6 +9,7 @@ from typing import Literal
 import psutil
 
 from src.config import load_config
+from src.interval_window import IntervalWindow
 from src.logger import logger
 
 CONFIG = load_config()
@@ -171,13 +172,29 @@ def get_video_path(
 	timelapse_type: TimelapseType,
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
+	interval_window: IntervalWindow | None = None,
 ) -> Path:
 	if daylight_buffer_minutes is not None and timelapse_type in ("monthly", "yearly"):
 		raise ValueError(f"{timelapse_type} does not use a daylight buffer.")
 
+	if interval_window is not None and timelapse_type not in ("monthly", "yearly"):
+		raise ValueError(f"{timelapse_type} does not use an interval window.")
+
+	# Automatic videos keep one name per type; a custom window only exists for manual runs.
+	if interval_window is not None and not manual_run:
+		raise ValueError("An interval window suffix is only allowed for manual runs.")
+
 	if manual_run:
 		output_directory = VIDEO_ROOT / camera / "manual-runs" / timelapse_type
-		suffix = f"_{daylight_buffer_minutes}min" if daylight_buffer_minutes is not None else ""
+
+		if daylight_buffer_minutes is not None:
+			suffix = f"_{daylight_buffer_minutes}min"
+
+		elif interval_window is not None:
+			suffix = f"_{interval_window.label()}"
+
+		else:
+			suffix = ""
 
 		return output_directory / f"{camera}_{target_date.isoformat()}{suffix}.mp4"
 
@@ -279,6 +296,7 @@ def create_image_timelapse(
 	framerate: int,
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
+	interval_window: IntervalWindow | None = None,
 ) -> Path:
 	output_path = get_video_path(
 		camera=camera,
@@ -286,6 +304,7 @@ def create_image_timelapse(
 		timelapse_type=timelapse_type,
 		manual_run=manual_run,
 		daylight_buffer_minutes=daylight_buffer_minutes,
+		interval_window=interval_window,
 	)
 
 	output_path.parent.mkdir(
@@ -345,6 +364,7 @@ def create_timelapse(
 	framerate: int = FRAMERATE,
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
+	interval_window: IntervalWindow | None = None,
 ) -> Path:
 	temp_directory = create_temp_directory(
 		camera,
@@ -364,6 +384,7 @@ def create_timelapse(
 		framerate=framerate,
 		manual_run=manual_run,
 		daylight_buffer_minutes=daylight_buffer_minutes,
+		interval_window=interval_window,
 	)
 
 	cleanup_temp_directory(temp_directory)

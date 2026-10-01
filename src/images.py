@@ -299,6 +299,7 @@ def find_interval_images(
 	target_minute: int = 0,
 	tolerance_minutes: int = 90,
 	progress_callback: Callable[[], None] | None = None,
+	target_seconds_by_date: dict[date, int] | None = None,
 ) -> list[Path]:
 	camera_path = CAMERA_ROOT / camera
 	images: list[
@@ -344,7 +345,14 @@ def find_interval_images(
 
 			capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-			distance_seconds = abs(capture_seconds - target_seconds)
+			# A per-date centre (e.g. sunset) overrides the fixed target time.
+			day_target_seconds = (
+				target_seconds
+				if target_seconds_by_date is None
+				else target_seconds_by_date[image_date]
+			)
+
+			distance_seconds = abs(capture_seconds - day_target_seconds)
 
 			if distance_seconds > tolerance_seconds:
 				continue
@@ -813,8 +821,7 @@ def _find_interval_images_worker(
 	camera: str,
 	start_date: date,
 	end_date: date,
-	target_hour: int,
-	target_minute: int,
+	target_seconds_by_date: dict[date, int],
 	tolerance_minutes: int,
 	remove_duplicates_by_date: bool,
 	result_queue: Queue,
@@ -832,10 +839,9 @@ def _find_interval_images_worker(
 			camera=camera,
 			start_date=start_date,
 			end_date=end_date,
-			target_hour=target_hour,
-			target_minute=target_minute,
 			tolerance_minutes=tolerance_minutes,
 			progress_callback=report_progress,
+			target_seconds_by_date=target_seconds_by_date,
 		)
 
 		# Remove unusable files before job-specific selection.
@@ -946,9 +952,8 @@ def find_interval_images_isolated(
 	start_date: date,
 	end_date: date,
 	stall_timeout_seconds: float,
-	target_hour: int = 12,
-	target_minute: int = 0,
-	tolerance_minutes: int = 90,
+	target_seconds_by_date: dict[date, int],
+	tolerance_minutes: int,
 	remove_duplicates_by_date: bool = False,
 ) -> list[Path]:
 	return run_isolated_worker(
@@ -958,8 +963,7 @@ def find_interval_images_isolated(
 			camera,
 			start_date,
 			end_date,
-			target_hour,
-			target_minute,
+			target_seconds_by_date,
 			tolerance_minutes,
 			remove_duplicates_by_date,
 		),
