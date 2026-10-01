@@ -10,7 +10,9 @@
   "ignored_cameras": [
     "Reolink",
     "Wunstorf-Marktplatz",
-    "SVG"
+    "SVG",
+    "Hafenstrasse",
+    "Kitestrand"
   ],
   "timelapse": {
     "daily_framerate": 10,
