@@ -28,6 +28,22 @@ def get_cameras():
 	)
 
 
+# Return the requested cameras without duplicates; unknown names are an error.
+def require_cameras(
+	requested_cameras: list[str],
+	available_cameras: list[str],
+) -> list[str]:
+	cameras = list(dict.fromkeys(requested_cameras))
+	missing_cameras = [camera for camera in cameras if camera not in available_cameras]
+
+	if missing_cameras:
+		missing_camera_names = ", ".join(missing_cameras)
+		logger.error(f"Requested cameras not found: {missing_camera_names}")
+		raise ValueError(f"Requested cameras not found: {missing_camera_names}")
+
+	return cameras
+
+
 # Scan the camera directory once and group images for requested dates.
 def find_images_for_dates(
 	camera: str,

@@ -2,7 +2,7 @@ import argparse
 from datetime import date
 
 from src.config import load_config
-from src.images import get_cameras
+from src.images import get_cameras, require_cameras
 from src.interval_window import (
 	IntervalWindow,
 	interval_window_from_config,
@@ -214,17 +214,7 @@ def main():
 
 	# Historical jobs may process only explicitly requested cameras.
 	if (args.date or args.target_date) and args.cameras:
-		requested_cameras = list(dict.fromkeys(args.cameras))
-		missing_cameras = [
-			camera for camera in requested_cameras if camera not in available_cameras
-		]
-
-		if missing_cameras:
-			missing_camera_names = ", ".join(missing_cameras)
-			logger.error(f"Requested cameras not found: {missing_camera_names}")
-			raise ValueError(f"Requested cameras not found: {missing_camera_names}")
-
-		available_cameras = requested_cameras
+		available_cameras = require_cameras(args.cameras, available_cameras)
 
 	target_date = args.date or args.target_date
 	automatic_production_run = args.date is None and args.jobs is None and args.target_date is None

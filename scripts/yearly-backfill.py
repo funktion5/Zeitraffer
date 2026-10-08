@@ -11,7 +11,6 @@ Run from anywhere:
 
 import argparse
 import csv
-import json
 import os
 import subprocess
 import sys
@@ -24,6 +23,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from src.config import load_config  # noqa: E402
 from src.date_coverage import (  # noqa: E402
 	format_date_ranges,
 	get_latest_completed_date,
@@ -168,7 +168,7 @@ def build_year(
 
 def main() -> int:
 	args = parse_arguments()
-	config = json.loads((PROJECT_ROOT / "config" / "config.json").read_text())
+	config = load_config()
 
 	configure_file_logging("yearly")
 

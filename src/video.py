@@ -18,7 +18,6 @@ FFMPEG_THREADS = CONFIG["timelapse"]["ffmpeg_threads"]
 
 TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
-FRAMERATE = 10
 FFMPEG_ERROR_LOG_LINES = 40
 
 
@@ -42,35 +41,10 @@ def run_ffmpeg(command: list[str]) -> None:
 
 		while process.poll() is None:
 			try:
-				ffmpeg_cpu = ffmpeg_process.cpu_percent(
-					interval=0.2,
-				)
-
-				ffmpeg_memory_mb = ffmpeg_process.memory_info().rss / 1024 / 1024
-
-				system_cpu = psutil.cpu_percent()
-
-				system_memory = psutil.virtual_memory().percent
-
-				peak_cpu = max(
-					peak_cpu,
-					ffmpeg_cpu,
-				)
-
-				peak_memory_mb = max(
-					peak_memory_mb,
-					ffmpeg_memory_mb,
-				)
-
-				peak_system_cpu = max(
-					peak_system_cpu,
-					system_cpu,
-				)
-
-				peak_system_memory = max(
-					peak_system_memory,
-					system_memory,
-				)
+				peak_cpu = max(peak_cpu, ffmpeg_process.cpu_percent(interval=0.2))
+				peak_memory_mb = max(peak_memory_mb, ffmpeg_process.memory_info().rss / 1024 / 1024)
+				peak_system_cpu = max(peak_system_cpu, psutil.cpu_percent())
+				peak_system_memory = max(peak_system_memory, psutil.virtual_memory().percent)
 
 			except psutil.NoSuchProcess:
 				break
@@ -161,7 +135,6 @@ def copy_images_to_temp(
 	return copied_images
 
 
-# Return the output path for an image-based timelapse video.
 # Return the output path for automatic or explicit-date timelapses.
 # The daylight buffer is only ever embedded in manual/historical filenames,
 # since it can vary per request there; automatic runs always use the single
@@ -361,7 +334,7 @@ def create_timelapse(
 	target_date: date,
 	images: list[Path],
 	timelapse_type: TimelapseType,
-	framerate: int = FRAMERATE,
+	framerate: int,
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
 	interval_window: IntervalWindow | None = None,

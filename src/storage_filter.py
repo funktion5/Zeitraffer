@@ -13,7 +13,7 @@ from pathlib import Path
 
 import src.images as images_module
 from src.config import PROJECT_ROOT, load_config
-from src.images import extract_date, get_cameras
+from src.images import extract_date, get_cameras, require_cameras
 from src.logger import LOG_TIMEZONE, cleanup_old_logs, configure_file_logging, logger
 
 REPORT_ROOT = PROJECT_ROOT / "reports" / "storage-filter"
@@ -331,13 +331,7 @@ def main(argv: list[str] | None = None) -> int:
 		cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
 
 	else:
-		cameras = list(dict.fromkeys(args.cameras))
-		missing_cameras = [camera for camera in cameras if camera not in available_cameras]
-
-		if missing_cameras:
-			missing_camera_names = ", ".join(missing_cameras)
-			logger.error(f"Requested cameras not found: {missing_camera_names}")
-			raise ValueError(f"Requested cameras not found: {missing_camera_names}")
+		cameras = require_cameras(args.cameras, available_cameras)
 
 	try:
 		storage_box = get_storage_box()
