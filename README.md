@@ -40,6 +40,7 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
   - [Ablauf](#ablauf)
   - [Laufzeit und Fortschritt](#laufzeit-und-fortschritt)
   - [Bericht](#bericht)
+- [Yearly-Backfill für Kalenderjahre](#yearly-backfill-für-kalenderjahre)
 - [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi)
   - [Was gesichert wird](#was-gesichert-wird)
   - [Voraussetzungen](#voraussetzungen)
@@ -61,6 +62,7 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
 - [Run-State und Wiederanlauf](#run-state-und-wiederanlauf)
 - [Logging](#logging)
 - [Tests](#tests)
+  - [GitHub Actions und Pre-Push-Hook](#github-actions-und-pre-push-hook)
 - [Linting und Formatierung](#linting-und-formatierung)
 - [Projektstruktur](#projektstruktur)
 - [Architektur](#architektur)
@@ -106,11 +108,9 @@ Abhängigkeiten installieren:
 python3 -m pip install -r requirements.txt
 ```
 
-Ruff ist als Entwicklungswerkzeug über `pyproject.toml` konfiguriert. Falls es nicht bereits installiert ist:
-
-```bash
-python3 -m pip install ruff
-```
+`requirements.txt` enthält auch die Entwicklungswerkzeuge pytest und Ruff. Ruff ist auf eine feste
+Version gepinnt, damit lokal, im Pre-Push-Hook und in GitHub Actions identisch formatiert wird;
+die Konfiguration liegt in `pyproject.toml`.
 
 ### SSHFS-Mount installieren
 
@@ -475,12 +475,12 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
 - Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung), beide mit Bestätigungsdialog vor dem Absenden
 - Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde
 - bei Monthly/Yearly eine Radiogruppe „Zeitfenster“: „Mittag (Standard)“ übergibt nichts (es gilt `interval_window` aus der Config), „Sonnenuntergang“ übergibt `sunset` plus eine Fensterbreite von ±30/60/90 Minuten (eigene Radiogruppe, nur bei Sonnenuntergang sichtbar); serverseitig sind nur diese Werte erlaubt
-- kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums, und bei Monthly/Yearly führt ein einziger fehlender Tag im Zeitraum zum Überspringen der Kamera
+- kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums; Monthly braucht mindestens 25 der 30 Tage, Yearly mindestens 300 Tage mit Bildern im gewählten Zeitfenster (`min_coverage_days`), fehlende Tage werden im Video übersprungen
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
 - Live-Status per Polling im Abstand von fünf Sekunden; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
 - Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung
 
-Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
+Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
 
 Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`.
 
@@ -537,9 +537,9 @@ Statusdateien liegen unter:
 state/web-jobs/<32-stellige-job-id>.status
 ```
 
-Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Der Browser speichert nur das einmalige Endergebnis in `sessionStorage`, lädt danach die Kameraseite neu und öffnet einen nativen `<dialog>`.
+Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Der Browser legt den laufenden Job in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis geöffnet.
 
-Ein Neuladen der Seite während eines laufenden Jobs verwirft derzeit das aktive Browser-Polling. Der Job läuft weiter und seine Statusdatei bleibt erhalten. Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementiert.
+Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementiert.
 
 Der Trigger verwendet denselben Lock wie Cron:
 
@@ -551,13 +551,19 @@ Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlau
 
 ### Webtests
 
-Die Status-, Lock- und Worker-Logik sowie der PHP-Status-Endpunkt werden mit pytest geprüft:
+Wrapper, PHP-Helfer und Status-Endpunkt werden mit pytest geprüft (benötigt `php` auf der Kommandozeile):
 
 ```bash
-python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py
+python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py \
+  tests/web_delete_test.py tests/web_php_test.py
 ```
 
-Die Tests prüfen unter anderem atomare Statuswechsel, ungültige Job-IDs, den gemeinsamen Lock, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs.
+- `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs
+- `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`
+- `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
+- `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
+
+Nicht automatisiert getestet sind `camera.php` und die Speicheranzeige (`getStorageUsage`), weil beide feste Pfade ohne Umleitungsmöglichkeit verwenden.
 
 ---
 
@@ -895,6 +901,32 @@ Die Anzahl gefundener Dateien pro Kamera steht in `logs/filter/YYYY-MM-DD.log`.
 
 ---
 
+## Yearly-Backfill für Kalenderjahre
+
+`scripts/yearly-backfill.py` erstellt Yearly-Videos für ganze Kalenderjahre (1. Januar bis
+31. Dezember, im laufenden Jahr bis gestern). Bildsuche, 0-Byte-Filter, Zeitfenster
+(`interval_window`) und die Auswahl von bis zu fünf Bildern pro Tag sind dieselben wie beim
+Yearly-Job, aber **ohne** Mindestabdeckung: Jede Kamera wird gerendert, fehlende Tage werden nur
+protokolliert.
+
+```bash
+.venv/bin/python3 scripts/yearly-backfill.py
+.venv/bin/python3 scripts/yearly-backfill.py --years 2024 2025 --cameras BSV-Steinhude
+.venv/bin/python3 scripts/yearly-backfill.py --years 2025 --force
+```
+
+- `--years`: Kalenderjahre (Standard: 2026)
+- `--cameras`: nur diese Kameras (Standard: alle außer `ignored_cameras`)
+- `--force`: vorhandene Videos neu erstellen statt überspringen
+
+Ausgabe wie bei historischen Läufen unter `videos/<camera>/manual-runs/yearly/<camera>_<Enddatum>.mp4`
+mit `yearly_framerate`; Enddatum ist der 31. Dezember, im laufenden Jahr der gestrige Tag. Pro Lauf entsteht ein Bericht
+`reports/yearly-coverage/backfill_YYYY-MM-DD_HHMMSS.csv` (`;`-getrennt, Spalten `camera`, `year`,
+`covered`, `total`, `missing_ranges`, `status`, `video`), der nach jeder Zeile geschrieben wird.
+Das Skript belegt denselben Lock wie Cron und Weboberfläche und wird nicht von pytest abgedeckt.
+
+---
+
 ## Neuinstallation des Raspberry Pi
 
 Bei einer Neuinstallation des Betriebssystems gehen alle Dateien verloren, die nicht im Git-Repository liegen. Zwei Skripte übernehmen Sicherung und Wiederherstellung:
@@ -1218,6 +1250,10 @@ Implementiert sind:
 - asynchrone Web-Jobs mit Statusabfrage und Abschlussdialog
 - Backup- und Migrationsskripte für eine Neuinstallation des Raspberry Pi
 - Speicherfilter: Bericht über leere und am selben Tag doppelte Bilder pro Kamera (löscht nichts)
+- konfigurierbares Tagesfenster für Monthly/Yearly (`interval_window`), historisch auch per Sonnenuntergang, in CLI und Weboberfläche
+- Mindestabdeckung für Monthly/Yearly (`min_coverage_days`) statt lückenloser Abdeckung
+- Yearly-Backfill für ganze Kalenderjahre (`scripts/yearly-backfill.py`)
+- GitHub Actions und lokaler Pre-Push-Hook für Ruff und pytest
 
 Ohne Job-Auswahl läuft der automatische Workflow weiterhin in dieser Reihenfolge:
 
@@ -1563,11 +1599,41 @@ Die `main.py`-Tests decken unter anderem ab:
 
 Tests deaktivieren das produktive File-Logging über `tests/conftest.py`.
 
+Drei Tests in `tests/images_test.py` lesen echte Bilder unter `/mnt/cameras`. Ist der Mount nicht
+vorhanden (z. B. in GitHub Actions), werden sie mit Begründung übersprungen statt fehlzuschlagen.
+Erscheint lokal auf dem Pi „3 skipped“, ist der SSHFS-Mount nicht erreichbar.
+
+Die Web-Tests benötigen `php` auf der Kommandozeile, siehe [Webtests](#webtests).
+
+### GitHub Actions und Pre-Push-Hook
+
+`.github/workflows/test.yml` läuft bei jedem Push und Pull Request auf `ubuntu-latest` mit
+Python 3.13 und führt nacheinander aus:
+
+```text
+ruff check .
+→ ruff format --check .
+→ python -m pytest
+```
+
+Schlägt ein Schritt fehl, laufen die folgenden nicht mehr; ein roter Lauf heißt also nicht
+zwingend, dass Tests fehlgeschlagen sind. Ein neuerer Push auf denselben Branch bricht einen noch
+laufenden älteren Lauf ab.
+
+Lokal führt `.git/hooks/pre-push` (nicht versioniert) dieselben drei Prüfungen aus und blockiert
+den Push bei einem Fehler. Er prüft den Arbeitsstand, also auch nicht committete Änderungen.
+Notfalls umgehen mit:
+
+```bash
+git push --no-verify
+```
+
 ---
 
 ## Linting und Formatierung
 
-Das Projekt verwendet Ruff.
+Das Projekt verwendet Ruff, gepinnt in `requirements.txt`, damit lokal und in GitHub Actions
+dieselbe Version prüft.
 
 Die Konfiguration liegt in:
 
@@ -1618,9 +1684,17 @@ Code ändern
 
 ```text
 timelapse/
+├── .github/
+│   └── workflows/
+│       └── test.yml
 ├── config/
 │   ├── config.json
 │   └── mount.env.example
+├── docs/
+│   ├── plans/
+│   │   └── custom-time-window.md
+│   ├── youtube-description-prompt.md
+│   └── youtube-texts.md
 ├── scripts/
 │   ├── cameras-sshfs-preflight
 │   ├── pi-crash-logging-setup
@@ -1629,9 +1703,11 @@ timelapse/
 │   ├── timelapse-web-delete
 │   ├── timelapse-web-status.sh
 │   ├── timelapse-web-trigger
-│   └── timelapse-web-worker
+│   ├── timelapse-web-worker
+│   └── yearly-backfill.py
 ├── src/
 │   ├── jobs/
+│   │   ├── __init__.py
 │   │   ├── daily.py
 │   │   ├── weekly.py
 │   │   ├── monthly.py
@@ -1641,6 +1717,7 @@ timelapse/
 │   ├── diagnostics.py
 │   ├── image_worker.py
 │   ├── images.py
+│   ├── interval_window.py
 │   ├── logger.py
 │   ├── main.py
 │   ├── run_state.py
@@ -1657,12 +1734,15 @@ timelapse/
 │   ├── diagnostics_test.py
 │   ├── image_worker_test.py
 │   ├── images_test.py
+│   ├── interval_window_test.py
 │   ├── logger_test.py
 │   ├── main_test.py
 │   ├── monthly_test.py
 │   ├── run_state_test.py
 │   ├── storage_filter_test.py
 │   ├── video_test.py
+│   ├── web_delete_test.py
+│   ├── web_php_test.py
 │   ├── web_status_endpoint_test.py
 │   ├── web_status_test.py
 │   ├── weekly_test.py
@@ -1698,6 +1778,9 @@ timelapse/
 ```
 
 Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
+
+`docs/` enthält Pläne (`plans/custom-time-window.md`: geplantes `--from`/`--to`, noch nicht
+umgesetzt) sowie Vorlage und fertige Texte für YouTube-Uploads.
 
 `backup-from-mac.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi).
 
