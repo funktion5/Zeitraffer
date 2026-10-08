@@ -97,7 +97,6 @@ def test_run_yearly_job_creates_video_with_complete_coverage(
 	assert len(selection_calls) == 1
 	assert selection_calls[0]["camera"] == "Test-Camera"
 	assert selection_calls[0]["images"] == interval_images
-	assert selection_calls[0]["images_per_day"] == 5
 
 	assert len(created_videos) == 1
 	assert created_videos[0]["camera"] == "Test-Camera"

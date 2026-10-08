@@ -16,8 +16,6 @@ CAMERA_ROOT = Path("/mnt/cameras")
 class ImageRange:
 	earliest_date: date | None
 	latest_date: date | None
-	total_files: int
-	recognized_files: int
 	unrecognized_files: int
 
 
@@ -67,19 +65,6 @@ def find_images_for_dates(
 				break
 
 	return {target_date: sorted(images) for target_date, images in images_by_date.items()}
-
-
-# Return images for one date through the shared single-scan discovery path.
-def find_images_for_date(
-	camera: str,
-	target_date: date,
-	progress_callback: Callable[[], None] | None = None,
-) -> list[Path]:
-	return find_images_for_dates(
-		camera=camera,
-		target_dates=[target_date],
-		progress_callback=progress_callback,
-	)[target_date]
 
 
 # Extracts the capture date from the different camera filename formats.
@@ -137,8 +122,6 @@ def get_image_range(
 
 	earliest_date = None
 	latest_date = None
-	total_files = 0
-	recognized_files = 0
 	unrecognized_files = 0
 
 	# Inspect filenames without triggering additional file metadata lookups.
@@ -150,16 +133,12 @@ def get_image_range(
 			if not entry.name.lower().endswith(".jpg"):
 				continue
 
-			total_files += 1
-
 			image_date = extract_date(entry.name)
 
 			# Track files whose filename format is not supported.
 			if image_date is None:
 				unrecognized_files += 1
 				continue
-
-			recognized_files += 1
 
 			if earliest_date is None or image_date < earliest_date:
 				earliest_date = image_date
@@ -170,8 +149,6 @@ def get_image_range(
 	return ImageRange(
 		earliest_date=earliest_date,
 		latest_date=latest_date,
-		total_files=total_files,
-		recognized_files=recognized_files,
 		unrecognized_files=unrecognized_files,
 	)
 
@@ -253,41 +230,14 @@ def select_daylight_images(
 	return selected_images
 
 
-# Selects all images for a date that were captured between sunrise and sunset.
-def find_images(
-	camera: str,
-	target_date: date,
-	sunrise: datetime,
-	sunset: datetime,
-	daylight_buffer_minutes: int,
-	progress_callback: Callable[[], None] | None = None,
-) -> list[Path]:
-	# Forward scan progress to the isolated worker supervisor when provided.
-	daily_images = find_images_for_date(
-		camera=camera,
-		target_date=target_date,
-		progress_callback=progress_callback,
-	)
-
-	return select_daylight_images(
-		images=daily_images,
-		target_date=target_date,
-		sunrise=sunrise,
-		sunset=sunset,
-		daylight_buffer_minutes=daylight_buffer_minutes,
-	)
-
-
 # Find all images inside the date range and daily target-time window.
 def find_interval_images(
 	camera: str,
 	start_date: date,
 	end_date: date,
-	target_hour: int = 12,
-	target_minute: int = 0,
+	target_seconds_by_date: dict[date, int],
 	tolerance_minutes: int = 90,
 	progress_callback: Callable[[], None] | None = None,
-	target_seconds_by_date: dict[date, int] | None = None,
 ) -> list[Path]:
 	camera_path = CAMERA_ROOT / camera
 	images: list[
@@ -297,8 +247,6 @@ def find_interval_images(
 			Path,
 		]
 	] = []
-
-	target_seconds = target_hour * 60 * 60 + target_minute * 60
 
 	tolerance_seconds = tolerance_minutes * 60
 
@@ -327,14 +275,7 @@ def find_interval_images(
 
 			capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-			# A per-date centre (e.g. sunset) overrides the fixed target time.
-			day_target_seconds = (
-				target_seconds
-				if target_seconds_by_date is None
-				else target_seconds_by_date[image_date]
-			)
-
-			distance_seconds = abs(capture_seconds - day_target_seconds)
+			distance_seconds = abs(capture_seconds - target_seconds_by_date[image_date])
 
 			if distance_seconds > tolerance_seconds:
 				continue
@@ -596,13 +537,16 @@ def _find_images_worker(
 	daylight_buffer_minutes: int,
 	progress_callback: Callable[[], None],
 ) -> list[Path]:
-	images = find_images(
-		camera=camera,
+	images = select_daylight_images(
+		images=find_images_for_dates(
+			camera=camera,
+			target_dates=[target_date],
+			progress_callback=progress_callback,
+		)[target_date],
 		target_date=target_date,
 		sunrise=sunrise,
 		sunset=sunset,
 		daylight_buffer_minutes=daylight_buffer_minutes,
-		progress_callback=progress_callback,
 	)
 
 	# Validate only selected images to avoid unnecessary metadata access.

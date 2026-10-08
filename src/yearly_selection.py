@@ -9,15 +9,16 @@ from src.images import (
 	get_image_hash,
 )
 
+# Frames kept per day in a Yearly video.
+IMAGES_PER_DAY = 5
+
 
 # Select up to five unique images per day, closest to the target time.
 def select_unique_yearly_images(
 	images: list[Path],
-	target_hour: int = 12,
-	target_minute: int = 0,
-	images_per_day: int = 5,
+	target_seconds_by_date: dict[date, int],
+	images_per_day: int = IMAGES_PER_DAY,
 	progress_callback: Callable[[], None] | None = None,
-	target_seconds_by_date: dict[date, int] | None = None,
 ) -> list[Path]:
 	images_by_date: dict[
 		date,
@@ -29,8 +30,6 @@ def select_unique_yearly_images(
 			]
 		],
 	] = {}
-
-	target_seconds = target_hour * 60 * 60 + target_minute * 60
 
 	for image_path in images:
 		image_date = extract_date(image_path.name)
@@ -44,12 +43,7 @@ def select_unique_yearly_images(
 
 		capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-		# A per-date centre (e.g. sunset) overrides the fixed target time.
-		day_target_seconds = (
-			target_seconds if target_seconds_by_date is None else target_seconds_by_date[image_date]
-		)
-
-		distance_seconds = abs(capture_seconds - day_target_seconds)
+		distance_seconds = abs(capture_seconds - target_seconds_by_date[image_date])
 
 		images_by_date.setdefault(
 			image_date,
@@ -116,7 +110,6 @@ def select_yearly_images_isolated(
 	images: list[Path],
 	stall_timeout_seconds: float,
 	target_seconds_by_date: dict[date, int],
-	images_per_day: int = 5,
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
@@ -124,7 +117,6 @@ def select_yearly_images_isolated(
 		kwargs={
 			"images": images,
 			"target_seconds_by_date": target_seconds_by_date,
-			"images_per_day": images_per_day,
 		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Yearly image selection",

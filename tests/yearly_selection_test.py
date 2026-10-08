@@ -1,11 +1,16 @@
 from datetime import date
 from pathlib import Path
 
+from collections import defaultdict
+
 import src.yearly_selection as yearly_selection_module
 from src.yearly_selection import (
 	select_unique_yearly_images,
 	select_yearly_images_isolated,
 )
+
+# A 12:00 window centre for every date.
+NOON = defaultdict(lambda: 12 * 60 * 60)
 
 
 def test_select_unique_yearly_images_selects_closest_images_per_day(
@@ -27,6 +32,7 @@ def test_select_unique_yearly_images_selects_closest_images_per_day(
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -74,6 +80,7 @@ def test_select_unique_yearly_images_skips_duplicate_and_uses_next_candidate(
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -109,6 +116,7 @@ def test_select_unique_yearly_images_returns_fewer_when_not_enough_unique_images
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -134,6 +142,7 @@ def test_select_unique_yearly_images_keeps_duplicate_tracking_per_day(
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -161,6 +170,7 @@ def test_select_unique_yearly_images_returns_days_in_chronological_order(
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -188,6 +198,7 @@ def test_select_unique_yearly_images_keeps_selected_frames_chronological_within_
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -253,6 +264,7 @@ def test_select_unique_yearly_images_stops_hashing_after_limit_is_reached(
 	)
 
 	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		images_per_day=5,
 	)
@@ -289,6 +301,7 @@ def test_select_unique_yearly_images_forwards_hash_progress(
 	)
 
 	select_unique_yearly_images(
+		target_seconds_by_date=NOON,
 		images=images,
 		progress_callback=lambda: None,
 	)
@@ -321,7 +334,6 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 		images=images,
 		stall_timeout_seconds=10,
 		target_seconds_by_date={date(2026, 9, 15): 12 * 60 * 60},
-		images_per_day=5,
 	)
 
 	assert result == images
@@ -335,7 +347,6 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 	assert worker_calls[0]["kwargs"] == {
 		"images": images,
 		"target_seconds_by_date": {date(2026, 9, 15): 12 * 60 * 60},
-		"images_per_day": 5,
 	}
 
 	assert worker_calls[0]["stall_timeout_seconds"] == 10

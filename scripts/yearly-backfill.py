@@ -140,7 +140,6 @@ def build_year(
 		images=interval_images,
 		stall_timeout_seconds=stall_timeout_seconds,
 		target_seconds_by_date=target_seconds_by_date,
-		images_per_day=5,
 	)
 
 	if not yearly_images:

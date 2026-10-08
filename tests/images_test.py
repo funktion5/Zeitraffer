@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -10,8 +11,6 @@ import src.images as images_module
 from src.images import (
 	extract_date,
 	extract_time,
-	find_images,
-	find_images_for_date,
 	find_images_for_dates,
 	find_interval_images,
 	find_interval_images_isolated,
@@ -20,6 +19,9 @@ from src.images import (
 	get_image_range,
 )
 from src.solar import get_sun_times
+
+# A 12:00 window centre for every date.
+NOON = defaultdict(lambda: 12 * 60 * 60)
 
 # These tests read the real camera storage. It is only mounted on the Pi, not on CI runners.
 requires_camera_storage = pytest.mark.skipif(
@@ -41,7 +43,7 @@ def test_cameras_with_known_dates():
 	}
 
 	for camera, target_date in cameras.items():
-		images = find_images_for_date(camera, target_date)
+		images = find_images_for_dates(camera, [target_date])[target_date]
 
 		# Verify that the search finds at least one image for every
 		# camera on its known test date.
@@ -140,12 +142,13 @@ def test_complete_image_selection():
 		)
 
 		# Run the same image-selection logic used by the application.
-		images = find_images(
+		images = images_module._find_images_worker(
 			camera=camera,
 			target_date=target_date,
 			sunrise=sunrise,
 			sunset=sunset,
 			daylight_buffer_minutes=90,
+			progress_callback=lambda: None,
 		)
 
 		# Verify that at least one image remains after daylight filtering.
@@ -187,8 +190,6 @@ def test_get_image_range(tmp_path, monkeypatch):
 	assert result.earliest_date == date(2026, 9, 10)
 	assert result.latest_date == date(2026, 9, 20)
 
-	assert result.total_files == 4
-	assert result.recognized_files == 3
 	assert result.unrecognized_files == 1
 
 
@@ -207,8 +208,6 @@ def test_get_image_range_with_unknown_format(tmp_path, monkeypatch):
 	result = get_image_range("New-Camera")
 
 	# Files exist, but none of their dates can be safely determined.
-	assert result.total_files == 3
-	assert result.recognized_files == 0
 	assert result.unrecognized_files == 3
 
 	# Never guess a date when the filename format is unsupported.
@@ -216,7 +215,7 @@ def test_get_image_range_with_unknown_format(tmp_path, monkeypatch):
 	assert result.latest_date is None
 
 
-def test_find_images_uses_daylight_buffer(monkeypatch):
+def test_select_daylight_images_uses_daylight_buffer():
 	target_date = date(2026, 9, 16)
 	timezone = ZoneInfo("Europe/Berlin")
 
@@ -244,21 +243,8 @@ def test_find_images_uses_daylight_buffer(monkeypatch):
 		Path("camera_26-09-16_19-31-00-00.jpg"),
 	]
 
-	def fake_find_images_for_date(
-		camera,
-		target_date,
-		progress_callback=None,
-	):
-		return test_images
-
-	monkeypatch.setattr(
-		images_module,
-		"find_images_for_date",
-		fake_find_images_for_date,
-	)
-
-	result = images_module.find_images(
-		camera="Test-Camera",
+	result = images_module.select_daylight_images(
+		images=test_images,
 		target_date=target_date,
 		sunrise=sunrise,
 		sunset=sunset,
@@ -269,59 +255,6 @@ def test_find_images_uses_daylight_buffer(monkeypatch):
 		Path("camera_26-09-16_06-31-00-00.jpg"),
 		Path("camera_26-09-16_19-29-00-00.jpg"),
 	]
-
-
-def test_find_images_for_date_scans_directory_once(
-	tmp_path,
-	monkeypatch,
-):
-	camera_root = tmp_path / "cameras"
-	camera_directory = camera_root / "Test-Camera"
-
-	camera_directory.mkdir(parents=True)
-
-	expected_images = [
-		camera_directory / "camera_26-09-16_10-00-00-00.jpg",
-		camera_directory / "camera_20260916T120000.jpg",
-	]
-
-	for image in expected_images:
-		image.touch()
-
-	(camera_directory / "camera_26-09-15_10-00-00-00.jpg").touch()
-
-	monkeypatch.setattr(
-		images_module,
-		"CAMERA_ROOT",
-		camera_root,
-	)
-
-	original_scandir = images_module.os.scandir
-	scandir_calls = []
-
-	def fake_scandir(path):
-		scandir_calls.append(path)
-
-		return original_scandir(path)
-
-	monkeypatch.setattr(
-		images_module.os,
-		"scandir",
-		fake_scandir,
-	)
-
-	result = images_module.find_images_for_date(
-		camera="Test-Camera",
-		target_date=date(
-			2026,
-			9,
-			16,
-		),
-	)
-
-	assert result == sorted(expected_images)
-
-	assert scandir_calls == [camera_directory]
 
 
 # Multiple requested dates must be grouped during one directory scan.
@@ -522,8 +455,6 @@ def test_get_image_range_uses_filename_scan_only(
 		20,
 	)
 
-	assert result.total_files == 4
-	assert result.recognized_files == 2
 	assert result.unrecognized_files == 2
 
 
@@ -1141,6 +1072,7 @@ def test_find_interval_images_returns_all_images_inside_daily_window(
 
 	result = find_interval_images(
 		camera="Test-Camera",
+		target_seconds_by_date=NOON,
 		start_date=date(
 			2026,
 			9,
@@ -1186,6 +1118,7 @@ def test_find_interval_images_respects_target_tolerance(
 
 	result = find_interval_images(
 		camera="Test-Camera",
+		target_seconds_by_date=NOON,
 		start_date=date(
 			2026,
 			9,
@@ -1239,6 +1172,7 @@ def test_find_interval_images_scans_directory_once(
 
 	result = find_interval_images(
 		camera="Test-Camera",
+		target_seconds_by_date=NOON,
 		start_date=date(
 			2026,
 			9,
@@ -1284,6 +1218,7 @@ def test_find_interval_images_returns_images_in_chronological_order(
 
 	result = find_interval_images(
 		camera="Test-Camera",
+		target_seconds_by_date=NOON,
 		start_date=date(
 			2026,
 			9,

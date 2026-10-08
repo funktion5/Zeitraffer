@@ -138,52 +138,6 @@ def get_expected_weekly_video_paths(
 	]
 
 
-# Return existing Daily videos inside the rolling 7-day window.
-def get_weekly_daily_videos(
-	camera: str,
-	end_date: date,
-) -> list[Path]:
-	expected_paths = get_expected_weekly_video_paths(
-		camera=camera,
-		end_date=end_date,
-	)
-
-	return [video_path for video_path in expected_paths if video_path.exists()]
-
-
-# Return missing Daily videos inside the rolling 7-day window.
-def get_missing_weekly_video_paths(
-	camera: str,
-	end_date: date,
-) -> list[Path]:
-	expected_paths = get_expected_weekly_video_paths(
-		camera=camera,
-		end_date=end_date,
-	)
-
-	return [video_path for video_path in expected_paths if not video_path.exists()]
-
-
-# Return the output path for an automatic Weekly video.
-def get_automatic_weekly_output_path(
-	camera: str,
-	end_date: date,
-) -> Path:
-	return get_video_path(
-		camera=camera,
-		target_date=end_date,
-		timelapse_type="weekly",
-	)
-
-
-# Return the temporary working directory for a Weekly job.
-def get_weekly_temp_directory(
-	camera: str,
-	end_date: date,
-) -> Path:
-	return TEMP_ROOT / camera / "weekly" / end_date.isoformat()
-
-
 # Create the current Weekly video from available Daily videos.
 def create_automatic_weekly_video(
 	camera: str,
@@ -215,19 +169,17 @@ def create_automatic_weekly_video(
 
 		return None
 
-	temp_directory = get_weekly_temp_directory(
-		camera=camera,
-		end_date=end_date,
-	)
+	temp_directory = TEMP_ROOT / camera / "weekly" / end_date.isoformat()
 
 	concat_path = create_concat_file(
 		videos=available_videos,
 		temp_directory=temp_directory,
 	)
 
-	output_path = get_automatic_weekly_output_path(
+	output_path = get_video_path(
 		camera=camera,
-		end_date=end_date,
+		target_date=end_date,
+		timelapse_type="weekly",
 	)
 
 	video_path = create_concat_video(

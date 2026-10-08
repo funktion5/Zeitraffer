@@ -12,8 +12,6 @@ def test_missing_images_diagnostic_empty_camera(
 	image_range = ImageRange(
 		earliest_date=None,
 		latest_date=None,
-		total_files=0,
-		recognized_files=0,
 		unrecognized_files=0,
 	)
 
@@ -39,8 +37,6 @@ def test_missing_images_diagnostic_unsupported_format(
 	image_range = ImageRange(
 		earliest_date=None,
 		latest_date=None,
-		total_files=100,
-		recognized_files=0,
 		unrecognized_files=100,
 	)
 
@@ -76,8 +72,6 @@ def test_missing_images_diagnostic_available_range(
 			10,
 			9,
 		),
-		total_files=1000,
-		recognized_files=1000,
 		unrecognized_files=0,
 	)
 
@@ -111,8 +105,6 @@ def test_missing_images_diagnostic_mixed_formats(
 			9,
 			16,
 		),
-		total_files=1000,
-		recognized_files=900,
 		unrecognized_files=100,
 	)
 
@@ -145,8 +137,6 @@ def test_missing_images_diagnostic_uses_shared_worker_supervisor(
 		return ImageRange(
 			earliest_date=None,
 			latest_date=None,
-			total_files=0,
-			recognized_files=0,
 			unrecognized_files=0,
 		)
 
