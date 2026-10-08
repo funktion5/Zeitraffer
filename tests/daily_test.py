@@ -2,6 +2,7 @@ import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import src.date_coverage as date_coverage_module
 import src.jobs.daily as daily_module
 
 TEST_CONFIG = {
@@ -71,7 +72,7 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 			)
 
 	monkeypatch.setattr(
-		daily_module,
+		date_coverage_module,
 		"datetime",
 		FakeDateTime,
 	)
@@ -312,7 +313,7 @@ def test_run_daily_job_cleans_up_retention_after_success(
 			)
 
 	monkeypatch.setattr(
-		daily_module,
+		date_coverage_module,
 		"datetime",
 		FakeDateTime,
 	)
@@ -393,7 +394,7 @@ def test_run_daily_job_does_not_cleanup_retention_on_video_error(
 			)
 
 	monkeypatch.setattr(
-		daily_module,
+		date_coverage_module,
 		"datetime",
 		FakeDateTime,
 	)
@@ -474,7 +475,7 @@ def test_run_daily_job_continues_after_image_scan_timeout(
 			)
 
 	monkeypatch.setattr(
-		daily_module,
+		date_coverage_module,
 		"datetime",
 		FakeDateTime,
 	)

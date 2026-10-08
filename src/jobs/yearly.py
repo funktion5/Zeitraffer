@@ -1,14 +1,13 @@
 import subprocess
 
-from datetime import date, datetime, timedelta
+from datetime import date
 
-from zoneinfo import ZoneInfo
 
 from src.date_coverage import (
-	format_date_ranges,
+	check_coverage,
 	get_coverage_date_range,
+	get_latest_completed_date,
 	get_min_coverage_days,
-	get_missing_dates,
 )
 from src.images import (
 	find_interval_images_isolated,
@@ -34,11 +33,9 @@ def run_yearly_job(
 ) -> None:
 	location = config["location"]
 
-	timezone = ZoneInfo(location["timezone"])
-
 	# Default to the latest completed calendar day.
 	if target_date is None:
-		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+		target_date = get_latest_completed_date(config["location"]["timezone"])
 
 	start_date, end_date = get_coverage_date_range(
 		end_date=target_date,
@@ -107,38 +104,16 @@ def run_yearly_job(
 
 				continue
 
-			missing_dates = get_missing_dates(
+			if not check_coverage(
 				images=interval_images,
 				start_date=start_date,
 				end_date=end_date,
-			)
-
-			covered_days = total_days - len(missing_dates)
-
-			if covered_days < min_coverage_days:
-				logger.warning(
-					f"Yearly coverage too low: "
-					f"{covered_days} of {total_days} days available "
-					f"(minimum {min_coverage_days}) - skipping camera: {camera}"
-				)
-
-				logger.debug(f"Missing Yearly dates: {format_date_ranges(missing_dates)}")
-
+				min_coverage_days=min_coverage_days,
+				label="Yearly",
+				camera=camera,
+			):
 				skipped_count += 1
-
 				continue
-
-			# Missing days are simply absent from the video; log which ones.
-			if missing_dates:
-				logger.warning(
-					f"Yearly coverage partial: "
-					f"{covered_days} of {total_days} days available "
-					f"(minimum {min_coverage_days}) | "
-					f"missing: {format_date_ranges(missing_dates)}"
-				)
-
-			else:
-				logger.info(f"Yearly coverage complete: {total_days} of {total_days} days")
 
 			yearly_images = select_yearly_images_isolated(
 				camera=camera,

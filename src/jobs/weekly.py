@@ -1,9 +1,12 @@
 import subprocess
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
-from src.date_coverage import get_coverage_date_range, get_missing_dates
+from src.date_coverage import (
+	get_coverage_date_range,
+	get_latest_completed_date,
+	get_missing_dates,
+)
 from src.images import (
 	extract_time,
 	filter_duplicate_images_isolated,
@@ -200,13 +203,9 @@ def run_weekly_job(
 	target_date: date | None = None,
 	manual_run: bool = False,
 ) -> None:
-	location = config["location"]
-
-	timezone = ZoneInfo(location["timezone"])
-
 	# Default to the latest completed calendar day.
 	if target_date is None:
-		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+		target_date = get_latest_completed_date(config["location"]["timezone"])
 
 	end_date = target_date
 

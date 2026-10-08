@@ -1,7 +1,7 @@
 import subprocess
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date, timedelta
 
+from src.date_coverage import get_latest_completed_date
 from src.diagnostics import log_missing_images_diagnostic
 from src.images import find_daily_images_isolated
 from src.logger import RUN_ID, format_run_context, logger
@@ -47,11 +47,9 @@ def run_daily_job(
 ) -> None:
 	location = config["location"]
 
-	timezone = ZoneInfo(location["timezone"])
-
 	# Default to the latest completed calendar day.
 	if target_date is None:
-		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+		target_date = get_latest_completed_date(config["location"]["timezone"])
 
 	logger.info("-" * 80)
 

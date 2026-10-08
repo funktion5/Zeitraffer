@@ -1,6 +1,5 @@
 import subprocess
-from datetime import date, datetime, timedelta
-from zoneinfo import ZoneInfo
+from datetime import date
 
 from src.images import find_interval_images_isolated
 from src.interval_window import (
@@ -12,10 +11,10 @@ from src.logger import RUN_ID, format_run_context, logger
 from src.video import create_timelapse
 from src.video import cleanup_automatic_video_retention
 from src.date_coverage import (
-	format_date_ranges,
+	check_coverage,
 	get_coverage_date_range,
+	get_latest_completed_date,
 	get_min_coverage_days,
-	get_missing_dates,
 )
 
 
@@ -28,11 +27,10 @@ def run_monthly_job(
 	manual_run: bool = False,
 	interval_window: IntervalWindow | None = None,
 ) -> None:
-	timezone = ZoneInfo(config["location"]["timezone"])
 
 	# Default to the latest completed calendar day.
 	if target_date is None:
-		target_date = datetime.now(tz=timezone).date() - timedelta(days=1)
+		target_date = get_latest_completed_date(config["location"]["timezone"])
 
 	start_date, end_date = get_coverage_date_range(
 		end_date=target_date,
@@ -97,38 +95,16 @@ def run_monthly_job(
 				skipped_count += 1
 				continue
 
-			missing_dates = get_missing_dates(
+			if not check_coverage(
 				images=monthly_images,
 				start_date=start_date,
 				end_date=end_date,
-			)
-
-			covered_days = total_days - len(missing_dates)
-
-			if covered_days < min_coverage_days:
-				logger.warning(
-					f"Monthly coverage too low: "
-					f"{covered_days} of {total_days} days available "
-					f"(minimum {min_coverage_days}) - skipping camera: {camera}"
-				)
-
-				logger.debug(f"Missing Monthly dates: {format_date_ranges(missing_dates)}")
-
+				min_coverage_days=min_coverage_days,
+				label="Monthly",
+				camera=camera,
+			):
 				skipped_count += 1
-
 				continue
-
-			# Missing days are simply absent from the video; log which ones.
-			if missing_dates:
-				logger.warning(
-					f"Monthly coverage partial: "
-					f"{covered_days} of {total_days} days available "
-					f"(minimum {min_coverage_days}) | "
-					f"missing: {format_date_ranges(missing_dates)}"
-				)
-
-			else:
-				logger.info(f"Monthly coverage complete: {total_days} of {total_days} days")
 
 			video_path = create_timelapse(
 				camera=camera,

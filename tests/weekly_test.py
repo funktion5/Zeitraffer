@@ -2,6 +2,7 @@ import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+import src.date_coverage as date_coverage_module
 import src.images as images_module
 import src.jobs.weekly as weekly_module
 
@@ -614,7 +615,7 @@ def test_run_weekly_job_uses_yesterday(
 			)
 
 	monkeypatch.setattr(
-		weekly_module,
+		date_coverage_module,
 		"datetime",
 		FakeDateTime,
 	)

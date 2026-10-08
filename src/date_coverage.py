@@ -1,8 +1,10 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from src.images import extract_date
+from src.logger import logger
 
 
 CoverageType = Literal[
@@ -16,6 +18,11 @@ COVERAGE_DAYS = {
 	"weekly": 7,
 	"monthly": 30,
 }
+
+
+# Default target date for automatic runs: the latest completed calendar day.
+def get_latest_completed_date(timezone: str) -> date:
+	return datetime.now(tz=ZoneInfo(timezone)).date() - timedelta(days=1)
 
 
 # Return the inclusive rolling date range for the selected coverage type.
@@ -116,3 +123,48 @@ def format_date_ranges(dates: list[date]) -> str:
 		start.isoformat() if start == end else f"{start.isoformat()} to {end.isoformat()}"
 		for start, end in ranges
 	)
+
+
+# Log Monthly/Yearly coverage and return whether it meets the minimum.
+# Missing days are simply absent from the video, so partial coverage is only logged.
+def check_coverage(
+	images: list[Path],
+	start_date: date,
+	end_date: date,
+	min_coverage_days: int,
+	label: str,
+	camera: str,
+) -> bool:
+	total_days = (end_date - start_date).days + 1
+
+	missing_dates = get_missing_dates(
+		images=images,
+		start_date=start_date,
+		end_date=end_date,
+	)
+
+	covered_days = total_days - len(missing_dates)
+
+	if covered_days < min_coverage_days:
+		logger.warning(
+			f"{label} coverage too low: "
+			f"{covered_days} of {total_days} days available "
+			f"(minimum {min_coverage_days}) - skipping camera: {camera}"
+		)
+
+		logger.debug(f"Missing {label} dates: {format_date_ranges(missing_dates)}")
+
+		return False
+
+	if missing_dates:
+		logger.warning(
+			f"{label} coverage partial: "
+			f"{covered_days} of {total_days} days available "
+			f"(minimum {min_coverage_days}) | "
+			f"missing: {format_date_ranges(missing_dates)}"
+		)
+
+	else:
+		logger.info(f"{label} coverage complete: {total_days} of {total_days} days")
+
+	return True

@@ -15,9 +15,8 @@ import json
 import os
 import subprocess
 import sys
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -25,7 +24,11 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.date_coverage import format_date_ranges, get_missing_dates  # noqa: E402
+from src.date_coverage import (  # noqa: E402
+	format_date_ranges,
+	get_latest_completed_date,
+	get_missing_dates,
+)
 from src.images import find_interval_images_isolated, get_cameras  # noqa: E402
 from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
@@ -169,8 +172,7 @@ def main() -> int:
 
 	configure_file_logging("yearly")
 
-	timezone = ZoneInfo(config["location"]["timezone"])
-	yesterday = datetime.now(tz=timezone).date() - timedelta(days=1)
+	yesterday = get_latest_completed_date(config["location"]["timezone"])
 
 	ignored_cameras = set(config.get("ignored_cameras", []))
 	cameras = args.cameras or [c for c in get_cameras() if c not in ignored_cameras]
