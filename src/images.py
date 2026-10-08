@@ -79,10 +79,7 @@ def find_images_for_dates(
 				images_by_date[target_date].append(camera_path / entry.name)
 				break
 
-	return {
-		target_date: sorted(images)
-		for target_date, images in images_by_date.items()
-	}
+	return {target_date: sorted(images) for target_date, images in images_by_date.items()}
 
 
 # Return images for one date through the shared single-scan discovery path.
