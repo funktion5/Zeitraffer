@@ -112,6 +112,12 @@ function findManualVideos(string $camera): array
 		}
 
 		foreach (scandir($jobPath) as $filename) {
+			// Hidden files include `.<name>.tmp.mp4` from a running encode, which must not be
+			// played or deleted before the atomic rename.
+			if (str_starts_with($filename, ".")) {
+				continue;
+			}
+
 			if (strtolower(pathinfo($filename, PATHINFO_EXTENSION)) !== "mp4") {
 				continue;
 			}

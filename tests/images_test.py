@@ -21,7 +21,14 @@ from src.images import (
 )
 from src.solar import get_sun_times
 
+# These tests read the real camera storage. It is only mounted on the Pi, not on CI runners.
+requires_camera_storage = pytest.mark.skipif(
+	not images_module.CAMERA_ROOT.is_dir(),
+	reason=f"camera storage {images_module.CAMERA_ROOT} is not mounted",
+)
 
+
+@requires_camera_storage
 def test_cameras_with_known_dates():
 	# Use known dates with existing images to verify that the date-based
 	# image search works across different cameras and filename formats.
@@ -110,6 +117,7 @@ def test_extract_date_rejects_invalid_filenames():
 		assert extract_date(filename) is None
 
 
+@requires_camera_storage
 def test_complete_image_selection():
 	# Use known camera/date combinations to test the complete selection
 	# workflow: find images, extract timestamps and apply the daylight window.
@@ -144,6 +152,7 @@ def test_complete_image_selection():
 		assert len(images) > 0, f"No daylight images found for camera '{camera}' on {target_date}."
 
 
+@requires_camera_storage
 def test_get_cameras():
 	# Read the available cameras dynamically from the mounted camera storage.
 	cameras = get_cameras()

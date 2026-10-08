@@ -32,22 +32,22 @@ def failing_worker(
 	)
 
 
-# Report progress before returning a successful result.
+# Report progress several times before returning a successful result.
 def progressing_worker(
 	delay_seconds,
+	steps,
 	value,
 	result_queue,
 ):
-	time.sleep(delay_seconds)
+	for _ in range(steps):
+		time.sleep(delay_seconds)
 
-	result_queue.put(
-		(
-			"progress",
-			None,
+		result_queue.put(
+			(
+				"progress",
+				None,
+			)
 		)
-	)
-
-	time.sleep(delay_seconds)
 
 	result_queue.put(
 		(
@@ -115,16 +115,19 @@ def test_run_isolated_worker_raises_timeout_for_stalled_worker():
 		)
 
 
-# Progress messages must reset the inactivity timeout.
+# Progress messages must reset the inactivity timeout. The total runtime (5 x 0.1 s) exceeds the
+# timeout, so only the reset lets it pass; each step leaves 0.3 s slack for process startup and a
+# busy machine.
 def test_run_isolated_worker_resets_timeout_on_progress():
 	result = run_isolated_worker(
 		camera="Test-Camera",
 		target=progressing_worker,
 		args=(
-			0.08,
+			0.1,
+			5,
 			"expected-result",
 		),
-		stall_timeout_seconds=0.12,
+		stall_timeout_seconds=0.4,
 		operation_name="Test operation",
 	)
 

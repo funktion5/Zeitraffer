@@ -278,6 +278,17 @@ def prepare_web_trigger(tmp_path: Path) -> tuple[dict, Path, Path]:
 	return environment, status_root, invocation_file
 
 
+# The trigger starts the worker in the background. Its shell redirect creates the file before
+# printf fills it, so wait for content, with a timeout generous enough for a busy Pi or CI runner.
+def wait_for_file_content(path: Path, timeout_seconds: float = 2.0) -> None:
+	deadline = time.monotonic() + timeout_seconds
+
+	while time.monotonic() < deadline:
+		if path.exists() and path.read_text():
+			return
+		time.sleep(0.01)
+
+
 # An accepted trigger must publish running and pass validated values to the worker.
 def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 	environment, status_root, invocation_file = prepare_web_trigger(tmp_path)
@@ -298,10 +309,7 @@ def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 		check=False,
 	)
 
-	for _ in range(20):
-		if invocation_file.exists():
-			break
-		time.sleep(0.01)
+	wait_for_file_content(invocation_file)
 
 	assert result.returncode == 0
 	assert (status_root / f"{job_id}.status").read_text() == "running\n"
@@ -362,10 +370,7 @@ def test_web_trigger_accepts_monthly_without_buffer(tmp_path):
 		check=False,
 	)
 
-	for _ in range(20):
-		if invocation_file.exists():
-			break
-		time.sleep(0.01)
+	wait_for_file_content(invocation_file)
 
 	assert result.returncode == 0
 	assert invocation_file.read_text().splitlines() == [
@@ -462,10 +467,7 @@ def test_web_trigger_accepts_monthly_with_window(tmp_path, window_time):
 		check=False,
 	)
 
-	for _ in range(20):
-		if invocation_file.exists():
-			break
-		time.sleep(0.01)
+	wait_for_file_content(invocation_file)
 
 	assert result.returncode == 0
 	assert invocation_file.read_text().splitlines() == [

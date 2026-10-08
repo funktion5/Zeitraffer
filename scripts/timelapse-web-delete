@@ -32,7 +32,7 @@ if [[ -z "$FILENAME" || "$FILENAME" == *"/"* || "$FILENAME" == "." || "$FILENAME
 	exit 64
 fi
 
-if [[ "${FILENAME##*.}" != "mp4" ]]; then
+if [[ "$FILENAME" != *?.mp4 ]]; then
 	echo "Invalid video type." >&2
 	exit 64
 fi
