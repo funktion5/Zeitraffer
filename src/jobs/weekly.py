@@ -55,7 +55,6 @@ def collect_weekly_images(
 			sunset=sunset,
 			daylight_buffer_minutes=daylight_buffer_minutes,
 			stall_timeout_seconds=stall_timeout_seconds,
-			log_duplicates=False,
 		)
 
 		if not daily_images:

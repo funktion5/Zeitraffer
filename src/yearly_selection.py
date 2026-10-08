@@ -1,6 +1,5 @@
 from collections.abc import Callable
 from datetime import date
-from multiprocessing import Queue
 from pathlib import Path
 
 from src.image_worker import run_isolated_worker
@@ -112,44 +111,6 @@ def select_unique_yearly_images(
 	return selected_images
 
 
-def _select_yearly_images_worker(
-	images: list[Path],
-	target_seconds_by_date: dict[date, int],
-	images_per_day: int,
-	result_queue: Queue,
-) -> None:
-	def report_progress():
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
-
-	try:
-		selected_images = select_unique_yearly_images(
-			images=images,
-			images_per_day=images_per_day,
-			progress_callback=report_progress,
-			target_seconds_by_date=target_seconds_by_date,
-		)
-
-		result_queue.put(
-			(
-				"success",
-				selected_images,
-			)
-		)
-
-	except OSError as error:
-		result_queue.put(
-			(
-				"error",
-				str(error),
-			)
-		)
-
-
 def select_yearly_images_isolated(
 	camera: str,
 	images: list[Path],
@@ -159,12 +120,12 @@ def select_yearly_images_isolated(
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
-		target=_select_yearly_images_worker,
-		args=(
-			images,
-			target_seconds_by_date,
-			images_per_day,
-		),
+		target=select_unique_yearly_images,
+		kwargs={
+			"images": images,
+			"target_seconds_by_date": target_seconds_by_date,
+			"images_per_day": images_per_day,
+		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Yearly image selection",
 	)

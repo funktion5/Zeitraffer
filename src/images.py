@@ -1,20 +1,15 @@
 import hashlib
 import os
 import re
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from multiprocessing import Queue
 from pathlib import Path
 
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
 CAMERA_ROOT = Path("/mnt/cameras")
-
-# Report scan progress at most once per second.
-IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS = 1
 
 
 @dataclass
@@ -55,19 +50,11 @@ def find_images_for_dates(
 	}
 	images_by_date = {target_date: [] for target_date in unique_dates}
 
-	# Track the last reported progress so large scans do not flood the queue.
-	last_progress_report = time.monotonic()
-
 	# Scan the camera directory once and match known date formats by filename.
 	with os.scandir(camera_path) as entries:
 		for entry in entries:
 			if progress_callback is not None:
-				now = time.monotonic()
-
-				# Report only periodic progress while directory entries are still arriving.
-				if now - last_progress_report >= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS:
-					progress_callback()
-					last_progress_report = now
+				progress_callback()
 
 			if not entry.name.lower().endswith(".jpg"):
 				continue
@@ -144,6 +131,7 @@ def extract_date(filename: str):
 # Inspect filenames without triggering additional file metadata lookups.
 def get_image_range(
 	camera: str,
+	progress_callback: Callable[[], None] | None = None,
 ) -> ImageRange:
 	camera_path = CAMERA_ROOT / camera
 
@@ -156,6 +144,9 @@ def get_image_range(
 	# Inspect filenames without triggering additional file metadata lookups.
 	with os.scandir(camera_path) as entries:
 		for entry in entries:
+			if progress_callback is not None:
+				progress_callback()
+
 			if not entry.name.lower().endswith(".jpg"):
 				continue
 
@@ -311,16 +302,10 @@ def find_interval_images(
 
 	tolerance_seconds = tolerance_minutes * 60
 
-	last_progress_report = time.monotonic()
-
 	with os.scandir(camera_path) as entries:
 		for entry in entries:
 			if progress_callback is not None:
-				now = time.monotonic()
-
-				if now - last_progress_report >= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS:
-					progress_callback()
-					last_progress_report = now
+				progress_callback()
 
 			if not entry.name.lower().endswith(".jpg"):
 				continue
@@ -380,19 +365,13 @@ def get_image_hash(
 	progress_callback: Callable[[], None] | None = None,
 ) -> str:
 	hasher = hashlib.sha256()
-	last_progress_report = time.monotonic()
 
 	with image_path.open("rb") as image_file:
 		while chunk := image_file.read(1024 * 1024):
 			hasher.update(chunk)
 
 			if progress_callback is not None:
-				now = time.monotonic()
-
-				# Avoid flooding the worker queue while hashing large files.
-				if now - last_progress_report >= IMAGE_SCAN_PROGRESS_INTERVAL_SECONDS:
-					progress_callback()
-					last_progress_report = now
+				progress_callback()
 
 	return hasher.hexdigest()
 
@@ -464,21 +443,6 @@ def find_duplicate_images(
 			seen_hashes.add(image_hash)
 
 	return duplicate_images
-
-
-# Log byte-identical source images without removing them.
-def log_duplicate_source_data(
-	camera: str,
-	images: list[Path],
-	progress_callback: Callable[[], None] | None = None,
-) -> None:
-	duplicate_images = find_duplicate_images(
-		images=images,
-		progress_callback=progress_callback,
-	)
-
-	if duplicate_images:
-		logger.warning(f"Camera {camera}: detected {len(duplicate_images)} duplicate images")
 
 
 # Exclude byte-identical images while preserving their first occurrence.
@@ -622,129 +586,31 @@ def filter_duplicate_images_by_date(
 	return [image_path for image_path in images if image_path not in duplicate_images]
 
 
-# Validate selected images before they are passed to video processing.
-def validate_images(
-	camera: str,
-	images: list[Path],
-	progress_callback: Callable[[], None] | None = None,
-	remove_duplicates: bool = False,
-	log_duplicates: bool = True,
-) -> list[Path]:
-	valid_images = filter_empty_images(
-		camera=camera,
-		images=images,
-		progress_callback=progress_callback,
-	)
-
-	if remove_duplicates:
-		valid_images = filter_duplicate_images(
-			camera=camera,
-			images=valid_images,
-			progress_callback=progress_callback,
-		)
-
-	elif log_duplicates:
-		log_duplicate_source_data(
-			camera=camera,
-			images=valid_images,
-			progress_callback=progress_callback,
-		)
-
-	return valid_images
-
-
-# Filter duplicate images inside an isolated worker.
-def _filter_duplicate_images_worker(
-	camera: str,
-	images: list[Path],
-	result_queue: Queue,
-) -> None:
-	def report_progress():
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
-
-	try:
-		unique_images = filter_duplicate_images(
-			camera=camera,
-			images=images,
-			progress_callback=report_progress,
-		)
-
-		result_queue.put(
-			(
-				"success",
-				unique_images,
-			)
-		)
-
-	except OSError as error:
-		result_queue.put(
-			(
-				"error",
-				str(error),
-			)
-		)
-
-
-# Run image discovery in a separate process so blocked filesystem access
-# cannot stall the complete application.
+# Find daylight images for one date and drop empty files. Runs inside the
+# isolated worker so blocked filesystem access cannot stall the application.
 def _find_images_worker(
 	camera: str,
 	target_date: date,
 	sunrise: datetime,
 	sunset: datetime,
 	daylight_buffer_minutes: int,
-	remove_duplicates: bool,
-	log_duplicates: bool,
-	result_queue: Queue,
-) -> None:
-	def report_progress():
-		# Notify the parent that the directory scan is still making progress.
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
+	progress_callback: Callable[[], None],
+) -> list[Path]:
+	images = find_images(
+		camera=camera,
+		target_date=target_date,
+		sunrise=sunrise,
+		sunset=sunset,
+		daylight_buffer_minutes=daylight_buffer_minutes,
+		progress_callback=progress_callback,
+	)
 
-	try:
-		images = find_images(
-			camera=camera,
-			target_date=target_date,
-			sunrise=sunrise,
-			sunset=sunset,
-			daylight_buffer_minutes=daylight_buffer_minutes,
-			progress_callback=report_progress,
-		)
-
-		# Validate only selected images to avoid unnecessary metadata access.
-		images = validate_images(
-			camera=camera,
-			images=images,
-			progress_callback=report_progress,
-			remove_duplicates=remove_duplicates,
-			log_duplicates=log_duplicates,
-		)
-
-		result_queue.put(
-			(
-				"success",
-				images,
-			)
-		)
-
-	except OSError as error:
-		# Forward expected filesystem errors to the parent process.
-		result_queue.put(
-			(
-				"error",
-				str(error),
-			)
-		)
+	# Validate only selected images to avoid unnecessary metadata access.
+	return filter_empty_images(
+		camera=camera,
+		images=images,
+		progress_callback=progress_callback,
+	)
 
 
 # Find Daily images and remove content already present on the previous day.
@@ -755,62 +621,39 @@ def _find_daily_images_worker(
 	sunset: datetime,
 	previous_date: date,
 	daylight_buffer_minutes: int,
-	result_queue: Queue,
-) -> None:
-	def report_progress():
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
+	progress_callback: Callable[[], None],
+) -> list[Path]:
+	images_by_date = find_images_for_dates(
+		camera=camera,
+		target_dates=[previous_date, target_date],
+		progress_callback=progress_callback,
+	)
+	previous_images = images_by_date[previous_date]
+	current_images = select_daylight_images(
+		images=images_by_date[target_date],
+		target_date=target_date,
+		sunrise=sunrise,
+		sunset=sunset,
+		daylight_buffer_minutes=daylight_buffer_minutes,
+	)
 
-	try:
-		images_by_date = find_images_for_dates(
-			camera=camera,
-			target_dates=[previous_date, target_date],
-			progress_callback=report_progress,
-		)
-		previous_images = images_by_date[previous_date]
-		current_images = select_daylight_images(
-			images=images_by_date[target_date],
-			target_date=target_date,
-			sunrise=sunrise,
-			sunset=sunset,
-			daylight_buffer_minutes=daylight_buffer_minutes,
-		)
+	previous_images = filter_empty_images(
+		camera=camera,
+		images=previous_images,
+		progress_callback=progress_callback,
+	)
+	current_images = filter_empty_images(
+		camera=camera,
+		images=current_images,
+		progress_callback=progress_callback,
+	)
 
-		previous_images = filter_empty_images(
-			camera=camera,
-			images=previous_images,
-			progress_callback=report_progress,
-		)
-		current_images = filter_empty_images(
-			camera=camera,
-			images=current_images,
-			progress_callback=report_progress,
-		)
-		current_images = filter_duplicate_images_against_reference(
-			camera=camera,
-			reference_images=previous_images,
-			images=current_images,
-			progress_callback=report_progress,
-		)
-
-		result_queue.put(
-			(
-				"success",
-				current_images,
-			)
-		)
-
-	except OSError as error:
-		result_queue.put(
-			(
-				"error",
-				str(error),
-			)
-		)
+	return filter_duplicate_images_against_reference(
+		camera=camera,
+		reference_images=previous_images,
+		images=current_images,
+		progress_callback=progress_callback,
+	)
 
 
 # Find and validate interval images inside the isolated worker.
@@ -821,54 +664,32 @@ def _find_interval_images_worker(
 	target_seconds_by_date: dict[date, int],
 	tolerance_minutes: int,
 	remove_duplicates_by_date: bool,
-	result_queue: Queue,
-) -> None:
-	def report_progress():
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
+	progress_callback: Callable[[], None],
+) -> list[Path]:
+	images = find_interval_images(
+		camera=camera,
+		start_date=start_date,
+		end_date=end_date,
+		tolerance_minutes=tolerance_minutes,
+		progress_callback=progress_callback,
+		target_seconds_by_date=target_seconds_by_date,
+	)
 
-	try:
-		images = find_interval_images(
-			camera=camera,
-			start_date=start_date,
-			end_date=end_date,
-			tolerance_minutes=tolerance_minutes,
-			progress_callback=report_progress,
-			target_seconds_by_date=target_seconds_by_date,
-		)
+	# Remove unusable files before job-specific selection.
+	images = filter_empty_images(
+		camera=camera,
+		images=images,
+		progress_callback=progress_callback,
+	)
 
-		# Remove unusable files before job-specific selection.
-		images = filter_empty_images(
+	if remove_duplicates_by_date:
+		images = filter_duplicate_images_by_date(
 			camera=camera,
 			images=images,
-			progress_callback=report_progress,
+			progress_callback=progress_callback,
 		)
 
-		if remove_duplicates_by_date:
-			images = filter_duplicate_images_by_date(
-				camera=camera,
-				images=images,
-				progress_callback=report_progress,
-			)
-
-		result_queue.put(
-			(
-				"success",
-				images,
-			)
-		)
-
-	except OSError as error:
-		result_queue.put(
-			(
-				"error",
-				str(error),
-			)
-		)
+	return images
 
 
 # Run image discovery with a stall timeout that resets whenever progress arrives.
@@ -879,21 +700,17 @@ def find_images_isolated(
 	sunset: datetime,
 	daylight_buffer_minutes: int,
 	stall_timeout_seconds: float,
-	remove_duplicates: bool = False,
-	log_duplicates: bool = True,
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_images_worker,
-		args=(
-			camera,
-			target_date,
-			sunrise,
-			sunset,
-			daylight_buffer_minutes,
-			remove_duplicates,
-			log_duplicates,
-		),
+		kwargs={
+			"camera": camera,
+			"target_date": target_date,
+			"sunrise": sunrise,
+			"sunset": sunset,
+			"daylight_buffer_minutes": daylight_buffer_minutes,
+		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Image scan",
 	)
@@ -912,14 +729,14 @@ def find_daily_images_isolated(
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_daily_images_worker,
-		args=(
-			camera,
-			target_date,
-			sunrise,
-			sunset,
-			previous_date,
-			daylight_buffer_minutes,
-		),
+		kwargs={
+			"camera": camera,
+			"target_date": target_date,
+			"sunrise": sunrise,
+			"sunset": sunset,
+			"previous_date": previous_date,
+			"daylight_buffer_minutes": daylight_buffer_minutes,
+		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Daily image scan",
 	)
@@ -933,11 +750,11 @@ def filter_duplicate_images_isolated(
 ) -> list[Path]:
 	return run_isolated_worker(
 		camera=camera,
-		target=_filter_duplicate_images_worker,
-		args=(
-			camera,
-			images,
-		),
+		target=filter_duplicate_images,
+		kwargs={
+			"camera": camera,
+			"images": images,
+		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Duplicate image filtering",
 	)
@@ -956,14 +773,14 @@ def find_interval_images_isolated(
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_interval_images_worker,
-		args=(
-			camera,
-			start_date,
-			end_date,
-			target_seconds_by_date,
-			tolerance_minutes,
-			remove_duplicates_by_date,
-		),
+		kwargs={
+			"camera": camera,
+			"start_date": start_date,
+			"end_date": end_date,
+			"target_seconds_by_date": target_seconds_by_date,
+			"tolerance_minutes": tolerance_minutes,
+			"remove_duplicates_by_date": remove_duplicates_by_date,
+		},
 		stall_timeout_seconds=stall_timeout_seconds,
 		operation_name="Interval image scan",
 	)

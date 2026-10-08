@@ -1853,7 +1853,7 @@ Allgemeine Bildlogik:
 - Interval-Suche
 - 0-Byte-Filterung
 - SHA-256-Hashing
-- Duplicate-Diagnose und job-spezifische Duplicate-Filterung
+- job-spezifische Duplicate-Filterung
 
 Unbekannte Dateinamensformate werden nicht geraten.
 
@@ -1864,7 +1864,7 @@ Gemeinsame Infrastruktur für isolierte Worker-Prozesse.
 Der Supervisor übernimmt:
 
 - `Process` und `Queue`
-- Fortschrittsmeldungen
+- Fortschrittsmeldungen, zentral auf höchstens eine pro Sekunde gedrosselt
 - Stall-Timeout
 - `terminate()`
 - bei Bedarf `kill()`
@@ -1872,6 +1872,8 @@ Der Supervisor übernimmt:
 - Weitergabe erwarteter `OSError`
 
 Der Timeout misst **Inaktivität**, nicht die Gesamtlaufzeit. Lange Scans dürfen weiterlaufen, solange Fortschritt gemeldet wird.
+
+Eine Worker-Funktion ist eine normale Funktion mit `progress_callback`-Parameter, die ihr Ergebnis zurückgibt. `run_isolated_worker(camera, target, kwargs, ...)` startet sie im eigenen Prozess. Auch die Bildbereich-Diagnose (`src/diagnostics.py`) läuft darüber, mit 10 Sekunden Stall-Timeout.
 
 ### `src/date_coverage.py`
 

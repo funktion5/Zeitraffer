@@ -431,29 +431,17 @@ def test_find_daily_images_worker_filters_previous_and_current_duplicates(
 
 	monkeypatch.setattr(images_module.os, "scandir", fake_scandir)
 
-	class RecordingQueue:
-		def __init__(self):
-			self.messages = []
-
-		def put(self, message):
-			self.messages.append(message)
-
-	result_queue = RecordingQueue()
-
-	images_module._find_daily_images_worker(
+	result = images_module._find_daily_images_worker(
 		camera="Test-Camera",
 		target_date=target_date,
 		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
 		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
 		previous_date=previous_date,
 		daylight_buffer_minutes=0,
-		result_queue=result_queue,
+		progress_callback=lambda: None,
 	)
 
-	assert result_queue.messages[-1] == (
-		"success",
-		[first_current, second_current],
-	)
+	assert result == [first_current, second_current]
 	assert scandir_calls == [camera_directory]
 	assert all(
 		image_path.exists()
@@ -482,26 +470,17 @@ def test_find_daily_images_worker_returns_empty_when_all_current_images_are_refe
 	(camera_directory / "camera_26-09-16_12-00-00-00.jpg").write_bytes(b"frozen frame")
 	monkeypatch.setattr(images_module, "CAMERA_ROOT", camera_root)
 
-	class RecordingQueue:
-		def __init__(self):
-			self.messages = []
-
-		def put(self, message):
-			self.messages.append(message)
-
-	result_queue = RecordingQueue()
-
-	images_module._find_daily_images_worker(
+	result = images_module._find_daily_images_worker(
 		camera="Test-Camera",
 		target_date=date(2026, 9, 16),
 		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
 		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
 		previous_date=date(2026, 9, 15),
 		daylight_buffer_minutes=0,
-		result_queue=result_queue,
+		progress_callback=lambda: None,
 	)
 
-	assert result_queue.messages[-1] == ("success", [])
+	assert result == []
 
 
 def test_get_image_range_uses_filename_scan_only(
@@ -814,7 +793,7 @@ def test_find_images_isolated_resets_stall_timeout_on_progress(
 
 
 # Empty image files must be removed and reported before video processing.
-def test_validate_images_removes_empty_files(
+def test_filter_empty_images_removes_empty_files(
 	tmp_path,
 	monkeypatch,
 ):
@@ -838,7 +817,7 @@ def test_validate_images_removes_empty_files(
 		lambda message: warnings.append(message),
 	)
 
-	result = images_module.validate_images(
+	result = images_module.filter_empty_images(
 		camera="Test-Camera",
 		images=[
 			first_image,
@@ -853,108 +832,6 @@ def test_validate_images_removes_empty_files(
 	]
 
 	assert warnings == ["Camera Test-Camera: excluded 1 empty image files"]
-
-
-# Identical image data must be detected without removing valid files.
-def test_validate_images_logs_duplicate_source_data(
-	tmp_path,
-	monkeypatch,
-):
-	first_image = tmp_path / "first.jpg"
-
-	duplicate_image = tmp_path / "duplicate.jpg"
-
-	different_image = tmp_path / "different.jpg"
-
-	first_image.write_bytes(b"same image data")
-
-	duplicate_image.write_bytes(b"same image data")
-
-	different_image.write_bytes(b"different image")
-
-	warnings = []
-
-	monkeypatch.setattr(
-		images_module.logger,
-		"warning",
-		lambda message: warnings.append(message),
-	)
-
-	result = images_module.validate_images(
-		camera="Test-Camera",
-		images=[
-			first_image,
-			duplicate_image,
-			different_image,
-		],
-	)
-
-	assert result == [
-		first_image,
-		duplicate_image,
-		different_image,
-	]
-
-	assert warnings == ["Camera Test-Camera: detected 1 duplicate images"]
-
-
-# Validation can filter duplicates for jobs that require unique frames.
-def test_validate_images_can_filter_duplicate_source_data(
-	tmp_path,
-	monkeypatch,
-):
-	first_image = tmp_path / "first.jpg"
-	duplicate_image = tmp_path / "duplicate.jpg"
-	different_image = tmp_path / "different.jpg"
-
-	first_image.write_bytes(b"same image data")
-	duplicate_image.write_bytes(b"same image data")
-	different_image.write_bytes(b"different image")
-
-	warnings = []
-
-	monkeypatch.setattr(
-		images_module.logger,
-		"warning",
-		lambda message: warnings.append(message),
-	)
-
-	result = images_module.validate_images(
-		camera="Test-Camera",
-		images=[
-			first_image,
-			duplicate_image,
-			different_image,
-		],
-		remove_duplicates=True,
-	)
-
-	assert result == [
-		first_image,
-		different_image,
-	]
-	assert warnings == ["Camera Test-Camera: filtered 1 duplicate images"]
-
-
-# Validation can defer duplicate detection to a later aggregate pass.
-def test_validate_images_can_skip_duplicate_logging(
-	tmp_path,
-	monkeypatch,
-):
-	image = tmp_path / "image.jpg"
-	image.write_bytes(b"image data")
-
-	monkeypatch.setattr(
-		images_module,
-		"log_duplicate_source_data",
-		lambda **kwargs: pytest.fail("duplicate detection must be deferred"),
-	)
-
-	assert images_module.validate_images(
-		camera="Test-Camera",
-		images=[image],
-		log_duplicates=False,
-	) == [image]
 
 
 # Duplicate filtering must preserve the first image without modifying source files.
@@ -1177,11 +1054,11 @@ def test_filter_duplicate_images_isolated_uses_shared_worker_supervisor(
 	assert worker_calls == [
 		{
 			"camera": "Test-Camera",
-			"target": images_module._filter_duplicate_images_worker,
-			"args": (
-				"Test-Camera",
-				images,
-			),
+			"target": images_module.filter_duplicate_images,
+			"kwargs": {
+				"camera": "Test-Camera",
+				"images": images,
+			},
 			"stall_timeout_seconds": 10,
 			"operation_name": "Duplicate image filtering",
 		}
@@ -1220,52 +1097,18 @@ def test_find_daily_images_isolated_uses_shared_worker_supervisor(monkeypatch):
 		{
 			"camera": "Test-Camera",
 			"target": images_module._find_daily_images_worker,
-			"args": (
-				"Test-Camera",
-				target_date,
-				sunrise,
-				sunset,
-				previous_date,
-				90,
-			),
+			"kwargs": {
+				"camera": "Test-Camera",
+				"target_date": target_date,
+				"sunrise": sunrise,
+				"sunset": sunset,
+				"previous_date": previous_date,
+				"daylight_buffer_minutes": 90,
+			},
 			"stall_timeout_seconds": 10,
 			"operation_name": "Daily image scan",
 		}
 	]
-
-
-# Hash progress must be rate-limited while large files are processed.
-def test_get_image_hash_limits_progress_reports(
-	tmp_path,
-	monkeypatch,
-):
-	image_path = tmp_path / "large.jpg"
-
-	image_path.write_bytes(b"a" * (3 * 1024 * 1024))
-
-	monotonic_values = iter(
-		[
-			0,
-			0.2,
-			1.1,
-			1.2,
-		]
-	)
-
-	monkeypatch.setattr(
-		images_module.time,
-		"monotonic",
-		lambda: next(monotonic_values),
-	)
-
-	progress_calls = []
-
-	images_module.get_image_hash(
-		image_path=image_path,
-		progress_callback=lambda: progress_calls.append(True),
-	)
-
-	assert len(progress_calls) == 1
 
 
 def test_find_interval_images_returns_all_images_inside_daily_window(
@@ -1550,15 +1393,7 @@ def test_find_interval_images_isolated_filters_duplicates_by_date(
 def test_find_interval_images_isolated_stops_stalled_scan(
 	monkeypatch,
 ):
-	def stalled_worker(
-		camera,
-		start_date,
-		end_date,
-		target_seconds_by_date,
-		tolerance_minutes,
-		remove_duplicates_by_date,
-		result_queue,
-	):
+	def stalled_worker(**kwargs):
 		while True:
 			time.sleep(1)
 

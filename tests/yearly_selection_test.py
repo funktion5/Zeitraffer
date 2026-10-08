@@ -330,58 +330,17 @@ def test_select_yearly_images_isolated_uses_shared_worker_supervisor(
 
 	assert worker_calls[0]["camera"] == "Test-Camera"
 
-	assert worker_calls[0]["target"] == yearly_selection_module._select_yearly_images_worker
+	assert worker_calls[0]["target"] == yearly_selection_module.select_unique_yearly_images
 
-	assert worker_calls[0]["args"] == (
-		images,
-		{date(2026, 9, 15): 12 * 60 * 60},
-		5,
-	)
+	assert worker_calls[0]["kwargs"] == {
+		"images": images,
+		"target_seconds_by_date": {date(2026, 9, 15): 12 * 60 * 60},
+		"images_per_day": 5,
+	}
 
 	assert worker_calls[0]["stall_timeout_seconds"] == 10
 
 	assert worker_calls[0]["operation_name"] == "Yearly image selection"
-
-
-def test_select_yearly_images_worker_returns_operational_error(
-	monkeypatch,
-):
-	class FakeQueue:
-		def __init__(self):
-			self.messages = []
-
-		def put(
-			self,
-			message,
-		):
-			self.messages.append(message)
-
-	result_queue = FakeQueue()
-
-	def fake_select_unique_yearly_images(
-		**kwargs,
-	):
-		raise OSError("storage unavailable")
-
-	monkeypatch.setattr(
-		yearly_selection_module,
-		"select_unique_yearly_images",
-		fake_select_unique_yearly_images,
-	)
-
-	yearly_selection_module._select_yearly_images_worker(
-		images=[],
-		target_seconds_by_date={},
-		images_per_day=5,
-		result_queue=result_queue,
-	)
-
-	assert result_queue.messages == [
-		(
-			"error",
-			"storage unavailable",
-		)
-	]
 
 
 # Ranking follows each day's own centre, e.g. a sunset that moves through the year.

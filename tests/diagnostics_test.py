@@ -19,8 +19,8 @@ def test_missing_images_diagnostic_empty_camera(
 
 	monkeypatch.setattr(
 		diagnostics_module,
-		"get_image_range",
-		lambda camera: image_range,
+		"run_isolated_worker",
+		lambda **kwargs: image_range,
 	)
 
 	with caplog.at_level(
@@ -46,8 +46,8 @@ def test_missing_images_diagnostic_unsupported_format(
 
 	monkeypatch.setattr(
 		diagnostics_module,
-		"get_image_range",
-		lambda camera: image_range,
+		"run_isolated_worker",
+		lambda **kwargs: image_range,
 	)
 
 	with caplog.at_level(
@@ -83,8 +83,8 @@ def test_missing_images_diagnostic_available_range(
 
 	monkeypatch.setattr(
 		diagnostics_module,
-		"get_image_range",
-		lambda camera: image_range,
+		"run_isolated_worker",
+		lambda **kwargs: image_range,
 	)
 
 	with caplog.at_level(
@@ -118,8 +118,8 @@ def test_missing_images_diagnostic_mixed_formats(
 
 	monkeypatch.setattr(
 		diagnostics_module,
-		"get_image_range",
-		lambda camera: image_range,
+		"run_isolated_worker",
+		lambda **kwargs: image_range,
 	)
 
 	with caplog.at_level(
@@ -133,71 +133,46 @@ def test_missing_images_diagnostic_mixed_formats(
 	assert "100 files use an unsupported filename format." in caplog.text
 
 
-def test_missing_images_diagnostic_timeout_stops_process(
+# The lookup must run through the shared stall-timeout supervisor.
+def test_missing_images_diagnostic_uses_shared_worker_supervisor(
+	monkeypatch,
+):
+	worker_calls = []
+
+	def fake_run_isolated_worker(**kwargs):
+		worker_calls.append(kwargs)
+
+		return ImageRange(
+			earliest_date=None,
+			latest_date=None,
+			total_files=0,
+			recognized_files=0,
+			unrecognized_files=0,
+		)
+
+	monkeypatch.setattr(diagnostics_module, "run_isolated_worker", fake_run_isolated_worker)
+
+	diagnostics_module.log_missing_images_diagnostic("Test-Camera")
+
+	assert worker_calls == [
+		{
+			"camera": "Test-Camera",
+			"target": diagnostics_module.get_image_range,
+			"kwargs": {"camera": "Test-Camera"},
+			"stall_timeout_seconds": diagnostics_module.IMAGE_RANGE_STALL_TIMEOUT_SECONDS,
+			"operation_name": "Image range diagnostic",
+		}
+	]
+
+
+def test_missing_images_diagnostic_logs_timeout(
 	monkeypatch,
 	caplog,
 ):
-	created_processes = []
-	created_queues = []
+	def stalled(**kwargs):
+		raise TimeoutError("Image range diagnostic stalled for camera: Test-Camera")
 
-	class FakeQueue:
-		def __init__(self):
-			self.closed = False
-
-			created_queues.append(self)
-
-		def close(self):
-			self.closed = True
-
-	class FakeProcess:
-		def __init__(
-			self,
-			target,
-			args,
-			daemon,
-		):
-			self.target = target
-			self.args = args
-			self.daemon = daemon
-
-			self.started = False
-			self.alive = True
-			self.terminated = False
-			self.killed = False
-			self.join_calls = []
-
-			created_processes.append(self)
-
-		def start(self):
-			self.started = True
-
-		def join(
-			self,
-			timeout,
-		):
-			self.join_calls.append(timeout)
-
-		def is_alive(self):
-			return self.alive
-
-		def terminate(self):
-			self.terminated = True
-
-		def kill(self):
-			self.killed = True
-			self.alive = False
-
-	monkeypatch.setattr(
-		diagnostics_module,
-		"Queue",
-		FakeQueue,
-	)
-
-	monkeypatch.setattr(
-		diagnostics_module,
-		"Process",
-		FakeProcess,
-	)
+	monkeypatch.setattr(diagnostics_module, "run_isolated_worker", stalled)
 
 	with caplog.at_level(
 		logging.WARNING,
@@ -205,19 +180,26 @@ def test_missing_images_diagnostic_timeout_stops_process(
 	):
 		diagnostics_module.log_missing_images_diagnostic("Test-Camera")
 
-	process = created_processes[0]
-	result_queue = created_queues[0]
+	assert (
+		"Image range diagnostic timed out for Test-Camera after 10 seconds without progress."
+		in caplog.text
+	)
 
-	assert process.started is True
-	assert process.terminated is True
-	assert process.killed is True
 
-	assert process.join_calls == [
-		diagnostics_module.IMAGE_RANGE_TIMEOUT_SECONDS,
-		diagnostics_module.IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS,
-		diagnostics_module.IMAGE_RANGE_PROCESS_STOP_TIMEOUT_SECONDS,
-	]
+# A crashed or failing lookup is only logged; the daily job must continue.
+def test_missing_images_diagnostic_logs_worker_failure(
+	monkeypatch,
+	caplog,
+):
+	def crashed(**kwargs):
+		raise RuntimeError("Image range diagnostic worker exited unexpectedly")
 
-	assert result_queue.closed is True
+	monkeypatch.setattr(diagnostics_module, "run_isolated_worker", crashed)
 
-	assert "Image range diagnostic timed out for Test-Camera after 10 seconds." in caplog.text
+	with caplog.at_level(
+		logging.WARNING,
+		logger="timelapse",
+	):
+		diagnostics_module.log_missing_images_diagnostic("Test-Camera")
+
+	assert "Could not determine available image range for Test-Camera" in caplog.text

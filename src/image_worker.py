@@ -10,6 +10,9 @@ WORKER_PROCESS_STOP_TIMEOUT_SECONDS = 1
 # Immediate failure detection is not required while workers are active.
 WORKER_POLL_INTERVAL_SECONDS = 5
 
+# Report progress at most once per second so large scans do not flood the queue.
+PROGRESS_REPORT_INTERVAL_SECONDS = 1
+
 
 # Stop a stalled worker and force-kill it only if termination is not enough.
 def _stop_worker_process(
@@ -25,20 +28,47 @@ def _stop_worker_process(
 		process.join(WORKER_PROCESS_STOP_TIMEOUT_SECONDS)
 
 
+# Run the target inside the worker process and send its result back. The target
+# receives a throttled progress_callback; expected filesystem errors are
+# forwarded, anything else crashes the worker and surfaces as RuntimeError.
+def _run_target(
+	target: Callable[..., Any],
+	kwargs: dict[str, Any],
+	result_queue: Queue,
+) -> None:
+	last_progress_report = time.monotonic()
+
+	def report_progress() -> None:
+		nonlocal last_progress_report
+
+		now = time.monotonic()
+
+		if now - last_progress_report >= PROGRESS_REPORT_INTERVAL_SECONDS:
+			result_queue.put(("progress", None))
+			last_progress_report = now
+
+	try:
+		result_queue.put(("success", target(**kwargs, progress_callback=report_progress)))
+
+	except OSError as error:
+		result_queue.put(("error", str(error)))
+
+
 # Run a worker with an inactivity timeout that resets on progress.
 def run_isolated_worker(
 	camera: str,
-	target: Callable[..., None],
-	args: tuple[Any, ...],
+	target: Callable[..., Any],
+	kwargs: dict[str, Any],
 	stall_timeout_seconds: float,
 	operation_name: str,
 ) -> Any:
 	result_queue = Queue()
 
 	process = Process(
-		target=target,
+		target=_run_target,
 		args=(
-			*args,
+			target,
+			kwargs,
 			result_queue,
 		),
 		daemon=True,

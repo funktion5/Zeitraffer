@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -6,30 +7,20 @@ import src.image_worker as image_worker_module
 from src.image_worker import run_isolated_worker
 
 
-# Return a successful worker result through the shared queue contract.
+# Return a successful worker result.
 def successful_worker(
 	value,
-	result_queue,
+	progress_callback,
 ):
-	result_queue.put(
-		(
-			"success",
-			value,
-		)
-	)
+	return value
 
 
-# Return an expected operational error through the shared queue contract.
+# Raise an expected operational error inside the worker.
 def failing_worker(
 	message,
-	result_queue,
+	progress_callback,
 ):
-	result_queue.put(
-		(
-			"error",
-			message,
-		)
-	)
+	raise OSError(message)
 
 
 # Report progress several times before returning a successful result.
@@ -37,39 +28,29 @@ def progressing_worker(
 	delay_seconds,
 	steps,
 	value,
-	result_queue,
+	progress_callback,
 ):
 	for _ in range(steps):
 		time.sleep(delay_seconds)
 
-		result_queue.put(
-			(
-				"progress",
-				None,
-			)
-		)
+		progress_callback()
 
-	result_queue.put(
-		(
-			"success",
-			value,
-		)
-	)
+	return value
 
 
 # Keep the worker alive without reporting progress.
 def stalled_worker(
 	sleep_seconds,
-	result_queue,
+	progress_callback,
 ):
 	time.sleep(sleep_seconds)
 
 
 # Exit without publishing a result.
 def exiting_worker(
-	result_queue,
+	progress_callback,
 ):
-	return
+	os._exit(1)
 
 
 # A successful worker result must be returned to the caller.
@@ -77,7 +58,7 @@ def test_run_isolated_worker_returns_success_result():
 	result = run_isolated_worker(
 		camera="Test-Camera",
 		target=successful_worker,
-		args=("expected-result",),
+		kwargs={"value": "expected-result"},
 		stall_timeout_seconds=1,
 		operation_name="Test operation",
 	)
@@ -94,7 +75,7 @@ def test_run_isolated_worker_raises_oserror_for_worker_error():
 		run_isolated_worker(
 			camera="Test-Camera",
 			target=failing_worker,
-			args=("storage unavailable",),
+			kwargs={"message": "storage unavailable"},
 			stall_timeout_seconds=1,
 			operation_name="Test operation",
 		)
@@ -109,7 +90,7 @@ def test_run_isolated_worker_raises_timeout_for_stalled_worker():
 		run_isolated_worker(
 			camera="Test-Camera",
 			target=stalled_worker,
-			args=(1,),
+			kwargs={"sleep_seconds": 1},
 			stall_timeout_seconds=0.1,
 			operation_name="Test operation",
 		)
@@ -118,15 +99,20 @@ def test_run_isolated_worker_raises_timeout_for_stalled_worker():
 # Progress messages must reset the inactivity timeout. The total runtime (5 x 0.1 s) exceeds the
 # timeout, so only the reset lets it pass; each step leaves 0.3 s slack for process startup and a
 # busy machine.
-def test_run_isolated_worker_resets_timeout_on_progress():
+def test_run_isolated_worker_resets_timeout_on_progress(
+	monkeypatch,
+):
+	# The forked worker inherits this, so every progress call reaches the parent.
+	monkeypatch.setattr(image_worker_module, "PROGRESS_REPORT_INTERVAL_SECONDS", 0)
+
 	result = run_isolated_worker(
 		camera="Test-Camera",
 		target=progressing_worker,
-		args=(
-			0.1,
-			5,
-			"expected-result",
-		),
+		kwargs={
+			"delay_seconds": 0.1,
+			"steps": 5,
+			"value": "expected-result",
+		},
 		stall_timeout_seconds=0.4,
 		operation_name="Test operation",
 	)
@@ -151,7 +137,7 @@ def test_run_isolated_worker_raises_runtime_error_for_unexpected_worker_exit(
 		run_isolated_worker(
 			camera="Test-Camera",
 			target=exiting_worker,
-			args=(),
+			kwargs={},
 			stall_timeout_seconds=1,
 			operation_name="Test operation",
 		)
@@ -226,4 +212,39 @@ def test_stop_worker_process_kills_worker_when_terminate_is_not_enough():
 	assert process.join_calls == [
 		image_worker_module.WORKER_PROCESS_STOP_TIMEOUT_SECONDS,
 		image_worker_module.WORKER_PROCESS_STOP_TIMEOUT_SECONDS,
+	]
+
+
+# Progress must be rate-limited so large scans do not flood the queue.
+def test_run_target_limits_progress_reports(
+	monkeypatch,
+):
+	class RecordingQueue:
+		def __init__(self):
+			self.messages = []
+
+		def put(self, message):
+			self.messages.append(message)
+
+	def chatty_target(progress_callback):
+		for _ in range(3):
+			progress_callback()
+
+		return "done"
+
+	monotonic_values = iter([0, 0.2, 1.1, 1.2])
+
+	monkeypatch.setattr(
+		image_worker_module.time,
+		"monotonic",
+		lambda: next(monotonic_values),
+	)
+
+	result_queue = RecordingQueue()
+
+	image_worker_module._run_target(chatty_target, {}, result_queue)
+
+	assert result_queue.messages == [
+		("progress", None),
+		("success", "done"),
 	]

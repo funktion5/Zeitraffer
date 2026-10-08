@@ -82,7 +82,6 @@ def test_collect_weekly_images_uses_daily_selection_for_seven_dates(
 	assert all(call["camera"] == "Scheunenviertel" for call in image_calls)
 	assert all(call["daylight_buffer_minutes"] == 90 for call in image_calls)
 	assert all(call["stall_timeout_seconds"] == 10 for call in image_calls)
-	assert all(call["log_duplicates"] is False for call in image_calls)
 	assert len(images) == 14
 	assert images[0].name == "Scheunenviertel_26-09-10_07-00-00-00.jpg"
 	assert images[-1].name == "Scheunenviertel_26-09-16_18-00-00-00.jpg"
