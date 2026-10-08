@@ -18,6 +18,9 @@ from src.run_state import (
 	mark_run_started,
 )
 
+# Fixed workflow order, regardless of the order given on the command line.
+JOBS = ("daily", "weekly", "monthly", "yearly")
+
 
 # argparse only turns ArgumentTypeError into a readable usage error.
 def window_time_argument(value: str):
@@ -50,12 +53,7 @@ def parse_arguments():
 	parser.add_argument(
 		"--jobs",
 		nargs="+",
-		choices=(
-			"daily",
-			"weekly",
-			"monthly",
-			"yearly",
-		),
+		choices=JOBS,
 		help=(
 			"Run only the specified automatic jobs. "
 			"Jobs always execute in their defined workflow order."
@@ -170,17 +168,8 @@ def main():
 			),
 		)
 
-	job_order = (
-		"daily",
-		"weekly",
-		"monthly",
-		"yearly",
-	)
-
 	selected_jobs = (
-		["daily"]
-		if args.date
-		else [job for job in job_order if args.jobs is None or job in args.jobs]
+		["daily"] if args.date else [job for job in JOBS if args.jobs is None or job in args.jobs]
 	)
 	# Configure logging before camera discovery and filtering.
 	log_type = selected_jobs[0]
@@ -222,13 +211,10 @@ def main():
 	if automatic_production_run:
 		mark_run_started()
 
-	first_job = True
-
 	for job in selected_jobs:
-		if not first_job:
+		# The first job's log file was configured before camera discovery.
+		if job != log_type:
 			configure_file_logging(job)
-
-		first_job = False
 
 		if job == "daily":
 			run_daily_job(

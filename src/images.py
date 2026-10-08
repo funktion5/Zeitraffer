@@ -256,13 +256,7 @@ def find_interval_images(
 	progress_callback: Callable[[], None] | None = None,
 ) -> list[Path]:
 	camera_path = CAMERA_ROOT / camera
-	images: list[
-		tuple[
-			date,
-			int,
-			Path,
-		]
-	] = []
+	images: list[tuple[date, int, Path]] = []
 
 	tolerance_seconds = tolerance_minutes * 60
 

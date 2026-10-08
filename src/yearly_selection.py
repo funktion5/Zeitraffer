@@ -20,16 +20,7 @@ def select_unique_yearly_images(
 	images_per_day: int = IMAGES_PER_DAY,
 	progress_callback: Callable[[], None] | None = None,
 ) -> list[Path]:
-	images_by_date: dict[
-		date,
-		list[
-			tuple[
-				int,
-				int,
-				Path,
-			]
-		],
-	] = {}
+	images_by_date: dict[date, list[tuple[int, int, Path]]] = {}
 
 	for image_path in images:
 		image_date = extract_date(image_path.name)
@@ -61,13 +52,7 @@ def select_unique_yearly_images(
 	for image_date in sorted(images_by_date):
 		candidates = sorted(images_by_date[image_date])
 
-		daily_images: list[
-			tuple[
-				int,
-				int,
-				Path,
-			]
-		] = []
+		daily_images: list[tuple[int, int, Path]] = []
 
 		seen_hashes: set[str] = set()
 

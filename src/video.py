@@ -220,34 +220,23 @@ def create_concat_file(
 	return concat_path
 
 
-# Create a video by concatenating existing compatible video files.
-def create_concat_video(
-	concat_path: Path,
+# Run FFmpeg into a hidden temporary file and atomically replace the final
+# video only after it succeeded, so a failed rebuild leaves the old one intact.
+def encode_video(
+	ffmpeg_arguments: list[str],
 	output_path: Path,
+	description: str,
 ) -> Path:
 	output_path.parent.mkdir(
 		parents=True,
 		exist_ok=True,
 	)
 
-	# Keep the final video untouched until FFmpeg finishes successfully.
 	temporary_output = output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
 
-	logger.info(f"Creating concat video: {output_path}")
+	logger.info(f"Creating {description}: {output_path}")
 
-	command = [
-		"ffmpeg",
-		"-y",
-		"-f",
-		"concat",
-		"-safe",
-		"0",
-		"-i",
-		str(concat_path),
-		"-c",
-		"copy",
-		str(temporary_output),
-	]
+	command = ["ffmpeg", "-y", *ffmpeg_arguments, str(temporary_output)]
 
 	logger.debug(f"FFmpeg command: {' '.join(command)}")
 
@@ -255,9 +244,21 @@ def create_concat_video(
 
 	temporary_output.replace(output_path)
 
-	logger.info(f"Concat video created successfully: {output_path}")
+	logger.info(f"{description.capitalize()} created successfully: {output_path}")
 
 	return output_path
+
+
+# Create a video by concatenating existing compatible video files.
+def create_concat_video(
+	concat_path: Path,
+	output_path: Path,
+) -> Path:
+	return encode_video(
+		["-f", "concat", "-safe", "0", "-i", str(concat_path), "-c", "copy"],
+		output_path=output_path,
+		description="concat video",
+	)
 
 
 # Create an MP4 timelapse from the prepared temporary frames.
@@ -280,42 +281,22 @@ def create_image_timelapse(
 		interval_window=interval_window,
 	)
 
-	output_path.parent.mkdir(
-		parents=True,
-		exist_ok=True,
+	return encode_video(
+		[
+			"-framerate",
+			str(framerate),
+			"-i",
+			str(temp_directory / "frame_%06d.jpg"),
+			"-c:v",
+			"libx264",
+			"-threads",
+			str(FFMPEG_THREADS),
+			"-pix_fmt",
+			"yuv420p",
+		],
+		output_path=output_path,
+		description="video",
 	)
-
-	# Keep an existing working video untouched until FFmpeg succeeds.
-	temporary_output = output_path.parent / f".{output_path.stem}.tmp{output_path.suffix}"
-
-	logger.info(f"Creating video: {output_path}")
-
-	command = [
-		"ffmpeg",
-		"-y",
-		"-framerate",
-		str(framerate),
-		"-i",
-		str(temp_directory / "frame_%06d.jpg"),
-		"-c:v",
-		"libx264",
-		"-threads",
-		str(FFMPEG_THREADS),
-		"-pix_fmt",
-		"yuv420p",
-		str(temporary_output),
-	]
-
-	logger.debug(f"FFmpeg command: {' '.join(command)}")
-
-	run_ffmpeg(command)
-
-	# Replace the final video only after FFmpeg completed successfully.
-	temporary_output.replace(output_path)
-
-	logger.info(f"Video created successfully: {output_path}")
-
-	return output_path
 
 
 # Remove the temporary working directory after successful processing.
