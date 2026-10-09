@@ -2,6 +2,8 @@ import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import pytest
+
 import src.date_coverage as date_coverage_module
 import src.jobs.daily as daily_module
 
@@ -12,6 +14,14 @@ TEST_CONFIG = {
 		"timezone": "Europe/Berlin",
 	},
 	"daylight_buffer_minutes": 90,
+	"automatic_daylight_buffer_minutes": {
+		**{str(month): 30 for month in range(1, 13)},
+		"4": 60,
+		"5": 90,
+		"6": 90,
+		"7": 90,
+		"8": 60,
+	},
 	"image_scan_stall_timeout_seconds": 10,
 	"timelapse": {
 		"daily_framerate": 10,
@@ -679,3 +689,81 @@ def test_run_daily_job_uses_explicit_target_date(
 	assert video_calls[0]["target_date"] == target_date
 
 	assert retention_calls[0]["target_date"] == target_date
+
+
+# Automatic runs take the buffer from the month table; historical runs keep the
+# fixed value because it is embedded in their filename.
+@pytest.mark.parametrize(
+	("target_date", "manual_run", "expected_buffer"),
+	[
+		(date(2026, 4, 30), False, 60),
+		(date(2026, 5, 1), False, 90),
+		(date(2026, 8, 31), False, 60),
+		(date(2026, 10, 8), False, 30),
+		(date(2026, 10, 8), True, 90),
+	],
+)
+def test_run_daily_job_selects_daylight_buffer_by_mode(
+	monkeypatch,
+	target_date,
+	manual_run,
+	expected_buffer,
+):
+	image_calls = []
+	video_calls = []
+
+	def fake_find_daily_images_isolated(
+		**kwargs,
+	):
+		image_calls.append(kwargs)
+
+		return [Path("image.jpg")]
+
+	def fake_create_timelapse(
+		**kwargs,
+	):
+		video_calls.append(kwargs)
+
+		return Path("videos/Test-Camera/daily/test.mp4")
+
+	monkeypatch.setattr(
+		daily_module,
+		"get_sun_times",
+		lambda **kwargs: (
+			TEST_SUNRISE,
+			TEST_SUNSET,
+		),
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"find_daily_images_isolated",
+		fake_find_daily_images_isolated,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"create_timelapse",
+		fake_create_timelapse,
+	)
+
+	monkeypatch.setattr(
+		daily_module,
+		"cleanup_daily_retention",
+		lambda **kwargs: None,
+	)
+
+	daily_module.run_daily_job(
+		config=TEST_CONFIG,
+		cameras=[
+			"Test-Camera",
+		],
+		framerate=DAILY_FRAMERATE,
+		target_date=target_date,
+		manual_run=manual_run,
+	)
+
+	assert image_calls[0]["daylight_buffer_minutes"] == expected_buffer
+
+	# Only historical filenames carry the buffer suffix.
+	assert video_calls[0]["daylight_buffer_minutes"] == (expected_buffer if manual_run else None)

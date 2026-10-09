@@ -11,6 +11,7 @@ from src.interval_window import interval_window_from_config
 EXPECTED_ROOT_KEYS = {
 	"location",
 	"daylight_buffer_minutes",
+	"automatic_daylight_buffer_minutes",
 	"interval_window",
 	"min_coverage_days",
 	"image_scan_stall_timeout_seconds",
@@ -76,6 +77,13 @@ def assert_valid_config_structure(config: dict) -> None:
 		config["daylight_buffer_minutes"],
 		int,
 	)
+
+	# All twelve months are listed explicitly so a gap fails here, not at 02:00.
+	automatic_buffers = config["automatic_daylight_buffer_minutes"]
+
+	assert set(automatic_buffers) == {str(month) for month in range(1, 13)}
+
+	assert all(isinstance(minutes, int) and minutes >= 0 for minutes in automatic_buffers.values())
 
 	assert set(config["interval_window"]) == EXPECTED_INTERVAL_WINDOW_KEYS
 

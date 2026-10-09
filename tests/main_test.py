@@ -525,7 +525,9 @@ def test_main_applies_daylight_buffer_override_without_mutating_config(
 	main_module.main()
 
 	assert job_calls[0][1]["config"]["daylight_buffer_minutes"] == 60
+	assert set(job_calls[0][1]["config"]["automatic_daylight_buffer_minutes"].values()) == {60}
 	assert TEST_CONFIG["daylight_buffer_minutes"] == 90
+	assert "automatic_daylight_buffer_minutes" not in TEST_CONFIG
 
 
 # Explicit target dates must reach every selected automatic job.

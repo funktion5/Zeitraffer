@@ -226,6 +226,10 @@ Beispiel:
     "timezone": "Europe/Berlin"
   },
   "daylight_buffer_minutes": 90,
+  "automatic_daylight_buffer_minutes": {
+    "1": 30, "2": 30, "3": 60, "4": 60, "5": 90, "6": 90,
+    "7": 90, "8": 60, "9": 60, "10": 30, "11": 30, "12": 30
+  },
   "interval_window": {
     "target_time": "12:00",
     "tolerance_minutes": 90
@@ -249,6 +253,14 @@ Beispiel:
   }
 }
 ```
+
+`automatic_daylight_buffer_minutes` ist der Zeitpuffer vor Sonnenaufgang und nach
+Sonnenuntergang für das automatische Daily, abhängig vom Monat des Zieltags (Schlüssel `"1"` bis
+`"12"`, alle zwölf müssen vorhanden sein): Mai bis Juli 90, März, April, August und September 60, sonst 30 Minuten.
+Das automatische Weekly wird aus den Dailys zusammengesetzt und übernimmt den Puffer damit pro Tag.
+Historische Daily- und Weekly-Läufe nutzen dagegen immer den festen Wert `daylight_buffer_minutes`
+(oder den per CLI/Weboberfläche gewählten), weil dieser im Dateinamen steht.
+`--daylight-buffer-minutes` überschreibt für einen Lauf beide Werte, auch bei automatischen Jobs.
 
 `interval_window` ist das tägliche Bildfenster für Monthly und Yearly: Zielzeit
 `target_time` (`HH:MM` oder `sunset`) ± `tolerance_minutes`. Automatische Läufe verwenden immer
@@ -1286,7 +1298,7 @@ Nicht ausgewählte Jobs werden dabei übersprungen.
 - Zieldatum: standardmäßig gestern
 - optional: explizites Zieldatum über `--target-date`
 - Quelle: Originalbilder
-- Auswahl: Sunrise-/Sunset-Fenster inklusive Buffer für den Zieltag; der vollständige Vortag dient als Duplicate-Referenz
+- Auswahl: Sunrise-/Sunset-Fenster inklusive Buffer für den Zieltag (automatisch nach Monat aus `automatic_daylight_buffer_minutes`, historisch fest aus `daylight_buffer_minutes`); der vollständige Vortag dient als Duplicate-Referenz
 - Zieltag und Vortag werden in einem gemeinsamen Verzeichnis-Scan gefunden
 - der Vortag dient ausschließlich als Duplicate-Referenz und wird nicht ins Daily übernommen
 - Zieltag-Frames mit byte-identischem Inhalt vom Vortag werden ausgeschlossen

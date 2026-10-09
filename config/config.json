@@ -5,6 +5,20 @@
     "timezone": "Europe/Berlin"
   },
   "daylight_buffer_minutes": 90,
+  "automatic_daylight_buffer_minutes": {
+    "1": 30,
+    "2": 30,
+    "3": 60,
+    "4": 60,
+    "5": 90,
+    "6": 90,
+    "7": 90,
+    "8": 60,
+    "9": 60,
+    "10": 30,
+    "11": 30,
+    "12": 30
+  },
   "interval_window": {
     "target_time": "12:00",
     "tolerance_minutes": 90

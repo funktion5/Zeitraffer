@@ -151,7 +151,14 @@ def main():
 	config = load_config()
 
 	if args.daylight_buffer_minutes is not None:
-		config = {**config, "daylight_buffer_minutes": args.daylight_buffer_minutes}
+		# The override wins for automatic runs too, so it replaces the seasonal table.
+		config = {
+			**config,
+			"daylight_buffer_minutes": args.daylight_buffer_minutes,
+			"automatic_daylight_buffer_minutes": {
+				str(month): args.daylight_buffer_minutes for month in range(1, 13)
+			},
+		}
 
 	interval_window = None
 

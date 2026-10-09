@@ -1,6 +1,7 @@
 import subprocess
 from datetime import date, timedelta
 
+from src.config import automatic_daylight_buffer_for
 from src.date_coverage import get_latest_completed_date
 from src.diagnostics import log_missing_images_diagnostic
 from src.images import find_daily_images_isolated
@@ -61,7 +62,10 @@ def run_daily_job(
 
 	logger.info(f"Starting daily timelapse job for {target_date} | {run_context}")
 
-	daylight_buffer_minutes = config["daylight_buffer_minutes"]
+	if manual_run:
+		daylight_buffer_minutes = config["daylight_buffer_minutes"]
+	else:
+		daylight_buffer_minutes = automatic_daylight_buffer_for(config, target_date)
 
 	# Stop only scans that make no progress for the configured timeout.
 	image_scan_stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
