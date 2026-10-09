@@ -1,0 +1,66 @@
+/* Zeitraffer plugin styles. Self-hosted, no external fonts or assets.
+ *
+ * Colours follow the steinhude-am-meer.de palette (Avada theme). The live site
+ * defines --awb-color* on :root, so the plugin picks up the theme's own values
+ * there and falls back to the same hex values anywhere else (e.g. local Docker).
+ * Font family, size and text colour are deliberately not set: the plugin inherits
+ * them from the theme so it never drifts from the site. */
+
+.zeitraffer {
+	--zeitraffer-primary: var(--awb-color1, #202b65);
+	--zeitraffer-accent: var(--awb-color2, #2b5399);
+	--zeitraffer-surface: var(--awb-color3, #e3eaf7);
+	--zeitraffer-border: var(--awb-custom_color_1, #d1d1d1);
+
+	/* Same as the theme's site width. */
+	max-width: 1200px;
+	margin-inline: auto;
+}
+
+/* Keep the player inside its container and avoid a gap below it. */
+.zeitraffer video {
+	display: block;
+	width: 100%;
+	height: auto;
+	background: #000;
+}
+
+/* Period navigation under the video, styled as tabs. */
+.zeitraffer_nav {
+	display: flex;
+	flex-wrap: wrap;
+	justify-content: center;
+	gap: 0.25rem;
+	margin-top: 0.5rem;
+	border-bottom: 1px solid var(--zeitraffer-border);
+}
+
+.zeitraffer_nav a {
+	display: inline-block;
+	/* Large enough touch target (WCAG 2.2 target size). */
+	min-height: 44px;
+	box-sizing: border-box;
+	padding: 0.6rem 1.1rem;
+	border-bottom: 3px solid transparent;
+	color: var(--zeitraffer-accent);
+	text-decoration: none;
+}
+
+.zeitraffer_nav a:hover {
+	background: var(--zeitraffer-surface);
+	border-bottom-color: var(--zeitraffer-accent);
+	color: var(--zeitraffer-primary);
+}
+
+/* The active tab differs by underline and weight, not by colour alone. */
+.zeitraffer_nav a[aria-current] {
+	border-bottom-color: var(--zeitraffer-primary);
+	color: var(--zeitraffer-primary);
+	font-weight: 700;
+}
+
+/* Avada resets :focus-visible to outline: none, so the plugin sets its own. */
+.zeitraffer_nav a:focus-visible {
+	outline: 3px solid var(--zeitraffer-accent);
+	outline-offset: 2px;
+}
