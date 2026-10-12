@@ -17,12 +17,55 @@
 	margin-inline: auto;
 }
 
-/* Keep the player inside its container and avoid a gap below it. */
+/* Keep the player inside its container and avoid a gap below it. The fixed
+ * 16:9 ratio (all renders are 16:9) reserves the space before the video loads,
+ * so the page does not jump. */
 .zeitraffer video {
 	display: block;
 	width: 100%;
 	height: auto;
+	aspect-ratio: 16 / 9;
 	background: #000;
+}
+
+/* Loading skeleton: script.js sets .is-loading while the video has no data yet.
+ * Without JavaScript the class is never set, so the plain black player shows.
+ * pointer-events: none keeps the video controls usable underneath. */
+.zeitraffer_player {
+	position: relative;
+}
+
+.zeitraffer_player.is-loading::after {
+	content: "";
+	position: absolute;
+	inset: 0;
+	pointer-events: none;
+	background-color: var(--zeitraffer-surface);
+	background-image: linear-gradient(
+		90deg,
+		transparent 25%,
+		rgba(255, 255, 255, 0.6) 50%,
+		transparent 75%
+	);
+	background-size: 200% 100%;
+	animation: zeitraffer-shimmer 1.5s linear infinite;
+}
+
+@keyframes zeitraffer-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* Static placeholder for visitors who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+	.zeitraffer_player.is-loading::after {
+		animation: none;
+		background-image: none;
+	}
 }
 
 /* Period navigation under the video, styled as tabs. */
