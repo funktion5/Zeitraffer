@@ -21,6 +21,10 @@ if [[ -f "$ENV_FILE" ]]; then
 		[[ -z "${!key:-}" ]] || continue
 		value="${value%\"}"
 		value="${value#\"}"
+		# Expand a leading ~ and $HOME by substitution (not eval), so paths in
+		# backup.env stay portable without letting the file run code.
+		value="${value/#\~/$HOME}"
+		value="${value//\$HOME/$HOME}"
 		printf -v "$key" '%s' "$value"
 	done <"$ENV_FILE"
 fi
