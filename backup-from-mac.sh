@@ -2,17 +2,34 @@
 # Run this ON THE MAC, not on the Pi. Pulls everything the Pi reinstall needs
 # that is not in git into a local backup folder; migrate.sh restores it.
 #
-#   PI_HOST=<pi-address> ./backup-from-mac.sh   if the default hostname doesn't resolve
-#   SKIP_VIDEOS=1 ./backup-from-mac.sh            config and secrets only
+# Host, user and backup folder come from backup.env next to this script
+# (gitignored — copy backup.env.example). Variables set on the command line win:
+#   PI_HOST=192.0.2.10 ./backup-from-mac.sh   if the .local name doesn't resolve
+#   SKIP_VIDEOS=1 ./backup-from-mac.sh        config and secrets only
 set -euo pipefail
 
 # The backup holds an SSH private key and a password hash — keep every file
 # this script creates private from the start, not just at the end.
 umask 077
 
-PI_HOST="${PI_HOST:-zr-pi.local}"
-PI_USER="${PI_USER:-zruser}"
-DEST="${DEST:-$HOME/Documents/Migration}"
+# Parsed rather than sourced so the file can't run code, and so a variable
+# already set in the environment is not overwritten by it.
+ENV_FILE="$(cd "$(dirname "$0")" && pwd)/backup.env"
+if [[ -f "$ENV_FILE" ]]; then
+	while IFS='=' read -r key value || [[ -n "$key" ]]; do
+		[[ "$key" =~ ^(PI_HOST|PI_USER|DEST|SKIP_VIDEOS)$ ]] || continue
+		[[ -z "${!key:-}" ]] || continue
+		value="${value%\"}"
+		value="${value#\"}"
+		printf -v "$key" '%s' "$value"
+	done <"$ENV_FILE"
+fi
+
+: "${PI_HOST:?not set — copy backup.env.example to backup.env and fill it in}"
+: "${PI_USER:?not set — copy backup.env.example to backup.env and fill it in}"
+# Outside ~/Documents on purpose: with iCloud "Desktop & Documents" enabled,
+# anything there would upload the SSH key and password hash to the cloud.
+DEST="${DEST:-$HOME/pi-migration-backup}"
 SKIP_VIDEOS="${SKIP_VIDEOS:-0}"
 
 PI="${PI_USER}@${PI_HOST}"
@@ -52,7 +69,7 @@ ssh "${SSH_OPTS[@]}" -fN "$PI"
 
 # 1) Root-owned secrets. sudo needs a real terminal for its password prompt,
 #    and binary data can't travel over one, so the tar is written on the Pi
-#    first — with umask 077 it is 600 and only readable by zruser and root.
+#    first — with umask 077 it is 600 and only readable by ${PI_USER} and root.
 echo "==> Packing secrets on the Pi (sudo password prompt)"
 # shellcheck disable=SC2086 # the file list is meant to word-split
 ssh "${SSH_OPTS[@]}" -t "$PI" \
@@ -60,7 +77,7 @@ ssh "${SSH_OPTS[@]}" -t "$PI" \
 scp "${SSH_OPTS[@]}" "${PI}:${REMOTE_TAR}" "$DEST/pi-backup.tar.gz"
 ssh "${SSH_OPTS[@]}" "$PI" "rm -f ${REMOTE_TAR}"
 
-# 2) zruser's crontab (no sudo needed, it's the user's own).
+# 2) The login user's crontab (no sudo needed, it's the user's own).
 echo "==> Saving crontab"
 ssh "${SSH_OPTS[@]}" "$PI" 'crontab -l' >"$DEST/pi-crontab.txt"
 

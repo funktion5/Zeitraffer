@@ -1,7 +1,9 @@
 #!/bin/bash
 # One-shot reinstall migration. Copy this file anywhere on the new Pi and run
-# it as zruser after copying the Mac backup (pi-backup.tar.gz, pi-crontab.txt,
-# config.json) into $HOME — it clones the repo itself.
+# it as the login user (not root) after copying the Mac backup
+# (pi-backup.tar.gz, pi-crontab.txt, config.json) into $HOME — it clones the
+# repo itself. Users and paths are taken from the running session, so nothing
+# about a particular Pi is written into this file.
 #
 # Usage:
 #   ./migrate.sh                  run every step in order
@@ -14,7 +16,9 @@
 set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/funktion5/Zeitraffer.git}"
-PROJECT_ROOT="${PROJECT_ROOT:-/home/zruser/timelapse}"
+RUN_USER="$(id -un)"
+RUN_GROUP="$(id -gn)"
+PROJECT_ROOT="${PROJECT_ROOT:-$HOME/timelapse}"
 BACKUP_TAR="${BACKUP_TAR:-$HOME/pi-backup.tar.gz}"
 BACKUP_CRONTAB="${BACKUP_CRONTAB:-$HOME/pi-crontab.txt}"
 BACKUP_CONFIG="${BACKUP_CONFIG:-$HOME/config.json}"
@@ -48,7 +52,7 @@ require_file() {
 
 step_preflight() {
 	log "Preflight checks"
-	[[ "$(id -un)" == "zruser" ]] || fail "Run this as zruser, not root or another user."
+	[[ "$(id -u)" != "0" ]] || fail "Run this as the Pi's login user, not root."
 	require_file "$BACKUP_TAR"
 	require_file "$BACKUP_CRONTAB"
 	# config.json is committed to git and was clean at last check, so it's
@@ -123,16 +127,21 @@ step_restore_backup() {
 		"$staging/etc/apache2/sites-available/zeitraffer.conf" \
 		/etc/apache2/sites-available/zeitraffer.conf
 
+	# tar strips the leading slash, so the backup stores $HOME as home/<user>.
+	# That only matches if the backup was taken for the same user.
+	local staged_ssh="$staging/${HOME#/}/.ssh"
+	sudo test -f "$staged_ssh/storagebox_ed25519" \
+		|| fail "Backup has no ${HOME#/}/.ssh/storagebox_ed25519 — was it made for another PI_USER?"
 	install -d -m 700 "$HOME/.ssh"
-	sudo install -o zruser -g zruser -m 600 \
-		"$staging/home/zruser/.ssh/storagebox_ed25519" "$HOME/.ssh/storagebox_ed25519"
-	sudo install -o zruser -g zruser -m 644 \
-		"$staging/home/zruser/.ssh/storagebox_ed25519.pub" "$HOME/.ssh/storagebox_ed25519.pub"
+	sudo install -o "$RUN_USER" -g "$RUN_GROUP" -m 600 \
+		"$staged_ssh/storagebox_ed25519" "$HOME/.ssh/storagebox_ed25519"
+	sudo install -o "$RUN_USER" -g "$RUN_GROUP" -m 644 \
+		"$staged_ssh/storagebox_ed25519.pub" "$HOME/.ssh/storagebox_ed25519.pub"
 
 	# The Storage Box's host key survives a Pi reinstall, so restoring it keeps
 	# the trust that was established originally instead of re-scanning. Older
 	# backups lack this file; step_known_hosts then falls back to a confirmed scan.
-	local backup_known_hosts="$staging/home/zruser/.ssh/known_hosts"
+	local backup_known_hosts="$staged_ssh/known_hosts"
 	if sudo test -f "$backup_known_hosts"; then
 		touch "$HOME/.ssh/known_hosts"
 		chmod 644 "$HOME/.ssh/known_hosts"
@@ -189,6 +198,10 @@ step_known_hosts() {
 
 step_sshfs_mount() {
 	log "Installing the SSHFS camera mount"
+	# The unit names its user explicitly; a mismatch would mount with the wrong
+	# key and fail only at boot, so catch it here.
+	grep -qx "User=$RUN_USER" "$PROJECT_ROOT/systemd/cameras-sshfs.service" \
+		|| fail "systemd/cameras-sshfs.service does not run as $RUN_USER — adjust User=/Group= first."
 	sudo mkdir -p /mnt/cameras
 	sudo install -m 755 "$PROJECT_ROOT/scripts/cameras-sshfs-preflight" /usr/local/sbin/cameras-sshfs-preflight
 	sudo install -m 644 "$PROJECT_ROOT/systemd/cameras-sshfs.service" /etc/systemd/system/cameras-sshfs.service
@@ -218,7 +231,7 @@ step_web_bridge() {
 
 step_permissions() {
 	log "Setting website-only permissions for www-data"
-	# www-data is deliberately not in the zruser group. It gets pass-through on
+	# www-data is deliberately not in the login user's group. It gets pass-through on
 	# the path down to the project and read access only to what the PHP code
 	# touches: web/, videos/, config/config.json and state/web-jobs/.
 	# Debian 13 creates homes as 0700 and git clone makes everything

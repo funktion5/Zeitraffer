@@ -1176,11 +1176,11 @@ Die Videos sind nicht Teil von `migrate.sh`, sondern werden nach der Migration v
 | `/etc/sudoers.d/timelapse-web` | `pi-backup.tar.gz` | `root:root 440`, nur nach erfolgreicher `visudo`-Prüfung |
 | `/etc/apache2/.htpasswd` | `pi-backup.tar.gz` | `root:www-data 640` |
 | `/etc/apache2/sites-available/zeitraffer.conf` | `pi-backup.tar.gz` | `root:root 644` |
-| Crontab von `zruser` | `pi-crontab.txt` | Crontab von `zruser` |
+| Crontab des Login-Benutzers | `pi-crontab.txt` | Crontab des Login-Benutzers |
 | `config/config.json` | `config.json` | `config/config.json` (überschreibt die Git-Version) |
 | `videos/` | `videos/` | von Hand, siehe Schritt 6 |
 
-`pi-backup.tar.gz` enthält einen privaten SSH-Schlüssel, die Zugangsdaten des Kamera-Storage und einen Passwort-Hash. Der Backup-Ordner auf dem Mac wird deshalb mit Modus `700` angelegt und darf nicht in Cloud-Sync-Ordner oder ins Repository gelangen. Achtung: Der Standardordner liegt unter `~/Documents`. Ist in den macOS-Einstellungen die iCloud-Option „Schreibtisch & Dokumente“ aktiv, wird er in die iCloud hochgeladen – dann über `DEST` einen Ordner außerhalb von `Documents` und `Desktop` wählen und in den folgenden Befehlen denselben Pfad verwenden.
+`pi-backup.tar.gz` enthält einen privaten SSH-Schlüssel, die Zugangsdaten des Kamera-Storage und einen Passwort-Hash. Der Backup-Ordner auf dem Mac wird deshalb mit Modus `700` angelegt und darf nicht in Cloud-Sync-Ordner oder ins Repository gelangen. Der Standardordner `~/pi-migration-backup` liegt bewusst außerhalb von `Documents` und `Desktop`: Ist in den macOS-Einstellungen die iCloud-Option „Schreibtisch & Dokumente“ aktiv, würde alles dort in die iCloud hochgeladen. Wer über `DEST` einen anderen Ordner wählt, verwendet in den folgenden Befehlen denselben Pfad.
 
 Bewusst nicht gesichert:
 
@@ -1190,19 +1190,23 @@ Bewusst nicht gesichert:
 
 ### Voraussetzungen
 
-- Mac mit Zugriff auf den Pi per SSH (Passwort-Login als `zruser`)
+- Mac mit Zugriff auf den Pi per SSH (Passwort-Login als Login-Benutzer des Pi)
 - ein Checkout dieses Repositorys auf dem Mac, damit `migrate.sh` von dort auf den Pi kopiert werden kann
-- das `sudo`-Passwort von `zruser` auf dem Pi
+- das `sudo`-Passwort dieses Benutzers auf dem Pi
 - die offiziellen Host-Key-Fingerprints der Storage Box beim Anbieter (nur nötig, wenn das Backup noch kein `known_hosts` enthält)
 - Netzwerkkabel am Pi: `migrate.sh` schaltet WLAN ab
 
 ### Schritt 1: Backup auf dem Mac erstellen
 
-Im Repository-Checkout auf dem Mac:
+Im Repository-Checkout auf dem Mac einmalig die lokale Einstellungsdatei anlegen und Hostname bzw. IP und Benutzer des Pi eintragen. `backup.env` ist per `.gitignore` ausgeschlossen, damit weder IP noch Benutzername oder lokale Pfade im öffentlichen Repository landen:
 
 ```bash
+cp backup.env.example backup.env
+nano backup.env
 ./backup-from-mac.sh
 ```
+
+In den folgenden Befehlen stehen `<pi-host>` und `<pi-user>` für die Werte aus `backup.env`.
 
 Das Skript fragt einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
 
@@ -1211,22 +1215,24 @@ Das Skript fragt einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwor
 3. synchronisiert `videos/` per `rsync`,
 4. listet den Inhalt des Archivs auf und gibt die Befehle für die Wiederherstellung aus.
 
-Optionen über Umgebungsvariablen:
+Optionen in `backup.env` oder als Umgebungsvariable (die Umgebungsvariable hat Vorrang, z. B. `PI_HOST=<pi-ip> ./backup-from-mac.sh`, falls der `.local`-Name nicht aufgelöst wird):
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `PI_HOST` | im Skript hinterlegt | Hostname oder IP des Pi; als IP angeben (`PI_HOST=<Pi-Adresse>`), falls der `.local`-Name nicht aufgelöst wird |
-| `PI_USER` | `zruser` | Login-Benutzer auf dem Pi |
-| `DEST` | `~/Documents/Migration` | Backup-Ordner auf dem Mac |
+| `PI_HOST` | – (Pflicht) | Hostname oder IP des Pi |
+| `PI_USER` | – (Pflicht) | Login-Benutzer auf dem Pi |
+| `DEST` | `~/pi-migration-backup` | Backup-Ordner auf dem Mac |
 | `SKIP_VIDEOS` | `0` | `1` überspringt die Videos |
+
+`backup.env` wird gelesen, nicht ausgeführt: nur `NAME=Wert`-Zeilen mit diesen vier Namen zählen.
 
 Danach prüfen, ob der Backup-Ordner vollständig ist:
 
 ```bash
-ls -la ~/Documents/Migration
+ls -la ~/pi-migration-backup
 # erwartet: pi-backup.tar.gz, pi-crontab.txt, config.json, videos/
-tar tzf ~/Documents/Migration/pi-backup.tar.gz
-# erwartet: 7 Einträge, darunter home/zruser/.ssh/known_hosts
+tar tzf ~/pi-migration-backup/pi-backup.tar.gz
+# erwartet: 7 Einträge, darunter home/<pi-user>/.ssh/known_hosts
 ```
 
 Erst weitermachen, wenn das Backup vollständig ist.
@@ -1235,8 +1241,8 @@ Erst weitermachen, wenn das Backup vollständig ist.
 
 Mit dem Raspberry Pi Imager ein 64-Bit-Raspberry-Pi-OS auf Basis von Debian 13 (trixie) schreiben und in den erweiterten Einstellungen festlegen:
 
-- Hostname: frei wählbar, muss zu `PI_HOST` in `backup-from-mac.sh` passen
-- Benutzer: `zruser` – der Name ist in Skripten, Cron, sudoers und Apache fest hinterlegt
+- Hostname: derselbe wie vor der Neuinstallation (`PI_HOST` in `backup.env`)
+- Benutzer: derselbe wie vor der Neuinstallation (`PI_USER`) – der Name ist im systemd-Service, in den Web-Wrappern, in Cron, sudoers und Apache hinterlegt, und das Backup enthält seine Pfade
 - SSH aktivieren, Anmeldung per Passwort
 - kein WLAN nötig
 
@@ -1247,9 +1253,9 @@ Den Pi per Netzwerkkabel anschließen und starten.
 Der neu installierte Pi hat neue SSH-Hostschlüssel. Ohne diesen Schritt bricht SSH mit `REMOTE HOST IDENTIFICATION HAS CHANGED` ab:
 
 ```bash
-ssh-keygen -R <pi-hostname>.local
-ssh-keygen -R <Pi-Adresse>   # IP des Pi
-ssh zruser@<pi-hostname>.local   # neuen Fingerprint mit "yes" bestätigen
+ssh-keygen -R <pi-host>
+ssh-keygen -R <pi-ip>          # zusätzlich die IP des Pi
+ssh <pi-user>@<pi-host>        # neuen Fingerprint mit "yes" bestätigen
 ```
 
 ### Schritt 4: Backup und Installer auf den Pi kopieren
@@ -1257,14 +1263,14 @@ ssh zruser@<pi-hostname>.local   # neuen Fingerprint mit "yes" bestätigen
 Im Repository-Checkout auf dem Mac:
 
 ```bash
-scp ~/Documents/Migration/pi-backup.tar.gz \
-    ~/Documents/Migration/pi-crontab.txt \
-    ~/Documents/Migration/config.json \
+scp ~/pi-migration-backup/pi-backup.tar.gz \
+    ~/pi-migration-backup/pi-crontab.txt \
+    ~/pi-migration-backup/config.json \
     migrate.sh \
-    zruser@<pi-hostname>.local:~/
+    <pi-user>@<pi-host>:~/
 ```
 
-`migrate.sh` erwartet die drei Backup-Dateien direkt in `/home/zruser`.
+`migrate.sh` erwartet die drei Backup-Dateien direkt im Home-Verzeichnis. Benutzer und Pfade liest es aus der laufenden Sitzung; im Skript selbst steht nichts Pi-Spezifisches.
 
 ### Schritt 5: Migration auf dem Pi ausführen
 
@@ -1279,13 +1285,13 @@ Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte lauf
 
 | Schritt | Was passiert |
 |---|---|
-| `preflight` | prüft Benutzer `zruser`, die Backup-Dateien und `sudo`-Zugriff (Passwortabfrage) |
+| `preflight` | bricht ab, wenn als `root` gestartet; prüft die Backup-Dateien und `sudo`-Zugriff (Passwortabfrage) |
 | `packages` | installiert Git, Python, FFmpeg, SSHFS, Apache und PHP; aktiviert `user_allow_other` in `/etc/fuse.conf` |
-| `clone` | klont das Repository nach `/home/zruser/timelapse`; bricht ab, wenn dort bereits ein fremder oder nicht leerer Ordner liegt |
+| `clone` | klont das Repository nach `~/timelapse`; bricht ab, wenn dort bereits ein fremder oder nicht leerer Ordner liegt |
 | `venv` | legt `.venv` an und installiert `requirements.txt` |
 | `restore_backup` | entpackt das Backup in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf beide Regeln, installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
 | `known_hosts` | überspringt, wenn der Storage-Box-Host bereits bekannt ist; sonst werden die Fingerprints angezeigt und müssen mit `y` bestätigt werden |
-| `sshfs_mount` | installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
+| `sshfs_mount` | prüft, dass `User=` im systemd-Service der aktuelle Benutzer ist; installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
 | `apache` | aktiviert `zeitraffer.conf`, deaktiviert die Standardseite, führt `apache2ctl configtest` aus und lädt Apache neu |
 | `web_bridge` | installiert Trigger, Lösch-Wrapper, Worker und Status-Skript unter `/usr/local` |
 | `permissions` | setzt die Dateirechte aus [Dateirechte für `www-data`](#dateirechte-für-www-data) |
@@ -1313,7 +1319,7 @@ Optionen über Umgebungsvariablen:
 | Variable | Standard | Bedeutung |
 |---|---|---|
 | `REPO_URL` | `https://github.com/funktion5/Zeitraffer.git` | Quelle für `git clone` |
-| `PROJECT_ROOT` | `/home/zruser/timelapse` | Zielordner |
+| `PROJECT_ROOT` | `~/timelapse` | Zielordner |
 | `BACKUP_TAR` | `~/pi-backup.tar.gz` | Geheimnis-Archiv |
 | `BACKUP_CRONTAB` | `~/pi-crontab.txt` | Crontab-Sicherung |
 | `BACKUP_CONFIG` | `~/config.json` | optionale `config.json`; fehlt sie, bleibt die Git-Version |
@@ -1326,8 +1332,8 @@ Am Ende des Laufs die Ausgabe von `verify` durchsehen: Jede Zeile mit `WARNING` 
 Vom Mac aus:
 
 ```bash
-rsync -a --progress ~/Documents/Migration/videos/ \
-    zruser@<pi-hostname>.local:/home/zruser/timelapse/videos/
+rsync -a --progress ~/pi-migration-backup/videos/ \
+    <pi-user>@<pi-host>:timelapse/videos/
 ```
 
 `rsync -a` übernimmt die Dateirechte aus dem Backup. Deshalb danach auf dem Pi die Rechte korrigieren und prüfen:
@@ -1347,7 +1353,7 @@ rsync -a --progress ~/Documents/Migration/videos/ \
    mountpoint /mnt/cameras                 # erwartet: is a mountpoint
    ```
 
-2. Weboberfläche im Browser unter `http://<hostname>.local/` oder `http://<Pi-Adresse>/` öffnen, anmelden und prüfen:
+2. Weboberfläche im Browser unter `http://<pi-host>/` oder `http://<pi-ip>/` öffnen, anmelden und prüfen:
    - die Kameraliste erscheint, ohne die Kameras aus `ignored_cameras`
    - ein historisches Video lässt sich abspielen und herunterladen
    - ein historischer Daily-Lauf läuft durch und öffnet den Abschlussdialog
@@ -1372,7 +1378,7 @@ Der Schritt `packages` wird dabei ausgelassen: `apt-get install` aktualisiert di
 1. Frisches Backup erstellen (siehe Schritt 1) und vom Mac auf den Pi kopieren:
 
    ```bash
-   scp ~/Documents/Migration/{pi-backup.tar.gz,pi-crontab.txt,config.json} zruser@<pi-hostname>.local:~/
+   scp ~/pi-migration-backup/{pi-backup.tar.gz,pi-crontab.txt,config.json} <pi-user>@<pi-host>:~/
    ```
 
 2. Auf dem Pi einen Rollback-Stand und Prüfsummen aller betroffenen Dateien anlegen:
@@ -1380,9 +1386,9 @@ Der Schritt `packages` wird dabei ausgelassen: `apt-get install` aktualisiert di
    ```bash
    umask 077
    sudo tar czf ~/pre-test-rollback.tar.gz /etc/sudoers.d/timelapse-web /etc/timelapse/mount.env \
-     /etc/apache2/.htpasswd /etc/apache2/sites-available/zeitraffer.conf /home/zruser/.ssh \
+     /etc/apache2/.htpasswd /etc/apache2/sites-available/zeitraffer.conf ~/.ssh \
      /usr/local/sbin/timelapse-web-* /usr/local/libexec/timelapse-web-* /usr/local/sbin/cameras-sshfs-preflight \
-     /etc/systemd/system/cameras-sshfs.service /boot/firmware/config.txt /home/zruser/timelapse/config/config.json
+     /etc/systemd/system/cameras-sshfs.service /boot/firmware/config.txt ~/timelapse/config/config.json
    crontab -l > ~/pre-test-crontab.txt
    sudo sha256sum /etc/sudoers.d/timelapse-web /etc/timelapse/mount.env /etc/apache2/.htpasswd \
      /etc/apache2/sites-available/zeitraffer.conf ~/.ssh/* /usr/local/sbin/timelapse-web-* \
@@ -1431,7 +1437,7 @@ Nicht abgedeckt sind der Schritt `packages` und ein Lauf auf einem wirklich leer
 | `cameras-sshfs is not running` | `systemctl status cameras-sshfs.service` und `journalctl -u cameras-sshfs.service`; häufig fehlt der Host-Key oder `mount.env` ist leer |
 | `skipping WiFi disable` | Sitzung lief über WLAN. Per Kabel neu verbinden und `~/migrate.sh disable_wifi` |
 | Web-Job startet nicht oder Löschen schlägt fehl | `sudo -l -U www-data` muss beide Wrapper zeigen; sonst sudoers wie unter [Wrapper installieren](#wrapper-installieren) prüfen |
-| `is already a git repo, but its origin ... doesn't match` | unter `/home/zruser/timelapse` liegt ein anderes Repository; verschieben oder `REPO_URL` korrigieren |
+| `is already a git repo, but its origin ... doesn't match` | unter `~/timelapse` liegt ein anderes Repository; verschieben oder `REPO_URL` korrigieren |
 
 sudoers-Datei im Backup-Archiv reparieren (auf dem Pi):
 
@@ -1441,7 +1447,7 @@ sudo tar xzf ~/pi-backup.tar.gz -C ~/backup-fix
 sudo nano ~/backup-fix/etc/sudoers.d/timelapse-web   # beide Regeln aus „Wrapper installieren“
 sudo visudo -cf ~/backup-fix/etc/sudoers.d/timelapse-web
 sudo tar czf ~/pi-backup.tar.gz -C ~/backup-fix .
-sudo chown zruser:zruser ~/pi-backup.tar.gz
+sudo chown "$(id -un):$(id -gn)" ~/pi-backup.tar.gz
 sudo rm -rf ~/backup-fix
 ~/migrate.sh
 ```
