@@ -29,6 +29,16 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
   - [Webdateien](#webdateien)
   - [Job-Ausführung und Status](#job-ausführung-und-status)
   - [Webtests](#webtests)
+- [WordPress-Frontend](#wordpress-frontend)
+  - [Voraussetzungen für das Frontend](#voraussetzungen-für-das-frontend)
+  - [Schritt 1: Umgebung konfigurieren](#schritt-1-umgebung-konfigurieren)
+  - [Schritt 2: Videos vom Pi holen](#schritt-2-videos-vom-pi-holen)
+  - [Schritt 3: Container starten](#schritt-3-container-starten)
+  - [Schritt 4: WordPress installieren](#schritt-4-wordpress-installieren)
+  - [Schritt 5: Plugin aktivieren](#schritt-5-plugin-aktivieren)
+  - [Schritt 6: Seiten anlegen](#schritt-6-seiten-anlegen)
+  - [Täglicher Betrieb](#täglicher-betrieb)
+  - [Fehlerbehebung (WordPress-Frontend)](#fehlerbehebung-wordpress-frontend)
 - [CLI und Job-Auswahl](#cli-und-job-auswahl)
   - [Vollständiger automatischer Lauf](#vollständiger-automatischer-lauf)
   - [Einzelne automatische Jobs](#einzelne-automatische-jobs)
@@ -338,7 +348,7 @@ Die aktive Site verwendet sinngemäß folgende Konfiguration:
 
 ```apache
 <VirtualHost *:80>
-    ServerName zeitraffer.local
+    ServerName <hostname>.local
 
     DocumentRoot /home/zruser/timelapse/web/public
     DirectoryIndex index.php
@@ -377,7 +387,7 @@ sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
 
-Die Site wird unter `http://zeitraffer.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
+Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
 
 Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
@@ -576,6 +586,212 @@ python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py \
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
 
 Nicht automatisiert getestet sind `camera.php` und die Speicheranzeige (`getStorageUsage`), weil beide feste Pfade ohne Umleitungsmöglichkeit verwenden.
+
+---
+
+## WordPress-Frontend
+
+Zusätzlich zur PHP-Weboberfläche gibt es ein WordPress-Plugin (`frontend/`), das die fertigen Videos auf einer WordPress-Seite zeigt. Es ist **nur lesend**: Es startet keine Jobs, schreibt keine Dateien und hat keine Formulare, AJAX- oder REST-Endpunkte. Entwickelt wird es lokal auf dem Mac in einer Docker-Umgebung; die Pi-Weboberfläche bleibt davon unberührt.
+
+```text
+Pi: videos/<Kamera>/<Zeitraum>/*.mp4
+  → docker/pull-videos.sh (rsync, nur Lesen auf dem Pi)
+  → Mac: videos/
+  → Docker-Container "wordpress": wp-content/zeitraffer-videos/ (schreibgeschützt)
+  → Plugin frontend/plugin-timelapse.php
+  → Shortcodes [tl] und [zeitraffer]
+```
+
+### Voraussetzungen für das Frontend
+
+- Docker Desktop (mit `docker compose`) auf dem Mac
+- SSH-Zugang zum Pi per Schlüssel; Benutzer und Adresse stehen in `docker/.env` (Variable `PI`, siehe Schritt 1); der Pi muss im Netz erreichbar sein
+- `rsync` auf dem Mac (bei macOS vorhanden)
+- Port `8080` auf dem Mac ist frei
+
+### Ablauf in Kurzform
+
+```bash
+cd docker
+cp .env.example .env         # danach die Werte eintragen, siehe unten
+docker compose up -d
+cd ..
+docker/pull-videos.sh        # Videos vom Pi holen
+```
+
+Danach WordPress einmalig installieren, das Plugin aktivieren und zwei Seiten anlegen (Details unten).
+
+### Schritt 1: Umgebung konfigurieren
+
+`docker/.env.example` ist die Vorlage; `docker/.env` ist per `.gitignore` ausgeschlossen und darf nie committet werden.
+
+```bash
+cd docker
+cp .env.example .env
+```
+
+Alle Werte in `docker/.env` ausfüllen. Die Datenbankwerte sind frei wählbar, es ist nur eine lokale Entwicklungsdatenbank:
+
+| Variable | Bedeutung |
+|---|---|
+| `DB_NAME` | Name der Datenbank, z. B. `wordpress` |
+| `DB_USER` | Datenbankbenutzer für WordPress |
+| `DB_PASSWORD` | Passwort dieses Benutzers |
+| `DB_ROOT_PASSWORD` | Root-Passwort der MariaDB |
+| `PI` | Benutzer und Adresse des Pi für `pull-videos.sh`, Format `benutzer@adresse` |
+
+Bleibt ein Wert leer, startet die Datenbank nicht oder WordPress kann sich nicht verbinden. Compose liest die `.env` aus dem Ordner `docker/` und löst alle Pfade relativ zu diesem Ordner auf.
+
+Die Konfiguration lässt sich vorab prüfen:
+
+```bash
+docker compose config
+```
+
+### Schritt 2: Videos vom Pi holen
+
+Der Container erwartet die Videos unter `videos/` im Projektordner, in derselben Struktur wie auf dem Pi:
+
+```text
+videos/<Kamera>/<daily|weekly|monthly|yearly>/<Kamera>_<Datum>.mp4
+```
+
+Ohne Videos zeigt das Plugin keine Kameras an.
+
+```bash
+cd /pfad/zum/projekt
+docker/pull-videos.sh -n     # Probelauf: zeigt nur, was passieren würde
+docker/pull-videos.sh        # Probelauf anzeigen, nach Bestätigung (y) wirklich spiegeln
+```
+
+Das Skript **spiegelt** den Ordner des Pi (`/home/zruser/timelapse/videos/`) nach `videos/`:
+
+- Neue und geänderte Dateien werden kopiert.
+- Dateien, die auf dem Pi nicht mehr existieren, werden lokal **gelöscht**, damit keine veralteten Videos übrig bleiben. Deshalb zeigt das Skript immer zuerst einen Probelauf und fragt nach, bevor es etwas ändert.
+- `manual-runs/` und versteckte Dateien (z. B. unfertige Renderings) werden weder kopiert noch gelöscht.
+- Auf dem Pi wird nichts verändert.
+
+`PI` wird aus der Umgebung oder aus `docker/.env` gelesen; ein einmaliger anderer Wert lässt sich so übergeben:
+
+```bash
+PI=benutzer@<Pi-Adresse> docker/pull-videos.sh
+```
+
+Achtung bei eigenen Testvideos in `videos/`: Sie stehen im Probelauf unter den Löschungen, sofern sie auf dem Pi nicht existieren.
+
+### Schritt 3: Container starten
+
+```bash
+cd docker
+docker compose up -d
+```
+
+Der Stack besteht aus zwei Containern:
+
+| Container | Image | Aufgabe |
+|---|---|---|
+| `db` | `mariadb:11` | Datenbank, Daten im benannten Volume `db` |
+| `wordpress` | `wordpress:php8.4-apache` | WordPress, erreichbar unter http://localhost:8080 |
+
+Eingebunden werden:
+
+| Host (Mac) | Container | Zweck |
+|---|---|---|
+| `frontend/` | `/var/www/html/wp-content/plugins/zeitraffer` | Das Plugin, schreibgeschützt (`:ro`). Änderungen am Code sind sofort sichtbar. |
+| `videos/` | `/var/www/html/wp-content/zeitraffer-videos/` | Die Videos, schreibgeschützt. Nach jedem `pull-videos.sh` ohne Neustart sichtbar. |
+| Volume `wordpress` | `/var/www/html` | WordPress-Dateien und Uploads |
+| Volume `db` | `/var/lib/mysql` | Datenbank |
+
+Status prüfen:
+
+```bash
+docker compose ps
+docker compose logs -f wordpress
+```
+
+### Schritt 4: WordPress installieren
+
+1. http://localhost:8080 öffnen. Beim ersten Start erscheint der Installationsassistent.
+2. Sprache wählen, Seitentitel, Admin-Benutzer, **ein starkes Passwort** und eine E-Mail-Adresse angeben und installieren. Die Daten bleiben nur in der lokalen Umgebung.
+3. Unter **Einstellungen → Permalinks** die Struktur **Beitragsname** wählen und speichern. Das Plugin funktioniert auch mit „Einfach“, aber mit Beitragsname entsprechen die URLs der späteren Live-Seite (`/zeitraffer/?camera=...`).
+
+Die Installation überlebt `docker compose down` und einen Neustart des Macs, da sie in den benannten Volumes liegt.
+
+### Schritt 5: Plugin aktivieren
+
+Unter **Plugins** erscheint **Zeitraffer** (Datei `frontend/plugin-timelapse.php`). Auf **Aktivieren** klicken. Erscheint das Plugin nicht, ist der Mount nicht angekommen; siehe [Fehlerbehebung](#fehlerbehebung-wordpress-frontend).
+
+### Schritt 6: Seiten anlegen
+
+Das Plugin stellt zwei Shortcodes bereit. Beide brauchen jeweils eine eigene Seite:
+
+| Seite | Titel / Slug | Inhalt | Funktion |
+|---|---|---|---|
+| Kameraübersicht | z. B. „Kameras“ | `[tl]` | Liste aller Kameras mit Videos, jede verlinkt auf die Player-Seite |
+| Player | **„Zeitraffer“, Slug `zeitraffer`** | `[zeitraffer]` | Zeigt das aktuelle Video einer Kamera mit Tabs für Tag, Woche, Monat und Jahr |
+
+Wichtig: Die Player-Seite muss den Slug `zeitraffer` haben. Die Übersicht sucht die Seite über diesen Slug. Ist die Seite nicht vorhanden, verlinkt die Übersicht stattdessen auf die aktuelle Seite. Soll die Seite anders heißen, kann der Slug per Filter geändert werden, ohne das Plugin zu bearbeiten:
+
+```php
+add_filter( 'zeitraffer_camera_page_slug', fn() => 'mein-slug' );
+```
+
+Anlegen: **Seiten → Erstellen**, Titel eintragen, einen **Shortcode-Block** (oder Absatzblock) einfügen, den Shortcode hineinschreiben und veröffentlichen.
+
+Abruf:
+
+- Übersicht: die Seite mit `[tl]` aufrufen und eine Kamera anklicken.
+- Player direkt: `http://localhost:8080/zeitraffer/?camera=<slug>`; optional `&period=daily|weekly|monthly|yearly`.
+
+### So funktioniert das Plugin
+
+- **Kameras** sind die Unterordner von `videos/`. Ein Ordner erscheint nur, wenn er in mindestens einem Zeitraum ein `.mp4` enthält. Der Slug in der URL ist der Ordnername, durch `sanitize_key()` bereinigt (nur `a-z`, `0-9`, `_`, `-`).
+- **Das neueste Video** je Zeitraum ist die Datei, die nach Dateinamen zuletzt kommt. Das setzt voraus, dass das Datum im Dateinamen steht (`<Kamera>_<JJJJ-MM-TT>.mp4`), wie es die Pipeline erzeugt.
+- Hat der angefragte Zeitraum kein Video, springt der Player auf den ersten Zeitraum, der eines hat.
+- Versteckte Dateien und `manual-runs/` werden nicht angezeigt.
+- Die Tabs funktionieren auch ohne JavaScript als normale Links; `assets/script.js` schaltet nur ohne Seitenneuladen um und zeigt dabei ein Lade-Skelett (`assets/style.css`).
+- Das Plugin lädt **nichts von Dritten**: keine externen Schriften, Skripte oder Tracker, keine Cookies und kein Browser-Speicher. Es sind also keine Einwilligung und keine Datenschutzanpassung nötig.
+- Farben folgen der Palette des Avada-Themes (`--awb-color*`), mit denselben Hex-Werten als Rückfallwert in der lokalen Umgebung. Schrift und Textfarbe erbt das Plugin vom Theme.
+
+### Täglicher Betrieb
+
+```bash
+cd docker
+docker compose up -d       # starten
+docker compose down        # stoppen, Daten bleiben erhalten
+docker compose down -v     # stoppen UND Volumes löschen: WordPress-Installation und Datenbank sind weg
+```
+
+- Neue Videos: `docker/pull-videos.sh` ausführen und die Seite neu laden. Ein Neustart ist nicht nötig.
+- Code ändern: Datei in `frontend/` speichern und neu laden. Die Versionsnummer von CSS und JS ist deren Änderungszeit, daher gibt es keine Cache-Probleme; bei Zweifeln Strg/Cmd+Shift+R.
+- Mac ausschalten: nichts zu tun. Die Container starten mit Docker Desktop wieder (`restart: always`) oder per `docker compose up -d`; Installation und Videos bleiben erhalten.
+- `down -v` entspricht einem Zurücksetzen auf eine frische WordPress-Installation (Schritt 4 beginnt wieder von vorn). Videos und Plugin-Code sind nicht betroffen, weil sie nur eingebunden sind.
+
+### Syntaxprüfung des Plugins
+
+Ohne lokale PHP-Installation über den Container:
+
+```bash
+docker run --rm -v "$PWD/frontend":/w php:8.4-cli php -l /w/plugin-timelapse.php
+```
+
+Für das Plugin gibt es keine automatisierten Tests; die GitHub-Action prüft nur die Python-Pipeline und die PHP-Weboberfläche.
+
+### Fehlerbehebung (WordPress-Frontend)
+
+| Symptom | Ursache und Lösung |
+|---|---|
+| Das Plugin „Zeitraffer“ fehlt in der Pluginliste | Der Mount fehlt. `docker compose exec wordpress ls /var/www/html/wp-content/plugins/zeitraffer` muss `plugin-timelapse.php` zeigen. Compose muss aus dem Ordner `docker/` gestartet werden, weil der Pfad `../frontend` relativ dazu aufgelöst wird. |
+| Die Seite zeigt nichts oder „Derzeit sind keine Zeitraffer-Videos verfügbar“ | `videos/` ist leer, oder es gibt keine `.mp4` unter `videos/<Kamera>/<Zeitraum>/`. Mit `docker compose exec wordpress ls /var/www/html/wp-content/zeitraffer-videos` prüfen und `docker/pull-videos.sh` ausführen. |
+| Das Video lädt, lässt sich aber nicht abspielen (z. B. 403 „Forbidden“) | Dateirechte oder Mount prüfen: `docker compose exec wordpress ls -l /var/www/html/wp-content/zeitraffer-videos/<Kamera>/<Zeitraum>`. Die Dateien müssen für den Webserver lesbar sein. |
+| Kamera ist in der Übersicht, aber der Link zeigt keinen Player | Die Seite mit `[zeitraffer]` fehlt oder hat nicht den Slug `zeitraffer` (siehe Schritt 6). |
+| Port 8080 belegt | In `docker/docker-compose.yml` den linken Teil von `"8080:80"` ändern, z. B. `"8081:80"`, und neu starten. |
+| Datenbankfehler beim Start | `docker/.env` unvollständig. Alle `DB_*`-Werte setzen. Wurden Werte nach dem ersten Start geändert, bleibt die Datenbank mit den alten Zugangsdaten bestehen; dann `docker compose down -v` und neu installieren. |
+| `pull-videos.sh` bricht ab oder hängt | Pi nicht erreichbar oder kein SSH-Schlüssel eingerichtet. Verbindung mit `ssh benutzer@<Pi-Adresse>` prüfen; fehlt `PI`, bricht das Skript mit einem Hinweis ab. |
+
+### Wichtig für den Live-Betrieb
+
+Diese Anleitung beschreibt nur die lokale Entwicklungsumgebung. Auf der Live-Seite werden Plugin und Videos nicht von Docker bereitgestellt. Das Plugin erwartet die Videos unter `wp-content/zeitraffer-videos/` in genau der Ordnerstruktur oben. Deployment auf die Live-Seite oder den Pi gehört nicht zu diesem Ablauf und passiert nie automatisch.
 
 ---
 
@@ -999,17 +1215,17 @@ Optionen über Umgebungsvariablen:
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `PI_HOST` | `zr-pi.local` | Hostname oder IP des Pi, z. B. `PI_HOST=192.168.178.41`, falls `.local` nicht aufgelöst wird |
+| `PI_HOST` | im Skript hinterlegt | Hostname oder IP des Pi; als IP angeben (`PI_HOST=<Pi-Adresse>`), falls der `.local`-Name nicht aufgelöst wird |
 | `PI_USER` | `zruser` | Login-Benutzer auf dem Pi |
-| `DEST` | `/Users/praktikant/Documents/Migration` | Backup-Ordner auf dem Mac |
+| `DEST` | `~/Documents/Migration` | Backup-Ordner auf dem Mac |
 | `SKIP_VIDEOS` | `0` | `1` überspringt die Videos |
 
 Danach prüfen, ob der Backup-Ordner vollständig ist:
 
 ```bash
-ls -la /Users/praktikant/Documents/Migration
+ls -la ~/Documents/Migration
 # erwartet: pi-backup.tar.gz, pi-crontab.txt, config.json, videos/
-tar tzf /Users/praktikant/Documents/Migration/pi-backup.tar.gz
+tar tzf ~/Documents/Migration/pi-backup.tar.gz
 # erwartet: 7 Einträge, darunter home/zruser/.ssh/known_hosts
 ```
 
@@ -1019,7 +1235,7 @@ Erst weitermachen, wenn das Backup vollständig ist.
 
 Mit dem Raspberry Pi Imager ein 64-Bit-Raspberry-Pi-OS auf Basis von Debian 13 (trixie) schreiben und in den erweiterten Einstellungen festlegen:
 
-- Hostname: `zr-pi`
+- Hostname: frei wählbar, muss zu `PI_HOST` in `backup-from-mac.sh` passen
 - Benutzer: `zruser` – der Name ist in Skripten, Cron, sudoers und Apache fest hinterlegt
 - SSH aktivieren, Anmeldung per Passwort
 - kein WLAN nötig
@@ -1031,9 +1247,9 @@ Den Pi per Netzwerkkabel anschließen und starten.
 Der neu installierte Pi hat neue SSH-Hostschlüssel. Ohne diesen Schritt bricht SSH mit `REMOTE HOST IDENTIFICATION HAS CHANGED` ab:
 
 ```bash
-ssh-keygen -R zr-pi.local
-ssh-keygen -R 192.168.178.41   # IP des Pi
-ssh zruser@zr-pi.local          # neuen Fingerprint mit "yes" bestätigen
+ssh-keygen -R <pi-hostname>.local
+ssh-keygen -R <Pi-Adresse>   # IP des Pi
+ssh zruser@<pi-hostname>.local   # neuen Fingerprint mit "yes" bestätigen
 ```
 
 ### Schritt 4: Backup und Installer auf den Pi kopieren
@@ -1041,11 +1257,11 @@ ssh zruser@zr-pi.local          # neuen Fingerprint mit "yes" bestätigen
 Im Repository-Checkout auf dem Mac:
 
 ```bash
-scp /Users/praktikant/Documents/Migration/pi-backup.tar.gz \
-    /Users/praktikant/Documents/Migration/pi-crontab.txt \
-    /Users/praktikant/Documents/Migration/config.json \
+scp ~/Documents/Migration/pi-backup.tar.gz \
+    ~/Documents/Migration/pi-crontab.txt \
+    ~/Documents/Migration/config.json \
     migrate.sh \
-    zruser@zr-pi.local:~/
+    zruser@<pi-hostname>.local:~/
 ```
 
 `migrate.sh` erwartet die drei Backup-Dateien direkt in `/home/zruser`.
@@ -1110,8 +1326,8 @@ Am Ende des Laufs die Ausgabe von `verify` durchsehen: Jede Zeile mit `WARNING` 
 Vom Mac aus:
 
 ```bash
-rsync -a --progress /Users/praktikant/Documents/Migration/videos/ \
-    zruser@zr-pi.local:/home/zruser/timelapse/videos/
+rsync -a --progress ~/Documents/Migration/videos/ \
+    zruser@<pi-hostname>.local:/home/zruser/timelapse/videos/
 ```
 
 `rsync -a` übernimmt die Dateirechte aus dem Backup. Deshalb danach auf dem Pi die Rechte korrigieren und prüfen:
@@ -1131,7 +1347,7 @@ rsync -a --progress /Users/praktikant/Documents/Migration/videos/ \
    mountpoint /mnt/cameras                 # erwartet: is a mountpoint
    ```
 
-2. Weboberfläche im Browser unter `http://zeitraffer.local/` oder `http://192.168.178.41/` öffnen, anmelden und prüfen:
+2. Weboberfläche im Browser unter `http://<hostname>.local/` oder `http://<Pi-Adresse>/` öffnen, anmelden und prüfen:
    - die Kameraliste erscheint, ohne die Kameras aus `ignored_cameras`
    - ein historisches Video lässt sich abspielen und herunterladen
    - ein historischer Daily-Lauf läuft durch und öffnet den Abschlussdialog
@@ -1156,7 +1372,7 @@ Der Schritt `packages` wird dabei ausgelassen: `apt-get install` aktualisiert di
 1. Frisches Backup erstellen (siehe Schritt 1) und vom Mac auf den Pi kopieren:
 
    ```bash
-   scp /Users/praktikant/Documents/Migration/{pi-backup.tar.gz,pi-crontab.txt,config.json} zruser@zr-pi.local:~/
+   scp ~/Documents/Migration/{pi-backup.tar.gz,pi-crontab.txt,config.json} zruser@<pi-hostname>.local:~/
    ```
 
 2. Auf dem Pi einen Rollback-Stand und Prüfsummen aller betroffenen Dateien anlegen:

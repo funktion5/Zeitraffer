@@ -6,7 +6,17 @@
 # Usage: docker/pull-videos.sh [-n]     (-n = dry run, changes nothing)
 set -euo pipefail
 
-PI="${PI:-zruser@192.168.178.41}"
+ENV_FILE="$(cd "$(dirname "$0")" && pwd)/.env"
+
+# Login (user@address) comes from the environment or the gitignored docker/.env, so no
+# address is committed. Read with grep instead of sourcing: .env holds other secrets.
+if [[ -z "${PI:-}" && -f "$ENV_FILE" ]]; then
+	PI="$(grep -E '^PI=' "$ENV_FILE" | head -n1 | cut -d= -f2- || true)"
+fi
+if [[ -z "${PI:-}" ]]; then
+	echo "PI is not set. Add PI=user@address to docker/.env or run: PI=user@address $0" >&2
+	exit 1
+fi
 SRC="/home/zruser/timelapse/videos/"
 DEST="$(cd "$(dirname "$0")/.." && pwd)/videos/"
 

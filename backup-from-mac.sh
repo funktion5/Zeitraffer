@@ -2,7 +2,7 @@
 # Run this ON THE MAC, not on the Pi. Pulls everything the Pi reinstall needs
 # that is not in git into a local backup folder; migrate.sh restores it.
 #
-#   PI_HOST=192.168.178.41 ./backup-from-mac.sh   if zr-pi.local doesn't resolve
+#   PI_HOST=<pi-address> ./backup-from-mac.sh   if the default hostname doesn't resolve
 #   SKIP_VIDEOS=1 ./backup-from-mac.sh            config and secrets only
 set -euo pipefail
 
@@ -12,7 +12,7 @@ umask 077
 
 PI_HOST="${PI_HOST:-zr-pi.local}"
 PI_USER="${PI_USER:-zruser}"
-DEST="${DEST:-/Users/praktikant/Documents/Migration}"
+DEST="${DEST:-$HOME/Documents/Migration}"
 SKIP_VIDEOS="${SKIP_VIDEOS:-0}"
 
 PI="${PI_USER}@${PI_HOST}"
