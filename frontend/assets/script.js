@@ -40,10 +40,10 @@ document.querySelectorAll(".zeitraffer_nav a").forEach((link) => {
 		video.setAttribute("aria-label", link.dataset.label);
 		video.load();
 
-		// Keep the visible text alternative in step with the video.
-		const caption = document.getElementById("zeitraffer_caption");
-		if (caption && link.dataset.caption) {
-			caption.textContent = link.dataset.caption;
+		// The heading shows the time span of the video that is playing.
+		const dateEl = document.getElementById("zeitraffer_date");
+		if (dateEl && link.dataset.date) {
+			dateEl.textContent = link.dataset.date;
 		}
 
 		document.querySelectorAll(".zeitraffer_nav a").forEach((other) => {

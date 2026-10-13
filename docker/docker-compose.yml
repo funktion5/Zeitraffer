@@ -25,7 +25,7 @@ services:
     volumes:
       - wordpress:/var/www/html
       - ../frontend/:/var/www/html/wp-content/plugins/zeitraffer:ro
-      - ../videos/:/var/www/html/wp-content/zeitraffer-videos/:ro
+      - ../videos/:/var/www/html/wp-content/uploads/zeitraffer/:ro
 
 volumes:
   wordpress:

@@ -29,5 +29,8 @@ AGENTS.md
 CLAUDE.md
 WEB_TODO.md
 
+# Blog drafts for the company website (not part of the repository)
+docs/blog/
+
 # tests
 test-output/*
