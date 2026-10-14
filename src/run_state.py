@@ -20,8 +20,3 @@ def mark_run_finished() -> None:
 	RUN_MARKER.unlink(
 		missing_ok=True,
 	)
-
-
-# Return whether a previous automatic production run was interrupted.
-def was_run_interrupted() -> bool:
-	return RUN_MARKER.exists()

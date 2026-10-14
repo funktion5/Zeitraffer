@@ -28,44 +28,6 @@ def test_mark_run_started_creates_marker(
 	assert marker.is_file()
 
 
-# An existing marker must indicate that the previous run was interrupted.
-def test_was_run_interrupted_detects_existing_marker(
-	tmp_path: Path,
-	monkeypatch,
-):
-	marker = tmp_path / "state" / "run-in-progress"
-
-	marker.parent.mkdir(
-		parents=True,
-	)
-
-	marker.touch()
-
-	monkeypatch.setattr(
-		run_state,
-		"RUN_MARKER",
-		marker,
-	)
-
-	assert run_state.was_run_interrupted() is True
-
-
-# Missing marker must indicate that no interrupted run is pending.
-def test_was_run_interrupted_returns_false_without_marker(
-	tmp_path: Path,
-	monkeypatch,
-):
-	marker = tmp_path / "state" / "run-in-progress"
-
-	monkeypatch.setattr(
-		run_state,
-		"RUN_MARKER",
-		marker,
-	)
-
-	assert run_state.was_run_interrupted() is False
-
-
 # Finishing an automatic run must remove the interruption marker.
 def test_mark_run_finished_removes_marker(
 	tmp_path: Path,
