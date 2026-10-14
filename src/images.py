@@ -188,6 +188,8 @@ def extract_time(filename: str):
 		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
 		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
 		r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}\.jpg$",
+		# BSV since 2026-10-10: BSV-Steinhude-YY-MM-DD_HH-MM-SS-cc_NNNNN.jpg
+		r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}_\d{5}\.jpg$",
 		r"_\d{6}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
 		r"T(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
 	)
