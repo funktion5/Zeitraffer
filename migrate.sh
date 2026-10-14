@@ -130,13 +130,29 @@ step_restore_backup() {
 	# tar strips the leading slash, so the backup stores $HOME as home/<user>.
 	# That only matches if the backup was taken for the same user.
 	local staged_ssh="$staging/${HOME#/}/.ssh"
-	sudo test -f "$staged_ssh/storagebox_ed25519" \
-		|| fail "Backup has no ${HOME#/}/.ssh/storagebox_ed25519 — was it made for another PI_USER?"
+	sudo test -d "$staged_ssh" \
+		|| fail "Backup has no ${HOME#/}/.ssh — was it made for another PI_USER?"
+
+	# Restore every file of the backed-up ~/.ssh, so no key file name is hardcoded here.
+	# known_hosts is merged below; authorized_keys is left out so a restore never adds logins.
 	install -d -m 700 "$HOME/.ssh"
-	sudo install -o "$RUN_USER" -g "$RUN_GROUP" -m 600 \
-		"$staged_ssh/storagebox_ed25519" "$HOME/.ssh/storagebox_ed25519"
-	sudo install -o "$RUN_USER" -g "$RUN_GROUP" -m 644 \
-		"$staged_ssh/storagebox_ed25519.pub" "$HOME/.ssh/storagebox_ed25519.pub"
+	local staged_file name mode
+	while IFS= read -r staged_file; do
+		name="$(basename "$staged_file")"
+		[[ "$name" == "known_hosts" || "$name" == "authorized_keys" ]] && continue
+		mode=600
+		[[ "$name" == *.pub ]] && mode=644
+		sudo install -o "$RUN_USER" -g "$RUN_GROUP" -m "$mode" "$staged_file" "$HOME/.ssh/$name"
+	done < <(sudo find "$staged_ssh" -maxdepth 1 -type f)
+
+	# mount.env names the key the SSHFS mount uses; it must have come back with ~/.ssh.
+	local key_path
+	key_path="$(sudo bash -c 'source "$1" && printf "%s" "$REMOTE_SSH_KEY"' _ /etc/timelapse/mount.env)"
+	key_path="${key_path/#\~/$HOME}"
+	[[ -n "$key_path" ]] || fail "REMOTE_SSH_KEY is empty in /etc/timelapse/mount.env."
+	[[ -f "$key_path" ]] || fail "The key from mount.env ($key_path) is not in the backup."
+	[[ -f "$HOME/.ssh/config" ]] \
+		|| log "No ~/.ssh/config in the backup — the storage filter needs a Host entry (see README)."
 
 	# The Storage Box's host key survives a Pi reinstall, so restoring it keeps
 	# the trust that was established originally instead of re-scanning. Older
@@ -198,13 +214,20 @@ step_known_hosts() {
 
 step_sshfs_mount() {
 	log "Installing the SSHFS camera mount"
-	# The unit names its user explicitly; a mismatch would mount with the wrong
-	# key and fail only at boot, so catch it here.
-	grep -qx "User=$RUN_USER" "$PROJECT_ROOT/systemd/cameras-sshfs.service" \
-		|| fail "systemd/cameras-sshfs.service does not run as $RUN_USER — adjust User=/Group= first."
+	# The unit carries @RUN_USER@/@RUN_GROUP@ placeholders so no account name is committed.
+	# Fill them in for this account; a leftover placeholder would only fail at boot.
+	local unit
+	unit="$(mktemp)"
+	sed -e "s/@RUN_USER@/$RUN_USER/g" -e "s/@RUN_GROUP@/$RUN_GROUP/g" \
+		"$PROJECT_ROOT/systemd/cameras-sshfs.service" >"$unit"
+	if grep -q '@RUN_' "$unit"; then
+		rm -f "$unit"
+		fail "systemd/cameras-sshfs.service still has placeholders after substitution."
+	fi
 	sudo mkdir -p /mnt/cameras
 	sudo install -m 755 "$PROJECT_ROOT/scripts/cameras-sshfs-preflight" /usr/local/sbin/cameras-sshfs-preflight
-	sudo install -m 644 "$PROJECT_ROOT/systemd/cameras-sshfs.service" /etc/systemd/system/cameras-sshfs.service
+	sudo install -m 644 "$unit" /etc/systemd/system/cameras-sshfs.service
+	rm -f "$unit"
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now cameras-sshfs.service
 }

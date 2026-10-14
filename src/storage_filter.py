@@ -21,11 +21,6 @@ RUN_LOCK_PATH = PROJECT_ROOT / "state" / "zeitraffer-run.lock"
 REPORT_COLUMNS = ("camera", "path", "reason")
 MOUNTS_PATH = Path("/proc/mounts")
 
-# Mirror /etc/timelapse/mount.env, which only root may read. User and host come
-# from the live mount; keep these two in sync with mount.env by hand.
-STORAGE_BOX_PORT = 23
-STORAGE_BOX_KEY = Path.home() / ".ssh" / "storagebox_ed25519"
-
 # A listing of ~240k files takes a few seconds.
 LISTING_TIMEOUT_SECONDS = 60
 
@@ -50,15 +45,12 @@ class StorageBox:
 
 		return f"{self.base_directory.rstrip('/')}/{camera}"
 
-	# Run one read-only command on the storage box's own shell.
+	# Run one read-only command on the storage box's own shell. User and host come from the live
+	# mount; port and key come from the user's ~/.ssh/config, so none of them is in the repository.
 	def run(self, command: str, timeout_seconds: float) -> subprocess.CompletedProcess:
 		return subprocess.run(
 			[
 				"ssh",
-				"-p",
-				str(STORAGE_BOX_PORT),
-				"-i",
-				str(STORAGE_BOX_KEY),
 				"-o",
 				"BatchMode=yes",
 				"-o",

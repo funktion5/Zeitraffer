@@ -6,13 +6,14 @@ Wants=network-online.target
 After=network-online.target
 
 ConditionPathIsDirectory=/mnt/cameras
-ConditionPathExists=/home/zruser/.ssh/storagebox_ed25519
 
 [Service]
 EnvironmentFile=/etc/timelapse/mount.env
 Type=exec
-User=zruser
-Group=zruser
+# Placeholders keep the account name out of the repository; migrate.sh (or the sed step in
+# the README) fills them in on install. A missing key fails visibly in the journal.
+User=@RUN_USER@
+Group=@RUN_GROUP@
 
 ExecStartPre=/usr/local/sbin/cameras-sshfs-preflight
 ExecStart=/usr/bin/sshfs -f -p ${REMOTE_PORT} -o ro -o IdentityFile=${REMOTE_SSH_KEY} -o BatchMode=yes -o StrictHostKeyChecking=yes -o reconnect -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o allow_other  ${REMOTE_USER}@${REMOTE_HOST}: /mnt/cameras

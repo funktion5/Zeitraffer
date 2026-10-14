@@ -39,9 +39,8 @@ SKIP_VIDEOS="${SKIP_VIDEOS:-0}"
 PI="${PI_USER}@${PI_HOST}"
 PI_PROJECT="/home/${PI_USER}/timelapse"
 REMOTE_TAR="/tmp/pi-backup.tar.gz"
-SECRET_FILES="/home/${PI_USER}/.ssh/storagebox_ed25519
-/home/${PI_USER}/.ssh/storagebox_ed25519.pub
-/home/${PI_USER}/.ssh/known_hosts
+# The whole ~/.ssh folder (keys, config, known_hosts), so no key file name is hardcoded here.
+SECRET_FILES="/home/${PI_USER}/.ssh
 /etc/timelapse/mount.env
 /etc/sudoers.d/timelapse-web
 /etc/apache2/.htpasswd
