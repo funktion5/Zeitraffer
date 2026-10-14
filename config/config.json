@@ -41,5 +41,27 @@
     "monthly_framerate": 20,
     "yearly_framerate": 20,
     "ffmpeg_threads": 2
+  },
+  "privacy": {
+    "detector_command": [
+      ".venv/bin/python3",
+      "-I",
+      "src/privacy/detect.py",
+      "--runtime",
+      "ort",
+      "--model",
+      "/home/zruser/detector-models/object_detection_yolox_2022nov.onnx",
+      "--tiles",
+      "2",
+      "--threshold",
+      "0.25"
+    ],
+    "blur": {
+      "style": "pixelate",
+      "strength": 0.1,
+      "padding_ratio": 0.25,
+      "shape": "ellipse",
+      "feather": 0.5
+    }
   }
 }

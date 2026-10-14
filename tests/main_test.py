@@ -45,6 +45,7 @@ def make_arguments(
 	daylight_buffer_minutes: int | None = None,
 	window_time=None,
 	window_tolerance_minutes: int | None = None,
+	blur_people: bool = False,
 ) -> Namespace:
 	return Namespace(
 		date=date_value,
@@ -54,6 +55,7 @@ def make_arguments(
 		daylight_buffer_minutes=daylight_buffer_minutes,
 		window_time=window_time,
 		window_tolerance_minutes=window_tolerance_minutes,
+		blur_people=blur_people,
 	)
 
 
@@ -384,6 +386,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"framerate": DAILY_FRAMERATE,
 				"target_date": None,
 				"manual_run": False,
+				"blur_people": False,
 			},
 		),
 		(
@@ -568,6 +571,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				"framerate": DAILY_FRAMERATE,
 				"target_date": target_date,
 				"manual_run": True,
+				"blur_people": False,
 			},
 		),
 		(
@@ -646,6 +650,7 @@ def test_main_routes_date_alias_to_historical_daily(
 				"framerate": DAILY_FRAMERATE,
 				"target_date": target_date,
 				"manual_run": True,
+				"blur_people": False,
 			},
 		)
 	]
@@ -1402,3 +1407,63 @@ def test_main_rejects_window_crossing_midnight(
 
 	with pytest.raises(ValueError, match="crosses midnight"):
 		main_module.main()
+
+
+@pytest.mark.parametrize(
+	"arguments",
+	[
+		make_arguments(date_value=date(2026, 6, 28), cameras=["SLSV"], blur_people=True),
+		make_arguments(
+			jobs=["daily"],
+			target_date=date(2026, 6, 28),
+			cameras=["SLSV"],
+			blur_people=True,
+		),
+	],
+)
+def test_main_passes_blur_people_to_manual_daily(monkeypatch, arguments):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=arguments,
+		cameras=["SLSV", "Scheunenviertel"],
+	)
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [job for job, _ in job_calls] == ["daily"]
+	assert job_calls[0][1]["blur_people"] is True
+	assert job_calls[0][1]["manual_run"] is True
+
+
+@pytest.mark.parametrize(
+	"arguments",
+	[
+		make_arguments(blur_people=True),
+		make_arguments(jobs=["daily"], blur_people=True),
+		make_arguments(jobs=["daily", "monthly"], target_date=date(2026, 6, 28), blur_people=True),
+		make_arguments(
+			jobs=["weekly"],
+			target_date=date(2026, 6, 28),
+			cameras=["SLSV"],
+			blur_people=True,
+		),
+	],
+)
+def test_main_rejects_blur_people_outside_manual_daily(monkeypatch, arguments):
+	monkeypatch.setattr(main_module, "parse_arguments", lambda: arguments)
+
+	with pytest.raises(ValueError, match="--blur-people is only allowed for manual Daily runs"):
+		main_module.main()
+
+
+def test_parse_arguments_accepts_blur_people(monkeypatch):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		["main.py", "--date", "2026-06-28", "--cameras", "SLSV", "--blur-people"],
+	)
+
+	args = main_module.parse_arguments()
+
+	assert args.blur_people is True

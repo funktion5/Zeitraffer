@@ -97,6 +97,15 @@ def parse_arguments():
 		),
 	)
 
+	parser.add_argument(
+		"--blur-people",
+		action="store_true",
+		help=(
+			"Detect and blur people in the frames of a manual Daily run (test feature). "
+			"The video gets a _blur suffix; any detector failure stops the run."
+		),
+	)
+
 	return parser.parse_args()
 
 
@@ -128,6 +137,17 @@ def main():
 		raise ValueError(
 			"--daylight-buffer-minutes cannot be used with Monthly or Yearly; "
 			"neither job type uses a daylight buffer."
+		)
+
+	manual_daily_run = bool(args.date) or bool(
+		args.target_date and args.jobs and set(args.jobs) == {"daily"}
+	)
+
+	# Blurring is only tested on manual dailies; weekly videos reuse unblurred dailies.
+	if args.blur_people and not manual_daily_run:
+		raise ValueError(
+			"--blur-people is only allowed for manual Daily runs "
+			"(--date or --jobs daily --target-date)."
 		)
 
 	if args.cameras and not args.date and not args.target_date:
@@ -230,6 +250,7 @@ def main():
 				framerate=config["timelapse"]["daily_framerate"],
 				target_date=target_date,
 				manual_run=target_date is not None,
+				blur_people=args.blur_people,
 			)
 
 		elif job == "weekly":

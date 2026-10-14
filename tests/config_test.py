@@ -6,6 +6,7 @@ import pytest
 import src.config as config_module
 from src.date_coverage import get_min_coverage_days
 from src.interval_window import interval_window_from_config
+from src.privacy.anonymize import parse_blur_settings
 
 
 EXPECTED_ROOT_KEYS = {
@@ -18,6 +19,7 @@ EXPECTED_ROOT_KEYS = {
 	"log_retention_days",
 	"ignored_cameras",
 	"timelapse",
+	"privacy",
 }
 
 EXPECTED_LOCATION_KEYS = {
@@ -34,6 +36,11 @@ EXPECTED_INTERVAL_WINDOW_KEYS = {
 EXPECTED_MIN_COVERAGE_KEYS = {
 	"monthly",
 	"yearly",
+}
+
+EXPECTED_PRIVACY_KEYS = {
+	"detector_command",
+	"blur",
 }
 
 EXPECTED_TIMELAPSE_KEYS = {
@@ -145,6 +152,22 @@ def assert_valid_config_structure(config: dict) -> None:
 		timelapse["ffmpeg_threads"],
 		int,
 	)
+
+	privacy = config["privacy"]
+
+	assert set(privacy) == EXPECTED_PRIVACY_KEYS
+
+	# null until a detector is chosen; otherwise an argument list, never a shell string.
+	detector_command = privacy["detector_command"]
+
+	assert detector_command is None or (
+		isinstance(detector_command, list)
+		and detector_command
+		and all(isinstance(part, str) for part in detector_command)
+	)
+
+	# Invalid blur settings would stop every --blur-people run, so catch them here already.
+	parse_blur_settings(privacy["blur"])
 
 
 # The production configuration must live at config/config.json.

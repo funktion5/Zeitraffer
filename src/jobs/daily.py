@@ -45,6 +45,7 @@ def run_daily_job(
 	framerate: int,
 	target_date: date | None = None,
 	manual_run: bool = False,
+	blur_people: bool = False,
 ) -> None:
 	location = config["location"]
 
@@ -132,6 +133,7 @@ def run_daily_job(
 				framerate=framerate,
 				manual_run=manual_run,
 				daylight_buffer_minutes=daylight_buffer_minutes if manual_run else None,
+				blur_people=blur_people,
 			)
 
 			# Historical runs must never modify automatic daily retention.
