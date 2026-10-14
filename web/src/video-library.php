@@ -15,9 +15,15 @@ function translateJobLabel(string $job): string
 	};
 }
 
+// The project folder, two levels above web/src/, so no install path is hardcoded.
+function projectRoot(): string
+{
+	return dirname(__DIR__, 2);
+}
+
 function getIgnoredCameras(): array
 {
-	$configPath = "/home/zruser/timelapse/config/config.json";
+	$configPath = projectRoot() . "/config/config.json";
 
 	if (!is_file($configPath) || !is_readable($configPath)) {
 		return [];
@@ -87,7 +93,7 @@ function findAvailableCameras(): array
 
 function findManualVideos(string $camera): array
 {
-	$manualRoot = "/home/zruser/timelapse/videos/"
+	$manualRoot = projectRoot() . "/videos/"
 		. $camera
 		. "/manual-runs";
 
@@ -240,7 +246,7 @@ function formatBytes(float $bytes): string
 
 function getStorageUsage(): ?array
 {
-	$videoRoot = "/home/zruser/timelapse/videos";
+	$videoRoot = projectRoot() . "/videos";
 
 	$total = disk_total_space($videoRoot);
 	$available = disk_free_space($videoRoot);

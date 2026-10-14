@@ -10,11 +10,22 @@ function deleteManualVideo(
 	string $job,
 	string $filename,
 ): array {
+	$runUser = projectRunUser();
+
+	if ($runUser === null) {
+		error_log("Video delete wrapper not started: owner of the project folder could not be determined.");
+
+		return [
+			"deleted" => false,
+			"message" => "Das Video konnte nicht gelöscht werden.",
+		];
+	}
+
 	$result = runPrivilegedCommand([
 		"/usr/bin/sudo",
 		"-n",
 		"-u",
-		"zruser",
+		$runUser,
 		"/usr/local/sbin/timelapse-web-delete",
 		$camera,
 		$job,

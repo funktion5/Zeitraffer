@@ -13,13 +13,25 @@ function startVideoJob(
 	?string $windowTime = null,
 	?int $windowToleranceMinutes = null,
 ): array {
+	$runUser = projectRunUser();
+
+	if ($runUser === null) {
+		error_log("Video wrapper not started: owner of the project folder could not be determined.");
+
+		return [
+			"started" => false,
+			"jobId" => null,
+			"message" => "Der Videoauftrag konnte nicht gestartet werden.",
+		];
+	}
+
 	$jobId = bin2hex(random_bytes(16));
 
 	$command = [
 		"/usr/bin/sudo",
 		"-n",
 		"-u",
-		"zruser",
+		$runUser,
 		"/usr/local/sbin/timelapse-web-trigger",
 		$jobId,
 		$job,

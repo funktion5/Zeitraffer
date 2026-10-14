@@ -2,7 +2,9 @@
 
 # Shared status-file helpers for web-triggered timelapse jobs.
 
-STATUS_ROOT="${TIMELAPSE_WEB_STATUS_ROOT:-/home/zruser/timelapse/state/web-jobs}"
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+STATUS_ROOT="${TIMELAPSE_WEB_STATUS_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse/state/web-jobs}"
 
 
 # Return whether a job ID is exactly 32 lowercase hexadecimal characters.

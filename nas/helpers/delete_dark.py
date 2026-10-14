@@ -15,7 +15,9 @@ import sys
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, "/home/zruser/timelapse")
+# Two levels up from nas/helpers/ is the project root, wherever it is installed.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.images import extract_date  # noqa: E402
 

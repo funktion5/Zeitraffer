@@ -52,7 +52,7 @@ if (!is_string($jobId) || preg_match("/^[a-f0-9]{32}$/", $jobId) !== 1) {
 }
 
 $statusRoot = getenv("TIMELAPSE_WEB_STATUS_ROOT")
-	?: "/home/zruser/timelapse/state/web-jobs";
+	?: dirname(__DIR__, 2) . "/state/web-jobs";
 $statusFile = $statusRoot . "/" . $jobId . ".status";
 
 if (!is_file($statusFile) || !is_readable($statusFile)) {

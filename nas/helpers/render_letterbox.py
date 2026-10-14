@@ -14,7 +14,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-PROJECT_ROOT = Path("/home/zruser/timelapse")
+# Two levels up from nas/helpers/ is the project root, wherever it is installed.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 FIT_FILTER = (
 	"scale=1280:720:force_original_aspect_ratio=decrease,"
 	"pad=1280:720:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1"

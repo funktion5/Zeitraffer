@@ -18,7 +18,8 @@ if [[ -z "${PI:-}" ]]; then
 	echo "PI is not set. Add PI=user@address to docker/.env or run: PI=user@address $0" >&2
 	exit 1
 fi
-SRC="/home/zruser/timelapse/videos/"
+# Relative to the login's home folder on the Pi (rsync resolves remote paths from there).
+SRC="timelapse/videos/"
 DEST="$(cd "$(dirname "$0")/.." && pwd)/videos/"
 
 # Excluded paths are also protected from --delete (no --delete-excluded), so a local

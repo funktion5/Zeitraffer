@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import pwd
 import shutil
 import subprocess
 
@@ -8,7 +9,8 @@ import pytest
 
 
 WEB_SRC = Path(__file__).resolve().parent.parent / "web" / "src"
-LIBRARY_ROOT = "/home/zruser/timelapse"
+# The PHP derives the project folder from its own location; tests swap that call for a temp dir.
+PROJECT_ROOT_CALL = "dirname(__DIR__, 2)"
 SUDO_PATH = "/usr/bin/sudo"
 
 
@@ -51,7 +53,7 @@ def videos_library(tmp_path: Path, code: str):
 	return run_php(
 		tmp_path,
 		"video-library.php",
-		{f"{LIBRARY_ROOT}/videos/": f"{videos}/"},
+		{PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
 		code,
 	)
 
@@ -201,14 +203,15 @@ def test_find_manual_videos_hides_in_progress_tmp_files(tmp_path):
 	],
 )
 def test_get_ignored_cameras(tmp_path, config, expected):
-	config_path = tmp_path / "config.json"
+	config_path = tmp_path / "config" / "config.json"
+	config_path.parent.mkdir()
 	if config is not None:
 		config_path.write_text(config)
 
 	result = library(
 		tmp_path,
 		"echo json_encode(getIgnoredCameras());",
-		**{f"{LIBRARY_ROOT}/config/config.json": config_path},
+		**{PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
 	)
 
 	assert result == expected
@@ -219,13 +222,14 @@ def test_find_available_cameras_filters_and_sorts(tmp_path):
 	for name in ["cam10", "cam2", "Alpha", ".hidden", "Ignored"]:
 		(root / name).mkdir(parents=True)
 	(root / "afile").write_text("x")
-	config_path = tmp_path / "config.json"
+	config_path = tmp_path / "config" / "config.json"
+	config_path.parent.mkdir()
 	config_path.write_text('{"ignored_cameras": ["Ignored"]}')
 
 	result = library(
 		tmp_path,
 		"echo json_encode(findAvailableCameras());",
-		**{"/mnt/cameras": root, f"{LIBRARY_ROOT}/config/config.json": config_path},
+		**{"/mnt/cameras": root, PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
 	)
 
 	assert result == ["Alpha", "cam2", "cam10"]
@@ -298,7 +302,8 @@ def test_start_video_job_passes_daily_buffer_argument(tmp_path):
 
 	assert result["started"] is True
 	assert len(result["jobId"]) == 32
-	assert args[:3] == ["-n", "-u", "zruser"]
+	# The run-as user is the owner of the project folder; for the test copy that is the test user.
+	assert args[:3] == ["-n", "-u", pwd.getpwuid(os.getuid()).pw_name]
 	assert args[3:] == [
 		"/usr/local/sbin/timelapse-web-trigger",
 		result["jobId"],
@@ -369,3 +374,42 @@ def test_delete_manual_video_failure_hides_details(tmp_path):
 	)
 
 	assert result == {"deleted": False, "message": "Das Video konnte nicht gelöscht werden."}
+
+
+# A root-owned (or unreadable) project folder must never turn into "sudo -u root".
+def test_project_run_user_refuses_root_owned_folder(tmp_path):
+	result = run_php(
+		tmp_path,
+		"process-runner.php",
+		{PROJECT_ROOT_CALL: json.dumps("/")},
+		"echo json_encode(projectRunUser());",
+	)
+
+	assert result is None
+
+
+def test_start_video_job_refuses_without_run_user(tmp_path):
+	# Point the shared helper at a root-owned folder, then start a job with the same copy.
+	run_php(tmp_path, "process-runner.php", {PROJECT_ROOT_CALL: json.dumps("/")}, "echo 0;")
+	result, args = run_wrapper(
+		tmp_path,
+		"job-runner.php",
+		'startVideoJob("daily", "2026-03-05", "cam", 45)',
+		0,
+	)
+
+	assert result["started"] is False
+	assert args == []
+
+
+def test_delete_manual_video_refuses_without_run_user(tmp_path):
+	run_php(tmp_path, "process-runner.php", {PROJECT_ROOT_CALL: json.dumps("/")}, "echo 0;")
+	result, args = run_wrapper(
+		tmp_path,
+		"video-delete.php",
+		'deleteManualVideo("cam", "daily", "cam_2026-03-05.mp4")',
+		0,
+	)
+
+	assert result["deleted"] is False
+	assert args == []

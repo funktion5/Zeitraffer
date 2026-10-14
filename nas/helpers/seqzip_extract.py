@@ -20,7 +20,9 @@ import zipfile
 import zlib
 from pathlib import Path
 
-sys.path.insert(0, "/home/zruser/timelapse")
+# Two levels up from nas/helpers/ is the project root, wherever it is installed.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.images import extract_date  # noqa: E402
 
@@ -211,7 +213,7 @@ while True:
 		elif name.endswith(".zip"):
 			# Year zips can be GBs: buffering one in RAM crashed the 2 GB Pi (2026-10-07),
 			# so spill it to temp/ and open it from disk.
-			spill = Path("/home/zruser/timelapse/temp") / f"seqzip-{Path(name).name}"
+			spill = PROJECT_ROOT / "temp" / f"seqzip-{Path(name).name}"
 			cut_off = False
 			try:
 				with spill.open("wb") as out:

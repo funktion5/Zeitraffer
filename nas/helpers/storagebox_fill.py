@@ -13,7 +13,8 @@ import sys
 from datetime import date
 from pathlib import Path
 
-PROJECT_ROOT = Path("/home/zruser/timelapse")
+# Two levels up from nas/helpers/ is the project root, wherever it is installed.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 os.chdir(PROJECT_ROOT)
 sys.path.insert(0, str(PROJECT_ROOT))
 
