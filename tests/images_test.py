@@ -1,3 +1,6 @@
+import os
+import subprocess
+import sys
 import time
 from collections import defaultdict
 from datetime import date, datetime
@@ -66,6 +69,8 @@ def test_extract_time_from_camera_filenames():
 		"Nordufer_tele_20250419T094017.jpg": (9, 40, 17),
 		"Nordufer_wide_20250419T100009.jpg": (10, 0, 9),
 		"sam-Reolink_00_20251024145546.jpg": (14, 55, 46),
+		"promenade_2014_1115_131551_01.jpg": (13, 15, 51),
+		"promenade_2019_0720_100512_01.jpg": (10, 5, 12),
 	}
 
 	for filename, expected_time in test_cases.items():
@@ -94,6 +99,9 @@ def test_extract_date_from_camera_filenames():
 		"Nordufer_tele_20250419T094017.jpg": date(2025, 4, 19),
 		"Nordufer_wide_20250419T100009.jpg": date(2025, 4, 19),
 		"sam-Reolink_00_20251024145546.jpg": date(2025, 10, 24),
+		"promenade_2014_1115_131551_01.jpg": date(2014, 11, 15),
+		# The time _100512_ must not be read as the generic _YYMMDD_ date 2010-05-12.
+		"promenade_2019_0720_100512_01.jpg": date(2019, 7, 20),
 	}
 
 	for filename, expected_date in test_cases.items():
@@ -113,6 +121,7 @@ def test_extract_date_rejects_invalid_filenames():
 		"scheunenviertel-26-99-99_14-29-56-39.jpg",
 		"bsv_steinhude_9999991630.jpg",
 		"image_999999_010043.jpg",
+		"promenade_2019_1340_131551_01.jpg",
 	]
 
 	for filename in invalid_filenames:
@@ -1407,3 +1416,29 @@ def test_find_interval_images_uses_per_date_target(
 		camera_directory / "camera_26-09-15_18-00-00-00.jpg",
 		camera_directory / "camera_26-09-16_19-30-00-00.jpg",
 	]
+
+
+def _camera_root_in_fresh_process(env_value: str | None) -> str:
+	env = {key: value for key, value in os.environ.items() if key != "TIMELAPSE_CAMERA_ROOT"}
+	if env_value is not None:
+		env["TIMELAPSE_CAMERA_ROOT"] = env_value
+
+	# A fresh interpreter is needed because CAMERA_ROOT is resolved at import time.
+	result = subprocess.run(
+		[sys.executable, "-c", "import src.images as m; print(m.CAMERA_ROOT)"],
+		capture_output=True,
+		text=True,
+		check=True,
+		env=env,
+		cwd=Path(__file__).resolve().parent.parent,
+	)
+	return result.stdout.strip()
+
+
+def test_camera_root_defaults_to_storage_box_mount():
+	assert _camera_root_in_fresh_process(None) == "/mnt/cameras"
+	assert _camera_root_in_fresh_process("") == "/mnt/cameras"
+
+
+def test_camera_root_can_be_overridden_by_environment(tmp_path):
+	assert _camera_root_in_fresh_process(str(tmp_path)) == str(tmp_path)

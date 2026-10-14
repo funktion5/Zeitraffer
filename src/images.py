@@ -9,7 +9,11 @@ from pathlib import Path
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
-CAMERA_ROOT = Path("/mnt/cameras")
+DEFAULT_CAMERA_ROOT = Path("/mnt/cameras")
+
+# Read from the environment so isolated worker processes inherit an alternative source
+# (e.g. the NAS archive) without any argument plumbing.
+CAMERA_ROOT = Path(os.environ.get("TIMELAPSE_CAMERA_ROOT") or DEFAULT_CAMERA_ROOT)
 
 
 @dataclass
@@ -92,6 +96,9 @@ def extract_date(filename: str):
 		r"_00_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{6}\.jpg$",
 		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg
 		r"^bsv_steinhude_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
+		# Cafe-am-Meer legacy format: promenade_YYYY_MMDD_HHMMSS_01.jpg. Anchored and listed before
+		# the generic _YYMMDD_ pattern, which would misread a time like _100512_ as 2010-05-12.
+		r"^promenade_(?P<year>\d{4})_(?P<month>\d{2})(?P<day>\d{2})_\d{6}_\d{2}\.jpg$",
 		# YY-MM-DD format.
 		r"(?P<year>\d{2})-(?P<month>\d{2})-(?P<day>\d{2})",
 		# Prefix_YYMMDD_... format.
@@ -174,6 +181,8 @@ def extract_time(filename: str):
 	time_patterns = (
 		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg (see extract_date).
 		r"^bsv_steinhude_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
+		# Cafe-am-Meer legacy format: promenade_YYYY_MMDD_HHMMSS_01.jpg (see extract_date).
+		r"^promenade_\d{4}_\d{4}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})_\d{2}\.jpg$",
 		r"^[A-Za-z]\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
 		r"_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
 		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
