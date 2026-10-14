@@ -24,6 +24,9 @@ reports/
 # OS
 .DS_Store
 
+# Detector model files (downloaded separately, too large for git)
+models/
+
 # Agent
 AGENTS.md
 CLAUDE.md

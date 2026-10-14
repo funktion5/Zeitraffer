@@ -50,7 +50,7 @@
       "--runtime",
       "ort",
       "--model",
-      "/home/zruser/detector-models/object_detection_yolox_2022nov.onnx",
+      "models/object_detection_yolox_2022nov.onnx",
       "--tiles",
       "2",
       "--threshold",
