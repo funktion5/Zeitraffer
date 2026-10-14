@@ -83,6 +83,14 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
 
 ## Installation
 
+Platzhalter in den folgenden Beispielen:
+
+| Platzhalter | Bedeutung |
+|---|---|
+| `<benutzer>` | Linux-Konto, unter dem das Projekt läuft |
+| `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
+| `<login>` | Benutzername der Apache-Basisauthentifizierung |
+
 Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen neu installierten Pi mit vorhandenem Backup übernimmt `migrate.sh` alle Schritte; siehe [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi).
 
 ### Systempakete installieren
@@ -141,7 +149,8 @@ Voraussetzungen:
 
 - `sshfs` und `fusermount3` (Paket `fuse3`, wird als Abhängigkeit von `sshfs` installiert)
 - Mountpoint `/mnt/cameras` existiert
-- SSH-Schlüssel unter `/home/zruser/.ssh/storagebox_ed25519`
+- SSH-Schlüssel für die Storage Box im Konto `<benutzer>`; der Pfad steht in
+  `/etc/timelapse/mount.env` (`REMOTE_SSH_KEY`)
 - passender `known_hosts`-Eintrag für den Storage-Host, weil der Service `StrictHostKeyChecking=yes` verwendet
 - `user_allow_other` in `/etc/fuse.conf` (siehe [Systempakete installieren](#systempakete-installieren))
 
@@ -149,10 +158,15 @@ Repository-Dateien installieren:
 
 ```bash
 sudo install -m 755 scripts/cameras-sshfs-preflight /usr/local/sbin/cameras-sshfs-preflight
-sudo install -m 644 systemd/cameras-sshfs.service /etc/systemd/system/cameras-sshfs.service
+sed -e "s/@RUN_USER@/$(id -un)/g" -e "s/@RUN_GROUP@/$(id -gn)/g" systemd/cameras-sshfs.service \
+  | sudo tee /etc/systemd/system/cameras-sshfs.service >/dev/null
 sudo install -d -m 755 /etc/timelapse
 sudo install -m 600 config/mount.env.example /etc/timelapse/mount.env
 ```
+
+Die Unit enthält statt des Kontonamens die Platzhalter `@RUN_USER@` und `@RUN_GROUP@`; der
+`sed`-Befehl setzt das eigene Konto ein (als `<benutzer>` ausführen, nicht als root). Ohne diesen
+Schritt startet systemd den Service nicht. `migrate.sh` erledigt das automatisch.
 
 Danach `/etc/timelapse/mount.env` mit den produktiven Verbindungswerten befüllen. Die Datei liegt außerhalb des Repositories und wird nicht versioniert. Erwartete Variablen:
 
@@ -185,7 +199,7 @@ Die beiden Einträge aus [Zeitplanung mit Cron](#zeitplanung-mit-cron) werden ü
 crontab -e
 ```
 
-für den Benutzer `zruser` installiert. Anschließend prüfen:
+für den Benutzer `<benutzer>` installiert. Anschließend prüfen:
 
 ```bash
 crontab -l
@@ -327,7 +341,7 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr:
 
 ```cron
-0 2 * * * flock -n /home/zruser/timelapse/state/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'
+0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'
 ```
 
 `flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
@@ -337,13 +351,13 @@ Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 U
 Beim Booten wird der Workflow nur gestartet, wenn `state/run-in-progress` existiert. Da der Kamera-Storage eventuell noch nicht bereit ist, wartet Cron zunächst auf einen echten Mount unter `/mnt/cameras`:
 
 ```cron
-@reboot if [ -f /home/zruser/timelapse/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n /home/zruser/timelapse/state/zeitraffer-run.lock -c 'cd /home/zruser/timelapse && /home/zruser/timelapse/.venv/bin/python3 -m src.main'; fi
+@reboot if [ -f <projektpfad>/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; fi
 ```
 
 Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
 
 ```text
-/home/zruser/timelapse/state/zeitraffer-run.lock
+<projektpfad>/state/zeitraffer-run.lock
 ```
 
 Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
@@ -377,10 +391,10 @@ Die aktive Site verwendet sinngemäß folgende Konfiguration:
 <VirtualHost *:80>
     ServerName <hostname>.local
 
-    DocumentRoot /home/zruser/timelapse/web/public
+    DocumentRoot <projektpfad>/web/public
     DirectoryIndex index.php
 
-    <Directory /home/zruser/timelapse/web/public>
+    <Directory <projektpfad>/web/public>
         Options -Indexes
         AllowOverride None
         AuthType Basic
@@ -389,9 +403,9 @@ Die aktive Site verwendet sinngemäß folgende Konfiguration:
         Require valid-user
     </Directory>
 
-    Alias /videos/ /home/zruser/timelapse/videos/
+    Alias /videos/ <projektpfad>/videos/
 
-    <Directory /home/zruser/timelapse/videos>
+    <Directory <projektpfad>/videos>
         Options -Indexes
         AllowOverride None
         AuthType Basic
@@ -416,7 +430,7 @@ sudo systemctl reload apache2
 
 Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
 
-Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `zruser` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
+Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
 Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
 
@@ -425,7 +439,7 @@ Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTP
 Beide Verzeichnisse (`web/public` und der `/videos/`-Alias) werden per `AuthType Basic` geschützt. Die Zugangsdaten liegen in `/etc/apache2/.htpasswd`, außerhalb des Dokumenten-Stammverzeichnisses und damit über HTTP nicht erreichbar; die Datei wird nicht versioniert und darf nicht ins Repository gelangen.
 
 ```bash
-sudo htpasswd -cB /etc/apache2/.htpasswd zruser
+sudo htpasswd -cB /etc/apache2/.htpasswd <login>
 ```
 
 `-B` erzwingt bcrypt-Hashing (laut `htpasswd --help` „very secure“) anstelle des schwächeren MD5-Standards. `-c` legt die Datei neu an und darf nur beim ersten Benutzer verwendet werden; weitere Benutzer werden ohne `-c` ergänzt.
@@ -442,7 +456,7 @@ Prüfung:
 ```bash
 curl -i http://localhost/            # erwartet: 401 Unauthorized
 curl -i http://localhost/videos/     # erwartet: 401 Unauthorized
-curl -i -u zruser http://localhost/  # erwartet: 200 OK nach Passworteingabe
+curl -i -u <login> http://localhost/  # erwartet: 200 OK nach Passworteingabe
 ```
 
 ### Wrapper installieren
@@ -465,11 +479,11 @@ sudo install -o root -g root -m 755 \
   /usr/local/sbin/timelapse-web-delete
 ```
 
-Die sudoers-Regeln erlauben ausschließlich den festen Trigger und den festen Lösch-Wrapper, jeweils als `zruser`:
+Die sudoers-Regeln erlauben ausschließlich den festen Trigger und den festen Lösch-Wrapper, jeweils als `<benutzer>`:
 
 ```sudoers
-www-data ALL=(zruser) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
-www-data ALL=(zruser) NOPASSWD: /usr/local/sbin/timelapse-web-delete
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 ```
 
 Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`.
@@ -486,12 +500,12 @@ Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut
 
 ### Dateirechte für `www-data`
 
-`www-data` wird nicht in die Gruppe `zruser` aufgenommen und erhält nur Zugriff auf das, was die Weboberfläche tatsächlich liest. Alles andere – Python-Code, Skripte, Tests, `.git`, `.venv`, Logs, temporäre Dateien und alle übrigen Dateien im Home-Verzeichnis – bleibt für `www-data` gesperrt.
+`www-data` wird nicht in die Gruppe `<benutzer>` aufgenommen und erhält nur Zugriff auf das, was die Weboberfläche tatsächlich liest. Alles andere – Python-Code, Skripte, Tests, `.git`, `.venv`, Logs, temporäre Dateien und alle übrigen Dateien im Home-Verzeichnis – bleibt für `www-data` gesperrt.
 
 | Pfad | Rechte für „andere“ | Zweck |
 |---|---|---|
-| `/home/zruser` | nur Durchgang (`--x`) | Weg zum Projekt |
-| übrige Einträge in `/home/zruser` | keine | z. B. `pi-backup.tar.gz`, `.ssh`, `Claude-Brain` |
+| `/home/<benutzer>` | nur Durchgang (`--x`) | Weg zum Projekt |
+| übrige Einträge in `/home/<benutzer>` | keine | z. B. Backups, `.ssh` |
 | `timelapse/` | nur Durchgang (`--x`) | kein Auflisten des Projekts |
 | `web/` | lesen (`r-x` / `r--`) | PHP-Dateien und CSS |
 | `videos/` | lesen (`r-x` / `r--`) | Bibliothek, Wiedergabe, Speicheranzeige |
@@ -555,7 +569,7 @@ web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger u
 Ein gültiger Formular-POST wird durch einen Session-basierten CSRF-Token geschützt. PHP prüft Kamera, Job-Typ und ISO-Datum und ruft anschließend ohne Shell-Auswertung diesen festen Befehl auf:
 
 ```text
-sudo -n -u zruser /usr/local/sbin/timelapse-web-trigger \
+sudo -n -u <benutzer> /usr/local/sbin/timelapse-web-trigger \
   <job-id> <job> <zieldatum> <kamera> [<zeitpuffer> | <fenster-zeit> <fenster-toleranz>]
 ```
 
@@ -593,7 +607,7 @@ Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementie
 Der Trigger verwendet denselben Lock wie Cron:
 
 ```text
-/home/zruser/timelapse/state/zeitraffer-run.lock
+<projektpfad>/state/zeitraffer-run.lock
 ```
 
 Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft.
@@ -691,7 +705,7 @@ docker/pull-videos.sh -n     # Probelauf: zeigt nur, was passieren würde
 docker/pull-videos.sh        # Probelauf anzeigen, nach Bestätigung (y) wirklich spiegeln
 ```
 
-Das Skript **spiegelt** den Ordner des Pi (`/home/zruser/timelapse/videos/`) nach `videos/`:
+Das Skript **spiegelt** den Ordner `~/timelapse/videos/` des Pi-Logins nach `videos/`:
 
 - Neue und geänderte Dateien werden kopiert.
 - Dateien, die auf dem Pi nicht mehr existieren, werden lokal **gelöscht**, damit keine veralteten Videos übrig bleiben. Deshalb zeigt das Skript immer zuerst einen Probelauf und fragt nach, bevor es etwas ändert.
@@ -1176,11 +1190,22 @@ Fehler einer Kamera (`OSError`, `TimeoutError`) werden protokolliert; die übrig
 
 ### Ablauf
 
-1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Benutzer und Host kommen aus dem laufenden SSHFS-Mount (`/proc/mounts`); Port `23` und der Schlüssel `~/.ssh/storagebox_ed25519` sind im Code hinterlegt. Ändern sie sich in `/etc/timelapse/mount.env`, müssen sie in `src/storage_filter.py` mitgeändert werden. Ohne aktiven Mount bricht der Speicherfilter ab.
+1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Benutzer und Host kommen aus dem laufenden SSHFS-Mount (`/proc/mounts`), Port und Schlüssel aus `~/.ssh/config` (siehe unten). Ohne aktiven Mount bricht der Speicherfilter ab.
 2. **Leere Dateien:** Alle JPGs mit 0 Byte laut Liste.
 3. **Duplikate pro Tag:** Nur Dateien, die am selben Aufnahmetag (laut Dateiname) dieselbe Größe haben, werden verglichen. Die SHA-256-Hashes berechnet die Storage Box selbst (`sha256sum`, 1.000 Dateien pro Aufruf, 4 Aufrufe parallel); über das Netz kommen nur die Hashes, nicht die Bilder. Behalten wird die erste Datei des Tages in Dateinamen-Reihenfolge; gemeldet werden alle späteren Kopien.
 
-Der Speicherfilter liest keine Bilddateien über `/mnt/cameras`; der Mount wird nur benötigt, um Benutzer und Host der Storage Box zu ermitteln. Fehlt beim Hashen eine Datei oder ist sie nicht lesbar, schlägt die Kamera fehl, statt die Datei als eindeutig zu behandeln.
+Der Speicherfilter liest keine Bilddateien über `/mnt/cameras`; der Mount wird nur benötigt, um Benutzer und Host der Storage Box zu ermitteln.
+
+Port und Schlüssel stehen bewusst nicht im Code, sondern in `~/.ssh/config` des Kontos `<benutzer>` (gleiche Werte wie `REMOTE_PORT` und `REMOTE_SSH_KEY` in `/etc/timelapse/mount.env`). Einmalig anlegen:
+
+```text
+Host <storage-host>
+	Port <port>
+	IdentityFile <schlüsselpfad>
+	IdentitiesOnly yes
+```
+
+Danach `chmod 600 ~/.ssh/config`. Fehlt der Eintrag, bricht der Speicherfilter mit einem SSH-Fehler ab. Die Datei ist Teil des Backups und wird bei einer Neuinstallation wiederhergestellt. Fehlt beim Hashen eine Datei oder ist sie nicht lesbar, schlägt die Kamera fehl, statt die Datei als eindeutig zu behandeln.
 
 Nicht geprüft werden:
 
@@ -1275,8 +1300,7 @@ Die Videos sind nicht Teil von `migrate.sh`, sondern werden nach der Migration v
 
 | Datei auf dem Pi | Im Backup | Wird wiederhergestellt nach |
 |---|---|---|
-| `~/.ssh/storagebox_ed25519` und `.pub` | `pi-backup.tar.gz` | `~/.ssh/` (`600` / `644`) |
-| `~/.ssh/known_hosts` | `pi-backup.tar.gz` | wird zusammengeführt, keine doppelten Zeilen |
+| Ordner `~/.ssh` (Schlüssel, `config`, `known_hosts`) | `pi-backup.tar.gz` | `~/.ssh/` (`600`, `.pub`-Dateien `644`); `known_hosts` wird zusammengeführt, `authorized_keys` nicht wiederhergestellt |
 | `/etc/timelapse/mount.env` | `pi-backup.tar.gz` | `root:root 600` |
 | `/etc/sudoers.d/timelapse-web` | `pi-backup.tar.gz` | `root:root 440`, nur nach erfolgreicher `visudo`-Prüfung |
 | `/etc/apache2/.htpasswd` | `pi-backup.tar.gz` | `root:www-data 640` |
@@ -1337,7 +1361,8 @@ Danach prüfen, ob der Backup-Ordner vollständig ist:
 ls -la ~/pi-migration-backup
 # erwartet: pi-backup.tar.gz, pi-crontab.txt, config.json, videos/
 tar tzf ~/pi-migration-backup/pi-backup.tar.gz
-# erwartet: 7 Einträge, darunter home/<pi-user>/.ssh/known_hosts
+# erwartet: der Ordner home/<pi-user>/.ssh/ mit Schlüssel, config und known_hosts,
+# außerdem mount.env, sudoers, .htpasswd und die Apache-Site
 ```
 
 Erst weitermachen, wenn das Backup vollständig ist.
