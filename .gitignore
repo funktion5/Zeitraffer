@@ -36,7 +36,7 @@ WEB_TODO.md
 docs/blog/
 
 # NAS archive notes and inventory (local only, not part of the repository)
-docs/nas/
+docs/nas-notizen/
 
 # tests
 test-output/*

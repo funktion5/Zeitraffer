@@ -122,6 +122,11 @@ python3 -m pip install -r requirements.txt
 Version gepinnt, damit lokal, im Pre-Push-Hook und in GitHub Actions identisch formatiert wird;
 die Konfiguration liegt in `pyproject.toml`.
 
+Für die Verpixelung von Personen wird zusätzlich ein Erkennungsmodell im Ordner `models/`
+benötigt. Es ist zu groß für das Repository und wird einmal heruntergeladen; Anleitung siehe
+[Verpixelung – Installation](docs/verpixelung.md#installation). Ohne Modell laufen alle anderen
+Funktionen normal.
+
 ### SSHFS-Mount installieren
 
 Die Originalbilder werden unter `/mnt/cameras` bereitgestellt. Der systemd-Service mountet den entfernten Storage mit SSHFS ausschließlich lesend (`-o ro`). Die Option `allow_other` erlaubt dem Apache-Benutzer `www-data`, den Mount im Rahmen der normalen Dateirechte zu lesen. Sie erteilt keine Schreibrechte. Vor dem Mount prüft das Preflight-Skript, ob bereits ein erreichbarer Mount existiert oder ein nicht erreichbarer FUSE-Mount bereinigt werden muss.
@@ -260,6 +265,22 @@ Beispiel:
     "monthly_framerate": 20,
     "yearly_framerate": 20,
     "ffmpeg_threads": 2
+  },
+  "privacy": {
+    "detector_command": [
+      ".venv/bin/python3", "-I", "src/privacy/detect.py",
+      "--runtime", "ort",
+      "--model", "models/object_detection_yolox_2022nov.onnx",
+      "--tiles", "2",
+      "--threshold", "0.25"
+    ],
+    "blur": {
+      "style": "pixelate",
+      "strength": 0.1,
+      "padding_ratio": 0.25,
+      "shape": "ellipse",
+      "feather": 0.5
+    }
   }
 }
 ```
@@ -280,6 +301,12 @@ historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reic
 `min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
 Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
 bis zur Fensterlänge (30 bzw. 365).
+
+`privacy` steuert die Verpixelung von Personen: `detector_command` ist die Befehlszeile der
+Personenerkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
+(`style` `pixelate` oder `blur`, Stärke, Rand, Form, weicher Übergang). Ungültige Werte brechen
+einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet wird. Alle Werte und Grenzen:
+[docs/verpixelung.md](docs/verpixelung.md#konfiguration).
 
 Die Tests prüfen unter anderem:
 
@@ -1083,7 +1110,36 @@ historisches Weekly gemeinsam mit einem weiteren Job
 --daylight-buffer-minutes mit monthly oder yearly
 --window-time / --window-tolerance-minutes ohne --target-date
 --window-time / --window-tolerance-minutes mit daily oder weekly
+--blur-people außerhalb eines historischen Daily
 ```
+
+### Personen verpixeln (Test)
+
+`--blur-people` erkennt Personen in den Bildern eines historischen Daily und verpixelt sie vor
+dem Encoding. Die Funktion ist ein Test und nur mit `--date` oder `--jobs daily --target-date`
+erlaubt:
+
+```bash
+python3 -m src.main \
+	--date 2026-06-28 \
+	--cameras SLSV \
+	--blur-people
+```
+
+- Das Video heißt dann zum Beispiel
+  `videos/SLSV/manual-runs/daily/SLSV_2026-06-28_90min_blur.mp4`, damit es nie mit einem
+  unbearbeiteten Video verwechselt wird.
+- Bearbeitet werden nur die Kopien unter `temp/`, die Originale bleiben unverändert.
+- **Fail closed:** Bei jedem Zweifel der Erkennung bricht der Lauf ab und es entsteht kein
+  Video. Ein ungeprüftes Bild wird nie verwendet.
+- Ergebnisse der Erkennung werden in `state/privacy/<Kamera>.jsonl` zwischengespeichert; ein
+  erneuter Lauf prüft nur neue oder geänderte Bilder.
+- Die Erkennung dauert auf dem Pi ca. 7,5–10 Sekunden pro Bild.
+
+Noch nicht abgedeckt: automatische Läufe, Weekly, Monthly, Yearly und die Weboberfläche.
+
+Installation des Modells, alle Einstellungen, Cache, Detektor-Protokoll und Fehlersuche:
+[docs/verpixelung.md](docs/verpixelung.md).
 
 ---
 
@@ -1648,6 +1704,16 @@ Versteckte Verzeichnisse werden ignoriert.
 
 Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Operative Fehler einer einzelnen Kamera werden dagegen pro Kamera behandelt, sodass spätere Kameras weiterverarbeitet werden können.
 
+### Alternative Bildquelle (NAS-Archiv)
+
+Die Umgebungsvariable `TIMELAPSE_CAMERA_ROOT` ersetzt `/mnt/cameras` als Kamera-Wurzel. Ohne
+die Variable (oder mit leerem Wert) gilt weiterhin `/mnt/cameras`; Cron und Weboberfläche
+setzen sie nicht.
+
+Damit lassen sich Kalenderjahr-Videos aus dem alten Webcam-Archiv auf dem NAS erstellen. Die
+Werkzeuge dafür liegen im Ordner `nas/` und gehören nicht zum Produktionslauf. Anleitung:
+[docs/nas.md](docs/nas.md).
+
 ---
 
 ## Bildvalidierung und Duplikate
@@ -1976,13 +2042,18 @@ timelapse/
 ├── docs/
 │   ├── plans/
 │   │   └── custom-time-window.md
+│   ├── nas.md
+│   ├── verpixelung.md
 │   ├── youtube-description-prompt.md
 │   └── youtube-texts.md
+├── nas/
+│   ├── helpers/
+│   ├── nas-extract.py
+│   └── README.md
 ├── scripts/
 │   ├── cameras-sshfs-preflight
 │   ├── pi-crash-logging-setup
 │   ├── storage-filter-all
-│   ├── test_workflow.sh
 │   ├── timelapse-web-delete
 │   ├── timelapse-web-status.sh
 │   ├── timelapse-web-trigger
@@ -1995,6 +2066,10 @@ timelapse/
 │   │   ├── weekly.py
 │   │   ├── monthly.py
 │   │   └── yearly.py
+│   ├── privacy/
+│   │   ├── __init__.py
+│   │   ├── anonymize.py
+│   │   └── detect.py
 │   ├── config.py
 │   ├── date_coverage.py
 │   ├── diagnostics.py
@@ -2021,6 +2096,7 @@ timelapse/
 │   ├── logger_test.py
 │   ├── main_test.py
 │   ├── monthly_test.py
+│   ├── privacy_test.py
 │   ├── run_state_test.py
 │   ├── storage_filter_test.py
 │   ├── video_test.py
@@ -2047,27 +2123,27 @@ timelapse/
 │       ├── video-delete.php
 │       └── video-library.php
 ├── logs/
+├── models/
 ├── reports/
 ├── state/
 ├── temp/
 ├── videos/
 ├── backup-from-mac.sh
-├── create_test_video.py
 ├── migrate.sh
-├── monthly_range_test.py
 ├── pyproject.toml
 ├── requirements.txt
 └── README.md
 ```
 
 Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
+`models/` enthält das Modell der Personenerkennung; es wird separat heruntergeladen und ist nicht
+im Repository.
 
-`docs/` enthält Pläne (`plans/custom-time-window.md`: geplantes `--from`/`--to`, noch nicht
-umgesetzt) sowie Vorlage und fertige Texte für YouTube-Uploads.
+`docs/` enthält die ausführlichen Anleitungen zur Verpixelung (`verpixelung.md`) und zum
+NAS-Archiv (`nas.md`), Pläne (`plans/custom-time-window.md`: geplantes `--from`/`--to`, noch
+nicht umgesetzt) sowie Vorlage und fertige Texte für YouTube-Uploads.
 
 `backup-from-mac.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi).
-
-`create_test_video.py`, `monthly_range_test.py` und `scripts/test_workflow.sh` sind ältere, manuell ausgeführte Entwicklungs- und Diagnoseskripte. Sie gehören nicht zum produktiven Workflow und nicht zur automatisierten pytest-Suite. `create_test_video.py` verwendet noch eine inzwischen entfernte `create_video`-Schnittstelle und ist im aktuellen Stand nicht lauffähig.
 
 ---
 
@@ -2199,6 +2275,15 @@ Technische Video- und FFmpeg-Schicht:
 
 Ausgewählte Originalbilder werden zuerst nach `temp/` kopiert und dort als `frame_000001.jpg`, `frame_000002.jpg`, … normalisiert. FFmpeg schreibt zunächst eine versteckte temporäre MP4-Datei. Erst nach erfolgreichem Abschluss ersetzt diese atomar die endgültige Ausgabe.
 
+### `src/privacy/`
+
+Verpixelung von Personen (derzeit nur für historische Dailys, siehe
+[docs/verpixelung.md](docs/verpixelung.md)):
+
+- `anonymize.py`: ruft die Erkennung paketweise auf, prüft jedes Ergebnis, verwaltet den Cache
+  und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder Zweifel bricht den Lauf ab
+- `detect.py`: Personenerkennung (YOLOX), läuft als eigener Prozess
+
 ### `src/logger.py`
 
 - gemeinsamer Anwendungslogger
@@ -2221,6 +2306,7 @@ Grundregeln des Projekts:
 - Originalbilder unter `/mnt/cameras` niemals verändern.
 - Frames nur lokal unter `temp/` vorbereiten.
 - Unbekannte Dateinamensformate niemals erraten.
+- Verpixelung schlägt im Zweifel fehl: lieber kein Video als ein ungeprüftes Bild.
 - Bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen.
 - Daily-Retention erst nach erfolgreicher Videoerstellung anwenden.
 - Fehler einer Kamera dürfen spätere Kameras nicht unnötig blockieren.
