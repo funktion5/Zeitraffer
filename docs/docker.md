@@ -10,7 +10,7 @@ Alle Pfade sind relativ zum Projektordner.
 
 | Datei | Zweck |
 |---|---|
-| `Dockerfile` | Bauanleitung für das Image: schlankes Debian, FFmpeg, sshfs, Python mit den Paketen aus `requirements.txt`, der Projektcode |
+| `Dockerfile` | Bauanleitung für das Image: schlankes Debian 13 wie auf dem Pi (gleiches FFmpeg 7.1 und PHP 8.4), FFmpeg, sshfs, PHP nur für die Tests der Weboberfläche (kein Webserver), Python mit den Paketen aus `requirements.txt`, der Projektcode |
 | `.dockerignore` | was **nicht** ins Image kommt: Videos, Logs, Status, Modelle, Schlüssel, lokale Notizen |
 | `docker/entrypoint.sh` | Start jedes Containers: SSH-Dateien vorbereiten, Kamerabilder schreibgeschützt einhängen (wenn gewünscht), dann den Befehl als Benutzer `app` ausführen, nie als root |
 | `docker/storage-box.env.example` | Vorlage für die Zugangsdaten der Storage Box (Benutzer, Host, Port, Schlüssel) |

@@ -1,11 +1,14 @@
 # Zeitraffer in a container: the same program as on the Pi, for a trial on a Mac or a Synology NAS.
 # Details and the trial steps: docs/docker.md. Builds for amd64 and arm64 alike.
-FROM python:3.13.7-slim-bookworm
+# Debian trixie like the Pi: same FFmpeg (7.1) and PHP (8.4) versions.
+FROM python:3.13.7-slim-trixie
 
 # FFmpeg encodes and blurs; sshfs + fuse3 mount the camera images read-only; openssh-client is
-# what the storage filter and the box job call; util-linux brings findmnt and setpriv.
+# what the storage filter and the box job call; util-linux brings findmnt and setpriv; php-cli
+# only runs the web UI's PHP tests (no web server in the image).
 RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ffmpeg sshfs fuse3 openssh-client util-linux \
+	&& apt-get install -y --no-install-recommends \
+		ffmpeg sshfs fuse3 openssh-client util-linux php-cli \
 	&& rm -rf /var/lib/apt/lists/*
 
 # The program runs as this user; only the read-only camera mount at start needs root.
