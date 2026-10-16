@@ -4637,3 +4637,39 @@ Direkt zur Kamera: https://www.steinhude-am-meer.de/webcams/scheunenviertel/
 ```
 Steinhuder Meer, Zeitraffer, Timelapse, Webcam, Steinhude, Scheunenviertel, Wochenmarkt, 2008, Archiv, Niedersachsen, Naturpark Steinhuder Meer
 ```
+
+---
+
+## Scheunenviertel 07.02.2021 (Highlight: Schneemann im Scheunenviertel)
+
+`videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2021-02-07_90min.mp4` · 148 Bilder · 14,8 s ·
+07.02.2021, Tageslicht ±90 min (06:25 bis 18:47 Uhr), 10 fps. Bilder aus dem NAS-Tar
+`backup_Scheunenviertel_20210315.tar`.
+
+**Titel**
+```
+Schneemann im Scheunenviertel - Webcam Scheunenviertel Steinhude - Wintertag Februar 2021
+```
+
+**Beschreibung**
+```
+Am Sonntag, dem 7. Februar 2021, lag Schnee im Scheunenviertel in Steinhude. Auf dem Platz zwischen den historischen Fachwerkscheunen, auf dem sonst Wochenmärkte und Veranstaltungen stattfinden, haben Menschen einen Schneemann gebaut.
+
+Der Zeitraffer zeigt den ganzen Wintertag aus Sicht der Webcam im Scheunenviertel, von kurz vor Sonnenaufgang bis nach Sonnenuntergang.
+
+📍 Ort: Steinhude, Steinhuder Meer
+📅 Datum: 07.02.2021
+🎞️ 148 Einzelbilder, 10 Bilder pro Sekunde
+
+Weitere Highlights der Webcams rund um das Steinhuder Meer findest du in der Playlist: https://www.youtube.com/playlist?list=PLYMSZQaKBPiI
+
+Alle Live-Webcams am Steinhuder Meer: https://www.steinhude-am-meer.de/webcams/
+Direkt zur Kamera: https://www.steinhude-am-meer.de/webcams/scheunenviertel/
+
+#SteinhuderMeer #Zeitraffer #Timelapse #Schneemann
+```
+
+**Tags**
+```
+Steinhuder Meer, Zeitraffer, Timelapse, Webcam, Steinhude, Scheunenviertel, Schnee, Schneemann, Winter, 2021, Niedersachsen
+```
