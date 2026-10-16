@@ -898,17 +898,30 @@ def test_get_video_path_adds_blur_suffix_for_manual_daily():
 	assert path == Path("videos/SLSV/manual-runs/daily/SLSV_2026-06-28_60min_blur.mp4")
 
 
+# The calendar-year backfill may blur too; the old unblurred video keeps its own name.
+def test_get_video_path_adds_blur_suffix_for_manual_yearly():
+	path = get_video_path(
+		camera="SLSV",
+		target_date=date(2025, 12, 31),
+		timelapse_type="yearly",
+		manual_run=True,
+		blur_people=True,
+	)
+
+	assert path == Path("videos/SLSV/manual-runs/yearly/SLSV_2025-12-31_blur.mp4")
+
+
 @pytest.mark.parametrize(
 	("timelapse_type", "manual_run"),
 	[
 		("daily", False),
 		("weekly", True),
 		("monthly", True),
-		("yearly", True),
+		("yearly", False),
 	],
 )
-def test_get_video_path_rejects_blur_outside_manual_daily(timelapse_type, manual_run):
-	with pytest.raises(ValueError, match="only allowed for manual daily"):
+def test_get_video_path_rejects_blur_outside_manual_daily_and_yearly(timelapse_type, manual_run):
+	with pytest.raises(ValueError, match="only allowed for manual daily and yearly"):
 		get_video_path(
 			camera="SLSV",
 			target_date=date(2026, 6, 28),

@@ -151,9 +151,10 @@ def get_video_path(
 	interval_window: IntervalWindow | None = None,
 	blur_people: bool = False,
 ) -> Path:
-	# Blurring is a manual daily test for now; the suffix keeps it apart from unblurred videos.
-	if blur_people and not (manual_run and timelapse_type == "daily"):
-		raise ValueError("Blurred videos are only allowed for manual daily runs.")
+	# Blurring exists for manual Dailies and the calendar-year Yearly backfill
+	# (scripts/yearly-backfill.py); the suffix keeps them apart from unblurred videos.
+	if blur_people and not (manual_run and timelapse_type in ("daily", "yearly")):
+		raise ValueError("Blurred videos are only allowed for manual daily and yearly runs.")
 
 	if daylight_buffer_minutes is not None and timelapse_type in ("monthly", "yearly"):
 		raise ValueError(f"{timelapse_type} does not use a daylight buffer.")

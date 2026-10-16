@@ -3,9 +3,11 @@
 Erkennt Personen und Fahrzeuge in den Bildern eines Videos und macht Personen und Kennzeichen
 vor dem Encoding unkenntlich. Der Code liegt in `src/privacy/`.
 
-**Stand:** Testfunktion. Sie ist nur für historische Tagesvideos verfügbar (`--date` oder
-`--jobs daily --target-date`). Automatische Läufe, Weekly, Monthly, Yearly und die
-Weboberfläche verpixeln noch nicht.
+**Stand:** Testfunktion. Sie ist für historische Tagesvideos (`--date` oder
+`--jobs daily --target-date`) und für Kalenderjahr-Yearlys mit
+`scripts/yearly-backfill.py --blur-people` verfügbar (Endung `_blur`, siehe README
+„Yearly-Backfill"). Automatische Läufe, Weekly, Monthly und die Weboberfläche verpixeln noch
+nicht.
 
 Neue Kamerabilder direkt auf der Storage Box zu verpixeln, bevor die Webseite sie abholt,
 beschreibt [verpixelung-box.md](verpixelung-box.md) (in Entwicklung).

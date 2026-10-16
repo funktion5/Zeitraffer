@@ -7,6 +7,7 @@ are logged and written to a summary CSV instead of skipping the camera.
 
 Run from anywhere:
 	.venv/bin/python3 scripts/yearly-backfill.py [--years 2023 2024] [--cameras A B] [--force]
+		[--blur-people]
 """
 
 import argparse
@@ -32,6 +33,7 @@ from src.date_coverage import (  # noqa: E402
 from src.images import find_interval_images_isolated, get_cameras  # noqa: E402
 from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
+from src.privacy.anonymize import PrivacyCheckError  # noqa: E402
 from src.storage_filter import acquire_run_lock  # noqa: E402
 from src.video import create_timelapse, get_video_path  # noqa: E402
 from src.yearly_selection import select_yearly_images_isolated  # noqa: E402
@@ -52,6 +54,14 @@ def parse_arguments() -> argparse.Namespace:
 		"--force",
 		action="store_true",
 		help="Rebuild videos that already exist instead of skipping them.",
+	)
+	parser.add_argument(
+		"--blur-people",
+		action="store_true",
+		help=(
+			"Detect and blur people and licence plates in the frames (privacy settings from "
+			"config.json); the video gets a _blur suffix, the unblurred one is kept."
+		),
 	)
 
 	return parser.parse_args()
@@ -74,6 +84,7 @@ def build_year(
 	end_date: date,
 	config: dict,
 	force: bool,
+	blur_people: bool = False,
 ) -> dict:
 	total_days = (end_date - start_date).days + 1
 	result = {
@@ -91,6 +102,7 @@ def build_year(
 		target_date=end_date,
 		timelapse_type="yearly",
 		manual_run=True,
+		blur_people=blur_people,
 	)
 
 	if video_path.exists() and not force:
@@ -160,6 +172,7 @@ def build_year(
 		timelapse_type="yearly",
 		framerate=config["timelapse"]["yearly_framerate"],
 		manual_run=True,
+		blur_people=blur_people,
 	)
 	result.update(status="created", video=str(created_path))
 
@@ -184,7 +197,7 @@ def main() -> int:
 	logger.info("-" * 80)
 	logger.info(
 		f"Starting Yearly backfill | years={args.years} | cameras={', '.join(cameras)} | "
-		f"force={args.force} | run_id={RUN_ID}"
+		f"force={args.force} | blur_people={args.blur_people} | run_id={RUN_ID}"
 	)
 
 	with acquire_run_lock(), report_path.open("w", newline="") as report_file:
@@ -202,9 +215,12 @@ def main() -> int:
 				logger.info(f"Processing Yearly backfill {start_date} to {end_date}: {camera}")
 
 				try:
-					result = build_year(camera, start_date, end_date, config, args.force)
+					result = build_year(
+						camera, start_date, end_date, config, args.force, args.blur_people
+					)
 
-				except (OSError, TimeoutError, subprocess.CalledProcessError):
+				# A privacy doubt means no video for this year; the other years and cameras go on.
+				except (OSError, TimeoutError, subprocess.CalledProcessError, PrivacyCheckError):
 					# Operational errors only skip this camera/year, like the Yearly job.
 					logger.exception(f"Failed Yearly backfill {year} for camera: {camera}")
 					result = {"camera": camera, "year": year, "status": "failed"}

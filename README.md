@@ -1281,6 +1281,12 @@ protokolliert.
 - `--years`: Kalenderjahre (Standard: 2026)
 - `--cameras`: nur diese Kameras (Standard: alle außer `ignored_cameras`)
 - `--force`: vorhandene Videos neu erstellen statt überspringen
+- `--blur-people`: Personen und Kennzeichen verpixeln wie bei historischen Dailys (Einstellungen
+  aus `privacy` in `config.json`, siehe [docs/verpixelung.md](docs/verpixelung.md)). Das Video
+  bekommt die Endung `_blur`; das unverpixelte bleibt erhalten. Die Erkennung dauert ca. 8–9
+  Sekunden pro Bild, ein ganzes Jahr (rund 1.640–1.830 Bilder) also ca. 4 Stunden. Weil das
+  Skript den Lock belegt, so starten, dass es vor 02:00 fertig ist, sonst fällt der nächtliche
+  Lauf aus.
 
 Ausgabe wie bei historischen Läufen unter `videos/<camera>/manual-runs/yearly/<camera>_<Enddatum>.mp4`
 mit `yearly_framerate`; Enddatum ist der 31. Dezember, im laufenden Jahr der gestrige Tag. Pro Lauf entsteht ein Bericht
