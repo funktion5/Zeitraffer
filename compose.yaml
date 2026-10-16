@@ -1,0 +1,36 @@
+# Trial setup for the container (docs/docker.md). Nothing runs on its own: no cron, no restart.
+# Every step is started by hand, e.g.  docker compose run --rm timelapse
+services:
+  timelapse:
+    build:
+      context: .
+      args:
+        # Owner of the host folders below; on a Mac usually 501, on a Synology the share's user.
+        APP_UID: "${APP_UID:-1000}"
+    image: zeitraffer:trial
+    restart: "no"
+    env_file:
+      - path: docker/storage-box.env
+        required: false
+    environment:
+      # 1 = mount the camera images read-only at /mnt/cameras before the command runs.
+      MOUNT_CAMERAS: "${MOUNT_CAMERAS:-0}"
+      # The live job writes to the storage box; stays off while the Pi is productive.
+      ALLOW_BOX_WRITES: "0"
+    # FUSE for the read-only SSHFS mount inside the container.
+    devices:
+      - /dev/fuse
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - apparmor:unconfined
+    volumes:
+      # Results stay on the host; the container itself keeps nothing.
+      - ./docker-data/videos:/app/videos
+      - ./docker-data/state:/app/state
+      - ./docker-data/logs:/app/logs
+      - ./docker-data/reports:/app/reports
+      # Detector model, copied over from the Pi (not in the repository).
+      - ./models:/app/models:ro
+      # SSH config, key and known_hosts for the storage box; copied to /home/app/.ssh at start.
+      - "${SSH_DIR:-./docker-data/ssh}:/ssh-ro:ro"

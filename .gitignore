@@ -44,3 +44,6 @@ video-backup/
 
 # Local test environment for in-place blurring (copies of camera images)
 sandbox/
+
+# Docker trial: local volumes (results, SSH files for the storage box)
+docker-data/
