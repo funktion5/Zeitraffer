@@ -1,7 +1,9 @@
 import json
+import math
 import shutil
 import subprocess
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -17,10 +19,8 @@ from src.privacy.anonymize import (
 )
 
 BLUR = {
-	"style": "blur",
 	"strength": 0.25,
 	"padding_ratio": 0.25,
-	"shape": "ellipse",
 	"feather": 0.5,
 }
 
@@ -101,8 +101,10 @@ def blur_calls(monkeypatch) -> list[tuple[str, list[Box]]]:
 	monkeypatch.setattr(
 		privacy,
 		"blur_frame",
-		lambda frame, boxes, settings: calls.append((frame.name, boxes)),
+		lambda frame, boxes, settings, size=None: calls.append((frame.name, boxes)),
 	)
+	# The fake frames are no real images; anonymize_frames reads their size before blurring.
+	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (1920, 1080))
 
 	return calls
 
@@ -140,6 +142,43 @@ def read_cache(state_root: Path) -> list[dict]:
 	return [json.loads(line) for line in path.read_text().splitlines()]
 
 
+# 1080 px high, top third up to y=360: only a box with more than half its height above that goes.
+def test_split_top_band_drops_boxes_mostly_in_the_top_part() -> None:
+	mount = Box(x0=1545, y0=20, x1=1918, y1=480, score=0.35)
+	tall_person = Box(x0=100, y0=200, x1=200, y1=900, score=0.9)
+	half = Box(x0=0, y0=260, x1=50, y1=460, score=0.5)
+
+	kept, dropped = privacy.split_top_band([mount, tall_person, half], 1080, 1 / 3)
+
+	assert kept == [tall_person, half]
+	assert dropped == [mount]
+
+
+def test_anonymize_skips_a_frame_whose_only_box_is_in_the_top_band(
+	tmp_path: Path,
+	detector_script: Path,
+	isolated_state: Path,
+	blur_calls,
+	monkeypatch,
+):
+	originals, frames = make_frames(tmp_path)
+	# The fake detector's box spans y 10-60; with a 100 px high frame, 0.4 puts the band at y 40.
+	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (100, 100))
+
+	anonymize_frames(
+		"Test-Camera",
+		originals,
+		frames,
+		detector_command(detector_script),
+		BLUR,
+		privacy.DropRules(top_share=0.4),
+	)
+
+	assert blur_calls == []
+	# Still cached unfiltered: the rule may change without a new detection.
+	assert read_cache(isolated_state)[0]["boxes"][0]["y0"] == 10
+
+
 def test_anonymize_requires_configured_detector(tmp_path: Path):
 	originals, frames = make_frames(tmp_path)
 
@@ -155,18 +194,10 @@ def test_anonymize_blurs_only_frames_with_detections(
 ):
 	originals, frames = make_frames(tmp_path)
 
-	summary = anonymize_frames(
-		"Test-Camera", originals, frames, detector_command(detector_script), BLUR
-	)
+	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
 
 	assert [name for name, _ in blur_calls] == ["frame_000001.jpg"]
 	assert blur_calls[0][1] == [Box(x0=10, y0=10, x1=40, y1=60, score=0.31)]
-
-	assert summary.frames_total == 3
-	assert summary.frames_with_people == 1
-	assert summary.frames_without_people == 2
-	assert summary.detections_total == 1
-	assert summary.detector == "fake-1"
 
 	# The cache is keyed on the original name, not the temporary frame number.
 	cache = read_cache(isolated_state)
@@ -188,7 +219,7 @@ def test_anonymize_uses_cache_on_rerun(
 	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
 	first_run_requests = log.read_text().splitlines()
 
-	summary = anonymize_frames("Test-Camera", originals, frames, command, BLUR)
+	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
 
 	# Only the id probe ran the second time; it sends no paths, so nothing was logged.
 	assert log.read_text().splitlines() == first_run_requests
@@ -196,7 +227,6 @@ def test_anonymize_uses_cache_on_rerun(
 
 	# Cached boxes are still blurred, because the copies are fresh every run.
 	assert [name for name, _ in blur_calls] == ["frame_000001.jpg", "frame_000001.jpg"]
-	assert summary.frames_with_people == 1
 
 
 def test_anonymize_rechecks_changed_files(
@@ -248,12 +278,9 @@ def test_anonymize_rechecks_results_from_another_detector(
 		)
 	)
 
-	summary = anonymize_frames(
-		"Test-Camera", originals, frames, detector_command(detector_script), BLUR
-	)
+	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
 
 	assert len(log.read_text().splitlines()) == 3
-	assert summary.frames_with_people == 1
 
 
 @pytest.mark.parametrize(
@@ -317,7 +344,7 @@ def test_anonymize_fails_closed_when_blurring_fails(
 	detector_script: Path,
 	monkeypatch,
 ):
-	def failing_blur(frame, boxes, settings):
+	def failing_blur(frame, boxes, settings, size=None):
 		raise subprocess.CalledProcessError(1, ["ffmpeg"])
 
 	monkeypatch.setattr(privacy, "blur_frame", failing_blur)
@@ -337,16 +364,13 @@ def test_anonymize_sends_frames_in_batches(
 	monkeypatch.setattr(privacy, "DETECTOR_BATCH_SIZE", 2)
 	originals, frames = make_frames(tmp_path, count=5)
 
-	summary = anonymize_frames(
-		"Test-Camera", originals, frames, detector_command(detector_script), BLUR
-	)
+	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
 
-	assert summary.frames_total == 5
 	assert len(read_cache(isolated_state)) == 5
 
 
 def test_blur_region_keeps_even_bounds_inside_the_image():
-	settings = parse_blur_settings({**BLUR, "shape": "rectangle"})
+	settings = parse_blur_settings(BLUR)
 	region = blur_region(Box(x0=3, y0=5, x1=43, y1=85, score=0.2), 101, 60, settings)
 
 	assert (region.x, region.y) == (0, 0)
@@ -356,25 +380,61 @@ def test_blur_region_keeps_even_bounds_inside_the_image():
 	assert region.x + region.w >= 53
 
 
-@pytest.mark.parametrize("shape", ["rectangle", "ellipse"])
-def test_blur_region_core_always_covers_the_detected_box(shape):
+# With a block from the detector (vehicles, plates) that wins over the strength rule.
+def test_pixelate_uses_the_detectors_block_size_when_given():
+	settings = parse_blur_settings({**BLUR, "strength": 0.08})
+	plain = blur_region(Box(x0=100, y0=100, x1=400, y1=220, score=0.9), 1920, 1080, settings)
+	fine = blur_region(
+		Box(x0=100, y0=100, x1=400, y1=220, score=0.9, block=4.0), 1920, 1080, settings
+	)
+	strength_block = max(2, round(min(plain.w, plain.h) * 0.08))
+
+	assert strength_block > 4
+	assert privacy._effect_filter(plain, settings).startswith(
+		f"scale={math.ceil(plain.w / strength_block)}:{math.ceil(plain.h / strength_block)}:"
+	)
+	assert privacy._effect_filter(fine, settings).startswith(
+		f"scale={math.ceil(fine.w / 4)}:{math.ceil(fine.h / 4)}:"
+	)
+
+
+def test_label_from_the_detector_is_kept_and_cached_as_given():
+	raw = {"x0": 1, "y0": 1, "x1": 9, "y1": 9, "score": 0.5, "label": "vehicle", "block": 4}
+
+	box = privacy._parse_box(raw, "a.jpg")
+
+	assert (box.label, box.block) == ("vehicle", 4.0)
+	assert privacy._parse_box(asdict(box), "a.jpg") == box
+	assert privacy._parse_box({**raw, "label": None}, "a.jpg").label is None
+
+	with pytest.raises(PrivacyCheckError, match="'label'"):
+		privacy._parse_box({**raw, "label": 3}, "a.jpg")
+
+
+@pytest.mark.parametrize("block", [0, 0.5, True, "4", float("nan")])
+def test_invalid_block_size_from_the_detector_is_refused(block):
+	raw = {"x0": 1, "y0": 1, "x1": 9, "y1": 9, "score": 0.5, "block": block}
+
+	with pytest.raises(PrivacyCheckError):
+		privacy._parse_box(raw, "a.jpg")
+
+
+def test_blur_region_core_always_covers_the_detected_box():
 	box = Box(x0=200, y0=100, x1=260, y1=260, score=0.4)
-	region = blur_region(box, 1920, 1080, parse_blur_settings({**BLUR, "shape": shape}))
+	region = blur_region(box, 1920, 1080, parse_blur_settings(BLUR))
 
 	for corner_x, corner_y in [(box.x0, box.y0), (box.x1, box.y1), (box.x0, box.y1)]:
 		dx = (corner_x - region.centre_x) / region.half_w
 		dy = (corner_y - region.centre_y) / region.half_h
-		distance = (dx * dx + dy * dy) ** 0.5 if shape == "ellipse" else max(abs(dx), abs(dy))
+		distance = max(abs(dx), abs(dy))
 
 		assert distance <= region.core + 1e-9
 
 
 def test_parse_blur_settings_accepts_the_production_defaults():
 	assert parse_blur_settings(BLUR) == BlurSettings(
-		style="blur",
 		strength=0.25,
 		padding_ratio=0.25,
-		shape="ellipse",
 		feather=0.5,
 	)
 
@@ -382,8 +442,6 @@ def test_parse_blur_settings_accepts_the_production_defaults():
 @pytest.mark.parametrize(
 	("change", "message"),
 	[
-		({"style": "smudge"}, "style must be one of"),
-		({"shape": "circle"}, "shape must be one of"),
 		({"strength": 2}, "strength must be between"),
 		({"strength": "strong"}, "strength must be a number"),
 		({"padding_ratio": 0.0}, "padding_ratio must be between"),
@@ -411,13 +469,13 @@ def test_anonymize_rejects_invalid_blur_settings_before_detecting(
 	monkeypatch.setenv("FAKE_DETECTOR_LOG", str(log))
 	originals, frames = make_frames(tmp_path)
 
-	with pytest.raises(PrivacyCheckError, match="style"):
+	with pytest.raises(PrivacyCheckError, match="strength"):
 		anonymize_frames(
 			"Test-Camera",
 			originals,
 			frames,
 			detector_command(detector_script),
-			{**BLUR, "style": "none"},
+			{**BLUR, "strength": 9},
 		)
 
 	assert not log.exists()
@@ -474,8 +532,7 @@ def mean_difference(first: Path, second: Path, crop: str) -> float:
 	"change",
 	[
 		{},
-		{"shape": "rectangle", "feather": 0.0},
-		{"style": "pixelate"},
+		{"feather": 0.0},
 		{"feather": 1.0},
 	],
 )
@@ -492,3 +549,99 @@ def test_blur_frame_changes_the_box_but_not_the_rest(tmp_path: Path, change):
 	# The box centre is fully replaced even when the whole margin fades out.
 	assert mean_difference(frame, reference, "crop=40:40:110:100") > 10
 	assert mean_difference(frame, reference, "crop=40:40:0:0") < 2
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_detector_box_with_non_finite_value_is_refused(value):
+	from src.privacy.anonymize import _parse_box
+
+	raw = {"x0": 1, "y0": 1, "x1": value, "y1": 9, "score": 0.9}
+
+	with pytest.raises(PrivacyCheckError, match="invalid"):
+		_parse_box(raw, "frame.jpg")
+
+
+# Drop rules: one filter for video mode and the box job.
+
+
+def test_filter_boxes_drops_known_false_positives_and_the_top_band() -> None:
+	sign = Box(x0=706, y0=557, x1=741, y1=640, score=0.9)
+	mount = Box(x0=1545, y0=20, x1=1918, y1=480, score=0.35)
+	person = Box(x0=739, y0=574, x1=767, y1=644, score=0.9)
+	rules = privacy.DropRules(top_share=1 / 3, ignore_boxes={"Cam": [[703, 557, 742, 643]]})
+
+	kept, ignored = privacy.filter_boxes([sign, mount, person], 1080, rules, "Cam")
+
+	assert kept == [person]
+	assert ignored == [sign, mount]
+	# Known boxes belong to their camera only.
+	assert privacy.filter_boxes([sign], 1080, rules, "Other")[0] == [sign]
+
+
+def test_parse_drop_rules_accepts_the_production_shape() -> None:
+	rules = privacy.parse_drop_rules(
+		{"ignore_top_share": 0.333, "ignore_boxes": {"C": [[1, 2, 3, 4]]}}
+	)
+
+	assert rules == privacy.DropRules(top_share=0.333, ignore_boxes={"C": [[1, 2, 3, 4]]})
+	assert privacy.parse_drop_rules({}) == privacy.DropRules()
+
+
+# Each of these would silently drop real people instead of stopping the run.
+@pytest.mark.parametrize(
+	"privacy_section",
+	[
+		{"ignore_top_share": 3.33},
+		{"ignore_top_share": 0.5},
+		{"ignore_top_share": -0.1},
+		{"ignore_top_share": True},
+		{"ignore_top_share": "0.3"},
+		{"ignore_boxes": [[1, 2, 3, 4]]},
+		{"ignore_boxes": {"C": [[1, 2, 3]]}},
+		{"ignore_boxes": {"C": [[3, 2, 1, 4]]}},
+		{"ignore_boxes": {"C": [[1.5, 2, 3, 4]]}},
+		{"ignore_boxes": {"C": "703, 557, 742, 643"}},
+	],
+)
+def test_parse_drop_rules_refuses_values_that_would_drop_too_much(privacy_section) -> None:
+	with pytest.raises(PrivacyCheckError):
+		privacy.parse_drop_rules(privacy_section)
+
+
+@pytest.mark.parametrize("output", ["", "1920", "1920,abc", "1920,1080,3"])
+def test_unreadable_image_size_is_a_privacy_error(monkeypatch, tmp_path: Path, output) -> None:
+	monkeypatch.setattr(
+		privacy.subprocess,
+		"run",
+		lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, output, ""),
+	)
+
+	with pytest.raises(PrivacyCheckError, match="Cannot read the size"):
+		privacy._probe_dimensions(tmp_path / "frame.jpg")
+
+
+def test_cache_keeps_only_the_newest_line_per_image(
+	tmp_path: Path,
+	detector_script: Path,
+	isolated_state: Path,
+	blur_calls,
+):
+	originals, frames = make_frames(tmp_path)
+	command = detector_command(detector_script)
+	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
+
+	# A changed frame is detected again, which appends a second line for it.
+	frames[1].write_bytes(b"a different and longer picture")
+	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
+
+	cache = read_cache(isolated_state)
+	assert [entry["image"] for entry in cache] == [original.name for original in originals]
+	assert cache[1]["size"] == len(b"a different and longer picture")
+	assert not list(isolated_state.glob(".*.tmp"))
+
+
+def test_explicit_detector_timeout_wins(tmp_path: Path, detector_script: Path) -> None:
+	_, frames = make_frames(tmp_path, count=1)
+
+	with pytest.raises(PrivacyCheckError, match="timed out after 1 s"):
+		privacy.run_detector(detector_command(detector_script, "hang"), frames, 1)

@@ -6,7 +6,7 @@ import pytest
 
 import src.video as video_module
 from src.interval_window import SUNSET, IntervalWindow
-from src.privacy.anonymize import PrivacyCheckError
+from src.privacy.anonymize import PrivacyCheckError, parse_drop_rules
 from src.video import (
 	cleanup_temp_directory,
 	copy_images_to_temp,
@@ -947,7 +947,7 @@ def test_create_timelapse_blurs_copies_before_encoding(tmp_path: Path, monkeypat
 	images = [Path("/mnt/cameras/SLSV/a.jpg"), Path("/mnt/cameras/SLSV/b.jpg")]
 
 	monkeypatch.setattr(video_module, "DETECTOR_COMMAND", ["detector"])
-	monkeypatch.setattr(video_module, "BLUR_SETTINGS", {"style": "blur"})
+	monkeypatch.setattr(video_module, "BLUR_SETTINGS", {"strength": 0.1})
 	monkeypatch.setattr(
 		video_module,
 		"anonymize_frames",
@@ -972,7 +972,8 @@ def test_create_timelapse_blurs_copies_before_encoding(tmp_path: Path, monkeypat
 			"originals": images,
 			"frames": frames,
 			"detector_command": ["detector"],
-			"blur_settings": {"style": "blur"},
+			"blur_settings": {"strength": 0.1},
+			"drop_rules": parse_drop_rules(video_module.CONFIG["privacy"]),
 		},
 	)
 	assert calls[2:] == [("encode", True), "cleanup"]

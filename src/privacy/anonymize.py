@@ -3,7 +3,7 @@ import math
 import os
 import signal
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from src.logger import logger
@@ -15,13 +15,18 @@ DETECTOR_BATCH_SIZE = 50
 DETECTOR_BATCH_TIMEOUT_SECONDS = 900
 BLUR_TIMEOUT_SECONDS = 120
 
-# Even a tiny box gets a margin, so a slightly short detection never leaves an edge visible.
-MIN_BOX_PADDING_PIXELS = 8
+# A detected box is dropped only if it overlaps a known false positive (privacy.ignore_boxes) this
+# much (intersection over union). If the camera moves, the overlap falls and the object is blurred
+# again: the exception switches itself off rather than moving somewhere else.
+MIN_IGNORE_OVERLAP = 0.5
+# The top-band rule may never cover half the image or more.
+TOP_SHARE_RANGE = (0.0, 0.5)
 
-BLUR_STYLES = ("blur", "pixelate")
-BLUR_SHAPES = ("rectangle", "ellipse")
+# Even a tiny box gets a margin, so a slightly short detection never leaves an edge visible.
+MIN_BOX_PADDING_PIXELS = 2
+
 BLUR_STRENGTH_RANGE = (0.05, 0.5)
-BLUR_PADDING_RANGE = (0.1, 1.0)
+BLUR_PADDING_RANGE = (0.05, 1.0)
 BLUR_FEATHER_RANGE = (0.0, 1.0)
 
 DETECTOR_ERROR_LOG_CHARACTERS = 2000
@@ -39,15 +44,25 @@ class Box:
 	x1: float
 	y1: float
 	score: float
+	# Pixel block size set by the detector (vehicles and plates); None = the strength rule.
+	block: float | None = None
+	# What the detector saw ("person", "vehicle", "plate"); kept in cache and state so a box can
+	# be traced afterwards. Never changes how it is blurred.
+	label: str | None = None
 
 
 @dataclass(frozen=True)
 class BlurSettings:
-	style: str
 	strength: float
 	padding_ratio: float
-	shape: str
 	feather: float
+
+
+# Boxes to drop before blurring: known false positives per camera and the global top band.
+@dataclass(frozen=True)
+class DropRules:
+	top_share: float = 0.0
+	ignore_boxes: dict[str, list[list[int]]] = field(default_factory=dict)
 
 
 # One blurred area: the even-aligned crop plus the shape whose alpha fades towards its edge.
@@ -63,43 +78,49 @@ class BlurRegion:
 	half_h: float
 	# Normalised distance up to which alpha stays 1; it always covers the detected box.
 	core: float
-
-
-@dataclass(frozen=True)
-class PrivacySummary:
-	frames_total: int
-	frames_with_people: int
-	frames_without_people: int
-	detections_total: int
-	detector: str
+	block: float | None = None
 
 
 def _parse_box(raw: object, image: str) -> Box:
 	if not isinstance(raw, dict):
 		raise PrivacyCheckError(f"Detector returned a non-object box for {image}.")
 
-	values = {}
-
-	for key in ("x0", "y0", "x1", "y1", "score"):
-		value = raw.get(key)
-
-		# bool is an int subclass but never a valid coordinate.
-		if isinstance(value, bool) or not isinstance(value, (int, float)):
-			raise PrivacyCheckError(f"Detector box for {image} has an invalid '{key}'.")
-
-		values[key] = float(value)
+	values = {key: _box_number(raw, key, image) for key in ("x0", "y0", "x1", "y1", "score")}
 
 	if values["x1"] <= values["x0"] or values["y1"] <= values["y0"]:
 		raise PrivacyCheckError(f"Detector returned an empty or inverted box for {image}.")
 
-	return Box(**values)
+	if raw.get("block") is not None:
+		values["block"] = _box_number(raw, "block", image)
+
+		if values["block"] < 1:
+			raise PrivacyCheckError(f"Detector box for {image} has an invalid 'block'.")
+
+	label = raw.get("label")
+
+	if label is not None and not isinstance(label, str):
+		raise PrivacyCheckError(f"Detector box for {image} has an invalid 'label'.")
+
+	return Box(**values, label=label)
+
+
+def _box_number(raw: dict, key: str, image: str) -> float:
+	value = raw.get(key)
+
+	# bool is an int subclass but never a valid number here.
+	if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+		raise PrivacyCheckError(f"Detector box for {image} has an invalid '{key}'.")
+
+	return float(value)
 
 
 # Run the detector in its own process group so a timeout also kills anything it spawned.
 def _call_detector(
 	command: list[str],
 	frames: list[Path],
+	timeout_seconds: float | None = None,
 ) -> dict:
+	timeout_seconds = timeout_seconds or DETECTOR_BATCH_TIMEOUT_SECONDS
 	request = "".join(f"{frame.resolve()}\n" for frame in frames)
 
 	try:
@@ -116,18 +137,14 @@ def _call_detector(
 		raise PrivacyCheckError(f"Detector could not be started: {error}") from error
 
 	try:
-		stdout, stderr = process.communicate(
-			request,
-			timeout=DETECTOR_BATCH_TIMEOUT_SECONDS,
-		)
+		stdout, stderr = process.communicate(request, timeout=timeout_seconds)
 
 	except subprocess.TimeoutExpired as error:
 		os.killpg(process.pid, signal.SIGKILL)
 		process.communicate()
 
 		raise PrivacyCheckError(
-			f"Detector timed out after {DETECTOR_BATCH_TIMEOUT_SECONDS} s "
-			f"on a batch of {len(frames)} frames."
+			f"Detector timed out after {timeout_seconds:g} s on a batch of {len(frames)} frames."
 		) from error
 
 	if process.returncode != 0:
@@ -160,8 +177,9 @@ def _call_detector(
 def run_detector(
 	command: list[str],
 	frames: list[Path],
+	timeout_seconds: float | None = None,
 ) -> tuple[str, dict[Path, list[Box]]]:
-	payload = _call_detector(command, frames)
+	payload = _call_detector(command, frames, timeout_seconds)
 	results = payload["results"]
 
 	boxes_by_frame: dict[Path, list[Box]] = {}
@@ -178,6 +196,79 @@ def run_detector(
 		boxes_by_frame[frame] = [_parse_box(raw, frame.name) for raw in raw_boxes]
 
 	return payload["detector"], boxes_by_frame
+
+
+# The top of a camera image shows sky, roofs or the camera's own mount, never a person close
+# enough to matter: a box mostly up there is a false positive (Scheunenviertel 2026-08-16: the
+# mount's hook, twice). Applied when blurring, so cached detections stay valid.
+# privacy.ignore_top_share sets the part (1/3 decided with Julius 2026-10-16); 0 switches it off.
+def split_top_band(boxes: list[Box], height: int, share: float) -> tuple[list[Box], list[Box]]:
+	limit = height * share
+	kept: list[Box] = []
+	dropped: list[Box] = []
+
+	for box in boxes:
+		inside = max(0.0, min(box.y1, limit) - box.y0) / (box.y1 - box.y0)
+		(dropped if inside > 0.5 else kept).append(box)
+
+	return kept, dropped
+
+
+def box_overlap(box: Box, reference: list[int]) -> float:
+	x0, y0, x1, y1 = reference
+	width = min(box.x1, x1) - max(box.x0, x0)
+	height = min(box.y1, y1) - max(box.y0, y0)
+
+	if width <= 0 or height <= 0:
+		return 0.0
+
+	intersection = width * height
+	union = (box.x1 - box.x0) * (box.y1 - box.y0) + (x1 - x0) * (y1 - y0) - intersection
+
+	return intersection / union
+
+
+# The one place boxes are dropped, for video mode and the box job alike.
+def filter_boxes(
+	boxes: list[Box], height: int, rules: DropRules, camera: str
+) -> tuple[list[Box], list[Box]]:
+	references = rules.ignore_boxes.get(camera, [])
+	known = [
+		box for box in boxes if any(box_overlap(box, r) >= MIN_IGNORE_OVERLAP for r in references)
+	]
+	kept, top = split_top_band([box for box in boxes if box not in known], height, rules.top_share)
+
+	return kept, known + top
+
+
+# Checked when a run starts: a typo here would silently drop real people, so it stops the run.
+def parse_drop_rules(privacy: dict) -> DropRules:
+	top_share = privacy.get("ignore_top_share", 0.0)
+
+	if (
+		isinstance(top_share, bool)
+		or not isinstance(top_share, (int, float))
+		or not TOP_SHARE_RANGE[0] <= top_share < TOP_SHARE_RANGE[1]
+	):
+		raise PrivacyCheckError("privacy.ignore_top_share must be a number from 0 to below 0.5.")
+
+	ignore_boxes = privacy.get("ignore_boxes") or {}
+
+	if not isinstance(ignore_boxes, dict):
+		raise PrivacyCheckError("privacy.ignore_boxes must map cameras to box lists.")
+
+	for camera, references in ignore_boxes.items():
+		for box in references if isinstance(references, list) else [None]:
+			if not (
+				isinstance(box, list)
+				and len(box) == 4
+				and all(isinstance(v, int) and not isinstance(v, bool) and v >= 0 for v in box)
+				and box[2] > box[0]
+				and box[3] > box[1]
+			):
+				raise PrivacyCheckError(f"privacy.ignore_boxes for {camera} has an invalid box.")
+
+	return DropRules(top_share=float(top_share), ignore_boxes=ignore_boxes)
 
 
 # An empty request returns the detector id, so cached results can be validated without a run.
@@ -251,6 +342,25 @@ def _cached_boxes(
 		return None
 
 
+# Every re-detection appends a line, so the file only grows; keep the newest line per image.
+# Written to a temporary file and swapped in, so a power cut leaves the old cache intact.
+def _compact_cache(camera: str) -> None:
+	path = _cache_path(camera)
+
+	if not path.exists():
+		return
+
+	lines = path.read_text(encoding="utf-8").splitlines()
+	entries = load_cache(camera)
+
+	if len(lines) == len(entries):
+		return
+
+	temporary = path.with_name(f".{path.name}.tmp")
+	temporary.write_text("".join(json.dumps(entry) + "\n" for entry in entries.values()))
+	temporary.replace(path)
+
+
 def _append_cache(
 	camera: str,
 	entries: list[dict],
@@ -283,7 +393,11 @@ def _probe_dimensions(frame: Path) -> tuple[int, int]:
 		timeout=BLUR_TIMEOUT_SECONDS,
 	).stdout.strip()
 
-	width, height = (int(value) for value in output.split(","))
+	try:
+		width, height = (int(value) for value in output.split(","))
+
+	except ValueError as error:
+		raise PrivacyCheckError(f"Cannot read the size of {frame.name}: {output!r}") from error
 
 	return width, height
 
@@ -305,17 +419,9 @@ def parse_blur_settings(raw: object) -> BlurSettings:
 	if not isinstance(raw, dict):
 		raise PrivacyCheckError("privacy.blur is missing or not an object.")
 
-	if raw.get("style") not in BLUR_STYLES:
-		raise PrivacyCheckError(f"privacy.blur.style must be one of {', '.join(BLUR_STYLES)}.")
-
-	if raw.get("shape") not in BLUR_SHAPES:
-		raise PrivacyCheckError(f"privacy.blur.shape must be one of {', '.join(BLUR_SHAPES)}.")
-
 	return BlurSettings(
-		style=raw["style"],
 		strength=_number_in_range(raw, "strength", BLUR_STRENGTH_RANGE),
 		padding_ratio=_number_in_range(raw, "padding_ratio", BLUR_PADDING_RANGE),
-		shape=raw["shape"],
 		feather=_number_in_range(raw, "feather", BLUR_FEATHER_RANGE),
 	)
 
@@ -333,10 +439,8 @@ def blur_region(
 	padding_x = max(MIN_BOX_PADDING_PIXELS, box_w * settings.padding_ratio)
 	padding_y = max(MIN_BOX_PADDING_PIXELS, box_h * settings.padding_ratio)
 
-	# An ellipse through the box corners needs half-axes sqrt(2) times the box half-sizes.
-	scale = math.sqrt(2) if settings.shape == "ellipse" else 1.0
-	inner_half_w = box_w / 2 * scale
-	inner_half_h = box_h / 2 * scale
+	inner_half_w = box_w / 2
+	inner_half_h = box_h / 2
 	half_w = inner_half_w + padding_x
 	half_h = inner_half_h + padding_y
 
@@ -359,36 +463,25 @@ def blur_region(
 		half_w=half_w,
 		half_h=half_h,
 		core=max(inner_half_w / half_w, inner_half_h / half_h),
+		block=box.block,
 	)
 
 
+# Pixelate: shrink to one pixel per block, then enlarge without smoothing.
 def _effect_filter(region: BlurRegion, settings: BlurSettings) -> str:
 	short_side = min(region.w, region.h)
+	block = round(region.block) if region.block else max(2, round(short_side * settings.strength))
+	columns = max(1, math.ceil(region.w / block))
+	rows = max(1, math.ceil(region.h / block))
 
-	if settings.style == "pixelate":
-		block = max(2, round(short_side * settings.strength))
-		columns = max(1, math.ceil(region.w / block))
-		rows = max(1, math.ceil(region.h / block))
-
-		return (
-			f"scale={columns}:{rows}:flags=area,scale={region.w}:{region.h}:flags=neighbor,setsar=1"
-		)
-
-	# Radius may not exceed half the plane; chroma planes are half the luma size.
-	luma_radius = min(max(1, round(short_side * settings.strength)), max(1, short_side // 2 - 1))
-	chroma_radius = min(max(1, luma_radius // 2), max(1, short_side // 4 - 1))
-
-	return f"boxblur={luma_radius}:3:{chroma_radius}:3"
+	return f"scale={columns}:{rows}:flags=area,scale={region.w}:{region.h}:flags=neighbor,setsar=1"
 
 
 def _alpha_expression(region: BlurRegion, settings: BlurSettings) -> str:
 	dx = f"(X+{region.x}-{region.centre_x:.2f})/{region.half_w:.2f}"
 	dy = f"(Y+{region.y}-{region.centre_y:.2f})/{region.half_h:.2f}"
 
-	if settings.shape == "ellipse":
-		distance = f"hypot({dx},{dy})"
-	else:
-		distance = f"max(abs({dx}),abs({dy}))"
+	distance = f"max(abs({dx}),abs({dy}))"
 
 	# Fully opaque up to fade_start, then linear to zero at the outer edge of the margin.
 	fade_start = region.core + (1 - region.core) * (1 - settings.feather)
@@ -423,8 +516,9 @@ def blur_frame(
 	frame: Path,
 	boxes: list[Box],
 	settings: BlurSettings,
+	size: tuple[int, int] | None = None,
 ) -> None:
-	width, height = _probe_dimensions(frame)
+	width, height = size or _probe_dimensions(frame)
 	regions = [blur_region(box, width, height, settings) for box in boxes]
 	regions = [region for region in regions if region.w >= 2 and region.h >= 2]
 
@@ -468,11 +562,13 @@ def anonymize_frames(
 	frames: list[Path],
 	detector_command: list[str] | None,
 	blur_settings: object,
-) -> PrivacySummary:
+	drop_rules: DropRules | None = None,
+) -> None:
 	if not detector_command:
 		raise PrivacyCheckError("Blurring was requested but privacy.detector_command is not set.")
 
 	settings = parse_blur_settings(blur_settings)
+	rules = drop_rules or DropRules()
 
 	if len(originals) != len(frames):
 		raise PrivacyCheckError("Original and copied frame lists differ in length.")
@@ -525,9 +621,13 @@ def anonymize_frames(
 
 		_append_cache(camera, entries)
 
+	if unchecked:
+		_compact_cache(camera)
+
 	# Every detector call has returned (and its process exited) before the first FFmpeg blur.
-	frames_with_people = 0
+	frames_blurred = 0
 	detections_total = 0
+	ignored_total = 0
 
 	for original, frame in zip(originals, frames, strict=True):
 		boxes = boxes_by_frame.get(frame)
@@ -535,33 +635,34 @@ def anonymize_frames(
 		if boxes is None:
 			raise PrivacyCheckError(f"Frame was never checked: {original.name}")
 
-		logger.debug(f"Privacy check {original.name}: {len(boxes)} detections")
+		if not boxes:
+			continue
+
+		try:
+			size = _probe_dimensions(frame)
+
+		except (OSError, subprocess.SubprocessError) as error:
+			raise PrivacyCheckError(f"Cannot read the size of {original.name}: {error}") from error
+
+		boxes, ignored = filter_boxes(boxes, size[1], rules, camera)
+		ignored_total += len(ignored)
+
+		for box in ignored:
+			logger.info(f"Ignored box in {original.name}: {asdict(box)}")
 
 		if not boxes:
 			continue
 
 		try:
-			blur_frame(frame, boxes, settings)
+			blur_frame(frame, boxes, settings, size)
 
 		except (OSError, ValueError, subprocess.SubprocessError) as error:
 			raise PrivacyCheckError(f"Blurring failed for {original.name}: {error}") from error
 
-		frames_with_people += 1
+		frames_blurred += 1
 		detections_total += len(boxes)
 
-	summary = PrivacySummary(
-		frames_total=len(frames),
-		frames_with_people=frames_with_people,
-		frames_without_people=len(frames) - frames_with_people,
-		detections_total=detections_total,
-		detector=detector,
-	)
-
 	logger.info(
-		f"Privacy summary for {camera}: frames={summary.frames_total} | "
-		f"with_people={summary.frames_with_people} | "
-		f"without_people={summary.frames_without_people} | "
-		f"detections={summary.detections_total} | detector={summary.detector}"
+		f"Privacy summary for {camera}: frames={len(frames)} | blurred={frames_blurred} | "
+		f"detections={detections_total} | ignored={ignored_total} | detector={detector}"
 	)
-
-	return summary

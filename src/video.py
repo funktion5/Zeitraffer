@@ -11,7 +11,7 @@ import psutil
 from src.config import load_config
 from src.interval_window import IntervalWindow
 from src.logger import logger
-from src.privacy.anonymize import anonymize_frames
+from src.privacy.anonymize import anonymize_frames, parse_drop_rules
 
 CONFIG = load_config()
 
@@ -352,6 +352,8 @@ def create_timelapse(
 			frames=copied_frames,
 			detector_command=DETECTOR_COMMAND,
 			blur_settings=BLUR_SETTINGS,
+			# Checked only when blurring is asked for: a bad value must not stop normal videos.
+			drop_rules=parse_drop_rules(CONFIG["privacy"]),
 		)
 
 	video_path = create_image_timelapse(

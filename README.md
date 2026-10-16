@@ -281,18 +281,22 @@ Beispiel:
     "ffmpeg_threads": 2
   },
   "privacy": {
+    "blur_cameras": ["…"],
+    "ignore_boxes": {"…": [[703, 557, 742, 643]]},
+    "ignore_top_share": 0.333,
     "detector_command": [
       ".venv/bin/python3", "-I", "src/privacy/detect.py",
-      "--runtime", "ort",
       "--model", "models/object_detection_yolox_2022nov.onnx",
       "--tiles", "2",
-      "--threshold", "0.25"
+      "--threshold", "0.25",
+      "--vehicle-plate-share", "0.55",
+      "--vehicle-threshold", "0.15",
+      "--plate-search",
+      "--vehicle-block-ratio", "0.0133"
     ],
     "blur": {
-      "style": "pixelate",
-      "strength": 0.1,
-      "padding_ratio": 0.25,
-      "shape": "ellipse",
+      "strength": 0.08,
+      "padding_ratio": 0.05,
       "feather": 0.5
     }
   }
@@ -316,10 +320,11 @@ historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reic
 Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
 bis zur Fensterlänge (30 bzw. 365).
 
-`privacy` steuert die Verpixelung von Personen: `detector_command` ist die Befehlszeile der
-Personenerkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
-(`style` `pixelate` oder `blur`, Stärke, Rand, Form, weicher Übergang). Ungültige Werte brechen
-einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet wird. Alle Werte und Grenzen:
+`privacy` steuert die Verpixelung von Personen und Kennzeichen: `detector_command` ist die
+Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
+(Blockgröße, Rand, weicher Übergang), `ignore_boxes` und `ignore_top_share` verwerfen bekannte
+Fehlerkennungen. Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
+wird. Alle Werte und Grenzen:
 [docs/verpixelung.md](docs/verpixelung.md#konfiguration).
 
 Die Tests prüfen unter anderem:
@@ -2302,12 +2307,13 @@ Ausgewählte Originalbilder werden zuerst nach `temp/` kopiert und dort als `fra
 
 ### `src/privacy/`
 
-Verpixelung von Personen (derzeit nur für historische Dailys, siehe
+Verpixelung von Personen und Kennzeichen (derzeit nur für historische Dailys, siehe
 [docs/verpixelung.md](docs/verpixelung.md)):
 
-- `anonymize.py`: ruft die Erkennung paketweise auf, prüft jedes Ergebnis, verwaltet den Cache
-  und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder Zweifel bricht den Lauf ab
-- `detect.py`: Personenerkennung (YOLOX), läuft als eigener Prozess
+- `anonymize.py`: ruft die Erkennung paketweise auf, prüft jedes Ergebnis, verwaltet den Cache,
+  verwirft bekannte Fehlerkennungen und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder
+  Zweifel bricht den Lauf ab
+- `detect.py`: Erkennung von Personen und Fahrzeugen (YOLOX), läuft als eigener Prozess
 
 ### `src/logger.py`
 

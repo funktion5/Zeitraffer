@@ -34,7 +34,8 @@
     "Wunstorf-Marktplatz",
     "SVG",
     "Hafenstrasse",
-    "Kitestrand"
+    "Kitestrand",
+    "BlurTest"
   ],
   "timelapse": {
     "daily_framerate": 10,
@@ -43,24 +44,36 @@
     "ffmpeg_threads": 2
   },
   "privacy": {
+    "blur_cameras": [
+      "BlurTest",
+      "Scheunenviertel"
+    ],
+    "ignore_boxes": {
+      "BlurTest": [[703, 557, 742, 643]],
+      "Scheunenviertel": [[703, 557, 742, 643]]
+    },
+    "ignore_top_share": 0.333,
     "detector_command": [
       ".venv/bin/python3",
       "-I",
       "src/privacy/detect.py",
-      "--runtime",
-      "ort",
       "--model",
       "models/object_detection_yolox_2022nov.onnx",
       "--tiles",
       "2",
       "--threshold",
-      "0.25"
+      "0.25",
+      "--vehicle-plate-share",
+      "0.55",
+      "--vehicle-threshold",
+      "0.15",
+      "--plate-search",
+      "--vehicle-block-ratio",
+      "0.0133"
     ],
     "blur": {
-      "style": "pixelate",
-      "strength": 0.1,
-      "padding_ratio": 0.25,
-      "shape": "ellipse",
+      "strength": 0.08,
+      "padding_ratio": 0.05,
       "feather": 0.5
     }
   }

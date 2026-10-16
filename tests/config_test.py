@@ -6,7 +6,8 @@ import pytest
 import src.config as config_module
 from src.date_coverage import get_min_coverage_days
 from src.interval_window import interval_window_from_config
-from src.privacy.anonymize import parse_blur_settings
+from src.privacy.anonymize import parse_blur_settings, parse_drop_rules
+from src.privacy.box_writer import check_camera_name
 
 
 EXPECTED_ROOT_KEYS = {
@@ -39,6 +40,9 @@ EXPECTED_MIN_COVERAGE_KEYS = {
 }
 
 EXPECTED_PRIVACY_KEYS = {
+	"blur_cameras",
+	"ignore_boxes",
+	"ignore_top_share",
 	"detector_command",
 	"blur",
 }
@@ -168,6 +172,21 @@ def assert_valid_config_structure(config: dict) -> None:
 
 	# Invalid blur settings would stop every --blur-people run, so catch them here already.
 	parse_blur_settings(privacy["blur"])
+
+	# The cameras the blur job may write to; names must pass the box writer's own check.
+	blur_cameras = privacy["blur_cameras"]
+
+	assert isinstance(blur_cameras, list)
+	assert len(blur_cameras) == len(set(blur_cameras))
+
+	for camera in blur_cameras:
+		check_camera_name(camera)
+
+	# Known false positives per blur camera and the top band: the same check as at runtime.
+	rules = parse_drop_rules(privacy)
+
+	assert set(rules.ignore_boxes) <= set(blur_cameras)
+	assert rules.top_share > 0
 
 
 # The production configuration must live at config/config.json.
