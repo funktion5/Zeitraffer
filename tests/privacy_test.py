@@ -348,6 +348,8 @@ def test_anonymize_fails_closed_when_blurring_fails(
 		raise subprocess.CalledProcessError(1, ["ffmpeg"])
 
 	monkeypatch.setattr(privacy, "blur_frame", failing_blur)
+	# The fake frames are no real images, and CI has no ffprobe: give them a size.
+	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (1920, 1080))
 	originals, frames = make_frames(tmp_path)
 
 	with pytest.raises(PrivacyCheckError, match="Blurring failed for 20260101T120101.jpg"):
