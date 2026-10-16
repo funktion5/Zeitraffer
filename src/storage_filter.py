@@ -13,7 +13,7 @@ from pathlib import Path
 
 import src.images as images_module
 from src.config import PROJECT_ROOT, load_config
-from src.images import extract_date, get_cameras, require_cameras
+from src.images import date_patterns, extract_date, get_cameras, require_cameras
 from src.logger import LOG_TIMEZONE, cleanup_old_logs, configure_file_logging, logger
 
 REPORT_ROOT = PROJECT_ROOT / "reports" / "storage-filter"
@@ -110,6 +110,56 @@ def list_camera_files(storage_box: StorageBox, camera: str) -> dict[str, int]:
 		raise OSError(f"Storage box listing failed for camera {camera}: {result.stderr.strip()}")
 
 	return parse_ls_output(result.stdout)
+
+
+# One `ls -1d` with the shared date patterns lists only the requested days, however large the
+# folder has grown (~0.8 s on the box). A name whose filename date is another day is dropped
+# (the pattern only happened to match, e.g. inside a time); a name without a readable date is
+# kept, so the caller can refuse and log it instead of it vanishing.
+# Name -> modification time (epoch seconds) of the camera's images for these days, in one
+# command. The times serve the blur job's settle and night checks without touching the mount.
+def list_images_for_dates(storage_box: StorageBox, camera: str, days: list[date]) -> dict[str, int]:
+	directory = storage_box.camera_directory(camera)
+	patterns = dict.fromkeys(pattern for day in days for pattern in date_patterns(day))
+	globs = " ".join(f"{shlex.quote(directory)}/*{pattern}*" for pattern in patterns)
+
+	try:
+		result = storage_box.run(f"ls -l --time-style=+%s -d {globs}", LISTING_TIMEOUT_SECONDS)
+
+	except subprocess.TimeoutExpired as error:
+		raise TimeoutError(f"Storage box listing timed out for camera: {camera}") from error
+
+	# A pattern without a match is reported as missing; anything else means the listing is
+	# incomplete, and an incomplete listing would silently skip images.
+	problems = [
+		line for line in result.stderr.splitlines() if "No such file or directory" not in line
+	]
+
+	if result.returncode not in (0, 2) or problems:
+		raise OSError(f"Storage box listing failed for camera {camera}: {result.stderr.strip()}")
+
+	prefix = f"{directory}/"
+	wanted = set(days)
+	images: dict[str, int] = {}
+
+	for line in result.stdout.splitlines():
+		# mode, links, owner, group, size, mtime, path
+		fields = line.split(None, 6)
+
+		if len(fields) != 7 or not fields[5].isdigit():
+			raise OSError(f"Unreadable storage box listing line for camera {camera}: {line!r}")
+
+		name = fields[6].removeprefix(prefix)
+
+		if (
+			"/" not in name
+			and not name.startswith(".")
+			and name.lower().endswith(".jpg")
+			and extract_date(name) in (wanted | {None})
+		):
+			images[name] = int(fields[5])
+
+	return dict(sorted(images.items()))
 
 
 # Hash files on the storage box, so only the hashes cross the network. Reading

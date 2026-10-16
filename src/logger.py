@@ -16,6 +16,7 @@ LogType = Literal[
 	"monthly",
 	"yearly",
 	"filter",
+	"privacy",
 ]
 
 

@@ -3,8 +3,9 @@ import os
 import re
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.image_worker import run_isolated_worker
 from src.logger import logger
@@ -48,6 +49,15 @@ def require_cameras(
 	return cameras
 
 
+# The date formats used by the camera systems; a filename containing one belongs to that day.
+def date_patterns(target_date: date) -> tuple[str, str, str]:
+	return (
+		target_date.strftime("%Y%m%d"),
+		target_date.strftime("%y%m%d"),
+		target_date.strftime("%y-%m-%d"),
+	)
+
+
 # Scan the camera directory once and group images for requested dates.
 def find_images_for_dates(
 	camera: str,
@@ -57,15 +67,7 @@ def find_images_for_dates(
 	camera_path = CAMERA_ROOT / camera
 	unique_dates = list(dict.fromkeys(target_dates))
 
-	# Support the different date formats used by the camera systems.
-	date_patterns = {
-		target_date: (
-			target_date.strftime("%Y%m%d"),
-			target_date.strftime("%y%m%d"),
-			target_date.strftime("%y-%m-%d"),
-		)
-		for target_date in unique_dates
-	}
+	patterns_by_date = {target_date: date_patterns(target_date) for target_date in unique_dates}
 	images_by_date = {target_date: [] for target_date in unique_dates}
 
 	# Scan the camera directory once and match known date formats by filename.
@@ -77,7 +79,7 @@ def find_images_for_dates(
 			if not entry.name.lower().endswith(".jpg"):
 				continue
 
-			for target_date, target_patterns in date_patterns.items():
+			for target_date, target_patterns in patterns_by_date.items():
 				if not any(date_pattern in entry.name for date_pattern in target_patterns):
 					continue
 
@@ -216,6 +218,17 @@ def extract_time(filename: str):
 			)
 
 	return None
+
+
+# Filename date and time are local camera time; unknown formats are never guessed.
+def image_moment(name: str, timezone: str) -> datetime | None:
+	image_date = extract_date(name)
+	image_time = extract_time(name)
+
+	if image_date is None or image_time is None:
+		return None
+
+	return datetime.combine(image_date, time(*image_time), ZoneInfo(timezone))
 
 
 # Select images already discovered for one date inside its daylight window.

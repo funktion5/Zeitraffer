@@ -1,12 +1,14 @@
+import os
 import csv
 import fcntl
 import stat
 import subprocess
 import time
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
+from privacy_fakes import run_in
 
 import src.storage_filter as storage_filter_module
 from src.storage_filter import (
@@ -16,6 +18,7 @@ from src.storage_filter import (
 	get_storage_box,
 	hash_camera_files,
 	list_camera_files,
+	list_images_for_dates,
 	parse_arguments,
 	parse_ls_output,
 	write_report,
@@ -29,17 +32,7 @@ BOX = StorageBox(remote="user@box", base_directory="")
 # so quoting and output parsing are exercised against real ls and sha256sum.
 @pytest.fixture
 def local_box(tmp_path, monkeypatch):
-	def run_locally(self, command, timeout_seconds):
-		return subprocess.run(
-			["bash", "-c", command],
-			cwd=tmp_path,
-			capture_output=True,
-			text=True,
-			timeout=timeout_seconds,
-			check=False,
-		)
-
-	monkeypatch.setattr(StorageBox, "run", run_locally)
+	monkeypatch.setattr(StorageBox, "run", run_in(tmp_path))
 	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", tmp_path)
 	(tmp_path / "Cam").mkdir()
 	return tmp_path / "Cam"
@@ -322,3 +315,92 @@ def test_main_continues_after_a_failing_camera(tmp_path, local_box, monkeypatch)
 
 	assert storage_filter_module.main(["--cameras", "Gone", "Cam"]) == 1
 	assert len(list((tmp_path / "reports" / "sf").glob("Cam_*.csv"))) == 1
+
+
+def test_listing_for_dates_covers_every_camera_format_and_only_those_days(local_box):
+	yesterday = TODAY - timedelta(days=1)
+	wanted = [
+		"20250109T235000.jpg",
+		"20250110T120000.jpg",
+		"scheunenviertel-25-01-10_12-14-56-20.jpg",
+		"Cam_00_20250110120000.jpg",
+		"P25011012000000.jpg",
+		# Matches the pattern but no format reads its date: kept, so the caller can refuse it.
+		"IMG20250110-120000.jpg",
+	]
+	unwanted = [
+		"20250108T120000.jpg",
+		"20250110T120000.png",
+		".20250110T120000.jpg.tmp",
+		# Contains a pattern of the day, but its filename date is another day.
+		"20250107T250110.jpg",
+	]
+
+	for name in wanted + unwanted:
+		_write(local_box, name, b"x")
+
+	(local_box / "original").mkdir()
+	_write(local_box / "original", "20250110T120000.abcdef.jpg", b"x")
+
+	os.utime(local_box / "20250110T120000.jpg", (1736506800, 1736506800))
+	listing = list_images_for_dates(BOX, "Cam", [yesterday, TODAY])
+
+	assert list(listing) == sorted(wanted)
+	# The upload time comes with the listing, for the blur job's settle and night checks.
+	assert listing["20250110T120000.jpg"] == 1736506800
+
+
+def test_listing_for_dates_without_images_is_empty(local_box):
+	assert list_images_for_dates(BOX, "Cam", [TODAY]) == {}
+
+
+def test_listing_for_dates_is_one_command(monkeypatch):
+	commands = []
+
+	def record(self, command, timeout_seconds):
+		commands.append(command)
+		return subprocess.CompletedProcess([], 0, "", "")
+
+	monkeypatch.setattr(StorageBox, "run", record)
+	list_images_for_dates(BOX, "Cam", [TODAY - timedelta(days=1), TODAY])
+
+	assert commands == [
+		"ls -l --time-style=+%s -d Cam/*20250109* Cam/*250109* Cam/*25-01-09*"
+		" Cam/*20250110* Cam/*250110* Cam/*25-01-10*"
+	]
+
+
+# A line that does not parse would otherwise drop an image from the round without a trace.
+def test_unreadable_listing_line_is_an_error(monkeypatch):
+	monkeypatch.setattr(
+		StorageBox,
+		"run",
+		lambda self, command, timeout_seconds: subprocess.CompletedProcess(
+			[], 0, "-rw-r--r-- 1 u g 9 yesterday Cam/20250110T120000.jpg\n", ""
+		),
+	)
+
+	with pytest.raises(OSError, match="Unreadable"):
+		list_images_for_dates(BOX, "Cam", [TODAY])
+
+
+@pytest.mark.parametrize(
+	("returncode", "stderr"),
+	[
+		(2, "ls: cannot access 'Cam': Permission denied"),
+		(2, "ls: cannot open directory 'Cam': Input/output error"),
+		(1, ""),
+		(255, "Connection closed"),
+	],
+)
+def test_incomplete_listing_for_dates_is_an_error(monkeypatch, returncode, stderr):
+	monkeypatch.setattr(
+		StorageBox,
+		"run",
+		lambda self, command, timeout_seconds: subprocess.CompletedProcess(
+			[], returncode, "Cam/20250110T120000.jpg\n", stderr
+		),
+	)
+
+	with pytest.raises(OSError):
+		list_images_for_dates(BOX, "Cam", [TODAY])
