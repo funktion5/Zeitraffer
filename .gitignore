@@ -41,3 +41,6 @@ docs/nas-notizen/
 # tests
 test-output/*
 video-backup/
+
+# Local test environment for in-place blurring (copies of camera images)
+sandbox/
