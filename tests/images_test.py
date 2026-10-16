@@ -26,9 +26,10 @@ from src.solar import get_sun_times
 # A 12:00 window centre for every date.
 NOON = defaultdict(lambda: 12 * 60 * 60)
 
-# These tests read the real camera storage. It is only mounted on the Pi, not on CI runners.
+# These tests read the real camera storage. It is only mounted on the Pi, not on CI runners. A
+# mount, not just the folder: the Docker image keeps an empty /mnt/cameras as its mount point.
 requires_camera_storage = pytest.mark.skipif(
-	not images_module.CAMERA_ROOT.is_dir(),
+	not os.path.ismount(images_module.CAMERA_ROOT),
 	reason=f"camera storage {images_module.CAMERA_ROOT} is not mounted",
 )
 
