@@ -28,6 +28,12 @@ TODAY = date(2025, 1, 10)
 BOX = StorageBox(remote="user@box", base_directory="")
 
 
+# A developer shell may export the setting; the mount tests must not see it.
+@pytest.fixture(autouse=True)
+def no_storage_box_environment(monkeypatch):
+	monkeypatch.delenv(storage_filter_module.STORAGE_BOX_ENV, raising=False)
+
+
 # Run the storage box's commands locally with tmp_path as its home directory,
 # so quoting and output parsing are exercised against real ls and sha256sum.
 @pytest.fixture
@@ -68,6 +74,27 @@ def test_storage_box_comes_from_the_live_sshfs_mount(tmp_path):
 	)
 
 	assert get_storage_box(mounts) == StorageBox("user-sub1@box.example", "")
+
+
+def test_storage_box_from_environment_wins_over_the_mount(tmp_path, monkeypatch):
+	mounts = tmp_path / "mounts"
+	mounts.write_text("user-sub1@box.example: /mnt/cameras fuse.sshfs ro,nosuid 0 0\n")
+	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box")
+
+	assert get_storage_box(mounts) == StorageBox("box", "")
+
+
+def test_storage_box_environment_accepts_a_base_directory(tmp_path, monkeypatch):
+	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box:archive/cams")
+
+	assert get_storage_box(tmp_path / "no-mounts") == StorageBox("box", "archive/cams")
+
+
+def test_storage_box_environment_without_alias_is_an_error(tmp_path, monkeypatch):
+	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, ":archive")
+
+	with pytest.raises(OSError, match="ssh alias"):
+		get_storage_box(tmp_path / "no-mounts")
 
 
 def test_missing_mount_is_an_error(tmp_path):

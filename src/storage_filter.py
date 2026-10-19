@@ -1,6 +1,7 @@
 import argparse
 import csv
 import fcntl
+import os
 import shlex
 import subprocess
 import time
@@ -20,6 +21,10 @@ REPORT_ROOT = PROJECT_ROOT / "reports" / "storage-filter"
 RUN_LOCK_PATH = PROJECT_ROOT / "state" / "zeitraffer-run.lock"
 REPORT_COLUMNS = ("camera", "path", "reason")
 MOUNTS_PATH = Path("/proc/mounts")
+
+# Hosts without SSHFS (the web server) name the box here as "<ssh alias>[:<base directory>]".
+# The alias carries user, port and key via ~/.ssh/config, so none of them is in the repository.
+STORAGE_BOX_ENV = "TIMELAPSE_STORAGE_BOX"
 
 # A listing of ~240k files takes a few seconds.
 LISTING_TIMEOUT_SECONDS = 60
@@ -65,8 +70,19 @@ class StorageBox:
 		)
 
 
-# Return the storage box behind the live camera mount.
+# Return the storage box: the explicit environment setting wins, otherwise the one behind the
+# live camera mount.
 def get_storage_box(mounts_path: Path = MOUNTS_PATH) -> StorageBox:
+	configured = os.environ.get(STORAGE_BOX_ENV, "").strip()
+
+	if configured:
+		remote, _, base_directory = configured.partition(":")
+
+		if not remote:
+			raise OSError(f"{STORAGE_BOX_ENV} must start with an ssh alias or user@host")
+
+		return StorageBox(remote=remote, base_directory=base_directory)
+
 	camera_root = str(images_module.CAMERA_ROOT)
 
 	for line in mounts_path.read_text().splitlines():
