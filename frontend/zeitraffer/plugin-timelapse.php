@@ -2,23 +2,25 @@
 /*
  * Plugin Name: Zeitraffer
  */
-defined( 'ABSPATH' ) || exit; 
+declare(strict_types=1);
+
+defined( 'ABSPATH' ) || exit;
 
 // Videos live in <uploads>/zeitraffer. Asking WordPress for the uploads location keeps
 // this correct if a host relocates uploads or serves them from another URL.
 // $create_dir = false: do not create month folders just by looking.
-function tl_timelapse_videos_dir() {
+function tl_timelapse_videos_dir(): string {
   $uploads = wp_upload_dir(null, false);
   return $uploads["basedir"] . "/zeitraffer";
 }
 
-function tl_timelapse_videos_url($path) {
+function tl_timelapse_videos_url(string $path): string {
   $uploads = wp_upload_dir(null, false);
   return $uploads["baseurl"] . "/zeitraffer/" . $path;
 }
 
 
-function tl_timelapse_get_cameras() {
+function tl_timelapse_get_cameras(): array {
   $paths = glob(tl_timelapse_videos_dir() . "/*", GLOB_ONLYDIR);
   $cameras = [];
 
@@ -46,7 +48,7 @@ function tl_timelapse_get_cameras() {
 }
 
 // URL of the page that holds the [zeitraffer] shortcode.
-function tl_timelapse_camera_page_url() {
+function tl_timelapse_camera_page_url(): string|false {
   // Filterable, so a renamed page needs no code change.
   $page = get_page_by_path(apply_filters("zeitraffer_camera_page_slug", "zeitraffer"));
 
@@ -61,7 +63,7 @@ function tl_timelapse_camera_page_url() {
   return get_permalink($page_id);
 }
 
-function tl_timelapse_shortcode() {
+function tl_timelapse_shortcode(): string {
   $cameras = tl_timelapse_published_cameras();
 
   // An empty <ul> is invalid markup and tells screen reader users nothing.
@@ -80,7 +82,7 @@ function tl_timelapse_shortcode() {
   return $html . '</ul>';
 }
 
-function tl_timelapse_latest_video($folder, $period) {
+function tl_timelapse_latest_video(string $folder, string $period): ?string {
   // glob() returns false on error, and rsort(false) is a fatal TypeError in PHP 8.
   $files = glob(tl_timelapse_videos_dir() . "/" . $folder . "/" . $period . "/*.mp4") ?: [];
   rsort($files);
@@ -89,7 +91,7 @@ function tl_timelapse_latest_video($folder, $period) {
 
 // End date of a video: the pipeline names files <camera>_<YYYY-MM-DD>.mp4 and that date is the last
 // day the video covers. Other names fall back to the file's modification date.
-function tl_timelapse_video_end_date($file) {
+function tl_timelapse_video_end_date(string $file): DateTimeImmutable {
   if (preg_match('/(\d{4}-\d{2}-\d{2})/', basename($file), $match)) {
     $date = DateTimeImmutable::createFromFormat('!Y-m-d', $match[1], wp_timezone());
     // createFromFormat rolls impossible dates over (13th month -> next year), so require
@@ -105,7 +107,7 @@ function tl_timelapse_video_end_date($file) {
 // Time span a video covers, as text for the heading. The windows follow the pipeline (README,
 // "Timelapse-Typen"): daily = that day, weekly = 7 calendar days, monthly = 30 days, yearly = the
 // calendar year up to the end date (365 or 366 days). All include the end date.
-function tl_timelapse_video_span($file, $period) {
+function tl_timelapse_video_span(string $file, string $period): string {
   $end = tl_timelapse_video_end_date($file);
 
   $start = match ($period) {
@@ -115,7 +117,7 @@ function tl_timelapse_video_span($file, $period) {
     default => $end,
   };
 
-  $format = fn($date) => wp_date(get_option("date_format"), $date->getTimestamp());
+  $format = fn(DateTimeImmutable $date): string => (string) wp_date(get_option("date_format"), $date->getTimestamp());
 
   if ($start == $end) {
     return $format($end);
@@ -127,7 +129,7 @@ function tl_timelapse_video_span($file, $period) {
 // Text alternative for the video-only player (WCAG 1.2.1), as two paragraphs: the note that there
 // is no sound, then the description from the camera entry. Independent of the period, so it never
 // changes when a tab is switched.
-function tl_timelapse_caption_html($description) {
+function tl_timelapse_caption_html(string $description): string {
   $html = "<p>Zeitraffer ohne Ton</p>";
 
   if ($description !== "") {
@@ -142,7 +144,7 @@ function tl_timelapse_caption_html($description) {
 // title: shown instead of the folder name (page slugs and folders often differ).
 // description: text alternative shown under the video.
 // heading: level of the player's heading (2-6), to fit the surrounding page's heading structure.
-function tl_timelapse_camera_shortcode($atts = []) {
+function tl_timelapse_camera_shortcode(array|string $atts = []): string {
   $atts = shortcode_atts([
     "camera" => "",
     "title" => "",
@@ -288,7 +290,7 @@ const TL_TIMELAPSE_POST_TYPE = "zeitraffer_camera";
 // Leading underscore: protected meta, not shown or editable as a custom field.
 const TL_TIMELAPSE_FOLDER_META = "_zeitraffer_folder";
 
-function tl_timelapse_register_post_type() {
+function tl_timelapse_register_post_type(): void {
   register_post_type(TL_TIMELAPSE_POST_TYPE, [
     "labels" => [
       "name" => "Kameras",
@@ -311,7 +313,7 @@ function tl_timelapse_register_post_type() {
 add_action("init", "tl_timelapse_register_post_type");
 
 // Folder scans are repeated per list row otherwise; videos do not change within one request.
-function tl_timelapse_cameras_cached() {
+function tl_timelapse_cameras_cached(): array {
   static $cameras = null;
 
   if ($cameras === null) {
@@ -322,11 +324,11 @@ function tl_timelapse_cameras_cached() {
 }
 
 // Cameras visitors may see: a folder with videos AND a published entry.
-function tl_timelapse_published_cameras() {
+function tl_timelapse_published_cameras(): array {
   $published = [];
 
   foreach (tl_timelapse_get_cameras() as $slug => $folder) {
-    if (tl_timelapse_camera_entry($slug)) {
+    if (tl_timelapse_camera_entry((string) $slug)) {
       $published[$slug] = $folder;
     }
   }
@@ -335,7 +337,7 @@ function tl_timelapse_published_cameras() {
 }
 
 // The entry for a camera slug, or null. $status "any" also finds drafts, so the sync never duplicates.
-function tl_timelapse_camera_entry($slug, $status = "publish") {
+function tl_timelapse_camera_entry(string $slug, string $status = "publish"): ?WP_Post {
   $posts = get_posts([
     "post_type" => TL_TIMELAPSE_POST_TYPE,
     "post_status" => $status,
@@ -348,13 +350,13 @@ function tl_timelapse_camera_entry($slug, $status = "publish") {
   return $posts[0] ?? null;
 }
 
-function tl_timelapse_add_meta_box() {
+function tl_timelapse_add_meta_box(): void {
   add_meta_box("zeitraffer_folder", "Zeitraffer", "tl_timelapse_render_meta_box", TL_TIMELAPSE_POST_TYPE, "side");
 }
 add_action("add_meta_boxes", "tl_timelapse_add_meta_box");
 
 // Read-only: nothing here is saved, so there is no form handler to protect.
-function tl_timelapse_render_meta_box($post) {
+function tl_timelapse_render_meta_box(WP_Post $post): void {
   $slug = (string) get_post_meta($post->ID, TL_TIMELAPSE_FOLDER_META, true);
 
   echo "<p><strong>Ordner:</strong> " . esc_html($slug) . "</p>";
@@ -368,13 +370,13 @@ function tl_timelapse_render_meta_box($post) {
   echo "<p>Nur veröffentlichte Kameras sind für Besucher sichtbar. Entwürfe sehen nur Redakteure.</p>";
 }
 
-function tl_timelapse_list_columns($columns) {
+function tl_timelapse_list_columns(array $columns): array {
   $columns["zeitraffer_folder"] = "Ordner";
   return $columns;
 }
 add_filter("manage_" . TL_TIMELAPSE_POST_TYPE . "_posts_columns", "tl_timelapse_list_columns");
 
-function tl_timelapse_list_column_content($column, $post_id) {
+function tl_timelapse_list_column_content(string $column, int $post_id): void {
   if ($column !== "zeitraffer_folder") {
     return;
   }
@@ -389,7 +391,7 @@ function tl_timelapse_list_column_content($column, $post_id) {
 add_action("manage_" . TL_TIMELAPSE_POST_TYPE . "_posts_custom_column", "tl_timelapse_list_column_content", 10, 2);
 
 // Button above the camera list. A POST with a nonce, handled below; not run automatically.
-function tl_timelapse_sync_form() {
+function tl_timelapse_sync_form(): void {
   $screen = get_current_screen();
 
   if (!$screen || $screen->id !== "edit-" . TL_TIMELAPSE_POST_TYPE || !current_user_can("edit_others_posts")) {
@@ -410,7 +412,7 @@ function tl_timelapse_sync_form() {
 }
 add_action("admin_notices", "tl_timelapse_sync_form");
 
-function tl_timelapse_handle_sync() {
+function tl_timelapse_handle_sync(): void {
   if (!current_user_can("edit_others_posts")) {
     wp_die("Keine Berechtigung.", "", ["response" => 403]);
   }
@@ -420,7 +422,7 @@ function tl_timelapse_handle_sync() {
   $created = 0;
 
   foreach (tl_timelapse_get_cameras() as $slug => $folder) {
-    if (tl_timelapse_camera_entry($slug, "any")) {
+    if (tl_timelapse_camera_entry((string) $slug, "any")) {
       continue;
     }
 
