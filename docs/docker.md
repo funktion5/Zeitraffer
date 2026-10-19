@@ -110,6 +110,7 @@ auf dem Pi vergleichen; es sollte gleich aussehen.
 | `The live blur job … is off in this container` | Absicht im Testbetrieb | nichts |
 | Videos gehören root bzw. falschem Benutzer | `APP_UID` beim Bauen falsch | mit `APP_UID=$(id -u)` neu bauen |
 
-**Getestet:** Die Dateien sind auf dem Pi nur statisch geprüft (Syntax, Sicherheitsregeln in
-`tests/docker_test.py`). Gebaut und gestartet wurde das Image noch nicht; der erste echte Test
-ist Schritt 1–4 auf dem Mac.
+**Getestet:** Auf einem Mac mit Docker Desktop (2026-10-16) liefen alle vier Schritte:
+Image gebaut, Testsuite im Container, Kamerabilder schreibgeschützt eingehängt, ein
+historisches Tagesvideo (Scheunenviertel 16.08.2026) mit Verpixelung erstellt. Auf dem NAS
+noch nicht getestet.
