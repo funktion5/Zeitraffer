@@ -91,6 +91,7 @@ Abschnitt `privacy` in `config/config.json`:
   "ignore_boxes": {"Scheunenviertel": [[703, 557, 742, 643]]},
   "ignore_top_share": 0.333,
   "skip_labels": {"SLSV": ["vehicle", "plate"]},
+  "min_person_score": {"SLSV": 0.35},
   "detector_command": [
     ".venv/bin/python3", "-I", "src/privacy/detect.py",
     "--model", "models/object_detection_yolox_2022nov.onnx",
@@ -129,7 +130,7 @@ Lauf mit `--blur-people` ab.
 `--tiles 2` findet auch kleine Personen im Hintergrund, ist aber etwa fünfmal langsamer als
 `--tiles 1`. Für den Datenschutz ist `2` die richtige Wahl.
 
-### `ignore_boxes`, `ignore_top_share` und `skip_labels`
+### `ignore_boxes`, `ignore_top_share`, `skip_labels` und `min_person_score`
 
 `ignore_boxes`: bekannte Fehlerkennungen pro Kamera als `[x0, y0, x1, y1]` in Pixeln. Eine Box,
 die eine davon zu mindestens 50 % überlappt (Schnitt durch Vereinigung), wird verworfen.
@@ -152,12 +153,21 @@ der Detektor hält sie für Fahrzeuge und sucht darin Kennzeichen; Autos gibt es
 für Kameras ohne Straße oder Parkplatz eintragen. Boxen ohne Label (ältere Detektoren) werden
 nie übersprungen.
 
-Alle drei Regeln gelten im Video-Modus und im Box-Job gleich (eine gemeinsame Funktion,
+`min_person_score`: pro Kamera die Mindestsicherheit für Personen-Boxen (0 bis 0,5; ohne Eintrag
+gilt die Detektor-Schwelle 0,25). Anlass: Bei SLSV erkannte der Detektor Bootsplanen,
+Segelsäcke, Winschen und Trailerteile als Personen. In einer Stichprobe von 40 Boxen (Yearly
+2025) war etwa die Hälfte keine Person, mit Werten bis 0,78; echte Personen lagen teils bei
+0,25. Eine saubere Grenze gibt es also nicht. Mit `0.35` (Entscheidung Julius, 2026-10-19)
+bleiben bei SLSV 506 statt 781 Boxen; dafür können **einzelne entfernte Personen unverpixelt
+bleiben**. Nur für Kameras setzen, bei denen das vertretbar ist.
+
+Alle vier Regeln gelten im Video-Modus und im Box-Job gleich (eine gemeinsame Funktion,
 `filter_boxes`). Verworfene Boxen stehen im Log (`Ignored box in …`) bzw. beim Box-Job in der
 Statusdatei unter `ignored_boxes`. Alle Werte werden bei jedem Start geprüft: Ein Tippfehler wie
 `ignore_top_share: 3.33` würde sonst stillschweigend jede Box verwerfen, deshalb bricht der Lauf
 mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5; Boxen mit vier ganzen Zahlen,
-`x1 > x0`, `y1 > y0`; bei `skip_labels` eine nicht leere Liste aus `vehicle`/`plate`). Kamerabezogene Regeln nur, wo sie nötig sind; eine Kamera mit Personen im oberen Drittel
+`x1 > x0`, `y1 > y0`; bei `skip_labels` eine nicht leere Liste aus `vehicle`/`plate`; bei `min_person_score` eine Zahl
+von 0 bis 0,5). Kamerabezogene Regeln nur, wo sie nötig sind; eine Kamera mit Personen im oberen Drittel
 (Hang, Balkon) bräuchte eine Ausnahme.
 
 ### Kennzeichenbereich (55 %, global)
@@ -253,7 +263,7 @@ Prüfsumme des Modells, Laufzeit, Kachelung, Schwelle und die Fahrzeug-Einstellu
 Vereinigung, bei Personen auch für Boxen, die fast ganz in einer anderen liegen; `v` =
 Kennzeichenbereich, `vc` = Fahrzeug-Schwelle, `ps` = Kennzeichensuche, `b` = Blockgröße). Ein
 anderes Modell oder eine andere Einstellung führt also automatisch zu einer neuen Prüfung.
-`ignore_boxes`, `ignore_top_share` und `skip_labels` gehören nicht dazu, weil sie erst beim
+`ignore_boxes`, `ignore_top_share`, `skip_labels` und `min_person_score` gehören nicht dazu, weil sie erst beim
 Verpixeln greifen: Eine Änderung braucht keine neue Erkennung, nur ein neues Video.
 Eine beschädigte Zeile gilt nur als fehlender Eintrag.
 
@@ -330,8 +340,9 @@ Speichers belegt; Detektor und FFmpeg laufen nie gleichzeitig.
 | `Detector id changed during the run` | Modell während des Laufs ausgetauscht | Lauf erneut starten |
 | `No blurrable region left for …` | Detektor meldet eine Box außerhalb des Bildes | Detektor bzw. Modell prüfen |
 | `Detector box for … has an invalid 'block'` bzw. `'label'` | Detektor liefert eine Blockgröße unter 1 oder ein Label, das kein Text ist | Detektor prüfen; mit dem mitgelieferten `detect.py` tritt das nicht auf |
-| `Ignored box in …` (kein Fehler) | Box passte zu `ignore_boxes`, lag überwiegend im oberen Drittel (`ignore_top_share`) oder hat ein Label aus `skip_labels` | Nur prüfen, wenn dort doch eine echte Person war; dann die Regel anpassen |
+| `Ignored box in …` (kein Fehler) | Box passte zu `ignore_boxes`, lag überwiegend im oberen Drittel (`ignore_top_share`) , hat ein Label aus `skip_labels` oder liegt unter `min_person_score` | Nur prüfen, wenn dort doch eine echte Person war; dann die Regel anpassen |
 | `privacy.ignore_top_share must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen) |
+| `privacy.min_person_score for … must be a number from 0 to 0.5` | Tippfehler; ein höherer Wert würde deutlich sichtbare Personen verwerfen | Wert korrigieren |
 | `privacy.skip_labels for … may only list vehicle, plate` | leere Liste, Tippfehler oder `person` eingetragen | nur `vehicle` und/oder `plate` eintragen; Personen werden immer verpixelt |
 | `Cannot read the size of …` | FFprobe liefert keine oder eine unerwartete Bildgröße (Bild beschädigt) | Bild prüfen; im Box-Job betrifft das nur dieses Bild, es wird jede Runde erneut versucht |
 
@@ -344,4 +355,5 @@ Ohne Logmeldung, beim Ansehen des Videos:
 | Nur ein halbes Auto bzw. eine halbe Person verpixelt | früher: Kachelgrenze bei x = 768 (seit 2026-10-16 behoben, Kennung `-u2`) | Video mit aktuellem Detektor neu erzeugen |
 | Große Pixelfläche oben im Bild ohne Person | Fehlerkennung, z. B. Kamerahalterung | liegt sie überwiegend im oberen Drittel, verwirft `ignore_top_share` sie; sonst als `ignore_boxes` eintragen |
 | Boote, Anhänger oder Stege verpixelt, obwohl es dort keine Autos gibt | Detektor hält Boote auf Trailern für Fahrzeuge | Kamera in `skip_labels` mit `["vehicle", "plate"]` eintragen, Video neu erzeugen (Cache bleibt gültig) |
+| Bootsplanen, Segelsäcke oder Winschen verpixelt | Detektor hält sie für Personen (meist geringe Sicherheit) | `min_person_score` für die Kamera setzen (SLSV: `0.35`), Video neu erzeugen; nimmt in Kauf, dass entfernte Personen unverpixelt bleiben |
 | Auto zu grob verpixelt | `--vehicle-block-ratio` fehlt oder ist `0` | Wert `0.0133` setzen |

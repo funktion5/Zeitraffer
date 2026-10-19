@@ -23,6 +23,8 @@ MIN_IGNORE_OVERLAP = 0.5
 TOP_SHARE_RANGE = (0.0, 0.5)
 # Labels privacy.skip_labels may drop for a camera. Never "person": people are always blurred.
 SKIPPABLE_LABELS = ("vehicle", "plate")
+# A per-camera minimum person score above this would drop clearly visible people.
+MIN_PERSON_SCORE_RANGE = (0.0, 0.5)
 
 # Even a tiny box gets a margin, so a slightly short detection never leaves an edge visible.
 MIN_BOX_PADDING_PIXELS = 2
@@ -61,12 +63,13 @@ class BlurSettings:
 
 
 # Boxes to drop before blurring: known false positives per camera, labels a camera never needs
-# blurred and the global top band.
+# blurred, weak person boxes per camera and the global top band.
 @dataclass(frozen=True)
 class DropRules:
 	top_share: float = 0.0
 	ignore_boxes: dict[str, list[list[int]]] = field(default_factory=dict)
 	skip_labels: dict[str, list[str]] = field(default_factory=dict)
+	min_person_score: dict[str, float] = field(default_factory=dict)
 
 
 # One blurred area: the even-aligned crop plus the shape whose alpha fades towards its edge.
@@ -240,10 +243,14 @@ def filter_boxes(
 	# SLSV (2026-10-19): boat trailers have wheels, so boats count as vehicles; there are no cars.
 	# A box without a label (older detector) is never skipped.
 	skipped_labels = rules.skip_labels.get(camera, [])
+	# SLSV (2026-10-19): boat covers, sail bags and winches score as people up to about 0.8, real
+	# people down to 0.25; 0.35 halves the false boxes and may leave a few distant people visible.
+	min_score = rules.min_person_score.get(camera, 0.0)
 	known = [
 		box
 		for box in boxes
 		if box.label in skipped_labels
+		or (box.label == "person" and box.score < min_score)
 		or any(box_overlap(box, r) >= MIN_IGNORE_OVERLAP for r in references)
 	]
 	kept, top = split_top_band([box for box in boxes if box not in known], height, rules.top_share)
@@ -293,7 +300,27 @@ def parse_drop_rules(privacy: dict) -> DropRules:
 				f"privacy.skip_labels for {camera} may only list {', '.join(SKIPPABLE_LABELS)}."
 			)
 
-	return DropRules(top_share=float(top_share), ignore_boxes=ignore_boxes, skip_labels=skip_labels)
+	min_person_score = privacy.get("min_person_score") or {}
+
+	if not isinstance(min_person_score, dict):
+		raise PrivacyCheckError("privacy.min_person_score must map cameras to scores.")
+
+	for camera, score in min_person_score.items():
+		if (
+			isinstance(score, bool)
+			or not isinstance(score, (int, float))
+			or not MIN_PERSON_SCORE_RANGE[0] <= score <= MIN_PERSON_SCORE_RANGE[1]
+		):
+			raise PrivacyCheckError(
+				f"privacy.min_person_score for {camera} must be a number from 0 to 0.5."
+			)
+
+	return DropRules(
+		top_share=float(top_share),
+		ignore_boxes=ignore_boxes,
+		skip_labels=skip_labels,
+		min_person_score={camera: float(score) for camera, score in min_person_score.items()},
+	)
 
 
 # An empty request returns the detector id, so cached results can be validated without a run.

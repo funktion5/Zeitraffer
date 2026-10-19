@@ -285,6 +285,7 @@ Beispiel:
     "ignore_boxes": {"…": [[703, 557, 742, 643]]},
     "ignore_top_share": 0.333,
     "skip_labels": {"…": ["vehicle", "plate"]},
+    "min_person_score": {"…": 0.35},
     "detector_command": [
       ".venv/bin/python3", "-I", "src/privacy/detect.py",
       "--model", "models/object_detection_yolox_2022nov.onnx",
@@ -325,7 +326,8 @@ bis zur Fensterlänge (30 bzw. 365).
 Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
 (Blockgröße, Rand, weicher Übergang), `ignore_boxes` und `ignore_top_share` verwerfen bekannte
 Fehlerkennungen, `skip_labels` schaltet pro Kamera die Fahrzeug- und Kennzeichenverpixelung ab
-(z. B. Boote auf Trailern; Personen immer verpixelt). Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
+(z. B. Boote auf Trailern), `min_person_score` verwirft pro Kamera unsichere Personen-Boxen
+(z. B. Bootsplanen; kann entfernte Personen unverpixelt lassen). Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
 wird. Alle Werte und Grenzen:
 [docs/verpixelung.md](docs/verpixelung.md#konfiguration).
 

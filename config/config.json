@@ -56,6 +56,9 @@
     "skip_labels": {
       "SLSV": ["vehicle", "plate"]
     },
+    "min_person_score": {
+      "SLSV": 0.35
+    },
     "detector_command": [
       ".venv/bin/python3",
       "-I",

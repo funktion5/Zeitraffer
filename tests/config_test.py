@@ -44,6 +44,7 @@ EXPECTED_PRIVACY_KEYS = {
 	"ignore_boxes",
 	"ignore_top_share",
 	"skip_labels",
+	"min_person_score",
 	"detector_command",
 	"blur",
 }

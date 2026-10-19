@@ -595,12 +595,28 @@ def test_filter_boxes_skips_the_camera_s_listed_labels_only() -> None:
 	assert privacy.filter_boxes([boat], 1080, rules, "Other")[0] == [boat]
 
 
+# SLSV: boat covers and winches are found as people, mostly with low scores.
+def test_filter_boxes_drops_weak_person_boxes_of_that_camera_only() -> None:
+	cover = Box(x0=100, y0=600, x1=400, y1=800, score=0.3, label="person")
+	person = Box(x0=500, y0=600, x1=540, y1=700, score=0.35, label="person")
+	vehicle = Box(x0=600, y0=600, x1=800, y1=700, score=0.2, label="vehicle")
+	unlabelled = Box(x0=900, y0=600, x1=940, y1=700, score=0.3)
+	rules = privacy.DropRules(min_person_score={"Cam": 0.35})
+
+	kept, ignored = privacy.filter_boxes([cover, person, vehicle, unlabelled], 1080, rules, "Cam")
+
+	assert kept == [person, vehicle, unlabelled]
+	assert ignored == [cover]
+	assert privacy.filter_boxes([cover], 1080, rules, "Other")[0] == [cover]
+
+
 def test_parse_drop_rules_accepts_the_production_shape() -> None:
 	rules = privacy.parse_drop_rules(
 		{
 			"ignore_top_share": 0.333,
 			"ignore_boxes": {"C": [[1, 2, 3, 4]]},
 			"skip_labels": {"D": ["vehicle", "plate"]},
+			"min_person_score": {"D": 0.35},
 		}
 	)
 
@@ -608,6 +624,7 @@ def test_parse_drop_rules_accepts_the_production_shape() -> None:
 		top_share=0.333,
 		ignore_boxes={"C": [[1, 2, 3, 4]]},
 		skip_labels={"D": ["vehicle", "plate"]},
+		min_person_score={"D": 0.35},
 	)
 	assert privacy.parse_drop_rules({}) == privacy.DropRules()
 
@@ -631,6 +648,12 @@ def test_parse_drop_rules_accepts_the_production_shape() -> None:
 		{"skip_labels": {"C": []}},
 		{"skip_labels": {"C": ["person"]}},
 		{"skip_labels": {"C": ["vehicle", "Plate"]}},
+		{"min_person_score": 0.35},
+		{"min_person_score": {"C": 3.5}},
+		{"min_person_score": {"C": 0.51}},
+		{"min_person_score": {"C": -0.1}},
+		{"min_person_score": {"C": "0.35"}},
+		{"min_person_score": {"C": True}},
 	],
 )
 def test_parse_drop_rules_refuses_values_that_would_drop_too_much(privacy_section) -> None:
