@@ -43,6 +43,7 @@ EXPECTED_PRIVACY_KEYS = {
 	"blur_cameras",
 	"ignore_boxes",
 	"ignore_top_share",
+	"skip_labels",
 	"detector_command",
 	"blur",
 }

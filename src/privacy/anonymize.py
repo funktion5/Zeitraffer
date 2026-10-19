@@ -21,6 +21,8 @@ BLUR_TIMEOUT_SECONDS = 120
 MIN_IGNORE_OVERLAP = 0.5
 # The top-band rule may never cover half the image or more.
 TOP_SHARE_RANGE = (0.0, 0.5)
+# Labels privacy.skip_labels may drop for a camera. Never "person": people are always blurred.
+SKIPPABLE_LABELS = ("vehicle", "plate")
 
 # Even a tiny box gets a margin, so a slightly short detection never leaves an edge visible.
 MIN_BOX_PADDING_PIXELS = 2
@@ -58,11 +60,13 @@ class BlurSettings:
 	feather: float
 
 
-# Boxes to drop before blurring: known false positives per camera and the global top band.
+# Boxes to drop before blurring: known false positives per camera, labels a camera never needs
+# blurred and the global top band.
 @dataclass(frozen=True)
 class DropRules:
 	top_share: float = 0.0
 	ignore_boxes: dict[str, list[list[int]]] = field(default_factory=dict)
+	skip_labels: dict[str, list[str]] = field(default_factory=dict)
 
 
 # One blurred area: the even-aligned crop plus the shape whose alpha fades towards its edge.
@@ -233,8 +237,14 @@ def filter_boxes(
 	boxes: list[Box], height: int, rules: DropRules, camera: str
 ) -> tuple[list[Box], list[Box]]:
 	references = rules.ignore_boxes.get(camera, [])
+	# SLSV (2026-10-19): boat trailers have wheels, so boats count as vehicles; there are no cars.
+	# A box without a label (older detector) is never skipped.
+	skipped_labels = rules.skip_labels.get(camera, [])
 	known = [
-		box for box in boxes if any(box_overlap(box, r) >= MIN_IGNORE_OVERLAP for r in references)
+		box
+		for box in boxes
+		if box.label in skipped_labels
+		or any(box_overlap(box, r) >= MIN_IGNORE_OVERLAP for r in references)
 	]
 	kept, top = split_top_band([box for box in boxes if box not in known], height, rules.top_share)
 
@@ -268,7 +278,22 @@ def parse_drop_rules(privacy: dict) -> DropRules:
 			):
 				raise PrivacyCheckError(f"privacy.ignore_boxes for {camera} has an invalid box.")
 
-	return DropRules(top_share=float(top_share), ignore_boxes=ignore_boxes)
+	skip_labels = privacy.get("skip_labels") or {}
+
+	if not isinstance(skip_labels, dict):
+		raise PrivacyCheckError("privacy.skip_labels must map cameras to label lists.")
+
+	for camera, labels in skip_labels.items():
+		if not (
+			isinstance(labels, list)
+			and labels
+			and all(label in SKIPPABLE_LABELS for label in labels)
+		):
+			raise PrivacyCheckError(
+				f"privacy.skip_labels for {camera} may only list {', '.join(SKIPPABLE_LABELS)}."
+			)
+
+	return DropRules(top_share=float(top_share), ignore_boxes=ignore_boxes, skip_labels=skip_labels)
 
 
 # An empty request returns the detector id, so cached results can be validated without a run.

@@ -580,12 +580,35 @@ def test_filter_boxes_drops_known_false_positives_and_the_top_band() -> None:
 	assert privacy.filter_boxes([sign], 1080, rules, "Other")[0] == [sign]
 
 
+# SLSV: boats on wheeled trailers are found as vehicles, and plate search runs inside them.
+def test_filter_boxes_skips_the_camera_s_listed_labels_only() -> None:
+	boat = Box(x0=100, y0=600, x1=400, y1=800, score=0.5, label="vehicle")
+	stripe = Box(x0=150, y0=700, x1=200, y1=720, score=0.5, label="plate")
+	person = Box(x0=500, y0=600, x1=540, y1=700, score=0.9, label="person")
+	unlabelled = Box(x0=600, y0=600, x1=640, y1=700, score=0.9)
+	rules = privacy.DropRules(skip_labels={"Cam": ["vehicle", "plate"]})
+
+	kept, ignored = privacy.filter_boxes([boat, stripe, person, unlabelled], 1080, rules, "Cam")
+
+	assert kept == [person, unlabelled]
+	assert ignored == [boat, stripe]
+	assert privacy.filter_boxes([boat], 1080, rules, "Other")[0] == [boat]
+
+
 def test_parse_drop_rules_accepts_the_production_shape() -> None:
 	rules = privacy.parse_drop_rules(
-		{"ignore_top_share": 0.333, "ignore_boxes": {"C": [[1, 2, 3, 4]]}}
+		{
+			"ignore_top_share": 0.333,
+			"ignore_boxes": {"C": [[1, 2, 3, 4]]},
+			"skip_labels": {"D": ["vehicle", "plate"]},
+		}
 	)
 
-	assert rules == privacy.DropRules(top_share=0.333, ignore_boxes={"C": [[1, 2, 3, 4]]})
+	assert rules == privacy.DropRules(
+		top_share=0.333,
+		ignore_boxes={"C": [[1, 2, 3, 4]]},
+		skip_labels={"D": ["vehicle", "plate"]},
+	)
 	assert privacy.parse_drop_rules({}) == privacy.DropRules()
 
 
@@ -603,6 +626,11 @@ def test_parse_drop_rules_accepts_the_production_shape() -> None:
 		{"ignore_boxes": {"C": [[3, 2, 1, 4]]}},
 		{"ignore_boxes": {"C": [[1.5, 2, 3, 4]]}},
 		{"ignore_boxes": {"C": "703, 557, 742, 643"}},
+		{"skip_labels": ["vehicle"]},
+		{"skip_labels": {"C": "vehicle"}},
+		{"skip_labels": {"C": []}},
+		{"skip_labels": {"C": ["person"]}},
+		{"skip_labels": {"C": ["vehicle", "Plate"]}},
 	],
 )
 def test_parse_drop_rules_refuses_values_that_would_drop_too_much(privacy_section) -> None:

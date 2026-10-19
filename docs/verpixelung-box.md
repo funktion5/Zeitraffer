@@ -53,8 +53,9 @@ flowchart TD
    Endet die Kopie nicht mit dem JPEG-Endmarker, läuft der Upload noch: nächste Runde. Ist sie
    nach 10 Minuten immer noch unvollständig, gilt der Upload als hängen geblieben und wird jede
    Runde als Fehler geloggt, bis es vollständig ist. Sonst geht sie an den Detektor (Zeitlimit
-   120 Sekunden pro Bild, siehe [Zeitlimits](#zeitlimits)). Danach gelten `ignore_boxes` und
-   `ignore_top_share` (siehe [verpixelung.md](verpixelung.md#ignore_boxes-und-ignore_top_share)).
+   120 Sekunden pro Bild, siehe [Zeitlimits](#zeitlimits)). Danach gelten `ignore_boxes`,
+   `ignore_top_share` und `skip_labels` (siehe
+   [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-und-skip_labels)).
 7. **Nichts gefunden:** Die Prüfsumme des Bildes auf der Box muss der geprüften Kopie entsprechen
    (die Kamera kann das Bild inzwischen neu geschrieben haben). Dann wird das Bild als `clean`
    vermerkt. **Auf die Box wird nichts geschrieben**, auch keine Sicherung.
@@ -96,7 +97,7 @@ Cron (geplant, **noch nicht eingerichtet**):
 | `--settle-seconds N` | Wartezeit, bis ein Upload als fertig gilt (Standard 15) |
 | `--state-dir PFAD` | Ordner der Statusdateien (Standard `state/privacy/box/`) |
 
-- Ungültige `blur`-Werte, `ignore_boxes` oder `ignore_top_share` brechen den Lauf mit
+- Ungültige `blur`-Werte, `ignore_boxes`, `ignore_top_share` oder `skip_labels` brechen den Lauf mit
   `Invalid privacy settings, nothing written: …` ab, bevor die Box kontaktiert wird.
 
 - Eine der beiden Kamera-Optionen ist Pflicht. Ein Lauf darf nur in die Kameras schreiben, mit
@@ -139,7 +140,9 @@ In `config/config.json`:
   im Video-Modus.
 - `ignore_top_share`: Boxen überwiegend im oberen Bilddrittel werden verworfen und unter
   `ignored_boxes` festgehalten, wie in
-  [verpixelung.md](verpixelung.md#ignore_boxes-und-ignore_top_share).
+  [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-und-skip_labels).
+- `skip_labels`: pro Kamera `vehicle`/`plate`, die nie verpixelt werden (nicht im Beispiel oben;
+  heute nur SLSV, keine Box-Job-Kamera), siehe ebenda.
 - `detector_command` und `blur`: wie in [verpixelung.md](verpixelung.md#konfiguration).
 
 ### Bekannte Fehlerkennungen (`ignore_boxes`)
@@ -320,7 +323,7 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | Meldung im Log | Ursache | Folge / Lösung |
 |---|---|---|
 | `Not in privacy.blur_cameras, nothing written: …` | Kamera fehlt in `blur_cameras` | Kamera eintragen oder Aufruf prüfen |
-| `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes` oder `ignore_top_share` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
+| `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes`, `ignore_top_share` oder `skip_labels` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
 | `No storage box: No SSHFS mount found …` | Kamera-Mount nicht aktiv; aus ihm liest der Job Benutzer und Host der Box | `cameras-sshfs.service` prüfen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |
 | `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | vorige Runde läuft noch | nichts; die nächste Runde holt nach |

@@ -53,6 +53,9 @@
       "Scheunenviertel": [[703, 557, 742, 643]]
     },
     "ignore_top_share": 0.333,
+    "skip_labels": {
+      "SLSV": ["vehicle", "plate"]
+    },
     "detector_command": [
       ".venv/bin/python3",
       "-I",
