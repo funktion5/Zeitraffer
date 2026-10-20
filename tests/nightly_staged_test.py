@@ -57,8 +57,7 @@ fi
 FAKE_FFPROBE = '#!/bin/bash\ncat "${@: -1}"\n'
 
 SUMMARY = (
-	"x | INFO | {job} timelapse job finished for x"
-	" | created=1 | skipped=0 | failed=0 | run_id=x"
+	"x | INFO | {job} timelapse job finished for x | created=1 | skipped=0 | failed=0 | run_id=x"
 )
 
 
