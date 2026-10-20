@@ -7,8 +7,10 @@ the box; the only thing ever deleted is inside <project>/temp.
 Run from anywhere (TIMELAPSE_STORAGE_BOX names the box, see src/storage_filter.py):
 	python3 scripts/stage-frames.py [--target-date YYYY-MM-DD] [--cameras A B]
 		[--destination PATH] [--clean-only] [--no-lock]
+	python3 scripts/stage-frames.py --list-cameras
 
-Takes state/zeitraffer-run.lock unless --no-lock (the caller already holds it).
+Takes state/zeitraffer-run.lock unless --no-lock (the caller already holds it). --list-cameras
+only prints the cameras a nightly run covers, one per line, and touches nothing.
 
 Exit codes: 0 = all cameras staged, 1 = some cameras failed, 2 = fatal (box unreachable, bad
 arguments, unsafe destination, run lock held elsewhere).
@@ -299,12 +301,35 @@ def parse_arguments() -> argparse.Namespace:
 	parser.add_argument("--clean-only", action="store_true")
 	# For the nightly wrapper, which already holds state/zeitraffer-run.lock for the whole run.
 	parser.add_argument("--no-lock", action="store_true")
+	# For the nightly wrapper's per-camera loop: only prints, never wipes or copies anything.
+	parser.add_argument("--list-cameras", action="store_true")
 
 	return parser.parse_args()
 
 
+# The cameras a nightly run covers: everything on the box except ignored_cameras, one per line on
+# stdout (the logger writes to stderr, so the list stays clean).
+def list_cameras() -> int:
+	config = load_config()
+
+	try:
+		available = list_box_cameras(get_storage_box())
+
+	except OSError:
+		logger.exception("Storage box is not reachable")
+		return EXIT_FATAL
+
+	ignored = set(config.get("ignored_cameras", []))
+	sys.stdout.write("".join(f"{camera}\n" for camera in available if camera not in ignored))
+
+	return EXIT_OK
+
+
 def main() -> int:
 	arguments = parse_arguments()
+
+	if arguments.list_cameras:
+		return list_cameras()
 
 	try:
 		destination = guard_destination(arguments.destination)

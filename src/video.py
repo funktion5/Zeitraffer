@@ -1,3 +1,4 @@
+import os
 import shutil
 import subprocess
 import tempfile
@@ -23,8 +24,37 @@ TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
 FFMPEG_ERROR_LOG_LINES = 40
 
+# A host that kills large encoder processes (the web server) selects a lighter x264 preset here.
+# Unset keeps FFmpeg's own default, so the command is unchanged everywhere else.
+X264_PRESET_ENV = "TIMELAPSE_X264_PRESET"
+X264_PRESETS = (
+	"ultrafast",
+	"superfast",
+	"veryfast",
+	"faster",
+	"fast",
+	"medium",
+	"slow",
+	"slower",
+	"veryslow",
+	"placebo",
+)
+
 
 TimelapseType = Literal["daily", "weekly", "monthly", "yearly"]
+
+
+# Read at call time, not at import, so isolated workers and tests see the current environment.
+def x264_preset_arguments() -> list[str]:
+	preset = os.environ.get(X264_PRESET_ENV, "").strip()
+
+	if not preset:
+		return []
+
+	if preset not in X264_PRESETS:
+		raise ValueError(f"{X264_PRESET_ENV} must be one of {', '.join(X264_PRESETS)}: {preset!r}")
+
+	return ["-preset", preset]
 
 
 # Run FFmpeg, record peak resource use, and retain failure diagnostics.
@@ -303,6 +333,7 @@ def create_image_timelapse(
 			str(temp_directory / "frame_%06d.jpg"),
 			"-c:v",
 			"libx264",
+			*x264_preset_arguments(),
 			"-threads",
 			str(FFMPEG_THREADS),
 			"-pix_fmt",

@@ -17,6 +17,7 @@ from src.video import (
 	create_timelapse,
 	cleanup_automatic_video_retention,
 	get_video_path,
+	x264_preset_arguments,
 )
 
 
@@ -279,6 +280,69 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 			str(temporary_output),
 		]
 	]
+
+
+def test_x264_preset_is_not_set_by_default(monkeypatch):
+	monkeypatch.delenv("TIMELAPSE_X264_PRESET", raising=False)
+
+	assert x264_preset_arguments() == []
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_x264_preset_counts_as_unset(monkeypatch, value):
+	monkeypatch.setenv("TIMELAPSE_X264_PRESET", value)
+
+	assert x264_preset_arguments() == []
+
+
+def test_x264_preset_comes_from_the_environment(monkeypatch):
+	monkeypatch.setenv("TIMELAPSE_X264_PRESET", "ultrafast")
+
+	assert x264_preset_arguments() == ["-preset", "ultrafast"]
+
+
+# A typo must stop the encode instead of silently producing a different video.
+def test_unknown_x264_preset_is_refused(monkeypatch):
+	monkeypatch.setenv("TIMELAPSE_X264_PRESET", "ultrafst")
+
+	with pytest.raises(ValueError, match="TIMELAPSE_X264_PRESET"):
+		x264_preset_arguments()
+
+
+# The preset goes right after the codec, and without it the command stays exactly as before.
+@pytest.mark.parametrize(
+	("preset", "expected"),
+	[(None, []), ("ultrafast", ["-preset", "ultrafast"])],
+)
+def test_image_timelapse_command_carries_the_preset(tmp_path: Path, monkeypatch, preset, expected):
+	if preset is None:
+		monkeypatch.delenv("TIMELAPSE_X264_PRESET", raising=False)
+	else:
+		monkeypatch.setenv("TIMELAPSE_X264_PRESET", preset)
+
+	captured = {}
+
+	def fake_encode_video(ffmpeg_arguments, output_path, description):
+		captured["arguments"] = ffmpeg_arguments
+
+		return output_path
+
+	monkeypatch.setattr(video_module, "encode_video", fake_encode_video)
+	monkeypatch.setattr(video_module, "VIDEO_ROOT", tmp_path / "videos")
+
+	create_image_timelapse(
+		camera="Scheunenviertel",
+		target_date=date(2026, 9, 14),
+		temp_directory=tmp_path / "temp",
+		timelapse_type="daily",
+		framerate=10,
+	)
+
+	arguments = captured["arguments"]
+	codec_index = arguments.index("libx264")
+
+	assert arguments[codec_index + 1 : codec_index + 1 + len(expected)] == expected
+	assert arguments[codec_index + 1 + len(expected)] == "-threads"
 
 
 # A failed image timelapse must preserve the existing working output.

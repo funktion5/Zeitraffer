@@ -219,6 +219,36 @@ def test_no_lock_flag_skips_the_run_lock(tmp_path, monkeypatch):
 	assert stage_frames.main() == stage_frames.EXIT_OK
 
 
+def test_list_cameras_prints_box_cameras_without_ignored_ones(tmp_path, monkeypatch, capsys):
+	staging = tmp_path / "temp" / "staging"
+	stage_frames.create_destination(staging)
+
+	monkeypatch.setattr(stage_frames.sys, "argv", ["stage-frames.py", "--list-cameras"])
+	monkeypatch.setattr(stage_frames, "load_config", lambda: {"ignored_cameras": ["Reolink"]})
+	monkeypatch.setattr(stage_frames, "get_storage_box", FakeBox)
+	monkeypatch.setattr(
+		stage_frames, "list_box_cameras", lambda box: ["Alpha", "Camera One", "Reolink"]
+	)
+
+	assert stage_frames.main() == stage_frames.EXIT_OK
+	assert capsys.readouterr().out == "Alpha\nCamera One\n"
+	# Listing must not wipe or lock anything.
+	assert staging.exists()
+
+
+def test_list_cameras_exits_fatal_when_the_box_is_unreachable(monkeypatch, capsys):
+	def unreachable(box):
+		raise OSError("no route")
+
+	monkeypatch.setattr(stage_frames.sys, "argv", ["stage-frames.py", "--list-cameras"])
+	monkeypatch.setattr(stage_frames, "load_config", lambda: {})
+	monkeypatch.setattr(stage_frames, "get_storage_box", FakeBox)
+	monkeypatch.setattr(stage_frames, "list_box_cameras", unreachable)
+
+	assert stage_frames.main() == stage_frames.EXIT_FATAL
+	assert capsys.readouterr().out == ""
+
+
 def test_copy_camera_sends_names_nul_separated_to_rsync(tmp_path, monkeypatch):
 	calls = []
 
