@@ -234,7 +234,11 @@ def test_copy_camera_sends_names_nul_separated_to_rsync(tmp_path, monkeypatch):
 	assert command[0] == "rsync"
 	assert "--from0" in command
 	assert "--files-from=-" in command
-	assert "box:Cam/" in command
+	# Direction: the box is the source and a local folder the destination, never the reverse. This
+	# is what lets the script start rsync under the structural guard in privacy_box_writer_test.
+	assert command[-2] == "box:Cam/"
+	assert command[-1] == f"{tmp_path / 'Cam'}/"
+	assert not command[-1].startswith("box:")
 	assert kwargs["input"] == b"a.jpg\0b c.jpg\0"
 	assert (tmp_path / "Cam").is_dir()
 

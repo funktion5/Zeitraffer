@@ -607,10 +607,13 @@ def test_default_clock_is_timezone_aware(box: FakeBox) -> None:
 
 
 # Structural guard: a write to the storage box can only come from box_writer.py. Any other
-# Python file that starts ssh/scp/sftp/rsync must be listed here as read-only and is checked
-# for write commands.
+# Python file that starts ssh/scp/sftp/rsync must be listed here as read-only or pull-only and is
+# checked for write commands.
 WRITER_MODULE = "src/privacy/box_writer.py"
 READ_ONLY_SSH_MODULES = {"src/storage_filter.py"}
+# May start rsync, but only to pull FROM the box into a local folder; stage_frames_test proves the
+# direction of the command. Every other command that can write stays forbidden for these.
+PULL_ONLY_SSH_MODULES = {"scripts/stage-frames.py"}
 REMOTE_PROGRAMS = {"ssh", "scp", "sftp", "rsync", "sshfs"}
 
 
@@ -640,13 +643,18 @@ def test_only_known_modules_start_remote_programs() -> None:
 		if REMOTE_PROGRAMS & {string.split(" ")[0] for string in _string_constants(path)}
 	}
 
-	assert users <= READ_ONLY_SSH_MODULES | {WRITER_MODULE}
+	assert users <= READ_ONLY_SSH_MODULES | PULL_ONLY_SSH_MODULES | {WRITER_MODULE}
 
 
 def test_read_only_ssh_modules_send_no_write_commands() -> None:
-	verbs = "|".join(sorted(WRITE_VERBS | {"scp", "sftp", "rsync"}))
+	write_programs = WRITE_VERBS | {"scp", "sftp", "rsync"}
+	forbidden_by_module = {module: write_programs for module in READ_ONLY_SSH_MODULES} | {
+		module: write_programs - {"rsync"} for module in PULL_ONLY_SSH_MODULES
+	}
 
-	for module in READ_ONLY_SSH_MODULES:
+	for module, programs in forbidden_by_module.items():
+		verbs = "|".join(sorted(programs))
+
 		for string in _string_constants(PROJECT_ROOT / module):
 			# Also a bare verb as its own argument-list element, e.g. ["rm", path].
 			assert not re.search(rf"(^|\s)({verbs})(\s|$)", string), f"{module}: {string!r}"
