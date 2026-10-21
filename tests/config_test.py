@@ -5,6 +5,7 @@ import pytest
 
 import src.config as config_module
 from src.date_coverage import get_min_coverage_days
+from src.flagger.settings import load_flagger_settings
 from src.interval_window import interval_window_from_config
 from src.privacy.anonymize import parse_blur_settings, parse_drop_rules
 from src.privacy.box_writer import check_camera_name
@@ -21,6 +22,12 @@ EXPECTED_ROOT_KEYS = {
 	"ignored_cameras",
 	"timelapse",
 	"privacy",
+	"flagger",
+}
+
+EXPECTED_FLAGGER_KEYS = {
+	"cameras",
+	"retention_days",
 }
 
 EXPECTED_LOCATION_KEYS = {
@@ -189,6 +196,16 @@ def assert_valid_config_structure(config: dict) -> None:
 
 	assert set(rules.ignore_boxes) <= set(blur_cameras)
 	assert rules.top_share > 0
+
+	flagger = config["flagger"]
+
+	assert set(flagger) == EXPECTED_FLAGGER_KEYS
+
+	# Duplicates would be collapsed silently at runtime, so keep the list itself clean.
+	assert len(flagger["cameras"]) == len(set(flagger["cameras"]))
+
+	# Same validation as at runtime: camera names are strings, retention at least a week.
+	load_flagger_settings(config)
 
 
 # The production configuration must live at config/config.json.

@@ -82,5 +82,9 @@
       "padding_ratio": 0.05,
       "feather": 0.5
     }
+  },
+  "flagger": {
+    "cameras": [],
+    "retention_days": 30
   }
 }
