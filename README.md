@@ -1763,6 +1763,8 @@ Synology-NAS); der Pi bleibt dabei produktiv. Anleitung: [docs/docker.md](docs/d
 
 0-Byte-Dateien werden vor der weiteren Verarbeitung ausgeschlossen und geloggt. Die Quelldateien bleiben unverändert.
 
+Abgeschnittene Bilder (Upload der Kamera mittendrin abgebrochen, JPEG-Endmarke `FF D9` fehlt) werden ebenfalls ausgelassen und als Warnung geloggt. Ohne diese Prüfung würde FFmpeg den fehlenden unteren Teil mit dem vorherigen Bild füllen. Yearly prüft das schon bei der Auswahl und nimmt stattdessen das nächstgelegene vollständige Bild desselben Tages, damit der Tag seine fünf Bilder behält. Alle Jobs prüfen außerdem jede Kopie in `temp/` vor dem Encodieren; dort fällt ein abgeschnittenes Bild ersatzlos weg. Gelesen wird dafür nichts zusätzlich von der Storage Box.
+
 Die Duplicate-Behandlung hängt vom Job ab:
 
 - Daily scannt Zieltag und Vortag gemeinsam. Byte-identische Zieltag-Frames, deren Inhalt an irgendeinem Zeitpunkt des Vortags vorhanden war, werden entfernt. Danach werden spätere Duplikate innerhalb des Zieltags entfernt.

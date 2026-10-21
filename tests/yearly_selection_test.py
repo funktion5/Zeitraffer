@@ -13,6 +13,14 @@ from src.yearly_selection import (
 NOON = defaultdict(lambda: 12 * 60 * 60)
 
 
+# The selection reads hash and completeness together; most tests only vary the hash.
+def complete(fake_hash):
+	return lambda image_path, progress_callback=None: (
+		fake_hash(image_path, progress_callback),
+		True,
+	)
+
+
 def test_select_unique_yearly_images_selects_closest_images_per_day(
 	monkeypatch,
 ):
@@ -27,8 +35,8 @@ def test_select_unique_yearly_images_selects_closest_images_per_day(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: image_path.name,
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: image_path.name),
 	)
 
 	result = select_unique_yearly_images(
@@ -75,8 +83,8 @@ def test_select_unique_yearly_images_skips_duplicate_and_uses_next_candidate(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		fake_get_image_hash,
+		"get_image_digest",
+		complete(fake_get_image_hash),
 	)
 
 	result = select_unique_yearly_images(
@@ -111,8 +119,8 @@ def test_select_unique_yearly_images_returns_fewer_when_not_enough_unique_images
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: hashes[image_path.name],
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: hashes[image_path.name]),
 	)
 
 	result = select_unique_yearly_images(
@@ -137,8 +145,8 @@ def test_select_unique_yearly_images_keeps_duplicate_tracking_per_day(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: "same-hash",
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: "same-hash"),
 	)
 
 	result = select_unique_yearly_images(
@@ -165,8 +173,8 @@ def test_select_unique_yearly_images_returns_days_in_chronological_order(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: image_path.name,
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: image_path.name),
 	)
 
 	result = select_unique_yearly_images(
@@ -193,8 +201,8 @@ def test_select_unique_yearly_images_keeps_selected_frames_chronological_within_
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: image_path.name,
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: image_path.name),
 	)
 
 	result = select_unique_yearly_images(
@@ -259,8 +267,8 @@ def test_select_unique_yearly_images_stops_hashing_after_limit_is_reached(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		fake_get_image_hash,
+		"get_image_digest",
+		complete(fake_get_image_hash),
 	)
 
 	result = select_unique_yearly_images(
@@ -296,8 +304,8 @@ def test_select_unique_yearly_images_forwards_hash_progress(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		fake_get_image_hash,
+		"get_image_digest",
+		complete(fake_get_image_hash),
 	)
 
 	select_unique_yearly_images(
@@ -368,8 +376,8 @@ def test_select_unique_yearly_images_ranks_by_per_date_target(
 
 	monkeypatch.setattr(
 		yearly_selection_module,
-		"get_image_hash",
-		lambda image_path, progress_callback=None: image_path.name,
+		"get_image_digest",
+		complete(lambda image_path, progress_callback=None: image_path.name),
 	)
 
 	result = select_unique_yearly_images(
@@ -385,3 +393,67 @@ def test_select_unique_yearly_images_ranks_by_per_date_target(
 		Path("camera_26-06-21_21-40-00-00.jpg"),
 		Path("camera_26-12-21_16-10-00-00.jpg"),
 	]
+
+
+# A cut-off upload frees its slot: the next closest image of that day keeps the day at five.
+def test_select_unique_yearly_images_replaces_truncated_image_with_next_candidate(
+	monkeypatch,
+):
+	images = [
+		Path("camera_26-09-11_11-45-00-00.jpg"),
+		Path("camera_26-09-11_11-50-00-00.jpg"),
+		Path("camera_26-09-11_11-55-00-00.jpg"),
+		Path("camera_26-09-11_12-00-00-00.jpg"),
+		Path("camera_26-09-11_12-05-00-00.jpg"),
+		Path("camera_26-09-11_12-10-00-00.jpg"),
+	]
+
+	monkeypatch.setattr(
+		yearly_selection_module,
+		"get_image_digest",
+		lambda image_path, progress_callback=None: (
+			image_path.name,
+			image_path.name != "camera_26-09-11_12-00-00-00.jpg",
+		),
+	)
+
+	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
+		images=images,
+		images_per_day=5,
+	)
+
+	assert result == [
+		Path("camera_26-09-11_11-45-00-00.jpg"),
+		Path("camera_26-09-11_11-50-00-00.jpg"),
+		Path("camera_26-09-11_11-55-00-00.jpg"),
+		Path("camera_26-09-11_12-05-00-00.jpg"),
+		Path("camera_26-09-11_12-10-00-00.jpg"),
+	]
+
+
+# A truncated image never counts as seen, so a complete copy of the same bytes is not blocked.
+def test_select_unique_yearly_images_does_not_record_hash_of_truncated_image(
+	monkeypatch,
+):
+	images = [
+		Path("camera_26-09-11_12-00-00-00.jpg"),
+		Path("camera_26-09-11_12-05-00-00.jpg"),
+	]
+
+	monkeypatch.setattr(
+		yearly_selection_module,
+		"get_image_digest",
+		lambda image_path, progress_callback=None: (
+			"same-hash",
+			image_path.name != "camera_26-09-11_12-00-00-00.jpg",
+		),
+	)
+
+	result = select_unique_yearly_images(
+		target_seconds_by_date=NOON,
+		images=images,
+		images_per_day=5,
+	)
+
+	assert result == [Path("camera_26-09-11_12-05-00-00.jpg")]

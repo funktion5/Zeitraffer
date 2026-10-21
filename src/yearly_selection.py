@@ -6,14 +6,15 @@ from src.image_worker import run_isolated_worker
 from src.images import (
 	extract_date,
 	extract_time,
-	get_image_hash,
+	get_image_digest,
 )
+from src.logger import logger
 
 # Frames kept per day in a Yearly video.
 IMAGES_PER_DAY = 5
 
 
-# Select up to five unique images per day, closest to the target time.
+# Select up to five unique, complete images per day, closest to the target time.
 def select_unique_yearly_images(
 	images: list[Path],
 	target_seconds_by_date: dict[date, int],
@@ -59,13 +60,19 @@ def select_unique_yearly_images(
 		for candidate in candidates:
 			image_path = candidate[2]
 
-			image_hash = get_image_hash(
+			image_hash, is_complete = get_image_digest(
 				image_path=image_path,
 				progress_callback=progress_callback,
 			)
 
 			if progress_callback is not None:
 				progress_callback()
+
+			# A cut-off upload frees its slot for the next closest image of the same day.
+			if not is_complete:
+				logger.warning(f"Skipping truncated image (no JPEG end marker): {image_path}")
+
+				continue
 
 			if image_hash in seen_hashes:
 				continue

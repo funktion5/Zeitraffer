@@ -16,6 +16,9 @@ DEFAULT_CAMERA_ROOT = Path("/mnt/cameras")
 # (e.g. the NAS archive) without any argument plumbing.
 CAMERA_ROOT = Path(os.environ.get("TIMELAPSE_CAMERA_ROOT") or DEFAULT_CAMERA_ROOT)
 
+# Every camera ends a complete JPEG with this marker; an upload cut off part-way lacks it.
+JPEG_END_MARKER = b"\xff\xd9"
+
 
 @dataclass
 class ImageRange:
@@ -339,16 +342,28 @@ def get_image_hash(
 	image_path: Path,
 	progress_callback: Callable[[], None] | None = None,
 ) -> str:
+	return get_image_digest(image_path, progress_callback)[0]
+
+
+# Hash an image and report whether it ends with the JPEG end marker, from the same single read, so
+# the check costs nothing extra on the camera mount.
+def get_image_digest(
+	image_path: Path,
+	progress_callback: Callable[[], None] | None = None,
+) -> tuple[str, bool]:
 	hasher = hashlib.sha256()
+	tail = b""
 
 	with image_path.open("rb") as image_file:
 		while chunk := image_file.read(1024 * 1024):
 			hasher.update(chunk)
 
+			tail = (tail + chunk)[-len(JPEG_END_MARKER) :]
+
 			if progress_callback is not None:
 				progress_callback()
 
-	return hasher.hexdigest()
+	return hasher.hexdigest(), tail == JPEG_END_MARKER
 
 
 # Remove empty files before images are passed to further processing.

@@ -1445,3 +1445,24 @@ def test_camera_root_defaults_to_storage_box_mount():
 
 def test_camera_root_can_be_overridden_by_environment(tmp_path):
 	assert _camera_root_in_fresh_process(str(tmp_path)) == str(tmp_path)
+
+
+# Hash and completeness come from one read; the end marker may straddle a read chunk.
+@pytest.mark.parametrize(
+	("content", "complete"),
+	[
+		(b"\xff\xd8 image \xff\xd9", True),
+		(b"\xff\xd8 cut off \xf9\xe3", False),
+		(b"\xd9", False),
+		(b"", False),
+		(b"\xff\xd8" + b"x" * (1024 * 1024 - 3) + b"\xff\xd9", True),
+	],
+)
+def test_get_image_digest_reports_complete_jpeg(tmp_path: Path, content: bytes, complete: bool):
+	image = tmp_path / "image.jpg"
+	image.write_bytes(content)
+
+	image_hash, is_complete = images_module.get_image_digest(image)
+
+	assert image_hash == images_module.get_image_hash(image)
+	assert is_complete is complete

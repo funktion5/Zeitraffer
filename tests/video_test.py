@@ -20,6 +20,8 @@ from src.video import (
 	x264_preset_arguments,
 )
 
+COMPLETE_JPEG = b"\xff\xd8 test image \xff\xd9"
+
 
 # A manual/historical video embeds its daylight buffer so two runs for the
 # same date but different buffers don't overwrite each other.
@@ -92,7 +94,7 @@ def test_copy_images_to_temp(tmp_path: Path):
 
 	for index in range(3):
 		image = source_directory / f"image_{index}.jpg"
-		image.write_bytes(b"test image")
+		image.write_bytes(COMPLETE_JPEG)
 		images.append(image)
 
 	copied_images = copy_images_to_temp(
@@ -100,12 +102,58 @@ def test_copy_images_to_temp(tmp_path: Path):
 		temp_directory,
 	)
 
-	assert len(copied_images) == 3
-	assert copied_images[0].name == "frame_000001.jpg"
-	assert copied_images[1].name == "frame_000002.jpg"
-	assert copied_images[2].name == "frame_000003.jpg"
+	assert [original for original, _ in copied_images] == images
+	assert [frame.name for _, frame in copied_images] == [
+		"frame_000001.jpg",
+		"frame_000002.jpg",
+		"frame_000003.jpg",
+	]
 
-	assert all(image.exists() for image in copied_images)
+	assert all(frame.exists() for _, frame in copied_images)
+
+
+# A cut-off camera upload is left out and the frame numbers stay gapless for FFmpeg.
+def test_copy_images_to_temp_skips_truncated_images(tmp_path: Path):
+	source_directory = tmp_path / "source"
+	temp_directory = tmp_path / "temp"
+
+	source_directory.mkdir()
+	temp_directory.mkdir()
+
+	contents = [COMPLETE_JPEG, b"\xff\xd8 cut off \xf9\xe3", COMPLETE_JPEG, b"\xd9"]
+	images = []
+
+	for index, content in enumerate(contents):
+		image = source_directory / f"image_{index}.jpg"
+		image.write_bytes(content)
+		images.append(image)
+
+	copied_images = copy_images_to_temp(
+		images,
+		temp_directory,
+	)
+
+	assert copied_images == [
+		(images[0], temp_directory / "frame_000001.jpg"),
+		(images[2], temp_directory / "frame_000002.jpg"),
+	]
+	assert sorted(path.name for path in temp_directory.iterdir()) == [
+		"frame_000001.jpg",
+		"frame_000002.jpg",
+	]
+	assert images[1].exists()
+
+
+# Nothing left to encode is a per-camera error, not an empty or broken video.
+def test_copy_images_to_temp_raises_when_every_image_is_truncated(tmp_path: Path):
+	image = tmp_path / "image.jpg"
+	image.write_bytes(b"\xff\xd8 cut off")
+
+	with pytest.raises(OSError, match="No complete images"):
+		copy_images_to_temp(
+			[image],
+			tmp_path,
+		)
 
 
 # Recreate an existing temp directory so no old frames survive a new run.
@@ -1002,7 +1050,7 @@ def patch_timelapse_steps(monkeypatch, tmp_path: Path, calls: list) -> list[Path
 	monkeypatch.setattr(
 		video_module,
 		"copy_images_to_temp",
-		lambda images, temp_directory: calls.append("copy") or frames,
+		lambda images, temp_directory: calls.append("copy") or list(zip(images, frames)),
 	)
 	monkeypatch.setattr(
 		video_module,

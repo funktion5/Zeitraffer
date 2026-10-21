@@ -10,6 +10,7 @@ from typing import Literal
 import psutil
 
 from src.config import load_config
+from src.images import JPEG_END_MARKER
 from src.interval_window import IntervalWindow
 from src.logger import logger
 from src.privacy.anonymize import anonymize_frames, parse_drop_rules
@@ -141,27 +142,52 @@ def create_temp_directory(
 	return temp_directory
 
 
-# Copy selected images locally and rename them as sequential FFmpeg frames.
+# A camera upload cut off part-way still has a size, so the 0-byte filter misses it. FFmpeg would
+# fill its missing lower part with the previous frame. Every camera ends its JPEGs with this marker.
+def is_complete_jpeg(path: Path) -> bool:
+	with path.open("rb") as file:
+		try:
+			file.seek(-len(JPEG_END_MARKER), os.SEEK_END)
+		except OSError:
+			return False
+
+		return file.read() == JPEG_END_MARKER
+
+
+# Copy selected images locally and rename them as sequential FFmpeg frames. The check runs on the
+# local copy, so it costs no extra read on the camera mount. Returns (original, frame) pairs.
 def copy_images_to_temp(
 	images: list[Path],
 	temp_directory: Path,
-) -> list[Path]:
+) -> list[tuple[Path, Path]]:
 	logger.info(f"Copying {len(images)} images to temporary directory")
 
 	copied_images = []
 
-	for index, image in enumerate(
-		images,
-		start=1,
-	):
-		destination = temp_directory / f"frame_{index:06d}.jpg"
+	for image in images:
+		destination = temp_directory / f"frame_{len(copied_images) + 1:06d}.jpg"
 
 		shutil.copy2(
 			image,
 			destination,
 		)
 
-		copied_images.append(destination)
+		if not is_complete_jpeg(destination):
+			logger.warning(f"Skipping truncated image (no JPEG end marker): {image}")
+
+			destination.unlink()
+
+			continue
+
+		copied_images.append((image, destination))
+
+	skipped = len(images) - len(copied_images)
+
+	if skipped:
+		logger.warning(f"Skipped {skipped} of {len(images)} truncated images")
+
+	if images and not copied_images:
+		raise OSError(f"No complete images left to encode in {temp_directory}")
 
 	logger.debug(f"Copied {len(copied_images)} temporary frames")
 
@@ -371,7 +397,7 @@ def create_timelapse(
 		target_date,
 	)
 
-	copied_frames = copy_images_to_temp(
+	copied_images = copy_images_to_temp(
 		images,
 		temp_directory,
 	)
@@ -380,8 +406,8 @@ def create_timelapse(
 	if blur_people:
 		anonymize_frames(
 			camera=camera,
-			originals=images,
-			frames=copied_frames,
+			originals=[original for original, _ in copied_images],
+			frames=[frame for _, frame in copied_images],
 			detector_command=DETECTOR_COMMAND,
 			blur_settings=BLUR_SETTINGS,
 			# Checked only when blurring is asked for: a bad value must not stop normal videos.
