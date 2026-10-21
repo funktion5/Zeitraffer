@@ -1,18 +1,36 @@
+import argparse
+import sys
 import time
 from collections.abc import Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import cv2
 
-from src.config import automatic_daylight_buffer_for
+from src.config import PROJECT_ROOT, automatic_daylight_buffer_for, load_config
+from src.date_coverage import get_latest_completed_date
 from src.flagger.groups import best_flag
-from src.flagger.report import FlaggedImage, build_manifest, copy_name, write_report
-from src.flagger.yolox import Forward, detect_image
-from src.images import find_daily_images_isolated, image_moment
-from src.logger import logger
+from src.flagger.report import (
+	FlaggedImage,
+	build_manifest,
+	cleanup_old_reports,
+	copy_name,
+	write_report,
+)
+from src.flagger.settings import load_flagger_settings
+from src.flagger.yolox import Forward, OnnxForward, detect_image, detector_id
+from src.images import find_daily_images_isolated, get_cameras, image_moment, require_cameras
+from src.logger import configure_file_logging, logger
 from src.solar import get_sun_times
+from src.storage_filter import RUN_LOCK_PATH, acquire_run_lock
+
+# The shared run lock of cron, web jobs and the storage filter: never alongside an encode.
+LOCK_PATH = RUN_LOCK_PATH
+VIDEO_ROOT = PROJECT_ROOT / "videos"
+DEFAULT_MODEL = PROJECT_ROOT / "models" / "object_detection_yolox_2022nov.onnx"
 
 
 @dataclass(frozen=True)
@@ -127,3 +145,123 @@ def run_cameras(
 		)
 
 	return 1 if any_failed else 0
+
+
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
+	parser = argparse.ArgumentParser(
+		prog="python3 -m src.flagger.run",
+		description="Flag animals and flying objects in the Daily images.",
+	)
+	parser.add_argument("--cameras", nargs="+", help="override flagger.cameras from config.json")
+	parser.add_argument(
+		"--target-date",
+		type=date.fromisoformat,
+		help="day to check, YYYY-MM-DD (default: yesterday)",
+	)
+	parser.add_argument("--model", type=Path, default=None, help="ONNX model file")
+	parser.add_argument("--images", type=Path, help="test mode: check this folder instead")
+	parser.add_argument("--out", type=Path, help="test mode: write the report below this folder")
+	parser.add_argument("--camera", default="adhoc", help="test mode: camera name in the report")
+
+	args = parser.parse_args(argv)
+
+	if args.images is not None and args.out is None:
+		parser.error("--images needs --out")
+
+	if args.images is not None and args.cameras:
+		parser.error("--images cannot be combined with --cameras")
+
+	return args
+
+
+# The seam tests replace, so no test needs the model file.
+def make_forward(model_path: Path) -> Forward:
+	return OnnxForward(model_path)
+
+
+def main(argv: list[str] | None = None) -> int:
+	args = parse_arguments(argv)
+	model = args.model or DEFAULT_MODEL
+	config = load_config()
+	timezone = config["location"]["timezone"]
+	now = datetime.now(tz=ZoneInfo(timezone))
+
+	if args.images is not None:
+		return run_folder(args, model, timezone, now)
+
+	configure_file_logging("flagger")
+	settings = load_flagger_settings(config)
+	cameras = list(args.cameras or settings.cameras)
+
+	if cameras:
+		try:
+			ignored = set(config.get("ignored_cameras", []))
+			available = [camera for camera in get_cameras() if camera not in ignored]
+			cameras = require_cameras(cameras, available)
+
+		except (OSError, ValueError) as error:
+			logger.error(f"Flagger not started: {error}")
+			return 1
+
+		if not model.is_file():
+			logger.error(f"Flagger not started: model file missing: {model}")
+			return 1
+
+	with ExitStack() as stack:
+		# Only a held lock means "skip"; any other RuntimeError from the run must surface.
+		try:
+			stack.enter_context(acquire_run_lock(LOCK_PATH))
+
+		except RuntimeError as error:
+			logger.info(f"Skipped: {error}")
+			return 0
+
+		exit_code = 0
+
+		if cameras:
+			target_date = args.target_date or get_latest_completed_date(timezone)
+			logger.info(f"Flagger: {target_date} for {', '.join(cameras)}")
+			exit_code = run_cameras(
+				config=config,
+				cameras=cameras,
+				target_date=target_date,
+				forward=make_forward(model),
+				video_root=VIDEO_ROOT,
+				detector=detector_id(model),
+				now=now,
+			)
+
+		else:
+			logger.info("Flagger: no cameras configured (flagger.cameras is empty)")
+
+		# Runs on every run, so reports of cameras dropped from the list still expire.
+		removed = cleanup_old_reports(VIDEO_ROOT, now.date(), settings.retention_days)
+
+		if removed:
+			logger.info(f"Flagger: removed {len(removed)} old highlight folders")
+
+		return exit_code
+
+
+# Test mode: any folder of images, no config cameras, no lock, no cleanup.
+def run_folder(args: argparse.Namespace, model: Path, timezone: str, now: datetime) -> int:
+	images = sorted(
+		path for path in args.images.iterdir() if path.is_file() and path.suffix.lower() == ".jpg"
+	)
+	target_date = args.target_date or now.date()
+	scan = scan_images(images, make_forward(model), timezone)
+	manifest = build_manifest(
+		args.camera, target_date, now, detector_id(model), scan.checked, scan.flagged
+	)
+	folder = write_report(args.out, args.camera, target_date, manifest, scan.flagged)
+
+	logger.info(
+		f"[{args.camera}] checked={scan.checked} flagged={len(scan.flagged)} "
+		f"failed={scan.failed} -> {folder}"
+	)
+
+	return 0
+
+
+if __name__ == "__main__":
+	sys.exit(main())
