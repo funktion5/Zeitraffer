@@ -20,6 +20,7 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
 - [Zeitplanung mit Cron](#zeitplanung-mit-cron)
   - [Nächtlicher Produktionslauf](#nächtlicher-produktionslauf)
   - [Wiederanlauf nach Neustart](#wiederanlauf-nach-neustart)
+  - [Highlights-Flagger (geplant)](#highlights-flagger-geplant)
 - [Lokale Weboberfläche](#lokale-weboberfläche)
   - [Apache-Konfiguration](#apache-konfiguration)
   - [Basisauthentifizierung einrichten](#basisauthentifizierung-einrichten)
@@ -51,6 +52,7 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
   - [Laufzeit und Fortschritt](#laufzeit-und-fortschritt)
   - [Bericht](#bericht)
 - [Yearly-Backfill für Kalenderjahre](#yearly-backfill-für-kalenderjahre)
+- [Highlights-Flagger](#highlights-flagger)
 - [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi)
   - [Was gesichert wird](#was-gesichert-wird)
   - [Voraussetzungen](#voraussetzungen)
@@ -301,6 +303,10 @@ Beispiel:
       "padding_ratio": 0.05,
       "feather": 0.5
     }
+  },
+  "flagger": {
+    "cameras": [],
+    "retention_days": 30
   }
 }
 ```
@@ -330,6 +336,10 @@ Fehlerkennungen, `skip_labels` schaltet pro Kamera die Fahrzeug- und Kennzeichen
 (z. B. Bootsplanen; kann entfernte Personen unverpixelt lassen). Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
 wird. Alle Werte und Grenzen:
 [docs/verpixelung.md](docs/verpixelung.md#konfiguration).
+
+`flagger` steuert den Highlights-Flagger: `cameras` sind die Kameras, die jede Nacht geprüft
+werden (leer = keine), `retention_days` ist die Aufbewahrung der Berichte in Tagen (mindestens
+7). Details: [docs/flagger.md](docs/flagger.md#konfiguration).
 
 Die Tests prüfen unter anderem:
 
@@ -370,6 +380,16 @@ Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
 ```
 
 Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
+
+### Highlights-Flagger (geplant)
+
+Noch nicht eingerichtet. Der [Highlights-Flagger](#highlights-flagger) soll direkt nach dem
+nächtlichen Lauf starten, in derselben Zeile, aber außerhalb von `flock -c`: Er nimmt die Sperre
+selbst und würde sonst an der von Cron scheitern.
+
+```cron
+0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
+```
 
 Installierte Einträge prüfen:
 
@@ -1297,6 +1317,26 @@ mit `yearly_framerate`; Enddatum ist der 31. Dezember, im laufenden Jahr der ges
 `reports/yearly-coverage/backfill_YYYY-MM-DD_HHMMSS.csv` (`;`-getrennt, Spalten `camera`, `year`,
 `covered`, `total`, `missing_ranges`, `status`, `video`), der nach jeder Zeile geschrieben wird.
 Das Skript belegt denselben Lock wie Cron und Weboberfläche und wird nicht von pytest abgedeckt.
+
+---
+
+## Highlights-Flagger
+
+Prüft jede Nacht die Daily-Bilder der Kameras aus `flagger.cameras` auf Tiere und Flugobjekte
+(Vögel, Flugzeuge, Drachen) und legt Treffer als unveränderte Kopien mit einer `manifest.json`
+unter `videos/<Kamera>/highlights/<JJJJ-MM-TT>/` ab, für die Highlights-Seite der
+Weboberfläche. Liest nur, nimmt die gemeinsame Sperre `state/zeitraffer-run.lock` und löscht
+Berichte nach `flagger.retention_days` (30) Tagen. Die Bilder sind nicht verpixelt.
+
+**Stand:** gebaut und getestet, noch ohne Cron-Eintrag und ohne Kameras.
+
+```bash
+.venv/bin/python3 -m src.flagger.run                                   # Kameras aus der Config, Tag gestern
+.venv/bin/python3 -m src.flagger.run --cameras Strandallee --target-date 2026-10-20
+.venv/bin/python3 -m src.flagger.run --images <ordner> --out <ziel>    # Testmodus für einen Bildordner
+```
+
+Gruppen, Schwellen, Manifest-Felder, Exit-Codes und Messwerte: [docs/flagger.md](docs/flagger.md).
 
 ---
 
