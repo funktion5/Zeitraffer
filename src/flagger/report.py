@@ -1,14 +1,17 @@
 import json
+import re
 import shutil
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from src.flagger.groups import Detection
+from src.logger import logger
 
 HIGHLIGHTS_DIR = "highlights"
 MANIFEST_NAME = "manifest.json"
 SCHEMA = 1
+DAY_FOLDER_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
 @dataclass(frozen=True)
@@ -113,3 +116,40 @@ def restore_interrupted_swap(target: Path, previous: Path) -> None:
 		shutil.rmtree(previous)
 	else:
 		previous.rename(target)
+
+
+# Remove report folders older than the retention, for every camera. Goes by the date in the
+# folder name, never by file times, and only ever touches real directories named YYYY-MM-DD
+# directly inside a camera's highlights folder.
+def cleanup_old_reports(video_root: Path, today: date, retention_days: int) -> list[Path]:
+	cutoff = today - timedelta(days=retention_days)
+	removed = []
+
+	for folder in sorted(video_root.glob(f"*/{HIGHLIGHTS_DIR}/*")):
+		if not DAY_FOLDER_PATTERN.fullmatch(folder.name):
+			continue
+
+		# A symlinked highlights folder could point anywhere; never delete through it.
+		if folder.parent.is_symlink() or folder.is_symlink() or not folder.is_dir():
+			continue
+
+		try:
+			folder_date = date.fromisoformat(folder.name)
+
+		except ValueError:
+			continue
+
+		if folder_date >= cutoff:
+			continue
+
+		try:
+			shutil.rmtree(folder)
+
+		except OSError as error:
+			logger.warning(f"Could not remove old highlights {folder}: {error}")
+			continue
+
+		logger.debug(f"Removed old highlights: {folder}")
+		removed.append(folder)
+
+	return removed
