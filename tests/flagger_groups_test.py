@@ -1,23 +1,16 @@
-from src.flagger.groups import COCO_NAMES, FLOOR, GROUP_BY_CLASS, THRESHOLDS, Detection, best_flag
+from src.flagger.groups import CLASSES, FLOOR, THRESHOLDS, Detection, best_flag
 
 
 def test_class_table():
-	assert len(COCO_NAMES) == 80
-	assert (COCO_NAMES[14], COCO_NAMES[4], COCO_NAMES[33], COCO_NAMES[16]) == (
-		"bird",
-		"airplane",
-		"kite",
-		"dog",
+	assert (CLASSES[14], CLASSES[4], CLASSES[33]) == (
+		("bird", "flying"),
+		("airplane", "flying"),
+		("kite", "flying"),
 	)
-	assert COCO_NAMES[9] == "traffic_light"
-
-
-def test_groups():
-	assert {GROUP_BY_CLASS[c] for c in (14, 4, 33)} == {"flying"}
-	assert {GROUP_BY_CLASS[c] for c in range(15, 24)} == {"animal"}
-	assert set(GROUP_BY_CLASS) == {4, 14, 33, *range(15, 24)}
+	assert {CLASSES[c][1] for c in range(15, 24)} == {"animal"}
+	assert set(CLASSES) == {4, 14, 33, *range(15, 24)}
 	# Person is never flagged here.
-	assert 0 not in GROUP_BY_CLASS
+	assert 0 not in CLASSES
 
 
 def test_thresholds_and_floor():

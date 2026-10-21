@@ -174,3 +174,30 @@ def test_summary_line_per_camera(tmp_path, monkeypatch, caplog):
 		)
 
 	assert "[Strandallee] checked=2 flagged=1 failed=0" in caplog.text
+
+
+def test_a_camera_whose_images_all_fail_keeps_its_old_report(tmp_path, monkeypatch):
+	good = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(monkeypatch, {"Cam": [good]})
+	run_cameras(CONFIG, ["Cam"], DAY, FlagEverything(), tmp_path / "videos", "d", NOW)
+	folder = tmp_path / "videos" / "Cam" / "highlights" / "2026-10-20"
+	before = sorted(p.name for p in folder.iterdir())
+	broken = tmp_path / "src" / "cam-26-10-20_09-14-58-20.jpg"
+	broken.write_bytes(b"unreadable over a flaky mount")
+	prepared_images(monkeypatch, {"Cam": [broken]})
+
+	code = run_cameras(CONFIG, ["Cam"], DAY, FlagEverything(), tmp_path / "videos", "d", NOW)
+
+	assert code == 1
+	assert sorted(p.name for p in folder.iterdir()) == before
+
+
+def test_a_truncated_jpeg_is_skipped_as_failed(tmp_path):
+	ok, encoded = cv2.imencode(".jpg", np.full((48, 64, 3), 200, np.uint8))
+	truncated = tmp_path / "cam-26-10-20_08-14-58-20.jpg"
+	# A cut-off upload: no FF D9 end marker, the lower part would decode grey.
+	truncated.write_bytes(encoded.tobytes()[:-40])
+
+	scan = scan_images([truncated], FlagEverything(), "Europe/Berlin")
+
+	assert (scan.flagged, scan.checked, scan.failed) == ([], 0, 1)

@@ -35,7 +35,7 @@ def setup(tmp_path, monkeypatch):
 	monkeypatch.setattr(run, "DEFAULT_MODEL", model)
 	monkeypatch.setattr(run, "load_config", lambda: json.loads(json.dumps(CONFIG)))
 	monkeypatch.setattr(run, "get_cameras", lambda: ["Cam", "Other", "Ignored"])
-	monkeypatch.setattr(run, "make_forward", lambda model_path: SequenceForward([]))
+	monkeypatch.setattr(run, "OnnxForward", lambda model_path: SequenceForward([]))
 	return tmp_path
 
 
@@ -52,7 +52,7 @@ def record_calls(monkeypatch, name: str, result=0) -> list:
 
 def test_empty_camera_list_does_not_scan(setup, monkeypatch, caplog):
 	monkeypatch.setattr(run, "load_config", lambda: CONFIG | {"flagger": {"cameras": []}})
-	monkeypatch.setattr(run, "make_forward", forbidden)
+	monkeypatch.setattr(run, "OnnxForward", forbidden)
 	monkeypatch.setattr(run, "run_cameras", forbidden)
 	cleanup = record_calls(monkeypatch, "cleanup_old_reports", [])
 
@@ -66,7 +66,7 @@ def test_empty_camera_list_does_not_scan(setup, monkeypatch, caplog):
 
 @pytest.mark.parametrize("cameras", [["Nope"], ["Ignored"], ["Cam", "Nope"]])
 def test_unknown_or_ignored_camera_stops_before_reading(setup, monkeypatch, cameras):
-	monkeypatch.setattr(run, "make_forward", forbidden)
+	monkeypatch.setattr(run, "OnnxForward", forbidden)
 	monkeypatch.setattr(run, "run_cameras", forbidden)
 
 	assert run.main(["--cameras", *cameras]) == 1
@@ -96,8 +96,9 @@ def test_held_lock_skips_the_run(setup, monkeypatch, caplog):
 def test_nightly_mode_runs_cameras_then_cleans_up(setup, monkeypatch):
 	runs = record_calls(monkeypatch, "run_cameras", 0)
 	cleanup = record_calls(monkeypatch, "cleanup_old_reports", [])
+	monkeypatch.setattr(run, "get_latest_completed_date", lambda timezone: date(2026, 10, 20))
 
-	assert run.main(["--target-date", "2026-10-20"]) == 0
+	assert run.main([]) == 0
 
 	_, kwargs = runs[0]
 	assert kwargs["cameras"] == ["Cam"] and kwargs["target_date"] == date(2026, 10, 20)
@@ -144,7 +145,7 @@ def test_images_mode_writes_a_report_without_config_cameras_or_cleanup(setup, mo
 	out = setup / "out"
 	monkeypatch.setattr(run, "get_cameras", forbidden)
 	monkeypatch.setattr(run, "cleanup_old_reports", forbidden)
-	monkeypatch.setattr(run, "make_forward", lambda model_path: FlagAll())
+	monkeypatch.setattr(run, "OnnxForward", lambda model_path: FlagAll())
 
 	code = run.main(["--images", str(source), "--out", str(out), "--target-date", "2026-10-20"])
 
@@ -176,7 +177,25 @@ def test_a_runtime_error_during_the_run_is_not_mistaken_for_a_held_lock(setup, m
 	def broken_model(model_path):
 		raise RuntimeError("onnxruntime failed to load the model")
 
-	monkeypatch.setattr(run, "make_forward", broken_model)
+	monkeypatch.setattr(run, "OnnxForward", broken_model)
 
 	with pytest.raises(RuntimeError, match="onnxruntime"):
 		run.main([])
+
+
+def test_a_run_for_an_explicit_date_does_not_clean_up(setup, monkeypatch):
+	record_calls(monkeypatch, "run_cameras", 0)
+	monkeypatch.setattr(run, "cleanup_old_reports", forbidden)
+
+	# An old historical date would otherwise be deleted by the same run's cleanup.
+	assert run.main(["--target-date", "2026-01-01"]) == 0
+
+
+def test_a_broken_flagger_section_is_logged_and_stops(setup, monkeypatch, caplog):
+	monkeypatch.setattr(run, "load_config", lambda: CONFIG | {"flagger": {"cameras": "Cam"}})
+	monkeypatch.setattr(run, "run_cameras", forbidden)
+
+	with caplog.at_level(logging.ERROR, logger="timelapse"):
+		assert run.main([]) == 1
+
+	assert "flagger.cameras" in caplog.text

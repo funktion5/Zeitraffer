@@ -80,3 +80,12 @@ def test_detector_id_follows_model_bytes_and_tiles(tmp_path):
 	assert first_id.endswith("-ort-t2-animal0.3-flying0.3")
 	assert first_id != detector_id(second)
 	assert "-t1-" in detector_id(first, tiles=1)
+
+
+def test_boxes_are_clamped_to_the_image():
+	# Anchor 0 sits in the top-left corner; a 32 px box there reaches past the edge.
+	forward = SequenceForward([[(0, 14, 0.9, math.log(4))]])
+
+	found = detect_image(black(), forward, tiles=1)
+
+	assert found[0].box == pytest.approx((0, 0, 48, 48), abs=0.5)

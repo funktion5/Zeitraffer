@@ -12,7 +12,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from src.flagger.groups import FLOOR, GROUP_BY_CLASS, THRESHOLDS, Detection
+from src.flagger.groups import CLASSES, FLOOR, THRESHOLDS, Detection
 
 INPUT_SIZE = 640
 STRIDES = (8, 16, 32)
@@ -24,12 +24,12 @@ Forward = Callable[[np.ndarray], np.ndarray]
 
 
 class OnnxForward:
-	def __init__(self, model_path: Path, threads: int = 4):
+	def __init__(self, model_path: Path):
 		# Imported here so tests and the web side never need onnxruntime to import this module.
 		import onnxruntime as ort
 
 		options = ort.SessionOptions()
-		options.intra_op_num_threads = threads
+		options.intra_op_num_threads = 4
 		self.session = ort.InferenceSession(
 			str(model_path), options, providers=["CPUExecutionProvider"]
 		)
@@ -93,7 +93,7 @@ def detect_region(
 	sizes = np.exp(dets[:, 2:4]) * strides
 	found: dict[int, list[list[float]]] = {}
 
-	for class_id in GROUP_BY_CLASS:
+	for class_id in CLASSES:
 		scores = dets[:, 4] * dets[:, 5 + class_id]
 		keep = scores >= FLOOR
 
@@ -122,6 +122,7 @@ def detect_image(image: np.ndarray, forward: Forward, tiles: int = 2) -> list[De
 		for class_id, boxes in detect_region(region, offset_x, offset_y, forward).items():
 			candidates.setdefault(class_id, []).extend(boxes)
 
+	height, width = image.shape[:2]
 	detections = []
 
 	# Merged per class: the same bird seen in the whole frame and in a tile counts once.
@@ -131,7 +132,14 @@ def detect_image(image: np.ndarray, forward: Forward, tiles: int = 2) -> list[De
 
 		for index in np.array(keep).flatten():
 			x0, y0, x1, y1, score = found[int(index)]
-			detections.append(Detection(class_id, score, (x0, y0, x1, y1)))
+			# Clamped like the blur detector: the page draws the box over the image.
+			box = (
+				min(max(x0, 0.0), width),
+				min(max(y0, 0.0), height),
+				min(max(x1, 0.0), width),
+				min(max(y1, 0.0), height),
+			)
+			detections.append(Detection(class_id, score, box))
 
 	return detections
 

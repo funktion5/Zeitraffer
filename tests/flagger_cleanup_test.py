@@ -41,7 +41,8 @@ def test_only_plain_date_folders_inside_highlights_are_touched(tmp_path):
 		day_folder(tmp_path, "A", "2026-09-20-keep"),
 		day_folder(tmp_path, "A", "notes"),
 		day_folder(tmp_path, "A", "2026-13-45"),
-		day_folder(tmp_path, "A", ".2026-09-01.tmp"),
+		day_folder(tmp_path, "A", ".2026-09-01.old"),
+		day_folder(tmp_path, "A", ".2026-09-01.tmp.x"),
 	]
 	plain_file = highlights / "2026-09-01"
 	plain_file.write_text("x", encoding="utf-8")
@@ -102,3 +103,11 @@ def test_a_symlinked_highlights_folder_is_not_followed(tmp_path):
 
 	assert cleanup_old_reports(tmp_path / "videos", TODAY, 30) == []
 	assert old.is_dir()
+
+
+def test_old_work_folders_left_by_a_crash_are_removed(tmp_path):
+	stale = day_folder(tmp_path, "A", ".2026-08-01.tmp")
+	recent = day_folder(tmp_path, "A", ".2026-10-20.tmp")
+
+	assert cleanup_old_reports(tmp_path, TODAY, 30) == [stale]
+	assert recent.is_dir()

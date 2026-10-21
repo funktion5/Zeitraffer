@@ -9,6 +9,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import cv2
+import numpy as np
 
 from src.config import PROJECT_ROOT, automatic_daylight_buffer_for, load_config
 from src.date_coverage import get_latest_completed_date
@@ -22,7 +23,13 @@ from src.flagger.report import (
 )
 from src.flagger.settings import load_flagger_settings
 from src.flagger.yolox import Forward, OnnxForward, detect_image, detector_id
-from src.images import find_daily_images_isolated, get_cameras, image_moment, require_cameras
+from src.images import (
+	JPEG_END_MARKER,
+	find_daily_images_isolated,
+	get_cameras,
+	image_moment,
+	require_cameras,
+)
 from src.logger import configure_file_logging, logger
 from src.solar import get_sun_times
 from src.storage_filter import RUN_LOCK_PATH, acquire_run_lock
@@ -31,6 +38,8 @@ from src.storage_filter import RUN_LOCK_PATH, acquire_run_lock
 LOCK_PATH = RUN_LOCK_PATH
 VIDEO_ROOT = PROJECT_ROOT / "videos"
 DEFAULT_MODEL = PROJECT_ROOT / "models" / "object_detection_yolox_2022nov.onnx"
+# Folder name of a test-mode report below --out.
+TEST_CAMERA = "adhoc"
 
 
 @dataclass(frozen=True)
@@ -61,11 +70,17 @@ def scan_images(
 			failed += 1
 			continue
 
-		image = cv2.imread(str(path), cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION)
+		# One read for both checks. A cut-off upload has no end marker and would decode with a
+		# grey lower part. Not fail-closed like the blur job: a missed flag costs nothing.
+		data = path.read_bytes()
+		image = None
 
-		# Not fail-closed like the blur job: a missed flag costs nothing.
+		if data.endswith(JPEG_END_MARKER):
+			flags = cv2.IMREAD_COLOR | cv2.IMREAD_IGNORE_ORIENTATION
+			image = cv2.imdecode(np.frombuffer(data, np.uint8), flags)
+
 		if image is None:
-			logger.warning(f"Skipping unreadable image: {path.name}")
+			logger.warning(f"Skipping unreadable or truncated image: {path.name}")
 			failed += 1
 			continue
 
@@ -128,6 +143,15 @@ def run_cameras(
 				continue
 
 			scan = scan_images(images, forward, timezone)
+
+			# Nothing readable (e.g. a flaky mount) is a failure, not "checked, nothing found",
+			# and must not replace a good report from an earlier run.
+			if scan.checked == 0:
+				logger.error(
+					f"[{camera}] none of {len(images)} images could be read - nothing written"
+				)
+				any_failed = True
+				continue
 			manifest = build_manifest(
 				camera, target_date, now, detector, scan.checked, scan.flagged
 			)
@@ -161,7 +185,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 	parser.add_argument("--model", type=Path, default=None, help="ONNX model file")
 	parser.add_argument("--images", type=Path, help="test mode: check this folder instead")
 	parser.add_argument("--out", type=Path, help="test mode: write the report below this folder")
-	parser.add_argument("--camera", default="adhoc", help="test mode: camera name in the report")
 
 	args = parser.parse_args(argv)
 
@@ -172,11 +195,6 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 		parser.error("--images cannot be combined with --cameras")
 
 	return args
-
-
-# The seam tests replace, so no test needs the model file.
-def make_forward(model_path: Path) -> Forward:
-	return OnnxForward(model_path)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -190,7 +208,13 @@ def main(argv: list[str] | None = None) -> int:
 		return run_folder(args, model, timezone, now)
 
 	configure_file_logging("flagger")
-	settings = load_flagger_settings(config)
+	try:
+		settings = load_flagger_settings(config)
+
+	except ValueError as error:
+		logger.error(f"Flagger not started: {error}")
+		return 1
+
 	cameras = list(args.cameras or settings.cameras)
 
 	if cameras:
@@ -225,7 +249,7 @@ def main(argv: list[str] | None = None) -> int:
 				config=config,
 				cameras=cameras,
 				target_date=target_date,
-				forward=make_forward(model),
+				forward=OnnxForward(model),
 				video_root=VIDEO_ROOT,
 				detector=detector_id(model),
 				now=now,
@@ -234,11 +258,13 @@ def main(argv: list[str] | None = None) -> int:
 		else:
 			logger.info("Flagger: no cameras configured (flagger.cameras is empty)")
 
-		# Runs on every run, so reports of cameras dropped from the list still expire.
-		removed = cleanup_old_reports(VIDEO_ROOT, now.date(), settings.retention_days)
+		# Every nightly run cleans up, so reports of cameras dropped from the list still expire.
+		# A run for an explicit date skips it: an old date would delete its own fresh report.
+		if args.target_date is None:
+			removed = cleanup_old_reports(VIDEO_ROOT, now.date(), settings.retention_days)
 
-		if removed:
-			logger.info(f"Flagger: removed {len(removed)} old highlight folders")
+			if removed:
+				logger.info(f"Flagger: removed {len(removed)} old highlight folders")
 
 		return exit_code
 
@@ -249,14 +275,14 @@ def run_folder(args: argparse.Namespace, model: Path, timezone: str, now: dateti
 		path for path in args.images.iterdir() if path.is_file() and path.suffix.lower() == ".jpg"
 	)
 	target_date = args.target_date or now.date()
-	scan = scan_images(images, make_forward(model), timezone)
+	scan = scan_images(images, OnnxForward(model), timezone)
 	manifest = build_manifest(
-		args.camera, target_date, now, detector_id(model), scan.checked, scan.flagged
+		TEST_CAMERA, target_date, now, detector_id(model), scan.checked, scan.flagged
 	)
-	folder = write_report(args.out, args.camera, target_date, manifest, scan.flagged)
+	folder = write_report(args.out, TEST_CAMERA, target_date, manifest, scan.flagged)
 
 	logger.info(
-		f"[{args.camera}] checked={scan.checked} flagged={len(scan.flagged)} "
+		f"[{TEST_CAMERA}] checked={scan.checked} flagged={len(scan.flagged)} "
 		f"failed={scan.failed} -> {folder}"
 	)
 

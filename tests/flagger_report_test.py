@@ -125,7 +125,7 @@ def test_failure_while_copying_keeps_the_previous_report_and_leaves_no_temp(tmp_
 	folder = write_report(video_root, "Strandallee", DAY, manifest_for([old]), [old])
 	before = {p.name: p.read_bytes() for p in folder.iterdir()}
 
-	real_copy = shutil.copy2
+	real_copy = shutil.copyfile
 	calls = []
 
 	def failing_copy(source, target, *args, **kwargs):
@@ -134,7 +134,7 @@ def test_failure_while_copying_keeps_the_previous_report_and_leaves_no_temp(tmp_
 			raise OSError("disk full")
 		return real_copy(source, target, *args, **kwargs)
 
-	monkeypatch.setattr(report.shutil, "copy2", failing_copy)
+	monkeypatch.setattr(report.shutil, "copyfile", failing_copy)
 	new = [flagged(image(tmp_path, "a.jpg")), flagged(image(tmp_path, "b.jpg"))]
 
 	with pytest.raises(OSError, match="disk full"):
@@ -154,3 +154,20 @@ def test_leftover_temp_folder_from_a_crash_is_replaced(tmp_path):
 
 	assert sorted(p.name for p in folder.iterdir()) == ["a.jpg", "manifest.json"]
 	assert [p.name for p in highlights.iterdir()] == ["2026-10-20"]
+
+
+def test_copies_get_normal_permissions_not_the_originals(tmp_path):
+	source = image(tmp_path, "a.jpg")
+	source.chmod(0o600)
+	item = flagged(source)
+
+	folder = write_report(tmp_path / "videos", "Strandallee", DAY, manifest_for([item]), [item])
+
+	# The web server reads the copies as "other"; a private original must not stay private.
+	assert (folder / "a.jpg").stat().st_mode & 0o004
+
+
+def test_created_is_written_in_whole_seconds():
+	manifest = build_manifest("Cam", DAY, CREATED.replace(microsecond=471337), "d", 0, [])
+
+	assert manifest["created"] == "2026-10-21T03:12:44+02:00"
