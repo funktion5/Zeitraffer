@@ -506,16 +506,20 @@ sudo install -o root -g root -m 755 \
 sudo install -o root -g root -m 755 \
   scripts/timelapse-web-delete \
   /usr/local/sbin/timelapse-web-delete
+sudo install -o root -g root -m 755 \
+  scripts/timelapse-web-delete-highlight \
+  /usr/local/sbin/timelapse-web-delete-highlight
 ```
 
-Die sudoers-Regeln erlauben ausschließlich den festen Trigger und den festen Lösch-Wrapper, jeweils als `<benutzer>`:
+Die sudoers-Regeln erlauben ausschließlich den festen Trigger und die beiden festen Lösch-Wrapper, jeweils als `<benutzer>`:
 
 ```sudoers
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
 ```
 
-Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`.
+Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`. `timelapse-web-delete-highlight` erwartet genau Kamera, Datum und Dateiname (nur `.jpg`, keine Symlinks) und löscht ausschließlich ein Bild unter `videos/<camera>/highlights/<datum>/`, nie die `manifest.json`.
 
 Die Regeln werden mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
 
@@ -539,7 +543,7 @@ Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut
 | `web/` | lesen (`r-x` / `r--`) | PHP-Dateien und CSS |
 | `videos/` | lesen (`r-x` / `r--`) | Bibliothek, Wiedergabe, Speicheranzeige |
 | `config/` | nur Durchgang (`--x`) | – |
-| `config/config.json` | lesen (`r--`) | `ignored_cameras` |
+| `config/config.json` | lesen (`r--`) | `ignored_cameras`, `flagger.cameras`, Zeitzone |
 | `state/` | nur Durchgang (`--x`) | – |
 | `state/web-jobs/` | lesen (vom Status-Skript als `755`/`644` angelegt) | Job-Status-Polling |
 | alle übrigen Einträge in `timelapse/` | keine | – |
@@ -572,6 +576,8 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
 - Live-Status per Polling im Abstand von fünf Sekunden; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
 - Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung
 
+Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](#highlights-flagger) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](docs/highlights-seite.md).
+
 Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
 
 Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`.
@@ -581,6 +587,7 @@ Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und bl
 ```text
 web/public/index.php               Kameraübersicht
 web/public/camera.php              Player, Bibliothek, Formular und Status-Polling
+web/public/highlights.php          Highlights-Seite (Bilder des Flaggers, Löschen)
 web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung)
 web/public/style.css               Darstellung und responsives Layout
 web/src/components/header.php      gemeinsamer Header und Speicheranzeige
@@ -588,6 +595,8 @@ web/src/components/job-watcher.php gemeinsamer Abschlussdialog, seitenübergreif
 web/src/video-library.php          Kamera-, Video- und Speicherermittlung
 web/src/job-runner.php             Aufruf des fest installierten Triggers
 web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
+web/src/highlights-library.php     Lesen und Prüfen der Flagger-Berichte
+web/src/highlight-delete.php       Aufruf des Lösch-Wrappers für Highlight-Bilder
 web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger und Löschen)
 ```
 
@@ -1328,7 +1337,8 @@ unter `videos/<Kamera>/highlights/<JJJJ-MM-TT>/` ab, für die Highlights-Seite d
 Weboberfläche. Liest nur, nimmt die gemeinsame Sperre `state/zeitraffer-run.lock` und löscht
 Berichte nach `flagger.retention_days` (30) Tagen. Die Bilder sind nicht verpixelt.
 
-**Stand:** gebaut und getestet, noch ohne Cron-Eintrag und ohne Kameras.
+**Stand:** gebaut und getestet; Kameras: Strandallee, SLSV, BSV-Steinhude, SKM-Mardorf,
+Kitestrand. Noch ohne Cron-Eintrag.
 
 ```bash
 .venv/bin/python3 -m src.flagger.run                                   # Kameras aus der Config, Tag gestern
@@ -1474,14 +1484,14 @@ Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte lauf
 | `packages` | installiert Git, Python, FFmpeg, SSHFS, Apache und PHP; aktiviert `user_allow_other` in `/etc/fuse.conf` |
 | `clone` | klont das Repository nach `~/timelapse`; bricht ab, wenn dort bereits ein fremder oder nicht leerer Ordner liegt |
 | `venv` | legt `.venv` an und installiert `requirements.txt` |
-| `restore_backup` | entpackt das Backup in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf beide Regeln, installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
+| `restore_backup` | entpackt das Backup in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf die Trigger- und Lösch-Regel (fehlt die Regel für Highlight-Bilder, nur eine Warnung), installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
 | `known_hosts` | überspringt, wenn der Storage-Box-Host bereits bekannt ist; sonst werden die Fingerprints angezeigt und müssen mit `y` bestätigt werden |
 | `sshfs_mount` | prüft, dass `User=` im systemd-Service der aktuelle Benutzer ist; installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
 | `apache` | aktiviert `zeitraffer.conf`, deaktiviert die Standardseite, führt `apache2ctl configtest` aus und lädt Apache neu |
-| `web_bridge` | installiert Trigger, Lösch-Wrapper, Worker und Status-Skript unter `/usr/local` |
+| `web_bridge` | installiert Trigger, beide Lösch-Wrapper, Worker und Status-Skript unter `/usr/local` |
 | `permissions` | setzt die Dateirechte aus [Dateirechte für `www-data`](#dateirechte-für-www-data) |
 | `disable_wifi` | schaltet WLAN per `nmcli` ab und trägt `dtoverlay=disable-wifi` in `/boot/firmware/config.txt` ein; wird übersprungen, wenn die SSH-Sitzung selbst über WLAN läuft |
-| `verify` | führt die Testsuite aus und prüft Mount, Crontab, HTTP-Status `401`, Lese- und Sperrrechte von `www-data`, beide sudoers-Regeln und den WLAN-Status |
+| `verify` | führt die Testsuite aus und prüft Mount, Crontab, HTTP-Status `401`, Lese- und Sperrrechte von `www-data`, die sudoers-Regeln, den Highlight-Lösch-Wrapper und den WLAN-Status |
 
 Interaktive Abfragen während des Laufs:
 
@@ -2127,6 +2137,7 @@ timelapse/
 ├── docs/
 │   ├── plans/
 │   │   └── custom-time-window.md
+│   ├── highlights-seite.md
 │   ├── nas.md
 │   ├── verpixelung.md
 │   ├── youtube-description-prompt.md
@@ -2140,6 +2151,7 @@ timelapse/
 │   ├── pi-crash-logging-setup
 │   ├── storage-filter-all
 │   ├── timelapse-web-delete
+│   ├── timelapse-web-delete-highlight
 │   ├── timelapse-web-status.sh
 │   ├── timelapse-web-trigger
 │   ├── timelapse-web-worker
@@ -2196,6 +2208,7 @@ timelapse/
 ├── web/
 │   ├── public/
 │   │   ├── camera.php
+│   │   ├── highlights.php
 │   │   ├── index.php
 │   │   ├── job-status.php
 │   │   └── style.css
@@ -2203,6 +2216,8 @@ timelapse/
 │       ├── components/
 │       │   ├── header.php
 │       │   └── job-watcher.php
+│       ├── highlight-delete.php
+│       ├── highlights-library.php
 │       ├── job-runner.php
 │       ├── process-runner.php
 │       ├── video-delete.php
