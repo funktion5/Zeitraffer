@@ -61,6 +61,21 @@ def test_uppercase_suffix_is_parsed_like_lowercase(tmp_path):
 	assert (len(scan.flagged), scan.checked, scan.failed) == (1, 1, 0)
 
 
+def test_progress_is_logged_every_ten_images(tmp_path, caplog):
+	images = [
+		write_image(tmp_path, f"cam-26-10-20_08-{minute:02d}-58-20.jpg") for minute in range(25)
+	]
+
+	with caplog.at_level(logging.INFO, logger="timelapse"):
+		scan_images(images, FlagEverything(), "Europe/Berlin", progress_label="[Cam]")
+
+	progress = [line for line in caplog.messages if line.startswith("[Cam] ")]
+	assert progress == [
+		"[Cam] 10/25 images, 10 flagged so far",
+		"[Cam] 20/25 images, 20 flagged so far",
+	]
+
+
 def test_tiny_image_is_scanned_without_error(tmp_path):
 	tiny = write_image(tmp_path, "cam-26-10-20_08-14-58-20.jpg", size=(10, 10))
 

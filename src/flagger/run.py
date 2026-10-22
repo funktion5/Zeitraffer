@@ -40,6 +40,8 @@ VIDEO_ROOT = PROJECT_ROOT / "videos"
 DEFAULT_MODEL = PROJECT_ROOT / "models" / "object_detection_yolox_2022nov.onnx"
 # Folder name of a test-mode report below --out.
 TEST_CAMERA = "adhoc"
+# About every 80 s at ~8 s per image on the Pi.
+PROGRESS_EVERY = 10
 
 
 @dataclass(frozen=True)
@@ -56,12 +58,19 @@ def scan_images(
 	forward: Forward,
 	timezone: str,
 	tiles: int = 2,
+	progress_label: str | None = None,
 ) -> ImageScan:
 	flagged = []
 	checked = 0
 	failed = 0
 
-	for path in images:
+	for index, path in enumerate(images, start=1):
+		# A camera takes 7-18 minutes; a line every PROGRESS_EVERY images shows it is moving.
+		if progress_label is not None and index > 1 and (index - 1) % PROGRESS_EVERY == 0:
+			logger.info(
+				f"{progress_label} {index - 1}/{len(images)} images, {len(flagged)} flagged so far"
+			)
+
 		# image_moment only knows lowercase ".jpg"; the file listing accepts any case.
 		taken_at = image_moment(copy_name(path), timezone)
 
@@ -142,7 +151,8 @@ def run_cameras(
 				logger.warning(f"[{camera}] no images for {target_date} - nothing written")
 				continue
 
-			scan = scan_images(images, forward, timezone)
+			logger.info(f"[{camera}] {len(images)} images to check")
+			scan = scan_images(images, forward, timezone, progress_label=f"[{camera}]")
 
 			# Nothing readable (e.g. a flaky mount) is a failure, not "checked, nothing found",
 			# and must not replace a good report from an earlier run.

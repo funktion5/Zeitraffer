@@ -160,11 +160,17 @@ bekommt keinen Ordner.
 
 ## Log
 
-`logs/flagger/<Datum>.log`, pro Kamera eine Zeile:
+`logs/flagger/<Datum>.log` (Datum des Laufs, nicht des geprüften Tages). Pro Kamera zuerst die
+Anzahl der Bilder, dann alle 10 Bilder ein Fortschritt und am Ende eine Zusammenfassung:
 
 ```text
+[Strandallee] 143 images to check
+[Strandallee] 10/143 images, 1 flagged so far
+...
 [Strandallee] checked=143 flagged=2 failed=0 seconds=1060
 ```
+
+Fortschritt live verfolgen: `tail -f logs/flagger/$(date +%F).log`
 
 Messwert Pi (21.10.2026): Modell laden 1,1 s, 7,4 s pro Bild (ganzes Bild plus vier
 Ausschnitte, 4 Threads), Spitzenspeicher etwa 210 MB. Bei rund 140 Daily-Bildern sind das etwa
