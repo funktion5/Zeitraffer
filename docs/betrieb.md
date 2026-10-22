@@ -143,8 +143,9 @@ Damit lassen sich Kalenderjahr-Videos aus dem alten Webcam-Archiv auf dem NAS er
 Werkzeuge dafür liegen im Ordner `nas/` und gehören nicht zum Produktionslauf. Anleitung:
 [docs/nas.md](nas.md).
 
-Im Testbetrieb lässt sich das Programm auch in einem Docker-Container ausführen (Mac, später
-Synology-NAS); der Pi bleibt dabei produktiv. Anleitung: [docs/docker.md](docker.md).
+Das Programm lässt sich auch in einem Docker-Container ausführen (auf einem Mac getestet; der
+geplante Betrieb auf dem Synology-NAS ist eingestellt). Der Pi bleibt produktiv. Anleitung:
+[docs/docker.md](docker.md).
 
 ## Bildvalidierung und Duplikate
 

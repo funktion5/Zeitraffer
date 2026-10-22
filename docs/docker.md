@@ -1,7 +1,8 @@
 # Docker (Testbetrieb)
 
-Zeitraffer läuft hier in einem Container statt direkt auf dem Raspberry Pi. Ziel ist ein Test
-auf einem Mac und danach auf dem Synology-NAS. **Stand:** Testbetrieb. Der Pi bleibt produktiv;
+Zeitraffer läuft hier in einem Container statt direkt auf dem Raspberry Pi. **Stand:** Der Test auf
+einem Mac ist gelungen (Oktober 2026). Der geplante Betrieb auf dem Synology-NAS ist **eingestellt**
+(22.10.2026); Docker bleibt nur eine Möglichkeit für einen späteren Host. Der Pi bleibt produktiv;
 der Container läuft nur, wenn man ihn von Hand startet.
 
 Alle Pfade sind relativ zum Projektordner.
@@ -70,7 +71,10 @@ MOUNT_CAMERAS=1 docker compose run --rm timelapse \
 Schritt 4 dauert ca. 10 Minuten (Erkennung von rund 70 Bildern). Das Video kann man mit dem
 auf dem Pi vergleichen; es sollte gleich aussehen.
 
-## Später auf dem NAS
+## Auf dem NAS (eingestellt)
+
+Der Betrieb auf dem Synology-NAS ist eingestellt. Die Hinweise bleiben für den Fall, dass ein
+ähnlicher Host in Frage kommt.
 
 - **Voraussetzung:** Synology mit **Container Manager** (DSM 7.2, meist „+"-Modelle mit
   x86-64-Prozessor, einige ARM64-Modelle) und mindestens 4 GB Arbeitsspeicher. Installieren

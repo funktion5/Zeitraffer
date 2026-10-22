@@ -587,8 +587,10 @@ Neben dem nächtlichen Lauf gibt es Hilfsprogramme, die bei Bedarf von Hand gest
   fehlen.
 - **NAS-Archiv:** holt Bilder vergangener Jahre aus dem Archiv auf dem NAS, um damit Videos zu
   erstellen.
+- **Staging:** ein Weg für einen Server, der den Online-Speicher nicht einbinden kann. Er kopiert
+  die nötigen Bilder vorher herüber. Vorhanden, derzeit nicht im Einsatz.
 
-Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill) und
+Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill, Staging) und
 [docs/nas.md](docs/nas.md) (NAS-Archiv).
 
 ---
@@ -669,7 +671,7 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [verpixelung-box.md](docs/verpixelung-box.md) | Verpixelung direkt auf dem Online-Speicher |
 | [wordpress.md](docs/wordpress.md) | das WordPress-Plugin |
 | [cli.md](docs/cli.md) | alle Befehle und Optionen |
-| [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter und Yearly-Backfill |
+| [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill, Staging für Hosts ohne Mount |
 | [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
 | [raspberry-pi.md](docs/raspberry-pi.md) | Sicherung, Neuinstallation, Absturzprotokoll |
 | [docker.md](docs/docker.md) | Versuch mit Docker (derzeit nicht im Einsatz) |

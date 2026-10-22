@@ -133,13 +133,28 @@ Ausgewählte Originalbilder werden zuerst nach `temp/` kopiert und dort als `fra
 
 ### `src/privacy/`
 
-Verpixelung von Personen und Kennzeichen (derzeit nur für historische Dailys, siehe
-[docs/verpixelung.md](verpixelung.md)):
+Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dailys, siehe
+[verpixelung.md](verpixelung.md)) und direkt auf der Storage Box ([verpixelung-box.md](verpixelung-box.md)):
 
 - `anonymize.py`: ruft die Erkennung paketweise auf, prüft jedes Ergebnis, verwaltet den Cache,
   verwirft bekannte Fehlerkennungen und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder
   Zweifel bricht den Lauf ab
 - `detect.py`: Erkennung von Personen und Fahrzeugen (YOLOX), läuft als eigener Prozess
+- `blur_box.py`: Runde über neue Bilder auf der Storage Box; liest und schreibt nur per SSH, nie
+  über den Mount
+- `box_writer.py`: einzige Stelle, die auf die Box schreibt (Sicherung des Originals, Upload,
+  geprüfter Tausch)
+
+### `src/flagger/`
+
+Highlights-Flagger ([flagger.md](flagger.md)), unabhängig von der Verpixelung und ohne Import aus
+`src/privacy` oder `src/video`:
+
+- `run.py`: Aufruf, Bildauswahl wie beim Daily, Scan aller Bilder eines Tages, Bericht
+- `yolox.py`: eigene YOLOX-Anbindung (ganzes Bild plus Ausschnitte)
+- `groups.py`: Klassen, Schwellen und der Filter für feststehende Objekte (`pick_flags`)
+- `report.py`: schreibt Kopien und `manifest.json` atomar, räumt alte Berichte auf
+- `settings.py`: liest und prüft den `flagger`-Abschnitt der Config
 
 ### `src/logger.py`
 
@@ -154,32 +169,72 @@ Verpixelung von Personen und Kennzeichen (derzeit nur für historische Dailys, s
 
 Verwaltet den persistenten Marker `state/run-in-progress` für den vollständigen automatischen Produktionslauf. Details stehen im Abschnitt [Run-State und Wiederanlauf](betrieb.md#run-state-und-wiederanlauf).
 
+### `src/interval_window.py`
+
+Tägliches Bildfenster für Monthly und Yearly: Mitte als Uhrzeit oder Sonnenuntergang (über
+`astral`), plus/minus Toleranz, ohne Mitternachtsüberschreitung.
+
+### `src/storage_filter.py`
+
+Speicherfilter ([werkzeuge.md](werkzeuge.md)): listet leere und doppelte Bilder per `ls` und
+`sha256sum` direkt auf der Storage Box, ohne Bilder über SSHFS zu lesen. Seine Box-Anbindung
+(`StorageBox`) nutzen auch `scripts/stage-frames.py` und die Verpixelung.
+
+### `web/`
+
+PHP-Weboberfläche ohne Framework und Datenbank: `web/public/` ist der einzige DocumentRoot,
+die Logik liegt in `web/src/`. Externe Prozesse nur über `proc_open` mit Argumentliste und die
+festen Wrapper. Aufbau und Dateien: [weboberflaeche.md](weboberflaeche.md).
+
 ## Projektstruktur
 
 ```text
 timelapse/
-├── .github/
-│   └── workflows/
-│       └── test.yml
 ├── config/
 │   ├── config.json
 │   └── mount.env.example
+├── docker/
+│   ├── docker-compose.yml
+│   ├── entrypoint.sh
+│   ├── .env.example
+│   ├── pull-videos.sh
+│   └── storage-box.env.example
 ├── docs/
-│   ├── plans/
-│   │   └── custom-time-window.md
+│   ├── plans/   (Umsetzungspläne)
+│   ├── superpowers/   (Entwürfe (Specs) neuer Funktionen)
+│   ├── architektur.md
+│   ├── betrieb.md
+│   ├── cli.md
+│   ├── docker.md
+│   ├── flagger.md
+│   ├── handbuch.md
 │   ├── highlights-seite.md
 │   ├── nas.md
+│   ├── raspberry-pi.md
+│   ├── verpixelung-box.md
 │   ├── verpixelung.md
+│   ├── weboberflaeche.md
+│   ├── werkzeuge.md
+│   ├── wordpress.md
 │   ├── youtube-description-prompt.md
 │   └── youtube-texts.md
+├── frontend/
+│   └── zeitraffer/
+│       ├── assets/   (CSS und JavaScript des Plugins)
+│       └── plugin-timelapse.php
+├── .github/
+│   └── workflows/
+│       └── test.yml
 ├── nas/
-│   ├── helpers/
+│   ├── helpers/   (Zähl- und Prüfwerkzeuge)
 │   ├── nas-extract.py
 │   └── README.md
 ├── scripts/
 │   ├── cameras-sshfs-preflight
 │   ├── pi-crash-logging-setup
+│   ├── stage-frames.py
 │   ├── storage-filter-all
+│   ├── timelapse-nightly-staged
 │   ├── timelapse-web-delete
 │   ├── timelapse-web-delete-highlight
 │   ├── timelapse-web-status.sh
@@ -187,15 +242,24 @@ timelapse/
 │   ├── timelapse-web-worker
 │   └── yearly-backfill.py
 ├── src/
+│   ├── flagger/
+│   │   ├── __init__.py
+│   │   ├── groups.py
+│   │   ├── report.py
+│   │   ├── run.py
+│   │   ├── settings.py
+│   │   └── yolox.py
 │   ├── jobs/
 │   │   ├── __init__.py
 │   │   ├── daily.py
-│   │   ├── weekly.py
 │   │   ├── monthly.py
+│   │   ├── weekly.py
 │   │   └── yearly.py
 │   ├── privacy/
 │   │   ├── __init__.py
 │   │   ├── anonymize.py
+│   │   ├── blur_box.py
+│   │   ├── box_writer.py
 │   │   └── detect.py
 │   ├── config.py
 │   ├── date_coverage.py
@@ -212,29 +276,7 @@ timelapse/
 │   └── yearly_selection.py
 ├── systemd/
 │   └── cameras-sshfs.service
-├── tests/
-│   ├── config_test.py
-│   ├── daily_test.py
-│   ├── date_coverage_test.py
-│   ├── diagnostics_test.py
-│   ├── image_worker_test.py
-│   ├── images_test.py
-│   ├── interval_window_test.py
-│   ├── logger_test.py
-│   ├── main_test.py
-│   ├── monthly_test.py
-│   ├── privacy_test.py
-│   ├── run_state_test.py
-│   ├── storage_filter_test.py
-│   ├── video_test.py
-│   ├── web_delete_test.py
-│   ├── web_php_test.py
-│   ├── web_status_endpoint_test.py
-│   ├── web_status_test.py
-│   ├── weekly_test.py
-│   ├── yearly_selection_test.py
-│   ├── yearly_test.py
-│   └── conftest.py
+├── tests/   (pytest, eine *_test.py-Datei pro Modul)
 ├── web/
 │   ├── public/
 │   │   ├── camera.php
@@ -253,28 +295,35 @@ timelapse/
 │       ├── process-runner.php
 │       ├── video-delete.php
 │       └── video-library.php
-├── logs/
-├── models/
-├── reports/
-├── state/
-├── temp/
-├── videos/
+├── logs/         (Laufzeitdaten, nicht im Repository)
+├── models/       (Erkennungsmodelle, nicht im Repository)
+├── reports/      (Laufzeitdaten, nicht im Repository)
+├── state/        (Laufzeitdaten, nicht im Repository)
+├── temp/         (Laufzeitdaten, nicht im Repository)
+├── videos/       (Laufzeitdaten, nicht im Repository)
+├── backup.env.example
 ├── backup.sh
+├── compose.yaml
+├── Dockerfile
+├── .dockerignore
+├── .gitignore
 ├── migrate.sh
 ├── pyproject.toml
-├── requirements.txt
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
-Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten behandelt.
-`models/` enthält das Modell der Personenerkennung; es wird separat heruntergeladen und ist nicht
-im Repository.
+Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten
+behandelt. `models/` enthält die Erkennungsmodelle für Verpixelung und Highlights-Flagger; sie
+werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind nicht im Repository.
 
-`docs/` enthält die ausführlichen Anleitungen zur Verpixelung (`verpixelung.md`) und zum
-NAS-Archiv (`nas.md`), Pläne (`plans/custom-time-window.md`: geplantes `--from`/`--to`, noch
-nicht umgesetzt) sowie Vorlage und fertige Texte für YouTube-Uploads.
+Was in welcher Datei unter `docs/` steht, listet das README unter
+[Dokumentation](../README.md#dokumentation).
 
-`backup.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe [Neuinstallation des Raspberry Pi](raspberry-pi.md#neuinstallation-des-raspberry-pi).
+`backup.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation
+wieder her; siehe [Neuinstallation des Raspberry Pi](raspberry-pi.md#neuinstallation-des-raspberry-pi).
+`scripts/stage-frames.py` und `scripts/timelapse-nightly-staged` sind der Weg für einen Host ohne
+SSHFS-Mount; siehe [werkzeuge.md](werkzeuge.md#staging-für-hosts-ohne-mount).
 
 ## Sicherheit und Datenintegrität
 
