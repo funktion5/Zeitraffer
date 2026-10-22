@@ -53,6 +53,27 @@ Der Flagger liest nur. Er schreibt nie nach `/mnt/cameras` oder auf die Storage 
 
 Die Schwellen stehen in `src/flagger/groups.py` und werden anhand echter Bilder nachjustiert.
 
+### Feststehende Objekte
+
+Ein Boot am Ufer oder eine Boje steht den ganzen Tag an derselben Stelle und würde sonst in fast
+jedem Bild markiert (SKM-Mardorf 21.10.2026: ein Katamaran als „airplane“ in 69 von 71 Bildern;
+SLSV: ein Schwimmkörper als „sheep“). Deshalb entscheidet der Flagger erst nach allen Bildern
+eines Tages:
+
+- Ein Treffer gilt als feststehend, wenn an seiner Stelle in mindestens **15 %** der Bilder des
+  Tages, und in mindestens **3** Bildern, ebenfalls etwas erkannt wurde. „Dieselbe Stelle“
+  heißt: die Rahmen überlappen sich zu mindestens 30 % (IoU). Ein leicht schaukelndes Objekt
+  bleibt so dieselbe Stelle; ein kleiner Vogel vor dem großen Rahmen eines Boots nicht.
+- Dabei zählen auch schwache Erkennungen ab **0,10**, die selbst nie markiert würden: Die Boje,
+  die nur ab und zu über 0,30 kommt, wird in den übrigen Bildern meist schwach erkannt.
+- Die Klasse spielt keine Rolle („airplane“ in einem Bild, „kite“ im nächsten).
+- Pro Bild gewinnt der beste Treffer, der nicht feststehend ist. Ein echter Vogel neben dem Boot
+  wird also weiter markiert.
+
+Grenze: Ein Tier, das stundenlang an genau derselben Stelle sitzt, fällt ebenfalls heraus.
+Werte (`STATIONARY_SHARE`, `STATIONARY_MIN_IMAGES`, `STATIONARY_IOU`, `PRESENCE_FLOOR`) in
+`src/flagger/groups.py`.
+
 ## Konfiguration
 
 In `config/config.json`:
@@ -161,12 +182,15 @@ bekommt keinen Ordner.
 ## Log
 
 `logs/flagger/<Datum>.log` (Datum des Laufs, nicht des geprüften Tages). Pro Kamera zuerst die
-Anzahl der Bilder, dann alle 10 Bilder ein Fortschritt und am Ende eine Zusammenfassung:
+Anzahl der Bilder, dann alle 10 Bilder ein Fortschritt (Bilder mit Treffer, vor dem Filter für
+feststehende Objekte), gegebenenfalls die Zahl der nur feststehenden Treffer und am Ende eine
+Zusammenfassung:
 
 ```text
 [Strandallee] 143 images to check
-[Strandallee] 10/143 images, 1 flagged so far
+[Strandallee] 10/143 images, 1 with hits so far
 ...
+[Strandallee] 3 images had only stationary hits (e.g. a boat or buoy) and are not flagged
 [Strandallee] checked=143 flagged=2 failed=0 seconds=1060
 ```
 

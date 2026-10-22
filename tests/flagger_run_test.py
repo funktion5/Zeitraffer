@@ -67,13 +67,16 @@ def test_progress_is_logged_every_ten_images(tmp_path, caplog):
 	]
 
 	with caplog.at_level(logging.INFO, logger="timelapse"):
-		scan_images(images, FlagEverything(), "Europe/Berlin", progress_label="[Cam]")
+		scan = scan_images(images, FlagEverything(), "Europe/Berlin", progress_label="[Cam]")
 
 	progress = [line for line in caplog.messages if line.startswith("[Cam] ")]
+	# FlagEverything hits the same spot in every image, so it ends up as stationary background.
 	assert progress == [
-		"[Cam] 10/25 images, 10 flagged so far",
-		"[Cam] 20/25 images, 20 flagged so far",
+		"[Cam] 10/25 images, 10 with hits so far",
+		"[Cam] 20/25 images, 20 with hits so far",
+		"[Cam] 25 images had only stationary hits (e.g. a boat or buoy) and are not flagged",
 	]
+	assert (scan.flagged, scan.checked) == ([], 25)
 
 
 def test_tiny_image_is_scanned_without_error(tmp_path):

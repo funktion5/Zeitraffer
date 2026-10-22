@@ -53,7 +53,7 @@ def test_overlapping_boxes_of_different_classes_are_both_kept():
 
 
 def test_classes_outside_the_groups_and_below_the_floor_are_dropped():
-	forward = SequenceForward([[(2440, 0, 0.9), (2441, 14, 0.2)]])
+	forward = SequenceForward([[(2440, 0, 0.9), (2441, 14, 0.05)]])
 
 	assert detect_image(black(), forward, tiles=1) == []
 

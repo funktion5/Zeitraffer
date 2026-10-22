@@ -13,7 +13,7 @@ import numpy as np
 
 from src.config import PROJECT_ROOT, automatic_daylight_buffer_for, load_config
 from src.date_coverage import get_latest_completed_date
-from src.flagger.groups import best_flag
+from src.flagger.groups import best_flag, pick_flags
 from src.flagger.report import (
 	FlaggedImage,
 	build_manifest,
@@ -60,7 +60,10 @@ def scan_images(
 	tiles: int = 2,
 	progress_label: str | None = None,
 ) -> ImageScan:
-	flagged = []
+	# Kept per image until the whole day is scanned: whether a hit is stationary background
+	# depends on all images (groups.pick_flags). Detections only, never the pixels.
+	analysed: list[tuple[Path, datetime, tuple[int, int], list]] = []
+	with_hits = 0
 	checked = 0
 	failed = 0
 
@@ -68,7 +71,7 @@ def scan_images(
 		# A camera takes 7-18 minutes; a line every PROGRESS_EVERY images shows it is moving.
 		if progress_label is not None and index > 1 and (index - 1) % PROGRESS_EVERY == 0:
 			logger.info(
-				f"{progress_label} {index - 1}/{len(images)} images, {len(flagged)} flagged so far"
+				f"{progress_label} {index - 1}/{len(images)} images, {with_hits} with hits so far"
 			)
 
 		# image_moment only knows lowercase ".jpg"; the file listing accepts any case.
@@ -94,15 +97,23 @@ def scan_images(
 			continue
 
 		checked += 1
-		best = best_flag(detect_image(image, forward, tiles))
+		height, width = image.shape[:2]
+		found = detect_image(image, forward, tiles)
+		with_hits += best_flag(found) is not None
+		analysed.append((path, taken_at, (width, height), found))
 
-		if best is not None:
-			height, width = image.shape[:2]
-			flagged.append(
-				FlaggedImage(
-					path=path, detection=best, taken_at=taken_at, image_size=(width, height)
-				)
-			)
+	picks = pick_flags([found for *_, found in analysed])
+	flagged = [
+		FlaggedImage(path=path, detection=pick, taken_at=taken_at, image_size=size)
+		for (path, taken_at, size, _), pick in zip(analysed, picks, strict=True)
+		if pick is not None
+	]
+
+	if progress_label is not None and with_hits > len(flagged):
+		logger.info(
+			f"{progress_label} {with_hits - len(flagged)} images had only stationary hits "
+			"(e.g. a boat or buoy) and are not flagged"
+		)
 
 	return ImageScan(flagged=flagged, checked=checked, failed=failed)
 
