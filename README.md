@@ -651,7 +651,6 @@ Fertig, aber noch nicht im Dauerbetrieb:
 - Highlights-Flagger und Verpixelung jede Nacht automatisch starten
 - eine Installationsanleitung und ein Installationsskript für einen beliebigen Server, falls das
   Programm vom Raspberry Pi umzieht
-- ein kurzes Handbuch für Kolleginnen und Kollegen
 
 ---
 
@@ -661,6 +660,7 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 
 | Datei | Inhalt |
 |---|---|
+| [handbuch.md](docs/handbuch.md) | **Handbuch für Entwickler:** Installation als Checkliste, alle Jobs starten, Fehlerfälle und was zu tun ist |
 | [betrieb.md](docs/betrieb.md) | Zeitplan, Videotypen, Ablage, Aufbewahrung, Wiederanlauf, Protokolle |
 | [weboberflaeche.md](docs/weboberflaeche.md) | Funktionen und Abläufe der Weboberfläche |
 | [highlights-seite.md](docs/highlights-seite.md) | die Highlights-Seite |
