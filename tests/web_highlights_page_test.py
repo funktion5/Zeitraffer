@@ -76,7 +76,6 @@ def render(tmp_path: Path, get=None, post=None, sudo_exit: int = 0):
 
 def delete_post(camera: str, date: str, file: str, token: str = TOKEN) -> dict:
 	return {
-		"action": "delete-highlight",
 		"csrf_token": token,
 		"camera": camera,
 		"date": date,
@@ -106,6 +105,9 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	assert 'class="highlights-open"' in out
 	assert f'data-caption="Strandallee · {german} · 08:14 Uhr · Flugzeug? · 86 %"' in out
 	assert 'id="highlights-viewer"' in out
+	# The shared confirm dialog from components/confirm-delete.php.
+	assert '<h2 id="confirm-delete-title">Bild löschen</h2>' in out
+	assert 'data-delete-name="a.jpg"' in out
 	assert "download" in out
 	assert f'value="{TOKEN}"' in out
 	assert 'width="1920"' in out and 'height="1080"' in out

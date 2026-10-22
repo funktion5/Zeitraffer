@@ -592,6 +592,7 @@ web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Pr
 web/public/style.css               Darstellung und responsives Layout
 web/src/components/header.php      gemeinsamer Header und Speicheranzeige
 web/src/components/job-watcher.php gemeinsamer Abschlussdialog, seitenübergreifendes Polling
+web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog vor dem Löschen
 web/src/video-library.php          Kamera-, Video- und Speicherermittlung
 web/src/job-runner.php             Aufruf des fest installierten Triggers
 web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
@@ -2214,6 +2215,7 @@ timelapse/
 │   │   └── style.css
 │   └── src/
 │       ├── components/
+│       │   ├── confirm-delete.php
 │       │   ├── header.php
 │       │   └── job-watcher.php
 │       ├── highlight-delete.php

@@ -172,7 +172,6 @@ def test_item_fields_and_url(tmp_path):
 					"url": "/videos/Cam%20%C3%84/highlights/2026-10-20/"
 					"strandallee-26-10-20_08-14-58-20.jpg",
 					"time": "08:14",
-					"group": "flying",
 					"label": "airplane",
 					"score": 1.0,
 					"box": [716, 579, 814, 625],

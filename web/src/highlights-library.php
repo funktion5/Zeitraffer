@@ -206,16 +206,9 @@ function readHighlightDay(string $camera, string $date, string $dayPath): ?array
 			continue;
 		}
 
-		$items[] = [
-			"file" => $item["file"],
-			"url" => "/videos/"
-				. rawurlencode($camera)
-				. "/highlights/"
-				. $date
-				. "/"
-				. rawurlencode($item["file"]),
-			...array_diff_key($item, ["file" => true]),
-		];
+		$item["url"] = "/videos/" . rawurlencode($camera) . "/highlights/{$date}/"
+			. rawurlencode($item["file"]);
+		$items[] = $item;
 	}
 
 	return [
@@ -257,7 +250,6 @@ function parseHighlightItem(array $entry): ?array
 	return [
 		"file" => $file,
 		"time" => "{$time[1]}:{$time[2]}",
-		"group" => $group,
 		"label" => $label,
 		"score" => (float) $score,
 		"box" => $box,
@@ -293,18 +285,4 @@ function isListedHighlight(string $camera, mixed $date, mixed $file): bool
 	}
 
 	return false;
-}
-
-function highlightsPageUrl(string $period, string $camera, bool $deleted = false): string
-{
-	$query = array_filter(
-		[
-			"days" => $period,
-			"camera" => $camera,
-			"deleted" => $deleted ? "1" : "",
-		],
-		fn(string $value): bool => $value !== "",
-	);
-
-	return "/highlights.php?" . http_build_query($query, "", "&", PHP_QUERY_RFC3986);
 }

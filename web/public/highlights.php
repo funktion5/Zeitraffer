@@ -50,9 +50,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	) {
 		$formMessage = "Die ausgewählte Kamera ist ungültig.";
 
-	} elseif (($_POST["action"] ?? null) !== "delete-highlight") {
-		$formMessage = "Unbekannte Anfrage.";
-
 	} elseif (!isListedHighlight($submittedCamera, $submittedDate, $submittedFile)) {
 		$formMessage = "Das ausgewählte Bild wurde nicht gefunden.";
 
@@ -61,18 +58,17 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		$formMessage = $deleteResult["message"];
 
 		if ($deleteResult["deleted"]) {
-			header("Location: " . highlightsPageUrl($period, $cameraFilter, true));
+			$query = ["days" => $period, "camera" => $cameraFilter, "deleted" => "1"];
+			header("Location: /highlights.php?" . http_build_query($query));
 
 			exit;
 		}
 	}
 }
 
-if ($cameraFilter === "") {
-	$shownCameras = $highlightCameras;
-} else {
-	$shownCameras = in_array($cameraFilter, $highlightCameras, true) ? [$cameraFilter] : [];
-}
+$shownCameras = $cameraFilter === ""
+	? $highlightCameras
+	: array_intersect($highlightCameras, [$cameraFilter]);
 
 $since = highlightsSinceDate($period, highlightsToday());
 $sections = [];
@@ -262,10 +258,9 @@ function highlightBoxStyle(array $item): string
 												<form
 													method="post"
 													action="/highlights.php"
-													data-delete-highlight
-													data-image-name="<?= escapeHtml($item["file"]) ?>"
+													data-delete-confirm
+													data-delete-name="<?= escapeHtml($item["file"]) ?>"
 												>
-													<input type="hidden" name="action" value="delete-highlight">
 													<input type="hidden" name="csrf_token" value="<?= escapeHtml($csrfToken) ?>">
 													<input type="hidden" name="camera" value="<?= escapeHtml($section["camera"]) ?>">
 													<input type="hidden" name="date" value="<?= escapeHtml($day["date"]) ?>">
@@ -296,15 +291,8 @@ function highlightBoxStyle(array $item): string
 		<?php endforeach; ?>
 	</main>
 
-	<dialog id="confirm-delete-dialog">
-		<h2 id="confirm-delete-title">Bild löschen</h2>
-		<p id="confirm-delete-message"></p>
-
-		<form method="dialog">
-			<button type="submit">Abbrechen</button>
-			<button type="button" id="confirm-delete-button">Löschen</button>
-		</form>
-	</dialog>
+	<?php $deleteDialogTitle = "Bild löschen"; ?>
+	<?php require __DIR__ . "/../src/components/confirm-delete.php"; ?>
 
 	<dialog id="highlights-viewer" class="highlights-viewer" aria-labelledby="highlights-viewer-caption">
 		<figure>
@@ -339,44 +327,6 @@ function highlightBoxStyle(array $item): string
 			url.searchParams.delete("deleted");
 			window.history.replaceState(null, "", url);
 		}
-
-		// Same confirm flow as camera.php (copied on purpose, camera.php stays untouched):
-		// an explicit click in the dialog, or window.confirm() where <dialog> is missing.
-		const deleteDialog = document.querySelector("#confirm-delete-dialog");
-		const deleteDialogMessage = document.querySelector("#confirm-delete-message");
-		const deleteDialogConfirmButton = document.querySelector("#confirm-delete-button");
-		let pendingDeleteForm = null;
-
-		function buildDeleteConfirmMessage(imageName) {
-			return `„${imageName}“ wirklich löschen? Dies kann nicht rückgängig gemacht werden.`;
-		}
-
-		document.querySelectorAll("form[data-delete-highlight]").forEach((form) => {
-			form.addEventListener("submit", (event) => {
-				event.preventDefault();
-
-				if (typeof deleteDialog.showModal !== "function") {
-					if (window.confirm(buildDeleteConfirmMessage(form.dataset.imageName))) {
-						form.submit();
-					}
-
-					return;
-				}
-
-				pendingDeleteForm = form;
-				deleteDialogMessage.textContent = buildDeleteConfirmMessage(form.dataset.imageName);
-				deleteDialog.showModal();
-			});
-		});
-
-		deleteDialogConfirmButton.addEventListener("click", () => {
-			const form = pendingDeleteForm;
-			pendingDeleteForm = null;
-
-			if (form !== null) {
-				form.submit();
-			}
-		});
 
 		// Full-size viewer: click an image, then step through all images on the page with the
 		// buttons or the arrow keys. Esc and a click beside the image close it. Without

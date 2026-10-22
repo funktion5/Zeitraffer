@@ -296,8 +296,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 								method="post"
 								action="/camera.php?camera=<?= rawurlencode($camera) ?>"
 								class="video-delete-form"
-								data-delete-video
-								data-video-name="<?= htmlspecialchars(
+								data-delete-confirm
+								data-delete-name="<?= htmlspecialchars(
 									$selectedVideo["filename"],
 									ENT_QUOTES,
 									"UTF-8",
@@ -398,8 +398,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 															method="post"
 															action="/camera.php?camera=<?= rawurlencode($camera) ?>"
 															class="video-library-delete-form"
-															data-delete-video
-															data-video-name="<?= htmlspecialchars(
+															data-delete-confirm
+															data-delete-name="<?= htmlspecialchars(
 																$video["filename"],
 																ENT_QUOTES,
 																"UTF-8",
@@ -613,15 +613,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
     <?php endif; ?>
 	  </main>
 
-	  <dialog id="confirm-delete-dialog">
-	    <h2 id="confirm-delete-title">Video löschen</h2>
-	    <p id="confirm-delete-message"></p>
-
-	    <form method="dialog">
-	      <button type="submit">Abbrechen</button>
-	      <button type="button" id="confirm-delete-button">Löschen</button>
-	    </form>
-	  </dialog>
+	  <?php $deleteDialogTitle = "Video löschen"; ?>
+	  <?php require __DIR__ . "/../src/components/confirm-delete.php"; ?>
 
 	  <script>
 	    // A job was just started on this exact page load: hand it to the shared
@@ -696,45 +689,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	    });
 
 	    updateDaylightBufferVisibility();
-
-	    const deleteDialog = document.querySelector("#confirm-delete-dialog");
-	    const deleteDialogMessage = document.querySelector("#confirm-delete-message");
-	    const deleteDialogConfirmButton = document.querySelector("#confirm-delete-button");
-	    let pendingDeleteForm = null;
-
-	    function buildDeleteConfirmMessage(videoName) {
-	      return `„${videoName}“ wirklich löschen? Dies kann nicht rückgängig gemacht werden.`;
-	    }
-
-	    // Require an explicit confirm click before any delete form is submitted.
-	    // Falls back to window.confirm() where <dialog>.showModal is unavailable,
-	    // so the delete action never silently does nothing.
-	    document.querySelectorAll("form[data-delete-video]").forEach((form) => {
-	      form.addEventListener("submit", (event) => {
-	        event.preventDefault();
-
-	        if (typeof deleteDialog.showModal !== "function") {
-	          if (window.confirm(buildDeleteConfirmMessage(form.dataset.videoName))) {
-	            form.submit();
-	          }
-
-	          return;
-	        }
-
-	        pendingDeleteForm = form;
-	        deleteDialogMessage.textContent = buildDeleteConfirmMessage(form.dataset.videoName);
-	        deleteDialog.showModal();
-	      });
-	    });
-
-	    deleteDialogConfirmButton.addEventListener("click", () => {
-	      const form = pendingDeleteForm;
-	      pendingDeleteForm = null;
-
-	      if (form !== null) {
-	        form.submit();
-	      }
-	    });
 	  </script>
 	</body>
 </html>
