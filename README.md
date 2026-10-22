@@ -17,6 +17,7 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
   - [Cron installieren oder prüfen](#cron-installieren-oder-prüfen)
   - [Absturzprotokollierung einrichten](#absturzprotokollierung-einrichten)
 - [Konfiguration](#konfiguration)
+  - [Umgebungsvariablen](#umgebungsvariablen)
 - [Zeitplanung mit Cron](#zeitplanung-mit-cron)
   - [Nächtlicher Produktionslauf](#nächtlicher-produktionslauf)
   - [Wiederanlauf nach Neustart](#wiederanlauf-nach-neustart)
@@ -103,7 +104,7 @@ Dieselbe Paketliste installiert auch `migrate.sh` (Schritt `packages`):
 sudo apt-get update
 sudo apt-get install -y \
   git python3 python3-venv python3-pip \
-  ffmpeg sshfs openssl \
+  ffmpeg sshfs openssl rsync \
   apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 ```
 
@@ -114,6 +115,11 @@ grep -qx user_allow_other /etc/fuse.conf || echo user_allow_other | sudo tee -a 
 ```
 
 ### Python-Umgebung einrichten
+
+Voraussetzung ist **Python 3.13** (`python3 --version`); Debian 13 (trixie) bringt es mit. Auf
+Systemen mit älterem Python, etwa Ubuntu 24.04 (3.12), muss Python 3.13 zusätzlich installiert
+und die virtuelle Umgebung damit angelegt werden (`python3.13 -m venv .venv`); das ist bisher
+nicht getestet.
 
 Virtuelle Umgebung erstellen und aktivieren:
 
@@ -258,8 +264,8 @@ Beispiel:
   },
   "daylight_buffer_minutes": 90,
   "automatic_daylight_buffer_minutes": {
-    "1": 30, "2": 30, "3": 60, "4": 60, "5": 90, "6": 90,
-    "7": 90, "8": 60, "9": 60, "10": 30, "11": 30, "12": 30
+    "1": 30, "2": 60, "3": 60, "4": 60, "5": 90, "6": 90,
+    "7": 90, "8": 60, "9": 60, "10": 60, "11": 30, "12": 30
   },
   "interval_window": {
     "target_time": "12:00",
@@ -348,6 +354,23 @@ Die Tests prüfen unter anderem:
 - gültige JSON-Syntax
 - erwartete Schlüssel
 - grundlegende Datentypen
+
+### Umgebungsvariablen
+
+Für besondere Hosts lassen sich einige Pfade und Einstellungen über Umgebungsvariablen setzen. Im
+normalen Betrieb auf dem Pi ist keine davon nötig.
+
+| Variable | Standard | Wirkung |
+|---|---|---|
+| `TIMELAPSE_CAMERA_ROOT` | `/mnt/cameras` | Ordner mit den Kamerabildern, z. B. ein Staging-Ordner statt des SSHFS-Mounts |
+| `TIMELAPSE_STORAGE_BOX` | aus dem SSHFS-Mount | Storage Box für Speicherfilter, Verpixelung und Staging auf Hosts ohne Mount: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen in `~/.ssh/config` unter dem Alias, nie im Repository |
+| `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
+| `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
+| `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |
+
+Nur für Tests gedacht sind `TIMELAPSE_DISABLE_FILE_LOGGING` (setzt `tests/conftest.py`) und
+`TIMELAPSE_WEB_*` (`PYTHON`, `LOCK_FILE`, `STATUS_HELPER`, `STATUS_ROOT`, `WORKER`), mit denen die
+Tests die Web-Wrapper umleiten; `sudo` setzt die Umgebung im Betrieb ohnehin zurück.
 
 ---
 
@@ -678,7 +701,7 @@ Pi: videos/<Kamera>/<Zeitraum>/*.mp4
   → docker/pull-videos.sh (rsync, nur Lesen auf dem Pi)
   → Mac: videos/
   → Docker-Container "wordpress": wp-content/uploads/zeitraffer/ (schreibgeschützt)
-  → Plugin frontend/plugin-timelapse.php
+  → Plugin frontend/zeitraffer/plugin-timelapse.php
   → Shortcodes [tl] und [zeitraffer]
 ```
 
@@ -799,7 +822,7 @@ Die Installation überlebt `docker compose down` und einen Neustart des Macs, da
 
 ### Schritt 5: Plugin aktivieren
 
-Unter **Plugins** erscheint **Zeitraffer** (Datei `frontend/plugin-timelapse.php`). Auf **Aktivieren** klicken. Erscheint das Plugin nicht, ist der Mount nicht angekommen; siehe [Fehlerbehebung](#fehlerbehebung-wordpress-frontend).
+Unter **Plugins** erscheint **Zeitraffer** (Datei `frontend/zeitraffer/plugin-timelapse.php`). Auf **Aktivieren** klicken. Erscheint das Plugin nicht, ist der Mount nicht angekommen; siehe [Fehlerbehebung](#fehlerbehebung-wordpress-frontend).
 
 ### Schritt 6: Kameras anlegen und Shortcode einbauen
 
@@ -901,7 +924,7 @@ docker compose down -v     # stoppen UND Volumes löschen: WordPress-Installatio
 Ohne lokale PHP-Installation über den Container:
 
 ```bash
-docker run --rm -v "$PWD/frontend":/w php:8.4-cli php -l /w/plugin-timelapse.php
+docker run --rm -v "$PWD/frontend":/w php:8.4-cli php -l /w/zeitraffer/plugin-timelapse.php
 ```
 
 Für das Plugin gibt es keine automatisierten Tests; die GitHub-Action prüft nur die Python-Pipeline und die PHP-Weboberfläche.
@@ -910,7 +933,7 @@ Für das Plugin gibt es keine automatisierten Tests; die GitHub-Action prüft nu
 
 | Symptom | Ursache und Lösung |
 |---|---|
-| Das Plugin „Zeitraffer“ fehlt in der Pluginliste | Der Mount fehlt. `docker compose exec wordpress ls /var/www/html/wp-content/plugins/zeitraffer` muss `plugin-timelapse.php` zeigen. Compose muss aus dem Ordner `docker/` gestartet werden, weil der Pfad `../frontend` relativ dazu aufgelöst wird. |
+| Das Plugin „Zeitraffer“ fehlt in der Pluginliste | Der Mount fehlt. `docker compose exec wordpress ls /var/www/html/wp-content/plugins/zeitraffer` muss `plugin-timelapse.php` zeigen. Compose muss aus dem Ordner `docker/` gestartet werden, weil der Pfad `../frontend/zeitraffer` relativ dazu aufgelöst wird. |
 | Die Seite zeigt nichts oder „Derzeit sind keine Zeitraffer-Videos verfügbar“ | `videos/` ist leer, oder es gibt keine `.mp4` unter `videos/<Kamera>/<Zeitraum>/`. Mit `docker compose exec wordpress ls /var/www/html/wp-content/uploads/zeitraffer` prüfen und `docker/pull-videos.sh` ausführen. |
 | Das Video lädt, lässt sich aber nicht abspielen (z. B. 403 „Forbidden“) | Dateirechte oder Mount prüfen: `docker compose exec wordpress ls -l /var/www/html/wp-content/uploads/zeitraffer/<Kamera>/<Zeitraum>`. Die Dateien müssen für den Webserver lesbar sein. |
 | Kamera ist in der Übersicht, aber der Link zeigt keinen Player | Die Seite mit `[zeitraffer]` fehlt oder hat nicht den Slug `zeitraffer` (siehe Schritt 6). |

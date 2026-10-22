@@ -72,7 +72,7 @@ step_packages() {
 	sudo apt-get update
 	sudo apt-get install -y \
 		git python3 python3-venv python3-pip \
-		ffmpeg sshfs openssl \
+		ffmpeg sshfs openssl rsync \
 		apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 
 	if ! grep -qx "user_allow_other" /etc/fuse.conf 2>/dev/null; then
