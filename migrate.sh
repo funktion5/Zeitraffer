@@ -116,8 +116,12 @@ step_restore_backup() {
 	sudo visudo -cf "$sudoers" >/dev/null || fail "Backed-up sudoers file does not parse — not installing it."
 	sudo grep -q "/usr/local/sbin/timelapse-web-trigger" "$sudoers" \
 		|| fail "Backed-up sudoers file lacks the timelapse-web-trigger rule."
-	sudo grep -q "/usr/local/sbin/timelapse-web-delete" "$sudoers" \
+	# Exact names: "timelapse-web-delete" alone would also match "timelapse-web-delete-highlight".
+	sudo grep -Eq "/usr/local/sbin/timelapse-web-delete([[:space:],]|$)" "$sudoers" \
 		|| fail "Backed-up sudoers file lacks the timelapse-web-delete rule."
+	# Backups from before the highlights page lack this rule; restore them anyway.
+	sudo grep -Eq "/usr/local/sbin/timelapse-web-delete-highlight([[:space:],]|$)" "$sudoers" \
+		|| warn "Backed-up sudoers file lacks the timelapse-web-delete-highlight rule. Add it afterwards with sudo visudo -f /etc/sudoers.d/timelapse-web: www-data ALL=($RUN_USER) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight"
 	sudo install -o root -g root -m 440 "$sudoers" /etc/sudoers.d/timelapse-web
 
 	sudo install -D -o root -g root -m 600 "$staging/etc/timelapse/mount.env" /etc/timelapse/mount.env
@@ -246,6 +250,7 @@ step_web_bridge() {
 	log "Installing the web-to-Python bridge wrappers"
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-trigger" /usr/local/sbin/timelapse-web-trigger
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-delete" /usr/local/sbin/timelapse-web-delete
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-delete-highlight" /usr/local/sbin/timelapse-web-delete-highlight
 	sudo mkdir -p /usr/local/libexec
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-worker" /usr/local/libexec/timelapse-web-worker
 	sudo install -m 644 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-status.sh" /usr/local/libexec/timelapse-web-status.sh
@@ -358,8 +363,14 @@ step_verify() {
 	sudo_rules="$(sudo -l -U www-data 2>/dev/null || true)"
 	grep -q "timelapse-web-trigger" <<<"$sudo_rules" \
 		&& echo "sudoers: trigger rule active" || warn "sudoers: trigger rule missing for www-data."
-	grep -q "timelapse-web-delete" <<<"$sudo_rules" \
+	grep -Eq "timelapse-web-delete([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: delete rule active" || warn "sudoers: delete rule missing for www-data."
+	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
+		&& echo "sudoers: highlight delete rule active" \
+		|| warn "sudoers: highlight delete rule missing for www-data."
+	[[ -x /usr/local/sbin/timelapse-web-delete-highlight ]] \
+		&& echo "highlight delete wrapper: installed" \
+		|| warn "/usr/local/sbin/timelapse-web-delete-highlight is not installed."
 
 	if [[ "$DISABLE_WIFI" == "1" ]]; then
 		[[ "$(nmcli radio wifi 2>/dev/null)" == "disabled" ]] \
