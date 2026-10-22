@@ -31,5 +31,9 @@ def test_rejects_malformed_camera_list(cameras):
 		load_flagger_settings({"flagger": {"cameras": cameras}})
 
 
-def test_repo_config_ships_an_empty_flagger_section():
-	assert load_config()["flagger"] == {"cameras": [], "retention_days": 30}
+def test_repo_config_flags_no_ignored_camera():
+	# An ignored camera in flagger.cameras makes require_cameras refuse the whole run.
+	config = load_config()
+	settings = load_flagger_settings(config)
+
+	assert not set(settings.cameras) & set(config["ignored_cameras"])

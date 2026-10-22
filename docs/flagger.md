@@ -5,9 +5,8 @@ beiseite, auf denen etwas Besonderes zu sehen ist: Tiere und Flugobjekte (Vögel
 Drachen). Die Highlights-Seite der Weboberfläche zeigt sie dann direkt als Bilder an.
 Der Code liegt in `src/flagger/`.
 
-**Stand:** fertig gebaut und getestet, läuft aber noch nicht automatisch (kein Cron-Eintrag,
-`flagger.cameras` ist leer). Welche Kameras geprüft werden, wird nach den ersten Testläufen
-entschieden.
+**Stand:** fertig gebaut und getestet. Geprüft werden Strandallee, SLSV, BSV-Steinhude,
+SKM-Mardorf und Kitestrand; automatisch läuft er erst mit dem Cron-Eintrag (unten).
 
 Der Flagger ist ein eigenes Programm. Er hängt nicht von der Verpixelung ab und teilt keinen
 Code mit ihr. **Die beiseitegelegten Bilder sind nicht verpixelt.** Vor einer Veröffentlichung
@@ -60,7 +59,7 @@ In `config/config.json`:
 
 ```json
 "flagger": {
-  "cameras": [],
+  "cameras": ["Strandallee", "SLSV", "BSV-Steinhude", "SKM-Mardorf", "Kitestrand"],
   "retention_days": 30
 }
 ```

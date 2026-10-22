@@ -305,7 +305,7 @@ Beispiel:
     }
   },
   "flagger": {
-    "cameras": [],
+    "cameras": ["Strandallee", "SLSV", "BSV-Steinhude", "SKM-Mardorf", "Kitestrand"],
     "retention_days": 30
   }
 }
