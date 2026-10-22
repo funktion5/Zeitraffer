@@ -7,6 +7,7 @@ declare(strict_types=1);
 <header class="main-header">
 	<nav aria-label="Hauptnavigation">
 		<a href="/">Kameras</a>
+		<a href="/highlights.php">Highlights</a>
 	</nav>
 
 	<?php if ($storage !== null): ?>
