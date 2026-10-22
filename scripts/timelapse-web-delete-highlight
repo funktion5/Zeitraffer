@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+
+if [[ $# -ne 3 ]]; then
+	echo "Usage: timelapse-web-delete-highlight <camera> <date> <filename>" >&2
+	exit 64
+fi
+
+CAMERA="$1"
+DATE="$2"
+FILENAME="$3"
+
+if [[ -z "$CAMERA" || "$CAMERA" == *"/"* || "$CAMERA" == "." || "$CAMERA" == ".." ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+# Shape only: a well-formed but non-existing date simply has no folder (exit 66).
+if [[ ! "$DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+	echo "Invalid date." >&2
+	exit 64
+fi
+
+# Same rule as the flagger's copy names: lowercase .jpg, no leading dot, so manifest.json and
+# the flagger's hidden work folders can never be named here.
+if [[ ! "$FILENAME" =~ ^[A-Za-z0-9_-][A-Za-z0-9._-]*\.jpg$ ]]; then
+	echo "Invalid filename." >&2
+	exit 64
+fi
+
+HIGHLIGHTS_DIR="${PROJECT_ROOT}/videos/${CAMERA}/highlights"
+DAY_DIR="${HIGHLIGHTS_DIR}/${DATE}"
+IMAGE_PATH="${DAY_DIR}/${FILENAME}"
+
+# A symlink anywhere below videos/ could point the rm outside the highlights tree.
+for path in "${PROJECT_ROOT}/videos/${CAMERA}" "$HIGHLIGHTS_DIR" "$DAY_DIR" "$IMAGE_PATH"; do
+	if [[ -L "$path" ]]; then
+		echo "Image not found." >&2
+		exit 66
+	fi
+done
+
+if [[ ! -f "$IMAGE_PATH" ]]; then
+	echo "Image not found." >&2
+	exit 66
+fi
+
+rm -- "$IMAGE_PATH"
+
+echo "Bild erfolgreich gelöscht."
