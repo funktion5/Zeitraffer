@@ -79,11 +79,11 @@ function highlightsToday(): DateTimeImmutable
 {
 	$timezone = readHighlightsConfig()["location"]["timezone"] ?? null;
 
-	try {
-		$zone = is_string($timezone) ? new DateTimeZone($timezone) : null;
-	} catch (Exception) {
-		$zone = null;
-	}
+	// Checked up front instead of catching the constructor's exception: with Xdebug loaded
+	// (as on the CI runner) that exception turns into an Error that catch (Exception) misses.
+	$zone = in_array($timezone, DateTimeZone::listIdentifiers(), true)
+		? new DateTimeZone($timezone)
+		: null;
 
 	return new DateTimeImmutable("today", $zone);
 }
