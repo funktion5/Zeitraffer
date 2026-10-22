@@ -56,12 +56,12 @@ Das System liest Originalbilder aus den unter `/mnt/cameras` eingebundenen Kamer
 - [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi)
   - [Was gesichert wird](#was-gesichert-wird)
   - [Voraussetzungen](#voraussetzungen)
-  - [Schritt 1: Backup auf dem Mac erstellen](#schritt-1-backup-auf-dem-mac-erstellen)
+  - [Schritt 1: Backup erstellen](#schritt-1-backup-erstellen)
   - [Schritt 2: Betriebssystem neu installieren](#schritt-2-betriebssystem-neu-installieren)
-  - [Schritt 3: Alten Host-Key auf dem Mac entfernen](#schritt-3-alten-host-key-auf-dem-mac-entfernen)
+  - [Schritt 3: Alten Host-Key entfernen](#schritt-3-alten-host-key-entfernen)
   - [Schritt 4: Backup und Installer auf den Pi kopieren](#schritt-4-backup-und-installer-auf-den-pi-kopieren)
   - [Schritt 5: Migration auf dem Pi ausführen](#schritt-5-migration-auf-dem-pi-ausführen)
-  - [Schritt 6: Videos zurückkopieren](#schritt-6-videos-zurückkopieren)
+  - [Schritt 6: Modelle, Zustand und Videos zurückkopieren](#schritt-6-modelle-zustand-und-videos-zurückkopieren)
   - [Schritt 7: Abschluss und Aufräumen](#schritt-7-abschluss-und-aufräumen)
   - [Migration ohne Neuinstallation testen](#migration-ohne-neuinstallation-testen)
   - [Fehlerbehebung](#fehlerbehebung)
@@ -103,7 +103,7 @@ Dieselbe Paketliste installiert auch `migrate.sh` (Schritt `packages`):
 sudo apt-get update
 sudo apt-get install -y \
   git python3 python3-venv python3-pip \
-  ffmpeg sshfs \
+  ffmpeg sshfs openssl \
   apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 ```
 
@@ -1357,76 +1357,83 @@ Bei einer Neuinstallation des Betriebssystems gehen alle Dateien verloren, die n
 
 | Skript | Läuft auf | Aufgabe |
 |---|---|---|
-| `backup-from-mac.sh` | dem Mac, **vor** der Neuinstallation | holt alle nicht versionierten Dateien vom Pi in einen lokalen Backup-Ordner |
+| `backup.sh` | dem eigenen Rechner (macOS, Linux oder Windows mit WSL), **vor** der Neuinstallation | holt alle nicht versionierten Dateien vom Pi in einen lokalen Backup-Ordner; die Geheimnisse verschlüsselt |
 | `migrate.sh` | dem Pi, **nach** der Neuinstallation | installiert Pakete, klont das Repository, stellt das Backup wieder her und richtet alle Dienste ein |
 
-Die Videos sind nicht Teil von `migrate.sh`, sondern werden nach der Migration von Hand zurückkopiert.
+Modelle, Zustand und Videos sind nicht Teil von `migrate.sh`, sondern werden nach der Migration von Hand zurückkopiert (Schritt 6).
 
 ### Was gesichert wird
 
 | Datei auf dem Pi | Im Backup | Wird wiederhergestellt nach |
 |---|---|---|
-| Ordner `~/.ssh` (Schlüssel, `config`, `known_hosts`) | `pi-backup.tar.gz` | `~/.ssh/` (`600`, `.pub`-Dateien `644`); `known_hosts` wird zusammengeführt, `authorized_keys` nicht wiederhergestellt |
-| `/etc/timelapse/mount.env` | `pi-backup.tar.gz` | `root:root 600` |
-| `/etc/sudoers.d/timelapse-web` | `pi-backup.tar.gz` | `root:root 440`, nur nach erfolgreicher `visudo`-Prüfung |
-| `/etc/apache2/.htpasswd` | `pi-backup.tar.gz` | `root:www-data 640` |
-| `/etc/apache2/sites-available/zeitraffer.conf` | `pi-backup.tar.gz` | `root:root 644` |
+| Ordner `~/.ssh` (Schlüssel, `config`, `known_hosts`) | `pi-backup.tar.gz.enc` | `~/.ssh/` (`600`, `.pub`-Dateien `644`); `known_hosts` wird zusammengeführt, `authorized_keys` nicht wiederhergestellt |
+| `/etc/timelapse/mount.env` | `pi-backup.tar.gz.enc` | `root:root 600` |
+| `/etc/sudoers.d/timelapse-web` | `pi-backup.tar.gz.enc` | `root:root 440`, nur nach erfolgreicher `visudo`-Prüfung |
+| `/etc/apache2/.htpasswd` | `pi-backup.tar.gz.enc` | `root:www-data 640` |
+| `/etc/apache2/sites-available/zeitraffer.conf` | `pi-backup.tar.gz.enc` | `root:root 644` |
 | Crontab des Login-Benutzers | `pi-crontab.txt` | Crontab des Login-Benutzers |
 | `config/config.json` | `config.json` | `config/config.json` (überschreibt die Git-Version) |
+| `models/` (Erkennungsmodelle, nicht im Git) | `models/` | von Hand, siehe Schritt 6 |
+| `state/` (ohne Laufsperre und „Lauf läuft“-Marker) | `state/` | von Hand, siehe Schritt 6 |
 | `videos/` | `videos/` | von Hand, siehe Schritt 6 |
 
-`pi-backup.tar.gz` enthält einen privaten SSH-Schlüssel, die Zugangsdaten des Kamera-Storage und einen Passwort-Hash. Der Backup-Ordner auf dem Mac wird deshalb mit Modus `700` angelegt und darf nicht in Cloud-Sync-Ordner oder ins Repository gelangen. Der Standardordner `~/pi-migration-backup` liegt bewusst außerhalb von `Documents` und `Desktop`: Ist in den macOS-Einstellungen die iCloud-Option „Schreibtisch & Dokumente“ aktiv, würde alles dort in die iCloud hochgeladen. Wer über `DEST` einen anderen Ordner wählt, verwendet in den folgenden Befehlen denselben Pfad.
+`pi-backup.tar.gz.enc` enthält einen privaten SSH-Schlüssel, die Zugangsdaten des Kamera-Storage und einen Passwort-Hash. Es ist deshalb **mit einer Passphrase verschlüsselt** (AES-256, `openssl`), die `backup.sh` bei jedem Lauf zweimal abfragt und nirgends speichert. Das unverschlüsselte Archiv landet nie auf dem eigenen Rechner. **Ohne die Passphrase ist das Backup wertlos**: sie gehört in einen Passwortmanager.
+
+Der Backup-Ordner wird zusätzlich mit Modus `700` angelegt und darf nicht in Cloud-Sync-Ordner oder ins Repository gelangen. Der Standardordner `~/timelapse-backup` liegt bewusst außerhalb von `Documents` und `Desktop`: Ist in den macOS-Einstellungen die iCloud-Option „Schreibtisch & Dokumente“ aktiv, würde alles dort in die iCloud hochgeladen. Unter Windows/WSL gehört der Ordner ins WSL-Home, nicht auf ein Windows-Laufwerk (`/mnt/c/...`), wo Dateirechte nicht gelten; das Skript warnt in dem Fall. Wer über `DEST` einen anderen Ordner wählt, verwendet in den folgenden Befehlen denselben Pfad.
 
 Bewusst nicht gesichert:
 
-- `logs/`, `temp/` und `state/` – reine Laufzeitdaten
+- `logs/` und `temp/` – reine Laufzeitdaten
 - die SSH-Hostschlüssel des Pi – der neu installierte Pi erhält neue; siehe Schritt 3
 - WLAN-Konfiguration – der Pi läuft ausschließlich über Ethernet, WLAN wird deaktiviert
 
 ### Voraussetzungen
 
-- Mac mit Zugriff auf den Pi per SSH (Passwort-Login als Login-Benutzer des Pi)
-- ein Checkout dieses Repositorys auf dem Mac, damit `migrate.sh` von dort auf den Pi kopiert werden kann
+- ein eigener Rechner mit macOS, Linux oder Windows mit WSL, darauf `bash`, `ssh`, `rsync` und `openssl` (unter WSL ggf. `sudo apt install rsync openssl`), mit Zugriff auf den Pi per SSH (Passwort-Login als Login-Benutzer des Pi)
+- ein Checkout dieses Repositorys auf diesem Rechner, damit `migrate.sh` von dort auf den Pi kopiert werden kann
+- die Passphrase des Backups (Passwortmanager)
 - das `sudo`-Passwort dieses Benutzers auf dem Pi
 - die offiziellen Host-Key-Fingerprints der Storage Box beim Anbieter (nur nötig, wenn das Backup noch kein `known_hosts` enthält)
 - Netzwerkkabel am Pi: `migrate.sh` schaltet WLAN ab
 
-### Schritt 1: Backup auf dem Mac erstellen
+### Schritt 1: Backup erstellen
 
-Im Repository-Checkout auf dem Mac einmalig die lokale Einstellungsdatei anlegen und Hostname bzw. IP und Benutzer des Pi eintragen. `backup.env` ist per `.gitignore` ausgeschlossen, damit weder IP noch Benutzername oder lokale Pfade im öffentlichen Repository landen:
+Im Repository-Checkout auf dem eigenen Rechner einmalig die lokale Einstellungsdatei anlegen und Hostname bzw. IP und Benutzer des Pi eintragen. `backup.env` ist per `.gitignore` ausgeschlossen, damit weder IP noch Benutzername oder lokale Pfade im öffentlichen Repository landen:
 
 ```bash
 cp backup.env.example backup.env
 nano backup.env
-./backup-from-mac.sh
+./backup.sh
 ```
 
-In den folgenden Befehlen stehen `<pi-host>` und `<pi-user>` für die Werte aus `backup.env`.
+In den folgenden Befehlen stehen `<pi-host>` und `<pi-user>` für `BACKUP_HOST` und `BACKUP_USER` aus `backup.env`.
 
-Das Skript fragt einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
+Das Skript fragt zuerst zweimal nach der Passphrase für die Verschlüsselung, dann einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
 
-1. packt es die Geheimnisse auf dem Pi mit `umask 077` nach `/tmp/pi-backup.tar.gz`, lädt das Archiv herunter und löscht es auf dem Pi wieder, auch wenn ein späterer Schritt fehlschlägt,
+1. packt es die Geheimnisse auf dem Pi mit `umask 077` in eine Datei mit Zufallsnamen im Home-Verzeichnis, streamt sie verschlüsselt nach `pi-backup.tar.gz.enc` und löscht sie auf dem Pi wieder, auch wenn ein späterer Schritt fehlschlägt. Fehlt eine Datei auf dem Host oder ist sie ohne `sudo` nicht lesbar, wird sie mit einer Warnung übersprungen; ohne `sudo` auf dem Host wird nur `~/.ssh` gesichert,
 2. speichert die Crontab und `config.json`,
-3. synchronisiert `videos/` per `rsync`,
-4. listet den Inhalt des Archivs auf und gibt die Befehle für die Wiederherstellung aus.
+3. synchronisiert `models/`, `state/` und `videos/` per `rsync`,
+4. entschlüsselt das Archiv zur Probe, listet seinen Inhalt auf und gibt die Befehle für die Wiederherstellung aus.
 
-Optionen in `backup.env` oder als Umgebungsvariable (die Umgebungsvariable hat Vorrang, z. B. `PI_HOST=<pi-ip> ./backup-from-mac.sh`, falls der `.local`-Name nicht aufgelöst wird):
+Optionen in `backup.env` oder als Umgebungsvariable (die Umgebungsvariable hat Vorrang, z. B. `BACKUP_HOST=<pi-ip> ./backup.sh`, falls der `.local`-Name nicht aufgelöst wird):
 
 | Variable | Standard | Bedeutung |
 |---|---|---|
-| `PI_HOST` | – (Pflicht) | Hostname oder IP des Pi |
-| `PI_USER` | – (Pflicht) | Login-Benutzer auf dem Pi |
-| `DEST` | `~/pi-migration-backup` | Backup-Ordner auf dem Mac |
+| `BACKUP_HOST` | – (Pflicht) | Hostname oder IP des Hosts |
+| `BACKUP_USER` | – (Pflicht) | Login-Benutzer auf dem Host |
+| `PROJECT_DIR` | `~/timelapse` auf dem Host | Projektordner auf dem Host; `~` und `$HOME` meinen das Home-Verzeichnis **auf dem Host** |
+| `DEST` | `~/timelapse-backup` | Backup-Ordner auf dem eigenen Rechner |
 | `SKIP_VIDEOS` | `0` | `1` überspringt die Videos |
 
-`backup.env` wird gelesen, nicht ausgeführt: nur `NAME=Wert`-Zeilen mit diesen vier Namen zählen.
+Die früheren Namen `PI_HOST` und `PI_USER` funktionieren weiter. `backup.env` wird gelesen, nicht ausgeführt: nur `NAME=Wert`-Zeilen mit diesen Namen zählen.
 
 Danach prüfen, ob der Backup-Ordner vollständig ist:
 
 ```bash
-ls -la ~/pi-migration-backup
-# erwartet: pi-backup.tar.gz, pi-crontab.txt, config.json, videos/
-tar tzf ~/pi-migration-backup/pi-backup.tar.gz
+ls -la ~/timelapse-backup
+# erwartet: pi-backup.tar.gz.enc, pi-crontab.txt, config.json, models/, state/, videos/
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 \
+  -in ~/timelapse-backup/pi-backup.tar.gz.enc | tar tzf -     # fragt nach der Passphrase
 # erwartet: der Ordner home/<pi-user>/.ssh/ mit Schlüssel, config und known_hosts,
 # außerdem mount.env, sudoers, .htpasswd und die Apache-Site
 ```
@@ -1437,16 +1444,16 @@ Erst weitermachen, wenn das Backup vollständig ist.
 
 Mit dem Raspberry Pi Imager ein 64-Bit-Raspberry-Pi-OS auf Basis von Debian 13 (trixie) schreiben und in den erweiterten Einstellungen festlegen:
 
-- Hostname: derselbe wie vor der Neuinstallation (`PI_HOST` in `backup.env`)
-- Benutzer: derselbe wie vor der Neuinstallation (`PI_USER`) – der Name ist im systemd-Service, in den Web-Wrappern, in Cron, sudoers und Apache hinterlegt, und das Backup enthält seine Pfade
+- Hostname: derselbe wie vor der Neuinstallation (`BACKUP_HOST` in `backup.env`)
+- Benutzer: derselbe wie vor der Neuinstallation (`BACKUP_USER`) – der Name ist im systemd-Service, in den Web-Wrappern, in Cron, sudoers und Apache hinterlegt, und das Backup enthält seine Pfade
 - SSH aktivieren, Anmeldung per Passwort
 - kein WLAN nötig
 
 Den Pi per Netzwerkkabel anschließen und starten.
 
-### Schritt 3: Alten Host-Key auf dem Mac entfernen
+### Schritt 3: Alten Host-Key entfernen
 
-Der neu installierte Pi hat neue SSH-Hostschlüssel. Ohne diesen Schritt bricht SSH mit `REMOTE HOST IDENTIFICATION HAS CHANGED` ab:
+Der neu installierte Pi hat neue SSH-Hostschlüssel. Auf dem eigenen Rechner die alten entfernen; ohne diesen Schritt bricht SSH mit `REMOTE HOST IDENTIFICATION HAS CHANGED` ab:
 
 ```bash
 ssh-keygen -R <pi-host>
@@ -1456,12 +1463,12 @@ ssh <pi-user>@<pi-host>        # neuen Fingerprint mit "yes" bestätigen
 
 ### Schritt 4: Backup und Installer auf den Pi kopieren
 
-Im Repository-Checkout auf dem Mac:
+Im Repository-Checkout auf dem eigenen Rechner:
 
 ```bash
-scp ~/pi-migration-backup/pi-backup.tar.gz \
-    ~/pi-migration-backup/pi-crontab.txt \
-    ~/pi-migration-backup/config.json \
+scp ~/timelapse-backup/pi-backup.tar.gz.enc \
+    ~/timelapse-backup/pi-crontab.txt \
+    ~/timelapse-backup/config.json \
     migrate.sh \
     <pi-user>@<pi-host>:~/
 ```
@@ -1482,10 +1489,10 @@ Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte lauf
 | Schritt | Was passiert |
 |---|---|
 | `preflight` | bricht ab, wenn als `root` gestartet; prüft die Backup-Dateien und `sudo`-Zugriff (Passwortabfrage) |
-| `packages` | installiert Git, Python, FFmpeg, SSHFS, Apache und PHP; aktiviert `user_allow_other` in `/etc/fuse.conf` |
+| `packages` | installiert Git, Python, FFmpeg, SSHFS, OpenSSL, Apache und PHP; aktiviert `user_allow_other` in `/etc/fuse.conf` |
 | `clone` | klont das Repository nach `~/timelapse`; bricht ab, wenn dort bereits ein fremder oder nicht leerer Ordner liegt |
 | `venv` | legt `.venv` an und installiert `requirements.txt` |
-| `restore_backup` | entpackt das Backup in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf die Trigger- und Lösch-Regel (fehlt die Regel für Highlight-Bilder, nur eine Warnung), installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
+| `restore_backup` | fragt nach der Passphrase, entschlüsselt das Backup direkt in einen temporären Ordner, prüft die sudoers-Datei mit `visudo` und auf die Trigger- und Lösch-Regel (fehlt die Regel für Highlight-Bilder, nur eine Warnung), installiert alle Dateien mit festen Eigentümern und Rechten, übernimmt `config.json` und die Crontab |
 | `known_hosts` | überspringt, wenn der Storage-Box-Host bereits bekannt ist; sonst werden die Fingerprints angezeigt und müssen mit `y` bestätigt werden |
 | `sshfs_mount` | prüft, dass `User=` im systemd-Service der aktuelle Benutzer ist; installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
 | `apache` | aktiviert `zeitraffer.conf`, deaktiviert die Standardseite, führt `apache2ctl configtest` aus und lädt Apache neu |
@@ -1497,6 +1504,7 @@ Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte lauf
 Interaktive Abfragen während des Laufs:
 
 - `sudo`-Passwort in `preflight`
+- Passphrase des Backups in `restore_backup`
 - nur bei älteren Backups ohne `known_hosts`: Bestätigung der Storage-Box-Fingerprints – vorher mit den Angaben des Anbieters vergleichen und bei Abweichung mit `n` abbrechen
 - `git clone` fragt nach Zugangsdaten, falls das Repository nicht öffentlich erreichbar ist
 
@@ -1516,21 +1524,25 @@ Optionen über Umgebungsvariablen:
 |---|---|---|
 | `REPO_URL` | `https://github.com/funktion5/Zeitraffer.git` | Quelle für `git clone` |
 | `PROJECT_ROOT` | `~/timelapse` | Zielordner |
-| `BACKUP_TAR` | `~/pi-backup.tar.gz` | Geheimnis-Archiv |
+| `BACKUP_TAR` | `~/pi-backup.tar.gz.enc`, sonst `~/pi-backup.tar.gz` | Geheimnis-Archiv; ein unverschlüsseltes Archiv aus älteren Backups wird ohne Passphrase gelesen |
 | `BACKUP_CRONTAB` | `~/pi-crontab.txt` | Crontab-Sicherung |
 | `BACKUP_CONFIG` | `~/config.json` | optionale `config.json`; fehlt sie, bleibt die Git-Version |
 | `DISABLE_WIFI` | `1` | `0` lässt WLAN unverändert |
 
 Am Ende des Laufs die Ausgabe von `verify` durchsehen: Jede Zeile mit `WARNING` muss geklärt werden, bevor der Pi als fertig gilt.
 
-### Schritt 6: Videos zurückkopieren
+### Schritt 6: Modelle, Zustand und Videos zurückkopieren
 
-Vom Mac aus:
+Vom eigenen Rechner aus:
 
 ```bash
-rsync -a --progress ~/pi-migration-backup/videos/ \
+rsync -a ~/timelapse-backup/models/ <pi-user>@<pi-host>:timelapse/models/
+rsync -a ~/timelapse-backup/state/ <pi-user>@<pi-host>:timelapse/state/
+rsync -a --progress ~/timelapse-backup/videos/ \
     <pi-user>@<pi-host>:timelapse/videos/
 ```
+
+Ohne `models/` verweigern Verpixelung und Highlights-Flagger den Start.
 
 `rsync -a` übernimmt die Dateirechte aus dem Backup. Deshalb danach auf dem Pi die Rechte korrigieren und prüfen:
 
@@ -1558,23 +1570,23 @@ rsync -a --progress ~/pi-migration-backup/videos/ \
 3. Die Backup-Dateien auf dem Pi löschen. Sie werden nach der Migration nicht mehr gebraucht und enthalten Geheimnisse:
 
    ```bash
-   rm ~/pi-backup.tar.gz ~/pi-crontab.txt ~/config.json
+   rm ~/pi-backup.tar.gz.enc ~/pi-crontab.txt ~/config.json
    ```
 
-   Das Backup auf dem Mac bleibt als Sicherung erhalten.
+   Das Backup auf dem eigenen Rechner bleibt als Sicherung erhalten.
 
 4. Der erste nächtliche Lauf um 02:00 Uhr erzeugt die automatischen Videos. Am nächsten Tag `logs/daily/<datum>.log` prüfen.
 
 ### Migration ohne Neuinstallation testen
 
-Nach Änderungen an `migrate.sh` oder `backup-from-mac.sh` lassen sich die Skripte auf dem laufenden Pi prüfen, ohne ihn neu aufzusetzen. Fast alle Schritte schreiben dort dieselben Inhalte, die bereits vorhanden sind; ein erfolgreicher Test endet deshalb mit einem unveränderten System. Nicht ausführen gegen 02:00 Uhr oder während ein Web-Job läuft.
+Nach Änderungen an `migrate.sh` oder `backup.sh` lassen sich die Skripte auf dem laufenden Pi prüfen, ohne ihn neu aufzusetzen. Fast alle Schritte schreiben dort dieselben Inhalte, die bereits vorhanden sind; ein erfolgreicher Test endet deshalb mit einem unveränderten System. Nicht ausführen gegen 02:00 Uhr oder während ein Web-Job läuft.
 
 Der Schritt `packages` wird dabei ausgelassen: `apt-get install` aktualisiert die genannten Pakete, wenn neuere Versionen verfügbar sind, und wäre damit eine echte Änderung am System.
 
-1. Frisches Backup erstellen (siehe Schritt 1) und vom Mac auf den Pi kopieren:
+1. Frisches Backup erstellen (siehe Schritt 1) und vom eigenen Rechner auf den Pi kopieren:
 
    ```bash
-   scp ~/pi-migration-backup/{pi-backup.tar.gz,pi-crontab.txt,config.json} <pi-user>@<pi-host>:~/
+   scp ~/timelapse-backup/{pi-backup.tar.gz.enc,pi-crontab.txt,config.json} <pi-user>@<pi-host>:~/
    ```
 
 2. Auf dem Pi einen Rollback-Stand und Prüfsummen aller betroffenen Dateien anlegen:
@@ -1612,10 +1624,10 @@ Weicht etwas ab, stellt dieser Befehl den Zustand vor dem Test wieder her:
 sudo tar xzf ~/pre-test-rollback.tar.gz -C / && crontab ~/pre-test-crontab.txt && sudo systemctl reload apache2
 ```
 
-Zum Schluss die Test- und Backup-Dateien auf dem Pi löschen, da sie Geheimnisse enthalten. Das Original bleibt auf dem Mac:
+Zum Schluss die Test- und Backup-Dateien auf dem Pi löschen, da sie Geheimnisse enthalten. Das Original bleibt auf dem eigenen Rechner:
 
 ```bash
-rm ~/pre-test-crontab.txt ~/pre-test.sha256 ~/pi-backup.tar.gz ~/pi-crontab.txt ~/config.json
+rm ~/pre-test-crontab.txt ~/pre-test.sha256 ~/pi-backup.tar.gz.enc ~/pi-crontab.txt ~/config.json
 sudo rm ~/pre-test-rollback.tar.gz
 ```
 
@@ -1627,7 +1639,8 @@ Nicht abgedeckt sind der Schritt `packages` und ein Lauf auf einem wirklich leer
 |---|---|
 | Browser zeigt `403 Forbidden` | `www-data` kommt nicht ins Projekt: `~/migrate.sh permissions verify`; Details in `/var/log/apache2/zeitraffer-error.log` |
 | Video-Bibliothek leer oder Videos laden nicht | Videos nach dem Kopieren nicht lesbar: `~/migrate.sh permissions` |
-| `REMOTE HOST IDENTIFICATION HAS CHANGED` auf dem Mac | Schritt 3 ausführen |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` auf dem eigenen Rechner | Schritt 3 ausführen |
+| `Could not decrypt ... (wrong passphrase?)` | falsche Passphrase; `~/migrate.sh` erneut starten. Ohne die richtige Passphrase lässt sich das Archiv nicht öffnen |
 | `Backed-up sudoers file does not parse` oder `lacks the ... rule` | sudoers-Datei im Backup beschädigt oder unvollständig; aus dem Backup wurde noch nichts installiert. Archiv reparieren (siehe unten) und `~/migrate.sh` erneut ausführen |
 | `Host key not confirmed` | Fingerprints stimmten nicht oder wurden abgelehnt. Mit dem Anbieter klären, dann `~/migrate.sh known_hosts sshfs_mount` |
 | `cameras-sshfs is not running` | `systemctl status cameras-sshfs.service` und `journalctl -u cameras-sshfs.service`; häufig fehlt der Host-Key oder `mount.env` ist leer |
@@ -1635,16 +1648,18 @@ Nicht abgedeckt sind der Schritt `packages` und ein Lauf auf einem wirklich leer
 | Web-Job startet nicht oder Löschen schlägt fehl | `sudo -l -U www-data` muss beide Wrapper zeigen; sonst sudoers wie unter [Wrapper installieren](#wrapper-installieren) prüfen |
 | `is already a git repo, but its origin ... doesn't match` | unter `~/timelapse` liegt ein anderes Repository; verschieben oder `REPO_URL` korrigieren |
 
-sudoers-Datei im Backup-Archiv reparieren (auf dem Pi):
+sudoers-Datei im Backup-Archiv reparieren (auf dem Pi). Das Ergebnis ist ein unverschlüsseltes `~/pi-backup.tar.gz`, das `migrate.sh` liest, sobald die `.enc`-Datei entfernt ist; nach der Migration löschen:
 
 ```bash
 mkdir ~/backup-fix
-sudo tar xzf ~/pi-backup.tar.gz -C ~/backup-fix
+openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -md sha256 -in ~/pi-backup.tar.gz.enc \
+  | sudo tar xzf - -C ~/backup-fix
 sudo nano ~/backup-fix/etc/sudoers.d/timelapse-web   # beide Regeln aus „Wrapper installieren“
 sudo visudo -cf ~/backup-fix/etc/sudoers.d/timelapse-web
 sudo tar czf ~/pi-backup.tar.gz -C ~/backup-fix .
 sudo chown "$(id -un):$(id -gn)" ~/pi-backup.tar.gz
 sudo rm -rf ~/backup-fix
+rm ~/pi-backup.tar.gz.enc
 ~/migrate.sh
 ```
 
@@ -2230,7 +2245,7 @@ timelapse/
 ├── state/
 ├── temp/
 ├── videos/
-├── backup-from-mac.sh
+├── backup.sh
 ├── migrate.sh
 ├── pyproject.toml
 ├── requirements.txt
@@ -2245,7 +2260,7 @@ im Repository.
 NAS-Archiv (`nas.md`), Pläne (`plans/custom-time-window.md`: geplantes `--from`/`--to`, noch
 nicht umgesetzt) sowie Vorlage und fertige Texte für YouTube-Uploads.
 
-`backup-from-mac.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi).
+`backup.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation wieder her; siehe [Neuinstallation des Raspberry Pi](#neuinstallation-des-raspberry-pi).
 
 ---
 

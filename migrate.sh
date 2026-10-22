@@ -19,7 +19,13 @@ REPO_URL="${REPO_URL:-https://github.com/funktion5/Zeitraffer.git}"
 RUN_USER="$(id -un)"
 RUN_GROUP="$(id -gn)"
 PROJECT_ROOT="${PROJECT_ROOT:-$HOME/timelapse}"
-BACKUP_TAR="${BACKUP_TAR:-$HOME/pi-backup.tar.gz}"
+# backup.sh writes the encrypted .enc; an unencrypted archive from before still works.
+if [[ -z "${BACKUP_TAR:-}" ]]; then
+	BACKUP_TAR="$HOME/pi-backup.tar.gz.enc"
+	[[ -f "$BACKUP_TAR" ]] || BACKUP_TAR="$HOME/pi-backup.tar.gz"
+fi
+# Must match backup.sh; change both together.
+CIPHER=(-aes-256-cbc -pbkdf2 -iter 600000 -md sha256)
 BACKUP_CRONTAB="${BACKUP_CRONTAB:-$HOME/pi-crontab.txt}"
 BACKUP_CONFIG="${BACKUP_CONFIG:-$HOME/config.json}"
 
@@ -66,7 +72,7 @@ step_packages() {
 	sudo apt-get update
 	sudo apt-get install -y \
 		git python3 python3-venv python3-pip \
-		ffmpeg sshfs \
+		ffmpeg sshfs openssl \
 		apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 
 	if ! grep -qx "user_allow_other" /etc/fuse.conf 2>/dev/null; then
@@ -109,7 +115,18 @@ step_restore_backup() {
 	# trap would not fire then — leaving the extracted secrets in /tmp.
 	# shellcheck disable=SC2064
 	trap "sudo rm -rf '$staging'" EXIT
-	sudo tar xzf "$BACKUP_TAR" -C "$staging"
+	if [[ "$BACKUP_TAR" == *.enc ]]; then
+		local passphrase
+		read -rsp "Passphrase of the backup: " passphrase
+		echo
+		# Through a pipe, never as an argument or a file; the plain archive is never written.
+		openssl enc -d "${CIPHER[@]}" -pass fd:3 -in "$BACKUP_TAR" 3< <(printf '%s' "$passphrase") \
+			| sudo tar xzf - -C "$staging" \
+			|| fail "Could not decrypt $BACKUP_TAR (wrong passphrase?)."
+		unset passphrase
+	else
+		sudo tar xzf "$BACKUP_TAR" -C "$staging"
+	fi
 
 	local sudoers="$staging/etc/sudoers.d/timelapse-web"
 	sudo test -f "$sudoers" || fail "Backup has no etc/sudoers.d/timelapse-web."
