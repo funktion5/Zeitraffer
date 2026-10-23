@@ -427,7 +427,13 @@ historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reic
 
 `min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
 Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
-bis zur Fensterlänge (30 bzw. 365).
+bis zur Fensterlänge (30 bzw. 365, mit 29. Februar im Zeitraum 366).
+
+`image_scan_stall_timeout_seconds` (Sekunden): Meldet der Bildscan einer Kamera so lange keinen
+Fortschritt, wird er abgebrochen und die Kamera übersprungen. Gemessen wird Stillstand, nicht
+die Gesamtdauer. `log_retention_days` (Tage): ältere Logdateien werden beim Start gelöscht.
+`timelapse.*_framerate` (Bilder pro Sekunde im Video; Weekly nutzt den Daily-Wert) und
+`timelapse.ffmpeg_threads` (Threads pro FFmpeg-Aufruf) steuern die Videoerstellung.
 
 `privacy` steuert die Verpixelung von Personen und Kennzeichen: `detector_command` ist die
 Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen

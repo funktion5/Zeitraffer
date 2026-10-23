@@ -177,6 +177,26 @@ Monthly
 
 `--target-date` ist nur gemeinsam mit `--jobs` gültig.
 
+## Zeitpuffer für Daily und Weekly überschreiben
+
+```bash
+python3 -m src.main \
+	--jobs daily \
+	--target-date 2026-09-15 \
+	--cameras Scheunenviertel \
+	--daylight-buffer-minutes 60
+```
+
+- `--daylight-buffer-minutes 30|60|90` setzt den Zeitpuffer vor Sonnenaufgang und nach
+  Sonnenuntergang für diesen einen Lauf; `config/config.json` bleibt unverändert.
+- Der Wert ersetzt sowohl `daylight_buffer_minutes` als auch die Monatstabelle
+  `automatic_daylight_buffer_minutes`, gilt also auch für automatische Jobs und den
+  vollständigen Lauf.
+- Historische Daily- und Weekly-Videos tragen den Puffer immer im Dateinamen, z. B.
+  `Scheunenviertel_2026-09-15_60min.mp4`.
+- Mit `monthly` oder `yearly` in `--jobs` wird der Aufruf abgelehnt: Beide nutzen keinen
+  Zeitpuffer, sondern `interval_window`.
+
 ## Zeitfenster für historisches Monthly und Yearly
 
 Standardmäßig wählen Monthly und Yearly Bilder aus `interval_window` in `config/config.json`

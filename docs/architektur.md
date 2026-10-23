@@ -52,7 +52,8 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
   (Standard 12:00 Uhr ±90 Minuten; historisch per CLI überschreibbar, auch `sunset`)
 
 `yearly.py`
-- verarbeitet ein rollierendes 365-Tage-Fenster
+- verarbeitet ein Kalenderjahr bis zum Enddatum (365 oder 366 Tage, je nachdem ob ein
+  29. Februar im Zeitraum liegt)
 - Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
 - delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py`
@@ -96,7 +97,7 @@ Gemeinsame Datumslogik für exakte rollierende Fenster:
 
 - Weekly: 7 Kalendertage inklusive Enddatum
 - Monthly: 30 Kalendertage inklusive Enddatum
-- Yearly: 365 Kalendertage inklusive Enddatum
+- Yearly: ein Kalenderjahr inklusive Enddatum, 365 oder 366 Tage
 - Ermittlung fehlender Kalendertage
 - Lesen und Prüfen der Mindestabdeckung (`get_min_coverage_days`)
 - kompakte Darstellung aufeinanderfolgender fehlender Tage für Logs

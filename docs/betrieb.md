@@ -171,7 +171,7 @@ Kandidat nahe 12:00
 → bis zu 5 eindeutige Frames
 ```
 
-Dadurch muss Yearly nicht mehr sämtliche Bilder eines 365-Tage-Fensters vollständig hashen, bevor die eigentliche Auswahl stattfindet.
+Dadurch muss Yearly nicht mehr sämtliche Bilder eines ganzen Jahres vollständig hashen, bevor die eigentliche Auswahl stattfindet.
 
 ## Ausgabe- und Arbeitsverzeichnisse
 
@@ -203,15 +203,18 @@ videos/<camera>/manual-runs/<job>/<camera>_<zieldatum>.mp4
 Beispiele:
 
 ```text
-videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-08-15.mp4
-videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-08-15.mp4
+videos/Scheunenviertel/manual-runs/daily/Scheunenviertel_2026-08-15_90min.mp4
+videos/Scheunenviertel/manual-runs/weekly/Scheunenviertel_2026-08-15_90min.mp4
 videos/Scheunenviertel/manual-runs/monthly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15.mp4
 videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15_sunset-60min.mp4
 ```
 
-Ein abweichendes Zeitfenster (`--window-time` / `--window-tolerance-minutes`) wird als Suffix
-`_<HHMM|sunset>-<toleranz>min` angehängt.
+Historische Daily- und Weekly-Videos tragen immer den Zeitpuffer als Suffix `_<N>min`
+(30, 60 oder 90), damit Läufe mit verschiedenem Puffer sich nicht überschreiben. Monthly und
+Yearly haben kein Suffix, außer bei einem abweichenden Zeitfenster (`--window-time` /
+`--window-tolerance-minutes`): dann `_<HHMM|sunset>-<toleranz>min`. Mit `--blur-people` kommt
+`_blur` dazu.
 
 Historische Ausgaben werden von automatischer Retention nicht verändert.
 
@@ -299,8 +302,13 @@ logs/
 ├── weekly/YYYY-MM-DD.log
 ├── monthly/YYYY-MM-DD.log
 ├── yearly/YYYY-MM-DD.log
-└── filter/YYYY-MM-DD.log
+├── filter/YYYY-MM-DD.log
+├── privacy/YYYY-MM-DD.log
+└── flagger/YYYY-MM-DD.log
 ```
+
+`filter` schreibt der [Speicherfilter](werkzeuge.md), `privacy` die
+[Box-Verpixelung](verpixelung-box.md) und `flagger` der [Highlights-Flagger](flagger.md).
 
 Bei einer gezielten Job-Auswahl wird vor dem ersten ausgeführten Job direkt dessen Log aktiviert. Bei mehreren Jobs wird vor jedem weiteren Job auf das passende Log gewechselt.
 
