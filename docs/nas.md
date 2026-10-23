@@ -33,8 +33,8 @@ Auf das NAS wird nie geschrieben.
     `426 Data connection` ab)
 
   Zugangsdaten stehen nur in der lokalen rclone-Konfiguration, nie im Repository.
-- **Read-only-Mount `/mnt/nas`**, nur für die Helfer unter `nas/helpers/` (nicht für
-  `nas-extract.py`):
+- **Read-only-Mount `/mnt/nas`**, nur für die Helfer `zip_extract.py` und `seqzip_extract.py`
+  (nicht für `nas-extract.py` und die übrigen Helfer):
 
   ```bash
   rclone mount nas:Webcams /mnt/nas --read-only --daemon
@@ -59,7 +59,7 @@ Dateinamen, ohne die Ordnerkette des Archivs.
 | `--exclude A B` | Kameras auslassen |
 | `--limit N` | nach N Tars aufhören (für einen Zeittest) |
 | `--output <Ordner>` | Zielordner statt `~/nas-cameras` |
-| `--source nas:<Ordner>` | Tars aus einem anderen NAS-Ordner lesen (z. B. sortierte Archive für 2014 bis 2019) |
+| `--source nas:<Ordner>` | Tars aus einem anderen NAS-Ordner lesen (z. B. sortierte Archive für 2014 bis 2019); Standard `nas:Webcams/storagebox-mirror/tar` |
 | `--window-time HH:MM\|sunset` | Mitte des Zeitfensters, Standard aus `config.json` (`interval_window`) |
 | `--window-tolerance-minutes N` | Breite des Zeitfensters, Standard aus `config.json` |
 | `--until-date YYYY-MM-DD` | keine späteren Bilder übernehmen (Jahre, die die Storage Box bereits abdeckt) |
@@ -75,8 +75,16 @@ Dateinamen, ohne die Ordnerkette des Archivs.
 
 ## Helfer: `nas/helpers/`
 
-Kleine Werkzeuge für Sonderfälle. Alle lesen nur und schreiben nach `~/nas-cameras/<Kamera>/`;
-vorhandene Dateien werden nie überschrieben.
+Kleine Werkzeuge für Sonderfälle. Die Quellen (NAS, Storage Box) werden nur gelesen. Was die
+Helfer lokal tun, ist verschieden:
+
+- `zip_extract.py`, `seqzip_extract.py` und `storagebox_fill.py` kopieren Bilder nach
+  `~/nas-cameras/<Kamera>/`; vorhandene Dateien werden nie überschrieben. Die beiden Zip-Helfer
+  lesen über `/mnt/nas`, `storagebox_fill.py` über `/mnt/cameras`.
+- `delete_dark.py` **löscht** Bilder in `~/nas-cameras/<Kamera>/`.
+- `render_letterbox.py` erstellt ein Video wie `yearly-backfill.py` unter
+  `videos/<Kamera>/manual-runs/yearly/`.
+- `count_images.py` zählt nur und schreibt CSV-Dateien in einen Ordner außerhalb des Repositorys.
 
 | Helfer | Zweck | Aufruf |
 |---|---|---|
@@ -85,6 +93,7 @@ vorhandene Dateien werden nie überschrieben.
 | `storagebox_fill.py` | Fensterbilder eines Jahres von der Storage Box ergänzen (NAS-Bilder haben Vorrang) | `storagebox_fill.py <Kamera> <Jahr>` |
 | `delete_dark.py` | dunkle Bilder in Zeiträumen löschen, in denen die Kamerauhr falsch ging | `delete_dark.py <Kamera> <von> <bis> [weitere Zeiträume]` |
 | `render_letterbox.py` | Jahresvideo mit wechselnder Auflösung ohne Verzerrung erstellen (alles in 1280x720 eingepasst) | `TIMELAPSE_CAMERA_ROOT=~/nas-cameras render_letterbox.py <Kamera> <Jahr>` |
+| `count_images.py` | Bilder einer Kamera auf den NAS-Tars und der Storage Box zählen und vergleichen (pro Jahr, fehlende Tage, Überschneidungen); `tars` lässt sich abbrechen und fortsetzen | `count_images.py tars <Ausgabe> <Bezeichnung> <rclone-Ordner> <Regex>`, `count_images.py box <Ausgabe> <Kamera>`, `count_images.py report <Ausgabe>` |
 
 Aufruf jeweils mit `.venv/bin/python3 nas/helpers/<Helfer>`. Beispiel:
 

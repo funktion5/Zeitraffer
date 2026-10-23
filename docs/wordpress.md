@@ -1,9 +1,8 @@
 # WordPress-Frontend
 
-Das WordPress-Plugin „Zeitraffer“ zeigt die fertigen Videos auf einer WordPress-Seite, und so wird es lokal entwickelt und getestet.
-
-
-Zusätzlich zur PHP-Weboberfläche gibt es ein WordPress-Plugin (`frontend/`), das die fertigen Videos auf einer WordPress-Seite zeigt. Es ist **nur lesend**: Es startet keine Jobs, schreibt keine Dateien und hat keine Formulare, AJAX- oder REST-Endpunkte. Entwickelt wird es lokal auf dem Mac in einer Docker-Umgebung; die Pi-Weboberfläche bleibt davon unberührt.
+Zusätzlich zur PHP-Weboberfläche gibt es das WordPress-Plugin „Zeitraffer“
+(`frontend/zeitraffer/`), das die fertigen Videos auf einer WordPress-Seite zeigt. Dieses Dokument
+beschreibt, wie es funktioniert und wie es lokal entwickelt und getestet wird. Es ist **nur lesend**: Es startet keine Jobs, schreibt keine Dateien und hat keine Formulare, AJAX- oder REST-Endpunkte. Entwickelt wird es lokal auf dem Mac in einer Docker-Umgebung; die Pi-Weboberfläche bleibt davon unberührt.
 
 ```text
 Pi: videos/<Kamera>/<Zeitraum>/*.mp4
@@ -109,7 +108,7 @@ Eingebunden werden:
 
 | Host (Mac) | Container | Zweck |
 |---|---|---|
-| `frontend/` | `/var/www/html/wp-content/plugins/zeitraffer` | Das Plugin, schreibgeschützt (`:ro`). Änderungen am Code sind sofort sichtbar. |
+| `frontend/zeitraffer/` | `/var/www/html/wp-content/plugins/zeitraffer` | Das Plugin, schreibgeschützt (`:ro`). Änderungen am Code sind sofort sichtbar. |
 | `videos/` | `/var/www/html/wp-content/uploads/zeitraffer/` | Die Videos, schreibgeschützt. Nach jedem `pull-videos.sh` ohne Neustart sichtbar. |
 | Volume `wordpress` | `/var/www/html` | WordPress-Dateien und Uploads |
 | Volume `db` | `/var/lib/mysql` | Datenbank |
@@ -194,7 +193,7 @@ Der ältere Aufbau mit zwei Seiten funktioniert weiter. Er wird für die Kameras
 
 | Seite | Titel / Slug | Inhalt | Funktion |
 |---|---|---|---|
-| Kameraübersicht | z. B. „Kameras“ | `[tl]` | Liste aller Kameras mit Videos, jede verlinkt auf die Playerseite |
+| Kameraübersicht | z. B. „Kameras“ | `[tl]` | Liste aller veröffentlichten Kameras mit Videos, jede verlinkt auf die Playerseite. Angezeigt wird der Ordnername, nicht der Titel des Kameraeintrags |
 | Player | **„Zeitraffer“, Slug `zeitraffer`** | `[zeitraffer]` | Zeigt das Video der Kamera aus `?camera=` (`http://localhost:8080/zeitraffer/?camera=<slug>`, optional `&period=daily|weekly|monthly|yearly`) |
 
 Die Übersicht sucht die Playerseite über den Slug `zeitraffer`. Ist sie nicht vorhanden, verlinkt die Übersicht auf die aktuelle Seite. Der Slug lässt sich per Filter ändern, ohne das Plugin zu bearbeiten:
@@ -202,6 +201,9 @@ Die Übersicht sucht die Playerseite über den Slug `zeitraffer`. Ist sie nicht 
 ```php
 add_filter( 'zeitraffer_camera_page_slug', fn() => 'mein-slug' );
 ```
+
+Mit WPML verlinkt die Übersicht auf die Übersetzung der Playerseite in der aktuellen Sprache
+(Filter `wpml_object_id`); fehlt die Übersetzung oder WPML, bleibt es die Originalseite.
 
 ## So funktioniert das Plugin
 
@@ -224,7 +226,7 @@ docker compose down -v     # stoppen UND Volumes löschen: WordPress-Installatio
 ```
 
 - Neue Videos: `docker/pull-videos.sh` ausführen und die Seite neu laden. Ein Neustart ist nicht nötig.
-- Code ändern: Datei in `frontend/` speichern und neu laden. Die Versionsnummer von CSS und JS ist deren Änderungszeit, daher gibt es keine Cache-Probleme; bei Zweifeln Strg/Cmd+Shift+R.
+- Code ändern: Datei in `frontend/zeitraffer/` speichern und neu laden. Die Versionsnummer von CSS und JS ist deren Änderungszeit, daher gibt es keine Cache-Probleme; bei Zweifeln Strg/Cmd+Shift+R.
 - Mac ausschalten: nichts zu tun. Die Container starten mit Docker Desktop wieder (`restart: always`) oder per `docker compose up -d`; Installation und Videos bleiben erhalten.
 - `down -v` entspricht einem Zurücksetzen auf eine frische WordPress-Installation (Schritt 4 beginnt wieder von vorn). Videos und Plugin-Code sind nicht betroffen, weil sie nur eingebunden sind.
 

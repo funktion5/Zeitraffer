@@ -57,7 +57,7 @@ Die Schritte, jeweils im Projektordner im Terminal:
 # 1. Image bauen (APP_UID = eigener Benutzer, damit die Ergebnisse einem selbst gehören)
 APP_UID=$(id -u) docker compose build
 
-# 2. Funktioniert die Umgebung? Läuft die Testsuite (ca. 600 Tests)
+# 2. Funktioniert die Umgebung? Läuft die Testsuite (mehrere hundert Tests)
 docker compose run --rm timelapse
 
 # 3. Sieht der Container die Kamerabilder, nur lesend?
@@ -67,6 +67,14 @@ MOUNT_CAMERAS=1 docker compose run --rm timelapse ls /mnt/cameras
 MOUNT_CAMERAS=1 docker compose run --rm timelapse \
 	python3 -m src.main --date 2026-08-16 --cameras Scheunenviertel --blur-people
 ```
+
+Variablen, die `compose.yaml` beim Aufruf liest:
+
+| Variable | Standard | Bedeutung |
+|---|---|---|
+| `APP_UID` | `1000` | Benutzer-ID von `app` im Image (nur beim Bauen); sollte dem eigenen Benutzer entsprechen |
+| `MOUNT_CAMERAS` | `0` | `1` hängt die Kamerabilder schreibgeschützt unter `/mnt/cameras` ein |
+| `SSH_DIR` | `./docker-data/ssh` | Ordner mit Schlüssel, `config` und `known_hosts` für die Storage Box |
 
 Schritt 4 dauert ca. 10 Minuten (Erkennung von rund 70 Bildern). Das Video kann man mit dem
 auf dem Pi vergleichen; es sollte gleich aussehen.
