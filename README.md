@@ -543,8 +543,10 @@ erkennen und verpixeln:
 
 - **In Videos:** Beim Erstellen eines Tagesvideos per Befehl (nicht über die Weboberfläche) lassen
   sich Personen und Kennzeichen verpixeln. Das dauert deutlich länger und ist bisher ein Test.
-- **Direkt auf dem Online-Speicher:** Ein eigener Ablauf soll neue Bilder verpixeln, bevor die
-  Website sie abholt. Er ist gebaut und getestet, läuft aber noch nicht im Dauerbetrieb.
+- **Direkt auf dem Online-Speicher:** Ein eigener Ablauf verpixelt die Bilder auf dem
+  Online-Speicher. Er läuft seit dem 23.10.2026 jede Nacht vor den Videos (derzeit für
+  Scheunenviertel und SLSV), damit die Tagesvideos verpixelt sind. Neue Bilder laufend zu
+  verpixeln, bevor die Website sie abholt, ist gebaut, läuft aber noch nicht.
 
 Im Zweifel verweigert das Programm lieber ein Video, als ein ungeprüftes Bild zu verwenden.
 Keine Erkennung findet aber jeden Menschen.
@@ -648,7 +650,7 @@ Fertig und im täglichen Einsatz:
 
 Fertig, aber noch nicht im Dauerbetrieb:
 
-- Verpixelung von Personen und Kennzeichen (siehe [Verpixelung](#verpixelung))
+- laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
 
 ---
@@ -656,7 +658,7 @@ Fertig, aber noch nicht im Dauerbetrieb:
 ## Noch offen
 
 - die fertigen Videos automatisch auf die echte Website bringen
-- Verpixelung jede Nacht automatisch starten
+- Verpixelung neuer Bilder laufend (alle paar Minuten) starten
 - eine Installationsanleitung und ein Installationsskript für einen beliebigen Server, falls das
   Programm vom Raspberry Pi umzieht
 

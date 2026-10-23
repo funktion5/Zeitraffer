@@ -9,12 +9,17 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 
 ### Nächtlicher Produktionslauf
 
-Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr und danach den
-[Highlights-Flagger](#highlights-flagger):
+Die installierte Crontab verpixelt täglich um 02:00 Uhr zuerst die noch offenen Bilder der
+letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)), startet dann den
+vollständigen Workflow und danach den [Highlights-Flagger](#highlights-flagger):
 
 ```cron
-0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
+0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
+
+Schlägt das Nachholen fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`); die Fehler
+stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
+`privacy.blur_cameras` damit aus verpixelten Bildern.
 
 `flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
 
@@ -23,7 +28,7 @@ Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 U
 Beim Booten wird der Workflow nur gestartet, wenn `state/run-in-progress` existiert. Da der Kamera-Storage eventuell noch nicht bereit ist, wartet Cron zunächst auf einen echten Mount unter `/mnt/cameras`:
 
 ```cron
-@reboot if [ -f <projektpfad>/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; fi
+@reboot if [ -f <projektpfad>/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; <projektpfad>/.venv/bin/python3 -m src.main'; fi
 ```
 
 Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:

@@ -5,9 +5,11 @@ die Webseite sie abholt. Das Original wird vorher auf der Box gesichert. Die Vid
 beschreibt [verpixelung.md](verpixelung.md); Installation, Detektor und die `blur`-Werte gelten
 für beide.
 
-**Stand:** in Entwicklung. Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest`
-(47 Bilder: 20 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Der Cron-Eintrag ist
-noch nicht eingerichtet.
+**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest` (47 Bilder: 20
+verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
+jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
+erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
+Die laufende Runde ist noch nicht eingerichtet.
 
 Alle Pfade sind relativ zum Projektordner.
 
@@ -84,11 +86,16 @@ Testlauf von Hand, nur für die genannte Kamera:
 .venv/bin/python3 -m src.privacy.blur_box --cameras BlurTest
 ```
 
-Cron (geplant, **noch nicht eingerichtet**):
+Cron für die laufende Runde (geplant, **noch nicht eingerichtet**; vorgesehen höchstens alle
+5 Minuten statt jede Minute):
 
 ```cron
-* * * * * cd <projektpfad> && .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras
+*/5 * * * * cd <projektpfad> && .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras
 ```
+
+Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
+[betrieb.md](betrieb.md#nächtlicher-produktionslauf)): in der ersten Nacht zwei Tage, danach jede
+Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 
 | Option | Bedeutung |
 |---|---|

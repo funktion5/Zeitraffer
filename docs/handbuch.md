@@ -32,7 +32,7 @@ für die jeweiligen Werte.
 | Wiederholung des nächtlichen Laufs | nach einem Neustart, wenn der Lauf unterbrochen war | Cron (`@reboot`) |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
 | Highlights-Flagger | direkt nach dem nächtlichen Lauf (ca. 03:30–04:10) | Cron |
-| Verpixelung auf der Storage Box | bei Bedarf (noch nicht in Cron) | Befehl |
+| Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
 ### Wo was liegt
@@ -172,7 +172,8 @@ Details: [flagger.md](flagger.md).
   ([verpixelung.md](verpixelung.md)).
 - Direkt auf der Storage Box: `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`
   ([verpixelung-box.md](verpixelung-box.md)). Schreibt auf die Box; vorher die dortige Anleitung
-  lesen.
+  lesen. Mit `--catch-up` (45 Minuten pro Kamera) holt es die offenen Bilder der letzten 48 Stunden
+  in einem Lauf nach; so läuft es nachts per Cron.
 
 ### Werkzeuge
 

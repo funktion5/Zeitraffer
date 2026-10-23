@@ -1,6 +1,7 @@
 # PLAN — Blur catch-up before the nightly run + Daily blur gate
 
-Status: planned 2026-10-23, **not started**. Blocked on where the live infrastructure runs
+Status: Part 1 (catch-up) built and in cron since 2026-10-23, see
+[2026-10-23-blur-catch-up.md](2026-10-23-blur-catch-up.md). Part 2 (gate) planned, **not started**. Blocked on where the live infrastructure runs
 (boss decision: Pi, Hetzner web server or a VPS). Build only once the box blur job
 (`src/privacy/blur_box.py`, docs/verpixelung-box.md) is scheduled for real on that host.
 
