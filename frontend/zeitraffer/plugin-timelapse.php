@@ -47,41 +47,6 @@ function tl_timelapse_get_cameras(): array {
   return $cameras;
 }
 
-// URL of the page that holds the [zeitraffer] shortcode.
-function tl_timelapse_camera_page_url(): string|false {
-  // Filterable, so a renamed page needs no code change.
-  $page = get_page_by_path(apply_filters("zeitraffer_camera_page_slug", "zeitraffer"));
-
-  if (!$page) {
-    // Page missing or renamed: link to the current page instead of a broken URL.
-    return get_permalink();
-  }
-
-  // With WPML, return the translation in the current language; without it the ID is unchanged.
-  $page_id = apply_filters("wpml_object_id", $page->ID, "page", true);
-
-  return get_permalink($page_id);
-}
-
-function tl_timelapse_shortcode(): string {
-  $cameras = tl_timelapse_published_cameras();
-
-  // An empty <ul> is invalid markup and tells screen reader users nothing.
-  if (!$cameras) {
-    return "<p>" . esc_html("Derzeit sind keine Zeitraffer-Videos verfügbar.") . "</p>";
-  }
-
-  $html = "<ul>";
-  $page_url = tl_timelapse_camera_page_url();
-
-  foreach ($cameras as $slug => $folder) {
-    $url = add_query_arg("camera", $slug, $page_url);
-    $html .= '<li><a href="' . esc_url($url) . '">' . esc_html($folder) . '</a></li>';
-  }
-
-  return $html . '</ul>';
-}
-
 function tl_timelapse_latest_video(string $folder, string $period): ?string {
   // glob() returns false on error, and rsort(false) is a fatal TypeError in PHP 8.
   $files = glob(tl_timelapse_videos_dir() . "/" . $folder . "/" . $period . "/*.mp4") ?: [];
@@ -323,19 +288,6 @@ function tl_timelapse_cameras_cached(): array {
   return $cameras;
 }
 
-// Cameras visitors may see: a folder with videos AND a published entry.
-function tl_timelapse_published_cameras(): array {
-  $published = [];
-
-  foreach (tl_timelapse_get_cameras() as $slug => $folder) {
-    if (tl_timelapse_camera_entry((string) $slug)) {
-      $published[$slug] = $folder;
-    }
-  }
-
-  return $published;
-}
-
 // The entry for a camera slug, or null. $status "any" also finds drafts, so the sync never duplicates.
 function tl_timelapse_camera_entry(string $slug, string $status = "publish"): ?WP_Post {
   $posts = get_posts([
@@ -467,11 +419,6 @@ function tl_timelapse_after_webcam(string $foldername, string $heading_tag): voi
   ]);
 }
 add_action("f5_webcams_after_webcam", "tl_timelapse_after_webcam", 10, 2);
-
-add_shortcode(
-  "tl",
-  "tl_timelapse_shortcode"
-);
 
 add_shortcode(
   "zeitraffer",
