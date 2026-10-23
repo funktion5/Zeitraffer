@@ -70,6 +70,10 @@ STALLED_AFTER_SECONDS = 600
 # uploads waiting. The next round lists again and starts with the newest image.
 DEFAULT_TIME_BUDGET_SECONDS = 40
 
+# The nightly catch-up (--catch-up): two summer days of SLSV (~288 images x 8 s) fit, while a
+# stalled box still releases the run lock in time for the videos.
+CATCH_UP_BUDGET_SECONDS = 45 * 60
+
 # One image takes ~8 s to detect; a hung detector must not hold the round for the batch default.
 DETECTOR_TIMEOUT_SECONDS = 120
 
@@ -419,6 +423,12 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
 	)
 	parser.add_argument("--state-dir", type=Path, default=DEFAULT_STATE_ROOT)
 	parser.add_argument("--settle-seconds", type=float, default=DEFAULT_SETTLE_SECONDS)
+	parser.add_argument(
+		"--catch-up",
+		action="store_true",
+		help="Long time budget per camera (45 min instead of 40 s): handle the open images of "
+		"the listed days in one run (before the nightly timelapse run).",
+	)
 
 	return parser.parse_args(argv)
 
@@ -504,6 +514,10 @@ def main(argv: list[str] | None = None) -> int:
 					args.state_dir,
 					datetime.now(ZoneInfo(location["timezone"])),
 					args.settle_seconds,
+					# The catch-up runs before the nightly videos, when no fresh upload waits.
+					time_budget_seconds=(
+						CATCH_UP_BUDGET_SECONDS if args.catch_up else DEFAULT_TIME_BUDGET_SECONDS
+					),
 					rules=rules,
 				)
 

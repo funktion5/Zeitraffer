@@ -538,15 +538,15 @@ def test_two_hour_blackout_is_caught_up(box: FakeBox, upload_root: Path) -> None
 
 def test_old_image_is_refused_without_contact(writer: BoxWriter, box: FakeBox) -> None:
 	with pytest.raises(BoxWriteRefused, match="older than"):
-		writer.backup(CAMERA, "20261014T125900.jpg", "0" * 64)
+		writer.backup(CAMERA, "20261013T125900.jpg", "0" * 64)
 
 	assert box.calls == []
 
 
 def test_image_just_inside_the_age_limit_is_accepted(writer: BoxWriter, box: FakeBox) -> None:
-	_add_image(box, "20261014T130100.jpg")
+	_add_image(box, "20261013T130100.jpg")
 
-	writer.backup(CAMERA, "20261014T130100.jpg", _current_hash(box, CAMERA, "20261014T130100.jpg"))
+	writer.backup(CAMERA, "20261013T130100.jpg", _current_hash(box, CAMERA, "20261013T130100.jpg"))
 
 
 def test_image_far_in_the_future_is_refused(writer: BoxWriter, box: FakeBox) -> None:

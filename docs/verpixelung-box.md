@@ -94,6 +94,7 @@ Cron (geplant, **noch nicht eingerichtet**):
 |---|---|
 | `--cameras A B` | nur diese Kameras; jede muss in `privacy.blur_cameras` stehen |
 | `--all-blur-cameras` | alle Kameras aus `privacy.blur_cameras` (für Cron) |
+| `--catch-up` | 45 Minuten pro Kamera statt 40 Sekunden: die offenen Tagbilder der Liste (bis 48 Stunden alt) in einem Lauf; läuft nachts vor dem Zeitraffer-Lauf. Die Grenze gibt den Lock auch bei hängender Box rechtzeitig für die Videos frei |
 | `--settle-seconds N` | Wartezeit, bis ein Upload als fertig gilt (Standard 15) |
 | `--state-dir PFAD` | Ordner der Statusdateien (Standard `state/privacy/box/`) |
 
@@ -192,7 +193,7 @@ Dateien in einem Kameraordner:
 Die versteckten `.tmp`-Dateien enden nicht auf `.jpg`. Weder der nächtliche Lauf noch ein
 Programm, das nach `*.jpg` sucht, sieht so eine halb geschriebene Datei. Bleibt nach einem
 Abbruch eine `.tmp`-Datei liegen, überschreibt der nächste Versuch sie. Kommt es zu keinem
-weiteren Versuch (das Bild ist inzwischen älter als 24 Stunden), bleibt sie liegen: Der Job hat
+weiteren Versuch (das Bild ist inzwischen älter als 48 Stunden), bleibt sie liegen: Der Job hat
 bewusst kein `rm`. Solche Reste lassen sich von Hand finden (`ls -a <Kamera>/ | grep '\.tmp$'`)
 und löschen.
 
@@ -238,7 +239,7 @@ Im Zweifel bleibt das Bild **unverändert**. Der Schreibcode erzwingt:
   Ziffern, `_`, `-`, Endung `.jpg`), und `images.py` muss Datum und Uhrzeit lesen können. Jeder
   Befehl besteht so aus einfachen Wörtern ohne Sonderzeichen. Alles andere wird abgelehnt,
   bevor die Box kontaktiert wird.
-- **Zeitfenster:** nur Bilder, deren Dateiname höchstens 24 Stunden alt ist und höchstens 2
+- **Zeitfenster:** nur Bilder, deren Dateiname höchstens 48 Stunden alt ist und höchstens 2
   Stunden in der Zukunft liegt.
 - **Mengengrenze:** höchstens 300 Sicherungen pro Kamera und Lauf, etwa doppelt so viele wie
   die Bilder eines ganzen Tages bei SLSV.
@@ -278,7 +279,7 @@ der nächsten Runde erneut versucht.
 ## Stromausfall und Nachholen
 
 - **Ausfall bis zwei Tage:** Die Liste reicht bis vorgestern zurück. Verpasste Tagbilder der
-  letzten 24 Stunden werden nachgeholt, das neueste zuerst. Ältere werden als `refused`
+  letzten 48 Stunden werden nachgeholt, das neueste zuerst. Ältere werden als `refused`
   vermerkt und als Fehler geloggt, nie still übergangen.
 - **Ausfall über Mitternacht:** Gestern steht in der Liste; die letzten Tagbilder von gestern
   gehen also nicht verloren.
@@ -319,7 +320,7 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
   nicht vor.
 - Liegengebliebene `.tmp`-Dateien räumt der Job nicht weg (kein `rm`), siehe
   [Was auf der Box passiert](#was-auf-der-box-passiert).
-- Bilder, die älter als 24 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
+- Bilder, die älter als 48 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
   `refused` im Log.
 - Keine Erkennung findet 100 % aller Personen (siehe [verpixelung.md](verpixelung.md#grenzen)).
 

@@ -1,5 +1,6 @@
 import inspect
 import json
+import math
 import os
 import sys
 from datetime import datetime, timedelta
@@ -30,6 +31,7 @@ NIGHT = "20260615T020000.jpg"
 # A signpost the detector keeps reporting as a person.
 SIGN = [703, 557, 742, 643]
 rules_seen: dict[str, object] = {}
+budgets_seen: dict[str, object] = {}
 
 
 def original_bytes(name: str) -> bytes:
@@ -324,8 +326,8 @@ def test_outage_across_midnight_still_finds_yesterdays_daytime_images(
 
 
 def test_image_outside_the_window_is_refused_once_and_recorded(setup: Setup, caplog) -> None:
-	name = "20260614T120000.jpg"
-	image = setup.upload(name, age_seconds=26 * 3600)
+	name = "20260613T130000.jpg"
+	image = setup.upload(name, age_seconds=49 * 3600)
 
 	summary = setup.run()
 
@@ -338,6 +340,16 @@ def test_image_outside_the_window_is_refused_once_and_recorded(setup: Setup, cap
 	assert setup.detected() == []
 
 	assert setup.run() == blur_box.BoxRoundSummary()
+
+
+def test_yesterdays_missed_image_is_caught_up(setup: Setup, monkeypatch) -> None:
+	# 26 h old: outside the old 24 h window, inside 48 h, so a catch-up round still blurs it.
+	name = "20260614T120000.jpg"
+	image = setup.upload(name, age_seconds=26 * 3600)
+	monkeypatch.setenv("FAKE_PEOPLE", name)
+
+	assert setup.run().blurred == 1
+	assert image.read_bytes() == blurred_bytes(name)
 
 
 def test_count_limit_defers_the_rest_to_the_next_round(setup: Setup, monkeypatch) -> None:
@@ -439,9 +451,10 @@ def rounds(tmp_path: Path, monkeypatch) -> list[tuple[str, list[str]]]:
 		},
 	}
 
-	def record_round(writer, storage_box, camera, *args, rules=None):
+	def record_round(writer, storage_box, camera, *args, rules=None, **options):
 		calls.append((camera, sorted(writer.allowed_cameras)))
 		rules_seen[camera] = rules
+		budgets_seen[camera] = options.get("time_budget_seconds")
 
 		return blur_box.BoxRoundSummary()
 
@@ -491,6 +504,32 @@ def test_round_is_skipped_while_another_blur_round_runs(rounds, tmp_path: Path) 
 		assert blur_box.main(["--all-blur-cameras"]) == 0
 
 	assert rounds == []
+
+
+def test_catch_up_gets_the_long_budget(rounds) -> None:
+	budgets_seen.clear()
+
+	assert blur_box.main(["--all-blur-cameras", "--catch-up"]) == 0
+	assert set(budgets_seen.values()) == {blur_box.CATCH_UP_BUDGET_SECONDS}
+
+
+def test_normal_round_keeps_the_time_budget(rounds) -> None:
+	budgets_seen.clear()
+
+	assert blur_box.main(["--all-blur-cameras"]) == 0
+	assert set(budgets_seen.values()) == {blur_box.DEFAULT_TIME_BUDGET_SECONDS}
+
+
+def test_unlimited_budget_processes_every_open_image(setup: Setup, monkeypatch) -> None:
+	names = ["20260615T110000.jpg", "20260615T120000.jpg", "20260615T130000.jpg"]
+	monkeypatch.setenv("FAKE_PEOPLE", ",".join(names))
+
+	for name in names:
+		setup.upload(name)
+
+	summary = setup.run(time_budget_seconds=math.inf)
+
+	assert (summary.blurred, summary.postponed) == (3, 0)
 
 
 def test_night_name_uploaded_in_daylight_is_checked_not_skipped(setup: Setup, monkeypatch) -> None:
@@ -648,9 +687,9 @@ def test_failed_hash_check_of_a_clean_image_is_retried(setup: Setup) -> None:
 def test_image_leaving_the_window_during_detection_is_refused_after_it(
 	setup: Setup, monkeypatch
 ) -> None:
-	# The clock passes 24 h between the pre-check and the backup.
+	# The clock passes 48 h between the pre-check and the backup.
 	setup.upload(DAY_WITH_PERSON)
-	times = iter([NOW, NOW + timedelta(hours=24)])
+	times = iter([NOW, NOW + timedelta(hours=48)])
 	writer = BoxWriter(
 		REMOTE,
 		"",

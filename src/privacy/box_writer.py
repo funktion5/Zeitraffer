@@ -39,8 +39,9 @@ COMMAND_TIMEOUT_SECONDS = 30
 UPLOAD_TIMEOUT_SECONDS = 120
 BACKUP_HASH_LENGTH = 16
 
-# Covers every daytime image of the current day. Night images never get here.
-DEFAULT_MAX_IMAGE_AGE = timedelta(hours=24)
+# Two days, so the catch-up before the nightly run still reaches yesterday's earliest daytime
+# images after a missed day or a morning restart. Night images never get here.
+DEFAULT_MAX_IMAGE_AGE = timedelta(hours=48)
 # Camera clocks drift; anything further ahead than this is an anomaly, not a new image.
 DEFAULT_MAX_IMAGE_AHEAD = timedelta(hours=2)
 # About twice the busiest camera's full day (SLSV: 144 images).
