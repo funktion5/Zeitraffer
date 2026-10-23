@@ -127,9 +127,9 @@ Der Flagger nimmt dieselbe Sperre wie der nächtliche Lauf, die Web-Jobs und der
 (`state/zeitraffer-run.lock`). Ist sie belegt, schreibt er „Skipped" ins Log und beendet sich.
 So läuft er nie gleichzeitig mit einem Encoding.
 
-Geplant, nicht eingerichtet: der Flagger direkt nach dem nächtlichen Lauf in derselben
+Seit 2026-10-23 läuft der Flagger jede Nacht direkt nach dem nächtlichen Lauf in derselben
 Cron-Zeile, aber außerhalb von `flock -c`, damit seine eigene Sperre nicht an der von Cron
-scheitert:
+scheitert (Details: [Betrieb](betrieb.md#highlights-flagger)):
 
 ```cron
 0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && .venv/bin/python3 -m src.main'; cd <projektpfad> && .venv/bin/python3 -m src.flagger.run

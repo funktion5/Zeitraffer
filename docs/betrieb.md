@@ -9,10 +9,11 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 
 ### Nächtlicher Produktionslauf
 
-Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr:
+Die installierte Crontab startet den vollständigen Workflow täglich um 02:00 Uhr und danach den
+[Highlights-Flagger](#highlights-flagger):
 
 ```cron
-0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'
+0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
 
 `flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
@@ -33,15 +34,17 @@ Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
 
 Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
 
-### Highlights-Flagger (geplant)
+### Highlights-Flagger
 
-Noch nicht eingerichtet. Der [Highlights-Flagger](flagger.md) soll direkt nach dem
-nächtlichen Lauf starten, in derselben Zeile, aber außerhalb von `flock -c`: Er nimmt die Sperre
-selbst und würde sonst an der von Cron scheitern.
+Eingerichtet am 2026-10-23. Der [Highlights-Flagger](flagger.md) startet in derselben Cron-Zeile
+direkt nach dem nächtlichen Lauf (siehe oben), aber außerhalb von `flock -c`: Er nimmt die Sperre
+selbst und würde sonst an der von Cron scheitern. Er prüft den Vortag und braucht für fünf
+Kameras ca. 40 Minuten.
 
-```cron
-0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
-```
+- Wurde der nächtliche Lauf übersprungen, weil die Sperre belegt war, findet auch der Flagger sie
+  belegt und schreibt nur `Skipped:` in `logs/flagger/`.
+- Die Wiederholung nach einem Neustart (`@reboot`) startet nur den Videolauf, nicht den Flagger.
+  Fehlende Tage lassen sich mit `--target-date` nachholen.
 
 Installierte Einträge prüfen:
 

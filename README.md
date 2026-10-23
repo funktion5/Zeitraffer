@@ -528,7 +528,7 @@ Beispiel um gute Motive für YouTube oder die Website auszuwählen.
   werden erkannt und nicht angezeigt.
 - Das Programm rät, was es sieht („Flugzeug?“) und irrt sich dabei auch; ein Mensch entscheidet.
 - Treffer bleiben 30 Tage erhalten.
-- **Stand:** fertig und getestet, läuft aber noch nicht jede Nacht automatisch.
+- **Stand:** läuft seit dem 23.10.2026 jede Nacht automatisch nach den Videos.
 
 Details zu Erkennung, Schwellen, Aufruf und Protokoll: [docs/flagger.md](docs/flagger.md),
 zur Seite: [docs/highlights-seite.md](docs/highlights-seite.md).
@@ -638,7 +638,8 @@ Fertig und im täglichen Einsatz:
 - nächtliche Tages-, Wochen-, Monats- und Jahresvideos für alle Kameras
 - Videos für vergangene Zeiträume, per Weboberfläche oder Befehl, auch mit Sonnenuntergang
 - Weboberfläche mit Anmeldung: Videos erstellen, ansehen, herunterladen, löschen
-- Highlights-Seite mit Großansicht, Download und Löschen
+- Highlights-Flagger jede Nacht nach den Videos, Highlights-Seite mit Großansicht, Download und
+  Löschen
 - automatische Wiederholung nach Stromausfall, Protokolle, Aufräumen alter Videos
 - Erkennung leerer, abgeschnittener und doppelter Bilder
 - Sicherung (verschlüsselt) und Wiederherstellung des Raspberry Pi
@@ -647,7 +648,6 @@ Fertig und im täglichen Einsatz:
 
 Fertig, aber noch nicht im Dauerbetrieb:
 
-- Highlights-Flagger (läuft bisher nur von Hand)
 - Verpixelung von Personen und Kennzeichen (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
 
@@ -656,7 +656,7 @@ Fertig, aber noch nicht im Dauerbetrieb:
 ## Noch offen
 
 - die fertigen Videos automatisch auf die echte Website bringen
-- Highlights-Flagger und Verpixelung jede Nacht automatisch starten
+- Verpixelung jede Nacht automatisch starten
 - eine Installationsanleitung und ein Installationsskript für einen beliebigen Server, falls das
   Programm vom Raspberry Pi umzieht
 

@@ -31,7 +31,7 @@ für die jeweiligen Werte.
 | Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
 | Wiederholung des nächtlichen Laufs | nach einem Neustart, wenn der Lauf unterbrochen war | Cron (`@reboot`) |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Highlights-Flagger | bei Bedarf (noch nicht in Cron) | Befehl |
+| Highlights-Flagger | direkt nach dem nächtlichen Lauf (ca. 03:30–04:10) | Cron |
 | Verpixelung auf der Storage Box | bei Bedarf (noch nicht in Cron) | Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
