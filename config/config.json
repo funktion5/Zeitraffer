@@ -45,7 +45,8 @@
   "privacy": {
     "blur_cameras": [
       "BlurTest",
-      "Scheunenviertel"
+      "Scheunenviertel",
+      "SLSV"
     ],
     "ignore_boxes": {
       "BlurTest": [[703, 557, 742, 643]],
