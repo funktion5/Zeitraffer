@@ -90,7 +90,8 @@ nano backup.env
 
 In den folgenden Befehlen stehen `<pi-host>` und `<pi-user>` für `BACKUP_HOST` und `BACKUP_USER` aus `backup.env`.
 
-Das Skript fragt zuerst zweimal nach der Passphrase für die Verschlüsselung, dann einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
+Das Skript fragt zuerst zweimal nach der Passphrase für die Verschlüsselung (mindestens 12
+Zeichen; ist sie kürzer oder weichen die beiden Eingaben ab, fragt es erneut), dann einmal nach dem SSH-Passwort und einmal nach dem `sudo`-Passwort auf dem Pi. Anschließend:
 
 1. packt es die Geheimnisse auf dem Pi mit `umask 077` in eine Datei mit Zufallsnamen im Home-Verzeichnis, streamt sie verschlüsselt nach `pi-backup.tar.gz.enc` und löscht sie auf dem Pi wieder, auch wenn ein späterer Schritt fehlschlägt. Fehlt eine Datei auf dem Host oder ist sie ohne `sudo` nicht lesbar, wird sie mit einer Warnung übersprungen; ohne `sudo` auf dem Host wird nur `~/.ssh` gesichert,
 2. speichert die Crontab und `config.json`,
@@ -155,7 +156,9 @@ scp ~/timelapse-backup/pi-backup.tar.gz.enc \
     <pi-user>@<pi-host>:~/
 ```
 
-`migrate.sh` erwartet die drei Backup-Dateien direkt im Home-Verzeichnis. Benutzer und Pfade liest es aus der laufenden Sitzung; im Skript selbst steht nichts Pi-Spezifisches.
+`migrate.sh` erwartet die Backup-Dateien direkt im Home-Verzeichnis. Pflicht sind
+`pi-backup.tar.gz.enc` und `pi-crontab.txt`; fehlt `config.json`, warnt es nur und nimmt die
+Version aus dem `git clone`. Benutzer und Pfade liest es aus der laufenden Sitzung; im Skript selbst steht nichts Pi-Spezifisches.
 
 ### Schritt 5: Migration auf dem Pi ausführen
 

@@ -50,6 +50,7 @@ für die jeweiligen Werte.
 | Status der Web-Aufträge | `state/web-jobs/` |
 | Zwischendateien | `temp/` |
 | Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-status.sh` |
+| Weitere installierte Skripte | `/usr/local/sbin/cameras-sshfs-preflight` (räumt vor dem Mount auf), `/usr/local/sbin/pi-health-logger` (nur wenn das Absturz-Logging eingerichtet ist) |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
@@ -240,6 +241,11 @@ oder Schlüssel passt nicht mehr.
 hängenden Mount auf. Danach den Lauf von Hand starten. Bleibt der Dienst rot, die Meldung im Journal
 lesen (häufig: `Host key verification failed` oder leere `mount.env`).
 
+Zeigt `systemctl status` nicht rot, sondern `inactive (dead)` mit einer Zeile `condition failed`, fehlt
+der Ordner `/mnt/cameras` selbst. Der Dienst startet dann gar nicht erst (Bedingung
+`ConditionPathIsDirectory` in der Unit). Ordner anlegen (`sudo mkdir /mnt/cameras`) und den Dienst
+neu starten.
+
 ### Bildsuche bricht ab („stalled“)
 
 **Symptom:** `TimeoutError: ... stalled for camera: <Kamera>` im Protokoll; diese Kamera fehlt, die
@@ -404,7 +410,8 @@ die Zeilen mit `ERROR` und den Traceback davor lesen.
 
 **Symptom:** Der Browser fragt immer wieder nach Benutzername und Passwort.
 
-**Lösung:** Passwort neu setzen: `sudo htpasswd /etc/apache2/.htpasswd <login>`
+**Lösung:** Passwort neu setzen: `sudo htpasswd -B /etc/apache2/.htpasswd <login>` (`-B` für
+bcrypt, ohne `-c`, sonst wird die Datei mit allen anderen Logins überschrieben)
 ([README](../README.md#basisauthentifizierung-einrichten)).
 
 ### `403 Forbidden`
@@ -452,6 +459,22 @@ tail /var/log/apache2/zeitraffer-error.log
 gehört `root` (dann verweigert die Seite den Start bewusst).
 
 **Lösung:** Wrapper und sudoers nach [README](../README.md#wrapper-installieren) neu einrichten.
+
+### „Der Videoauftrag wurde abgelehnt oder konnte nicht gestartet werden.“
+
+**Prüfen:** `grep "Video wrapper failed with exit code" /var/log/apache2/zeitraffer-error.log | tail -3`
+
+**Ursache:** Der Wrapper lief, hat den Auftrag aber abgelehnt. Der Exit-Code im Protokoll sagt warum:
+
+| Code | Bedeutung |
+|---|---|
+| 66 | Kameraordner fehlt unter `/mnt/cameras`, meist weil der Mount weg ist |
+| 64 | Ungültige Eingabe (Datum, Job, Zeitpuffer oder Zeitfenster) |
+| 69 | Worker oder Status-Hilfsskript unter `/usr/local/libexec/` fehlt |
+
+**Lösung:** Bei 66 [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar); bei 69
+die Wrapper neu installieren; bei 64 prüfen, ob installierter Wrapper und Weboberfläche zueinander
+passen (`cmp` wie oben).
 
 ### „Videoerstellung fehlgeschlagen“
 

@@ -93,6 +93,9 @@ Nach jeder Änderung an `scripts/timelapse-web-delete-highlight` muss der Wrappe
 | „Die Anfrage ist ungültig (Sicherheitstoken).“ | Sitzung abgelaufen | Seite neu laden, erneut löschen |
 | Kamera zeigt „Kein Bericht im Zeitraum.“ | Flagger nicht gelaufen oder für diese Kamera fehlgeschlagen | `logs/flagger/<Datum>.log` prüfen |
 | „Noch keine Highlights vorhanden.“ | `flagger.cameras` leer und keine Berichte | Kameras in `config/config.json` eintragen |
+| Kamera zeigt „Keine Highlights im Zeitraum.“ | Kamera steht nicht mehr in `flagger.cameras`, hat aber alte Highlights; im gewählten Zeitraum liegt keiner | Zeitraum vergrößern; normal, wenn die Kamera bewusst entfernt wurde |
+| „Für diese Kamera gibt es keine Highlights.“ | Die Kamera im Filter (`camera=` in der URL, z. B. aus einem alten Lesezeichen) hat weder einen Eintrag in `flagger.cameras` noch einen Highlights-Ordner | Filter „Kamera“ auf „Alle“ stellen |
+| „Die ausgewählte Kamera ist ungültig.“ | Löschen für eine Kamera, die nicht (mehr) in der Liste steht | Seite neu laden |
 
 ## Dateien und Tests
 
