@@ -574,6 +574,47 @@ fernen Objekten. Einzelne Fehltreffer sind normal.
   `min_person_score` in der Config ausschließen
   ([verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
 
+### Ein feststehendes Objekt wird immer wieder verpixelt
+
+**Symptom:** Auf der Storage Box ist in vielen Bildern einer Kamera dasselbe Objekt verpixelt
+(Beispiel 2026-10-23: die Ankerkette vor dem Gebäude bei Scheunenviertel).
+
+**Ursache:** Der Detektor hält das Objekt für eine Person, meist mit niedriger Sicherheit
+(0,25–0,6). Weil es sich nicht bewegt, trifft es jedes Mal dieselbe Stelle.
+
+**Prüfen:** Welche Boxen an derselben Stelle wiederkehren, steht in der Statusdatei:
+
+```bash
+grep -h '"status": "blurred"' state/privacy/box/<Kamera>/*.jsonl | head -3
+```
+
+Jede Box ist `[x0, y0, x1, y1, Sicherheit, Label]` in Pixeln des Originalbilds.
+
+**Lösung:** Die wiederkehrenden Stellen als `ignore_boxes` der Kamera in `config/config.json`
+eintragen. Wirkt ab dem nächsten Lauf, ohne Neustart. Vorher prüfen, dass keine echte Person
+mitfällt: eine Box wird verworfen, wenn sie eine Ignorierfläche zu mindestens 50 % überlappt.
+
+**Mit Claude (empfohlen):** In einer Claude-Sitzung im Projekt etwa so beauftragen:
+
+> Bei `<Kamera>` wird `<Objekt>` (`<wo im Bild>`) fälschlich verpixelt. Werte die Boxen in
+> `state/privacy/box/<Kamera>/` aus, prüfe an einem Original aus `original/` auf der Box, dass es
+> das Objekt ist und keine Person, und schlage `ignore_boxes` vor. Zeig, wie viele der bisherigen
+> Treffer sie verwerfen und welche echten Personen bleiben.
+
+Claude wertet die Statusdatei aus, schaut sich einen Bildausschnitt an, prüft die Flächen gegen
+alle bisherigen Boxen und trägt sie nach Freigabe in die Config ein. Aufwand am Beispiel
+Ankerkette: rund 10 Minuten, ca. 15–20k Tokens (Schätzung). Ergebnis dort: 28 von 35 Treffern
+verworfen, die übrigen 7 waren echte Personen neben der Kette.
+
+**Grenzen:**
+
+- Bereits verpixelte Bilder behalten die Verpixelung; sie stehen als `blurred` in der
+  Statusdatei und werden nicht neu bearbeitet. Das Original liegt in `<Kamera>/original/`.
+- Die Flächen sind feste Pixel. Verschiebt sich die Kamera um mehr als etwa ein Drittel der
+  Boxbreite (bei der Kette ca. 15 Pixel), wird das Objekt wieder verpixelt. Dann die Flächen
+  neu bestimmen, wie oben.
+- Steht eine Person genau vor dem Objekt, bleibt sie unverpixelt (wie beim Wegweiser).
+
 ### Flagger startet nicht oder überspringt
 
 | Meldung | Ursache | Lösung |

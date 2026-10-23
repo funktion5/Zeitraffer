@@ -139,8 +139,10 @@ Lauf mit `--blur-people` ab.
 
 `ignore_boxes`: bekannte Fehlerkennungen pro Kamera als `[x0, y0, x1, y1]` in Pixeln. Eine Box,
 die eine davon zu mindestens 50 % überlappt (Schnitt durch Vereinigung), wird verworfen.
-Verschiebt sich die Kamera, sinkt die Überlappung und das Objekt wird wieder verpixelt. Beispiel:
-der Wegweiser am Café-Eingang bei Scheunenviertel.
+Verschiebt sich die Kamera, sinkt die Überlappung und das Objekt wird wieder verpixelt. Beispiele
+bei Scheunenviertel: der Wegweiser am Café-Eingang und die Ankerkette rechts. Wie man die
+Koordinaten findet (von Hand oder mit Claude):
+[Handbuch](handbuch.md#ein-feststehendes-objekt-wird-immer-wieder-verpixelt).
 
 `ignore_top_share`: globale Regel für alle Kameras. Eine Box, die zu mehr als der Hälfte ihrer
 Höhe im oberen Teil des Bildes liegt (hier oberes Drittel), wird verworfen. Dort sind Himmel, Dächer, Wasser oder die
