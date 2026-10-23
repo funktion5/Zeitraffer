@@ -1,109 +1,27 @@
-/* Zeitraffer plugin styles. Self-hosted, no external fonts or assets.
- *
- * Colours follow the steinhude-am-meer.de palette (Avada theme). The live site
- * defines --awb-color* on :root, so the plugin picks up the theme's own values
- * there and falls back to the same hex values anywhere else (e.g. local Docker).
- * Font family, size and text colour are deliberately not set: the plugin inherits
- * them from the theme so it never drifts from the site. */
+/* Bare minimum: colours, fonts and spacing come from the theme. */
 
-.zeitraffer {
-	--zeitraffer-primary: var(--awb-color1, #202b65);
-	--zeitraffer-accent: var(--awb-color2, #2b5399);
-	--zeitraffer-surface: var(--awb-color3, #e3eaf7);
-	--zeitraffer-border: var(--awb-custom_color_1, #d1d1d1);
-
-	/* Same as the theme's site width. */
-	max-width: 1200px;
-	margin-inline: auto;
-}
-
-/* Keep the player inside its container and avoid a gap below it. The fixed
- * 16:9 ratio (all renders are 16:9) reserves the space before the video loads,
- * so the page does not jump. */
+/* The fixed 16:9 ratio (all renders are 16:9) reserves the space before the video
+ * loads, so the page does not jump. */
 .zeitraffer video {
 	display: block;
 	width: 100%;
 	height: auto;
 	aspect-ratio: 16 / 9;
-	background: #000;
 }
 
-/* Loading skeleton: script.js sets .is-loading while the video has no data yet.
- * Without JavaScript the class is never set, so the plain black player shows.
- * pointer-events: none keeps the video controls usable underneath. */
-.zeitraffer_player {
-	position: relative;
-}
-
-.zeitraffer_player.is-loading::after {
-	content: "";
-	position: absolute;
-	inset: 0;
-	pointer-events: none;
-	background-color: var(--zeitraffer-surface);
-	background-image: linear-gradient(
-		90deg,
-		transparent 25%,
-		rgba(255, 255, 255, 0.6) 50%,
-		transparent 75%
-	);
-	background-size: 200% 100%;
-	animation: zeitraffer-shimmer 1.5s linear infinite;
-}
-
-@keyframes zeitraffer-shimmer {
-	from {
-		background-position: 200% 0;
-	}
-	to {
-		background-position: -200% 0;
-	}
-}
-
-/* Static placeholder for visitors who ask for less motion. */
-@media (prefers-reduced-motion: reduce) {
-	.zeitraffer_player.is-loading::after {
-		animation: none;
-		background-image: none;
-	}
-}
-
-/* Period navigation under the video, styled as tabs. */
 .zeitraffer_nav {
 	display: flex;
 	flex-wrap: wrap;
-	justify-content: center;
-	gap: 0.25rem;
-	margin-top: 0.5rem;
-	border-bottom: 1px solid var(--zeitraffer-border);
+	gap: 1rem;
 }
 
-.zeitraffer_nav a {
-	display: inline-block;
-	/* Large enough touch target (WCAG 2.2 target size). */
-	min-height: 44px;
-	box-sizing: border-box;
-	padding: 0.6rem 1.1rem;
-	border-bottom: 3px solid transparent;
-	color: var(--zeitraffer-accent);
-	text-decoration: none;
-}
-
-.zeitraffer_nav a:hover {
-	background: var(--zeitraffer-surface);
-	border-bottom-color: var(--zeitraffer-accent);
-	color: var(--zeitraffer-primary);
-}
-
-/* The active tab differs by underline and weight, not by colour alone. */
+/* The active period differs by weight, not by colour alone. */
 .zeitraffer_nav a[aria-current] {
-	border-bottom-color: var(--zeitraffer-primary);
-	color: var(--zeitraffer-primary);
 	font-weight: 700;
 }
 
 /* Avada resets :focus-visible to outline: none, so the plugin sets its own. */
 .zeitraffer_nav a:focus-visible {
-	outline: 3px solid var(--zeitraffer-accent);
+	outline: 3px solid currentColor;
 	outline-offset: 2px;
 }

@@ -216,8 +216,7 @@ if ($video) {
   $url = tl_timelapse_videos_url($cameras[$slug] . "/" . $period . "/" . basename($video));
   // Video-only content needs a text alternative (WCAG 1.2.1); aria-label is just a name.
   // playsinline keeps iOS from forcing the video fullscreen.
-  // The wrapper carries the loading skeleton: a <video> cannot take pseudo-elements.
-  $html .= '<div class="zeitraffer_player"><video id="zeitraffer_video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="zeitraffer_caption"></video></div>';
+  $html .= '<video id="zeitraffer_video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="zeitraffer_caption"></video>';
   $html .= '<div id="zeitraffer_caption" class="zeitraffer_caption">' . tl_timelapse_caption_html($description) . '</div>';
 }
 
