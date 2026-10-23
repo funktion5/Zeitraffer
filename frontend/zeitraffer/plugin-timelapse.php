@@ -447,6 +447,27 @@ function tl_timelapse_handle_sync(): void {
 }
 add_action("admin_post_zeitraffer_sync", "tl_timelapse_handle_sync");
 
+// Player under the image of [f5_webcams_last]. The folder name of the webcam the image shows is
+// the video folder, so the player follows the image without its own "latest webcam" lookup.
+// Unpublished or video-less cameras render nothing, as with the shortcode.
+function tl_timelapse_after_webcam(string $foldername, string $heading_tag): void {
+  // A webcam without a timelapse folder is normal; skip it quietly, without the editor's
+  // "camera not found" notice the shortcode would print under the image.
+  if (!isset(tl_timelapse_cameras_cached()[sanitize_key($foldername)])) {
+    return;
+  }
+
+  // One level below the webcam's heading (h4 -> h5), at most h6.
+  $level = min(6, (int) substr($heading_tag, 1) + 1);
+
+  // The shortcode escapes its own output.
+  echo tl_timelapse_camera_shortcode([ // phpcs:ignore WordPress.Security.EscapeOutput
+    "camera" => $foldername,
+    "heading" => (string) $level,
+  ]);
+}
+add_action("f5_webcams_after_webcam", "tl_timelapse_after_webcam", 10, 2);
+
 add_shortcode(
   "tl",
   "tl_timelapse_shortcode"
