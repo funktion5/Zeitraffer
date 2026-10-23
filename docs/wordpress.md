@@ -10,7 +10,7 @@ Pi: videos/<Kamera>/<Zeitraum>/*.mp4
   → Mac: videos/
   → Docker-Container "wordpress": wp-content/uploads/zeitraffer/ (schreibgeschützt)
   → Plugin frontend/zeitraffer/plugin-timelapse.php
-  → Shortcodes [tl] und [zeitraffer]
+  → Shortcode [zeitraffer] und Player unter dem Webcam-Bild
 ```
 
 ## Voraussetzungen für das Frontend
@@ -173,7 +173,7 @@ Ob eine Kamera für Besucher erscheint, entscheidet allein der Status ihres Eint
 | Eintrag | Besucher | Redakteure (Recht „Beiträge anderer bearbeiten“) |
 |---|---|---|
 | veröffentlicht | Player, Tabs, Texte | wie Besucher |
-| Entwurf, ausstehend, privat | nichts (auch kein Link in `[tl]`) | Player mit Hinweis „nicht veröffentlicht“ |
+| Entwurf, ausstehend, privat | nichts | Player mit Hinweis „nicht veröffentlicht“ |
 | kein Eintrag (Ordner noch nicht angelegt) | nichts | Player mit Hinweis |
 
 So kann eine neue Kamera auf ihrer echten Seite getestet werden, ohne dass sie öffentlich ist: Entwurf anlegen, die Seite als angemeldeter Redakteur prüfen, dann veröffentlichen. Wichtig: Schaltet ein bereits veröffentlichter Eintrag zurück auf Entwurf, verschwindet die Kamera sofort. Texte bearbeitet man deshalb am besten im veröffentlichten Eintrag und speichert mit „Aktualisieren“.
@@ -187,23 +187,15 @@ Hinweise:
 - **Ein Player pro Seite:** Der Player verwendet feste Element-IDs; mehrere `[zeitraffer]` auf derselben Seite funktionieren nicht.
 - **Überschrift:** Das Plugin gibt eine eigene Überschrift aus („Zeitraffer – Zeitraum“, ohne Kameranamen, weil die Seite die Kamera schon im Titel nennt). Standard ist `<h2>`; die Ebene lässt sich mit `heading` anpassen. Ob sie zur Überschriftenstruktur der Seite passt, sollte auf einer Testseite geprüft werden.
 
-### Optional: gemeinsame Übersicht und Playerseite
+### Player unter dem Webcam-Bild
 
-Der ältere Aufbau mit zwei Seiten funktioniert weiter. Er wird für die Kameraseiten nicht gebraucht.
+`[f5_webcams_last]` (Plugin f5-webcams) zeigt das neueste Webcam-Bild. Direkt darunter gibt das Zeitraffer-Plugin den Player derselben Kamera aus; dafür ist kein eigener Shortcode nötig. Technisch löst f5-webcams nach dem Bild den Hook `f5_webcams_after_webcam` mit dem Ordnernamen der Webcam aus, und das Zeitraffer-Plugin hängt sich daran.
 
-| Seite | Titel / Slug | Inhalt | Funktion |
-|---|---|---|---|
-| Kameraübersicht | z. B. „Kameras“ | `[tl]` | Liste aller veröffentlichten Kameras mit Videos, jede verlinkt auf die Playerseite. Angezeigt wird der Ordnername, nicht der Titel des Kameraeintrags |
-| Player | **„Zeitraffer“, Slug `zeitraffer`** | `[zeitraffer]` | Zeigt das Video der Kamera aus `?camera=` (`http://localhost:8080/zeitraffer/?camera=<slug>`, optional `&period=daily|weekly|monthly|yearly`) |
+- Der Videoordner muss dem Feld „foldername“ der Webcam entsprechen (wie beim Slug oben bereinigt). Passt kein Ordner, bleibt der Player weg.
+- Es gelten dieselben Sichtbarkeitsregeln wie oben (Entwurf = für Besucher nichts).
+- Die Überschrift des Players steht eine Ebene unter der des Webcam-Bildes (`h4` wird `h5`).
 
-Die Übersicht sucht die Playerseite über den Slug `zeitraffer`. Ist sie nicht vorhanden, verlinkt die Übersicht auf die aktuelle Seite. Der Slug lässt sich per Filter ändern, ohne das Plugin zu bearbeiten:
-
-```php
-add_filter( 'zeitraffer_camera_page_slug', fn() => 'mein-slug' );
-```
-
-Mit WPML verlinkt die Übersicht auf die Übersetzung der Playerseite in der aktuellen Sprache
-(Filter `wpml_object_id`); fehlt die Übersetzung oder WPML, bleibt es die Originalseite.
+Der ältere Aufbau mit einer gemeinsamen Playerseite (`[zeitraffer]` ohne `camera`, Kamera aus `?camera=` in der URL) funktioniert weiter. Die frühere Kameraübersicht `[tl]` und der Filter `zeitraffer_camera_page_slug` sind entfernt.
 
 ## So funktioniert das Plugin
 
@@ -212,7 +204,7 @@ Mit WPML verlinkt die Übersicht auf die Übersetzung der Playerseite in der akt
 - Die Überschrift zeigt „Zeitraffer“ und den Zeitraum, den das Video abdeckt. Das Enddatum steht im Dateinamen (`<Kamera>_<JJJJ-MM-TT>.mp4`; ohne Datum im Namen gilt das Änderungsdatum der Datei), der Anfang ergibt sich aus dem Typ wie in der Pipeline: Tag = dieser Tag, Woche = 7 Kalendertage, Monat = 30 Tage, Jahr = das Kalenderjahr bis zum Enddatum (365 oder 366 Tage), jeweils einschließlich Enddatum. Beispiel Woche: „Zeitraffer – 15.09.2026 bis 21.09.2026“. Das Datumsformat folgt der Einstellung von WordPress (Einstellungen → Allgemein), und der Zeitraum wechselt mit dem Tab.
 - Hat der angefragte Zeitraum kein Video, springt der Player auf den ersten Zeitraum, der eines hat.
 - Versteckte Dateien und `manual-runs/` werden nicht angezeigt.
-- Die Tabs funktionieren auch ohne JavaScript als normale Links; `assets/script.js` schaltet nur ohne Seitenneuladen um und zeigt dabei ein Lade-Skelett (`assets/style.css`).
+- Die Tabs funktionieren auch ohne JavaScript als normale Links; `assets/script.js` schaltet nur ohne Seitenneuladen um. `assets/style.css` enthält nur das Nötigste (Videobreite, Abstand und Fokusrahmen der Tabs); Farben und Schrift kommen vom Theme.
 - Das Plugin lädt **nichts von Dritten**: keine externen Schriften, Skripte oder Tracker, keine Cookies und kein Browser-Speicher. Es sind also keine Einwilligung und keine Datenschutzanpassung nötig.
 - Farben folgen der Palette des Avada-Themes (`--awb-color*`), mit denselben Hex-Werten als Rückfallwert in der lokalen Umgebung. Schrift und Textfarbe erbt das Plugin vom Theme.
 
