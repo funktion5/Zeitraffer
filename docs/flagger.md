@@ -110,7 +110,9 @@ Testmodus für einen beliebigen Bildordner (ohne Config-Kameras, ohne Sperre, oh
 .venv/bin/python3 -m src.flagger.run --images sandbox/flagger-samples --out /tmp/flagger-out --target-date 2026-10-20
 ```
 
-Der Bericht landet dann in `/tmp/flagger-out/adhoc/highlights/2026-10-20/`.
+Der Bericht landet dann in `/tmp/flagger-out/adhoc/highlights/2026-10-20/`. `--images` braucht
+`--out` und lässt sich nicht mit `--cameras` kombinieren. Ohne `--target-date` trägt der
+Testmodus das heutige Datum ein (der normale Lauf nimmt gestern).
 
 Weitere Optionen: `--model <Datei>` (Standard:
 `models/object_detection_yolox_2022nov.onnx`). Übersicht: `--help`.

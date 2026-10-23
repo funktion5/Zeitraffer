@@ -88,6 +88,7 @@ Abschnitt `privacy` in `config/config.json`:
 
 ```json
 "privacy": {
+  "blur_cameras": ["Scheunenviertel"],
   "ignore_boxes": {"Scheunenviertel": [[703, 557, 742, 643]]},
   "ignore_top_share": 0.333,
   "skip_labels": {"SLSV": ["vehicle", "plate"]},
@@ -109,6 +110,10 @@ Abschnitt `privacy` in `config/config.json`:
   }
 }
 ```
+
+`blur_cameras` nutzt nur die [Box-Verpixelung](verpixelung-box.md#konfiguration): Sie schreibt
+ausschließlich in diese Kameras und bricht ohne Eintrag ab. Der Videomodus (`--blur-people`)
+ignoriert die Liste.
 
 ### `detector_command`
 

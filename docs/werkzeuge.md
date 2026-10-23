@@ -31,7 +31,8 @@ scripts/storage-filter-all --cameras Uferstrasse SVG       # beliebige Argumente
 
 Das Skript startet den Speicherfilter per `nohup` im Hintergrund und gibt die PID sowie den Pfad der Konsolenausgabe aus (`logs/filter/run_YYYY-MM-DD_HHMMSS.out`). Fortschritt verfolgen mit `tail -f` auf diese Datei, abbrechen mit `kill -TERM -- -<PID>` (beendet auch laufende SSH-Aufrufe; `kill -INT` wirkt bei Hintergrundprozessen nicht). Der Bericht der gerade laufenden Kamera wird dann nicht geschrieben; fertige Kameras behalten ihren. Die `.out`-Dateien fallen nicht unter die Log-Retention und müssen bei Bedarf von Hand gelöscht werden.
 
-Der Speicherfilter nimmt denselben Lock wie Cron und die Weboberfläche (`state/zeitraffer-run.lock`). Läuft bereits ein Timelapse-Lauf, bricht er sofort ab. Er schreibt kein `state/run-in-progress` und wird nach einem Neustart nicht automatisch fortgesetzt.
+Der Speicherfilter nimmt denselben Lock wie Cron und die Weboberfläche (`state/zeitraffer-run.lock`). Läuft bereits ein Timelapse-Lauf, bricht er sofort ab
+(`Another timelapse run holds the lock`, Exit-Code `1`). Er schreibt kein `state/run-in-progress` und wird nach einem Neustart nicht automatisch fortgesetzt.
 
 Fehler einer Kamera (`OSError`, `TimeoutError`) werden protokolliert; die übrigen Kameras laufen weiter. Der Exit-Code ist dann `1`.
 
@@ -132,6 +133,8 @@ Ausgabe wie bei historischen Läufen unter `videos/<camera>/manual-runs/yearly/<
 mit `yearly_framerate`; Enddatum ist der 31. Dezember, im laufenden Jahr der gestrige Tag. Pro Lauf entsteht ein Bericht
 `reports/yearly-coverage/backfill_YYYY-MM-DD_HHMMSS.csv` (`;`-getrennt, Spalten `camera`, `year`,
 `covered`, `total`, `missing_ranges`, `status`, `video`), der nach jeder Zeile geschrieben wird.
+`status` ist `created` (Video erstellt), `exists` (Video lag schon vor, ohne `--force`
+übersprungen), `no-images` (keine Bilder im Fenster) oder `failed` (Fehler, Details im Log).
 Das Skript belegt denselben Lock wie Cron und Weboberfläche und wird nicht von pytest abgedeckt.
 
 ## Staging für Hosts ohne Mount

@@ -111,7 +111,10 @@ Cron (geplant, **noch nicht eingerichtet**):
   220 MB (12 %) zusätzlich; das passt. Startet der Pi trotzdem neu, geht nichts verloren
   (Statusdatei vor dem Tausch, geprüfte Sicherung), und die Runde nach dem Neustart holt nach.
   Entschieden am 2026-10-16: keine Pause und keine Speichergrenze.
-- Exit-Code 1, wenn ein Bild fehlgeschlagen oder abgelehnt ist, sonst 0.
+- Exit-Code 1, wenn ein Bild fehlgeschlagen oder abgelehnt ist, und wenn der Lauf vor dem ersten
+  Bild abbricht: `privacy.detector_command` fehlt, eine Kamera steht nicht in
+  `privacy.blur_cameras` oder die Einstellungen sind ungültig. Sonst 0, auch wenn die Runde
+  übersprungen wurde, weil noch eine andere läuft.
 - Log: `logs/privacy/<Datum>.log`. Pro Kamera und Runde eine Zusammenfassung, z. B.
   `[Scheunenviertel] blurred=1 clean=0 night=0 settling=0 refused=0 failed=0 postponed=0`.
   `postponed` zählt die Bilder, die wegen der 40-Sekunden-Grenze auf die nächste Runde warten.
