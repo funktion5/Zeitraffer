@@ -293,6 +293,7 @@ timelapse/
 │       ├── highlight-delete.php
 │       ├── highlights-library.php
 │       ├── job-runner.php
+│       ├── json-response.php
 │       ├── process-runner.php
 │       ├── video-delete.php
 │       └── video-library.php

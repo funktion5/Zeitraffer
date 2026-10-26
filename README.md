@@ -643,7 +643,8 @@ Fertig und im täglichen Einsatz:
 
 - nächtliche Tages-, Wochen-, Monats- und Jahresvideos für alle Kameras
 - Videos für vergangene Zeiträume, per Weboberfläche oder Befehl, auch mit Sonnenuntergang
-- Weboberfläche mit Anmeldung: Videos erstellen, ansehen, herunterladen, löschen
+- Weboberfläche mit Anmeldung: Videos erstellen, ansehen, herunterladen, löschen; auch die
+  nächtlichen Videos ansehen und herunterladen
 - Highlights-Flagger jede Nacht nach den Videos, Highlights-Seite mit Großansicht, Download und
   Löschen
 - automatische Wiederholung nach Stromausfall, Protokolle, Aufräumen alter Videos

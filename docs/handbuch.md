@@ -151,8 +151,11 @@ gelöscht. Alle Optionen und unzulässigen Kombinationen: [cli.md](cli.md).
 
 ### Über die Weboberfläche
 
-Kamera wählen, Videotyp und Zieldatum eintragen, „Video erstellen“. Das Ergebnis meldet ein Fenster;
-der Auftrag schreibt in dasselbe Protokoll wie der entsprechende Befehl. Siehe
+Kamera wählen, Videotyp und Zieldatum (vorbelegt: gestern) eintragen, „Video erstellen“. Bis der
+Auftrag fertig ist, bleibt der Button gesperrt; das Ergebnis meldet ein Fenster, bei einem
+Fehlschlag mit dem Grund, sofern bekannt. Der Auftrag schreibt in dasselbe Protokoll wie der
+entsprechende Befehl. Auf der Kameraseite stehen auch die nächtlichen Videos zum Ansehen und
+Herunterladen (Liste „Automatische Videos“, ohne Löschen). Siehe
 [weboberflaeche.md](weboberflaeche.md).
 
 ### Highlights-Flagger
@@ -445,6 +448,23 @@ alle Kameras in `ignored_cameras`, oder `www-data` darf den Mount nicht lesen (`
 oder ein anderer Web-Auftrag.
 
 **Lösung:** [Prüfen, was läuft](#läuft-gerade-etwas), abwarten, erneut starten.
+
+### „Video erstellen“ ist grau
+
+**Ursache:** In diesem Browser-Tab läuft noch ein Auftrag; die Statuszeile über dem Formular nennt
+ihn. Der Button wird frei, sobald das Ergebnisfenster erscheint.
+
+**Lösung:** Abwarten. Hängt es, siehe [Auftrag scheint zu hängen](#auftrag-scheint-zu-hängen); ein
+Auftrag, dessen Worker nie gestartet ist, gilt nach einer Minute als fehlgeschlagen.
+
+### „Das Löschen hat nicht geklappt. Bitte die Seite neu laden.“
+
+**Ursache:** Die Löschanfrage im Hintergrund kam nicht an oder die Antwort war unbrauchbar
+(Netz weg, Sitzung abgelaufen, Fehler auf dem Pi). Andere Gründe (z. B. „Die Anfrage ist ungültig
+(Sicherheitstoken).“) stehen ebenfalls im Bestätigungsdialog.
+
+**Lösung:** Seite neu laden und erneut löschen; wenn es wieder scheitert,
+`tail /var/log/apache2/zeitraffer-error.log`.
 
 ### „Der Videoauftrag konnte nicht gestartet werden.“
 
