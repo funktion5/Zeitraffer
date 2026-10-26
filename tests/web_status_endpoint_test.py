@@ -3,6 +3,8 @@ import os
 from pathlib import Path
 import subprocess
 
+import pytest
+
 
 STATUS_ENDPOINT = Path(__file__).resolve().parent.parent / "web" / "public" / "job-status.php"
 
@@ -70,3 +72,38 @@ def test_status_endpoint_rejects_unknown_stored_status(tmp_path):
 
 	assert result.returncode == 0
 	assert json.loads(result.stdout) == {"error": "Invalid stored job status."}
+
+
+@pytest.mark.parametrize(
+	("warning", "expected"),
+	[
+		(
+			"Monthly coverage too low: 21 of 30 days available (minimum 25)"
+			" - skipping camera: SLSV",
+			"Zu wenige Tage mit Bildern im Zeitfenster: 21 von 30 (mindestens 25).",
+		),
+		(
+			"Weekly image coverage incomplete: 5 of 7 days available - skipping camera: SLSV",
+			"Nur an 5 von 7 Tagen gibt es Bilder; Wöchentlich braucht alle 7.",
+		),
+		("Found 0 images - skipping camera.", "Für diesen Tag wurden keine Bilder gefunden."),
+		(
+			"No valid Yearly images available - skipping camera: SLSV",
+			"Im gewählten Zeitraum gibt es keine verwendbaren Bilder.",
+		),
+		("/home/someone/secret path exploded", None),
+	],
+)
+def test_status_endpoint_translates_known_failure_reasons_only(tmp_path, warning, expected):
+	job_id = "e" * 32
+	status_root = tmp_path / "web-jobs"
+	status_root.mkdir()
+	(status_root / f"{job_id}.status").write_text("failed\n")
+	(status_root / f"{job_id}.reason").write_text(warning + "\n")
+
+	result = run_status_endpoint(status_root, f"id={job_id}")
+
+	payload = json.loads(result.stdout)
+	assert payload == (
+		{"status": "failed", "reason": expected} if expected else {"status": "failed"}
+	)

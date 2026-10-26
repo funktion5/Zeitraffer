@@ -497,7 +497,7 @@ Der Auftrag gilt als fehlgeschlagen, sobald kein neues Video entsteht.
 **Prüfen:**
 
 ```bash
-ls -l ~/timelapse/state/web-jobs/                       # <id>.pid, <id>.status
+ls -l ~/timelapse/state/web-jobs/                       # <id>.pid, <id>.status, <id>.reason
 pgrep -af "src.main"
 ```
 

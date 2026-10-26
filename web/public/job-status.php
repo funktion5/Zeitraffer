@@ -21,6 +21,30 @@ function isWorkerPidAlive(int $pid): bool
 }
 
 
+// German text for the known reasons a historical run ends without a video (the worker keeps
+// src.main's last warning). Anything else gives null: log text never reaches the browser.
+function describeFailureReason(string $warning): ?string
+{
+	if (preg_match('/coverage too low: (\d+) of (\d+) days available \(minimum (\d+)\)/', $warning, $match) === 1) {
+		return "Zu wenige Tage mit Bildern im Zeitfenster: {$match[1]} von {$match[2]} (mindestens {$match[3]}).";
+	}
+
+	if (preg_match('/Weekly image coverage incomplete: (\d+) of 7 days/', $warning, $match) === 1) {
+		return "Nur an {$match[1]} von 7 Tagen gibt es Bilder; Wöchentlich braucht alle 7.";
+	}
+
+	if (str_contains($warning, "Found 0 images")) {
+		return "Für diesen Tag wurden keine Bilder gefunden.";
+	}
+
+	if (preg_match('/No valid \w+ images available/', $warning) === 1) {
+		return "Im gewählten Zeitraum gibt es keine verwendbaren Bilder.";
+	}
+
+	return null;
+}
+
+
 if ($_SERVER["REQUEST_METHOD"] !== "GET") {
 	respondWithJson(
 		405,
@@ -80,7 +104,15 @@ if ($status === "running") {
 	}
 }
 
-respondWithJson(
-	200,
-	["status" => $status],
-);
+$payload = ["status" => $status];
+$reasonFile = $statusRoot . "/" . $jobId . ".reason";
+
+if ($status === "failed" && is_file($reasonFile) && is_readable($reasonFile)) {
+	$reason = describeFailureReason((string) file_get_contents($reasonFile));
+
+	if ($reason !== null) {
+		$payload["reason"] = $reason;
+	}
+}
+
+respondWithJson(200, $payload);

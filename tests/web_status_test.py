@@ -1,5 +1,6 @@
 import fcntl
 import os
+import shlex
 from pathlib import Path
 import subprocess
 import time
@@ -107,6 +108,7 @@ def run_web_worker(
 	daylight_buffer_minutes: str | None = "60",
 	window: tuple[str, str] | None = None,
 	expected_video_suffix: str | None = None,
+	python_stderr: str = "",
 ) -> subprocess.CompletedProcess:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
@@ -146,6 +148,9 @@ def run_web_worker(
 				f'mv -f "$temporary_video" "{video_path}"',
 			]
 		)
+
+	if python_stderr:
+		fake_python_lines.append(f"printf '%s' {shlex.quote(python_stderr)} >&2")
 
 	fake_python_lines.append(f"exit {python_exit_code}")
 	fake_python.write_text("\n".join(fake_python_lines) + "\n")
@@ -191,6 +196,7 @@ def run_web_worker(
 	result.status_file = status_root / f"{job_id}.status"
 	result.video_path = video_path
 	result.python_arguments_file = python_arguments_file
+	result.reason_file = status_root / f"{job_id}.reason"
 	return result
 
 
@@ -249,6 +255,46 @@ def test_web_worker_writes_failed_status(tmp_path):
 
 	assert result.returncode == 23
 	assert result.status_file.read_text() == "failed\n"
+
+
+SKIP_LOG = (
+	"2026-10-26 10:00:00,000 | WARNING | Monthly coverage partial: 26 of 30 days\n"
+	"2026-10-26 10:00:01,000 | WARNING | Monthly coverage too low: 21 of 30 days available"
+	" (minimum 25) - skipping camera: Scheunenviertel\n"
+	"2026-10-26 10:00:02,000 | WARNING | Available image range: 2023-03-03 - 2024-12-02\n"
+	"2026-10-26 10:00:03,000 | INFO | Monthly timelapse job finished\n"
+)
+
+
+# The last "skipping" warning is why no video came out (diagnostics that follow it, like the
+# image range after a skipped Daily, are not); job-status.php translates it.
+def test_web_worker_keeps_the_last_warning_as_failure_reason(tmp_path):
+	result = run_web_worker(tmp_path, python_exit_code=0, python_stderr=SKIP_LOG)
+
+	assert result.status_file.read_text() == "failed\n"
+	assert result.reason_file.read_text() == (
+		"Monthly coverage too low: 21 of 30 days available (minimum 25)"
+		" - skipping camera: Scheunenviertel\n"
+	)
+	assert result.reason_file.stat().st_mode & 0o777 == 0o644
+
+
+# Without a temp file the run still happens; it just cannot name a failure reason.
+def test_web_worker_runs_even_when_mktemp_fails(tmp_path, monkeypatch):
+	monkeypatch.setenv("TMPDIR", str(tmp_path / "missing"))
+
+	result = run_web_worker(tmp_path, python_exit_code=0, publish_video=True)
+
+	assert result.status_file.read_text() == "completed\n"
+
+
+def test_web_worker_leaves_no_reason_on_success(tmp_path):
+	result = run_web_worker(
+		tmp_path, python_exit_code=0, publish_video=True, python_stderr=SKIP_LOG
+	)
+
+	assert result.status_file.read_text() == "completed\n"
+	assert not result.reason_file.exists()
 
 
 # Prepare an isolated trigger with a harmless worker replacement.

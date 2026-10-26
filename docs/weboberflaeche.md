@@ -91,7 +91,16 @@ Daneben schreibt der Worker `<job-id>.pid` mit seiner Prozess-ID. Steht in der S
 meldet `job-status.php` `failed`, damit der Browser nicht endlos wartet. Die Statusdatei selbst
 bleibt dabei unverändert.
 
-Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Nach dem Start reicht `camera.php` die Auftragsdaten über die PHP-Session (`started_job`, einmalig gelesen) an die nächste Seite weiter; der Browser legt den laufenden Job dann in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis geöffnet.
+Endet ein Auftrag ohne Video, schreibt der Worker vor `failed` die Ursache nach
+`<job-id>.reason`: die letzte Warnung von `src.main` mit „- skipping“ (die Konsolenausgabe hebt
+er dafür während des Laufs in einer temporären Datei auf). Spätere Hinweise wie der Bildzeitraum
+nach einem übersprungenen Daily zählen nicht als Ursache. `job-status.php` übersetzt bekannte
+Ursachen ins Deutsche und gibt sie als `reason` mit (zu wenige Tage mit Bildern im Zeitfenster,
+Woche nicht vollständig, keine Bilder am Tag, keine verwendbaren Bilder); unbekannter Text wird nie an den
+Browser weitergegeben, der Dialog zeigt dann den allgemeinen Hinweis. Die Änderung am Worker
+wirkt erst nach dem erneuten `sudo install` (README „Wrapper installieren“).
+
+Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Nach dem Start reicht `camera.php` die Auftragsdaten über die PHP-Session (`started_job`, einmalig gelesen) an die nächste Seite weiter; der Browser legt den laufenden Job dann in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis (bei `failed` mit der Ursache, falls bekannt) geöffnet. Eine fehlgeschlagene Abfrage (Netz weg, Pi beschäftigt) beendet das Warten nicht: der Browser fragt fünf Sekunden später erneut. Meldet der Endpunkt den Auftrag als unbekannt (404, Statusdatei entfernt), wird der Eintrag verworfen und der Button wieder freigegeben.
 
 Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementiert.
 

@@ -135,7 +135,25 @@ fi
 
 cd "$PROJECT_ROOT" || exit 69
 
-if "${COMMAND[@]}"; then
+# src.main logs to stderr; keep it for this run so a failure can leave its cause behind.
+# Without a temp file the job still runs, it just cannot name a failure reason.
+output_file="$(mktemp)" || output_file=/dev/null
+trap '[[ "$output_file" == /dev/null ]] || rm -f "$output_file"' EXIT
+
+# The last "- skipping" warning says why no video came out (e.g. too few days); diagnostics
+# logged after it (image range, unknown filenames) are not the cause. job-status.php
+# translates the known ones and shows nothing for the rest. Written before "failed", so it is
+# there when the browser sees the status.
+write_failure_reason() {
+	local reason_file="${STATUS_ROOT}/${JOB_ID}.reason"
+
+	grep -F ' | WARNING | ' "$output_file" | grep -F ' - skipping ' | tail -n 1 \
+		| sed 's/^.* | WARNING | //' \
+		>"$reason_file" || true
+	chmod 644 "$reason_file" 2>/dev/null || true
+}
+
+if "${COMMAND[@]}" 2>"$output_file"; then
 	current_video_signature=""
 
 	if [[ -f "$VIDEO_PATH" && ! -L "$VIDEO_PATH" ]]; then
@@ -147,11 +165,13 @@ if "${COMMAND[@]}"; then
 		exit 0
 	fi
 
+	write_failure_reason
 	write_job_status "$JOB_ID" "failed" || true
 	echo "The video job finished without publishing a new video." >&2
 	exit 1
 else
 	exit_code="$?"
+	write_failure_reason
 	write_job_status "$JOB_ID" "failed" || true
 	exit "$exit_code"
 fi

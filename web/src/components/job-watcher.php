@@ -64,7 +64,7 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}).toString();
 		}
 
-		function showResult(pendingJob, status) {
+		function showResult(pendingJob, status, reason) {
 			const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
 			const dateLabel = formatGermanDate(pendingJob.targetDate);
 			const onSameCameraPage = CURRENT_CAMERA !== "" && CURRENT_CAMERA === pendingJob.camera;
@@ -99,7 +99,9 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				}
 			} else {
 				title.textContent = "Videoerstellung fehlgeschlagen";
-				message.textContent = `${jobLabel} für den ${dateLabel} konnte nicht erstellt werden. Bitte das Anwendungsprotokoll prüfen.`;
+				// reason: German text from job-status.php for known causes (e.g. too few days).
+				message.textContent = `${jobLabel} für den ${dateLabel} konnte nicht erstellt werden. `
+					+ (reason ?? "Bitte das Anwendungsprotokoll prüfen.");
 				dismissButton.hidden = false;
 				dismissButton.textContent = "Schließen";
 				openButton.hidden = true;
@@ -131,6 +133,13 @@ $jobWatcherCurrentCamera = $camera ?? "";
 					{ cache: "no-store" },
 				);
 
+				// The job is gone (status file removed): nothing left to wait for.
+				if (response.status === 404) {
+					sessionStorage.removeItem(PENDING_JOB_KEY);
+					finishLiveStatus();
+					return;
+				}
+
 				if (!response.ok) {
 					throw new Error(`Status request failed with HTTP ${response.status}.`);
 				}
@@ -156,13 +165,15 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				if (result.status === "completed" || result.status === "failed") {
 					sessionStorage.removeItem(PENDING_JOB_KEY);
 					finishLiveStatus();
-					showResult(pendingJob, result.status);
+					showResult(pendingJob, result.status, result.reason);
 					return;
 				}
 
 				throw new Error("The server returned an unknown job status.");
 			} catch (error) {
-				console.error("Video-job polling stopped.", error);
+				// A dropped connection or a busy Pi must not end the wait: try again next tick.
+				console.error("Video-job polling failed, retrying.", error);
+				window.setTimeout(() => pollPendingJob(pendingJob), 5000);
 			}
 		}
 
