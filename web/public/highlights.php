@@ -5,6 +5,7 @@ session_start();
 
 require_once __DIR__ . "/../src/highlights-library.php";
 require_once __DIR__ . "/../src/highlight-delete.php";
+require_once __DIR__ . "/../src/json-response.php";
 
 $storage = getStorageUsage();
 $highlightCameras = listHighlightCameras();
@@ -29,6 +30,7 @@ $csrfToken = $_SESSION["csrf_token"];
 $formMessage = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
+	$deleteResult = null;
 	$submittedToken = $_POST["csrf_token"] ?? null;
 	$submittedCamera = $_POST["camera"] ?? null;
 	$submittedDate = $_POST["date"] ?? null;
@@ -56,13 +58,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	} else {
 		$deleteResult = deleteHighlightImage($submittedCamera, $submittedDate, $submittedFile);
 		$formMessage = $deleteResult["message"];
+	}
 
-		if ($deleteResult["deleted"]) {
-			$query = ["days" => $period, "camera" => $cameraFilter, "deleted" => "1"];
-			header("Location: /highlights.php?" . http_build_query($query));
+	$imageDeleted = ($deleteResult["deleted"] ?? false) === true;
 
-			exit;
-		}
+	// The background delete (confirm-delete.php) only needs the outcome.
+	if (($_POST["response"] ?? null) === "json") {
+		respondWithJson(200, ["deleted" => $imageDeleted, "message" => $formMessage]);
+	}
+
+	if ($imageDeleted) {
+		$query = ["days" => $period, "camera" => $cameraFilter, "deleted" => "1"];
+		header("Location: /highlights.php?" . http_build_query($query));
+
+		exit;
 	}
 }
 
@@ -355,14 +364,53 @@ function highlightBoxStyle(array $item): string
 			viewerCaption.textContent = link.dataset.caption;
 		}
 
-		if (typeof viewer.showModal === "function") {
+		function updateViewerNavigation() {
 			viewerPrevious.hidden = viewerLinks.length < 2;
 			viewerNext.hidden = viewerLinks.length < 2;
+		}
 
-			viewerLinks.forEach((link, index) => {
+		// After a background delete (confirm-delete.php): drop the image from the grid and the
+		// viewer, fix the camera's count, and in the open viewer show the next image.
+		document.addEventListener("deleted", (event) => {
+			const item = event.target.closest("li");
+			const list = item.parentElement;
+			const section = item.closest(".highlights-camera");
+			const index = viewerLinks.indexOf(item.querySelector("a.highlights-open"));
+
+			viewerLinks.splice(index, 1);
+			item.remove();
+
+			if (list.children.length === 0) {
+				list.remove();
+			}
+
+			const count = section.querySelectorAll(".highlights-grid li").length;
+			section.querySelector(".highlights-count").textContent =
+				`(${count} ${count === 1 ? "Bild" : "Bilder"})`;
+			updateViewerNavigation();
+
+			if (viewer.open) {
+				if (viewerLinks.length === 0) {
+					viewer.close();
+				} else {
+					showViewerImage(index);
+				}
+
+				return;
+			}
+
+			// Keep the keyboard where the image was.
+			viewerLinks[Math.min(index, viewerLinks.length - 1)]?.focus();
+		});
+
+		if (typeof viewer.showModal === "function") {
+			updateViewerNavigation();
+
+			viewerLinks.forEach((link) => {
 				link.addEventListener("click", (event) => {
 					event.preventDefault();
-					showViewerImage(index);
+					// Looked up on click: background deletes shrink viewerLinks.
+					showViewerImage(viewerLinks.indexOf(link));
 					viewer.showModal();
 				});
 			});
@@ -387,7 +435,7 @@ function highlightBoxStyle(array $item): string
 			});
 
 			// Back to the image that was opened (it may have scrolled out of view meanwhile).
-			viewer.addEventListener("close", () => viewerLinks[viewerIndex].focus());
+			viewer.addEventListener("close", () => viewerLinks[viewerIndex]?.focus());
 		}
 	</script>
 </body>

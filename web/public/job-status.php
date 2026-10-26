@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . "/../src/json-response.php";
+
 
 // Whether /proc/<pid> both exists and still looks like our own worker script,
 // guarding against a stale PID having since been reused by an unrelated process.
@@ -16,22 +18,6 @@ function isWorkerPidAlive(int $pid): bool
 	$cmdline = file_get_contents($cmdlinePath);
 
 	return $cmdline !== false && str_contains($cmdline, "timelapse-web-worker");
-}
-
-
-// Return one JSON response and stop endpoint processing.
-function respondWithJson(int $statusCode, array $payload): never
-{
-	http_response_code($statusCode);
-	header("Content-Type: application/json; charset=UTF-8");
-	header("Cache-Control: no-store");
-
-	echo json_encode(
-		$payload,
-		JSON_THROW_ON_ERROR,
-	);
-
-	exit;
 }
 
 

@@ -13,13 +13,14 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
   Löschen (die Aufräumregel entfernt sie); die Auswahl trägt `source=auto` in der URL, weil
   derselbe Dateiname auch unter den manuellen Videos vorkommen kann
 - Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“, bzw. das Zeitfenster bei Monthly/Yearly, z. B. „30.06.2025 (Sonnenuntergang ±60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
+- Das gerade abgespielte Video ist in seiner Liste hervorgehoben (`aria-current`, auch für Screenreader)
 - Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung); nur Löschen fragt vorher in einem Bestätigungsdialog nach
 - Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde
 - bei Monthly/Yearly eine Radiogruppe „Zeitfenster“: „Mittag (Standard)“ übergibt nichts (es gilt `interval_window` aus der Config), „Sonnenuntergang“ übergibt `sunset` plus eine Fensterbreite von ±30/60/90 Minuten (eigene Radiogruppe, nur bei Sonnenuntergang sichtbar); serverseitig sind nur diese Werte erlaubt
 - kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums; Monthly braucht mindestens 25 der 30 Tage, Yearly mindestens 300 Tage mit Bildern im gewählten Zeitfenster (`min_coverage_days`), fehlende Tage werden im Video übersprungen
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
 - Live-Status per Polling im Abstand von fünf Sekunden; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
-- Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung
+- Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung. Das Löschen läuft im Hintergrund: der Eintrag verschwindet, die Liste bleibt offen und die Seite lädt nicht neu; wird das gerade laufende Video gelöscht, lädt die Seite ohne es neu (gleiche Liste offen). Schlägt das Löschen fehl, steht der Grund im Bestätigungsdialog. Ohne JavaScript läuft es wie bisher als Formular mit Weiterleitung
 
 Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](flagger.md) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](highlights-seite.md).
 
@@ -37,13 +38,14 @@ web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Pr
 web/public/style.css               Darstellung und responsives Layout
 web/src/components/header.php      gemeinsamer Header und Speicheranzeige
 web/src/components/job-watcher.php gemeinsamer Abschlussdialog, seitenübergreifendes Polling
-web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog vor dem Löschen
+web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog, löscht im Hintergrund
 web/src/video-library.php          Kamera-, Video- und Speicherermittlung
 web/src/job-runner.php             Aufruf des fest installierten Triggers
 web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
 web/src/highlights-library.php     Lesen und Prüfen der Flagger-Berichte
 web/src/highlight-delete.php       Aufruf des Lösch-Wrappers für Highlight-Bilder
 web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger und Löschen)
+web/src/json-response.php          gemeinsame JSON-Antwort (Status-Endpunkt und Löschen im Hintergrund)
 ```
 
 `web/public/` ist der einzige Apache-DocumentRoot. PHP-Quellcode außerhalb dieses Verzeichnisses, Python-Code, Konfiguration, Logs, temporäre Dateien und Statusdateien werden nicht direkt durch Apache veröffentlicht.

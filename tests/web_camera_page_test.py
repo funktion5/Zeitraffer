@@ -141,3 +141,73 @@ def test_array_parameters_do_not_break_the_page(tmp_path):
 	)
 
 	assert "Bitte ein Video aus der Liste auswählen." in out
+
+
+def delete_post(job: str, video: str, token: str = TOKEN) -> dict:
+	return {
+		"action": "delete-video",
+		"csrf_token": token,
+		"camera": CAMERA,
+		"job": job,
+		"video": video,
+		"response": "json",
+	}
+
+
+def test_json_delete_answers_with_the_outcome(tmp_path):
+	make_video(tmp_path, "manual-runs", "daily", "SLSV_2026-10-22_60min.mp4")
+
+	out, args = render(tmp_path, post=delete_post("daily", "SLSV_2026-10-22_60min.mp4"))
+
+	assert json.loads(out) == {"deleted": True, "message": "Video erfolgreich gelöscht."}
+	assert args[3:] == [
+		"/usr/local/sbin/timelapse-web-delete",
+		CAMERA,
+		"daily",
+		"SLSV_2026-10-22_60min.mp4",
+	]
+
+
+# Automatic videos are not in the manual list, so a crafted POST never reaches the wrapper.
+def test_json_delete_refuses_automatic_videos(tmp_path):
+	make_video(tmp_path, "", "daily", "SLSV_2026-10-25.mp4")
+
+	out, args = render(tmp_path, post=delete_post("daily", "SLSV_2026-10-25.mp4"))
+
+	assert json.loads(out) == {
+		"deleted": False,
+		"message": "Das ausgewählte Video wurde nicht gefunden.",
+	}
+	assert args == []
+
+
+def test_json_delete_with_bad_token_is_refused(tmp_path):
+	make_video(tmp_path, "manual-runs", "daily", "SLSV_2026-10-22_60min.mp4")
+
+	out, args = render(
+		tmp_path, post=delete_post("daily", "SLSV_2026-10-22_60min.mp4", token="wrong")
+	)
+
+	assert json.loads(out)["message"] == "Die Anfrage ist ungültig (Sicherheitstoken)."
+	assert args == []
+
+
+# The playing video is marked in its list (and only there, not its namesake in the other list).
+def test_selected_video_is_marked_in_the_list(tmp_path):
+	make_video(tmp_path, "", "monthly", "SLSV_2026-10-25.mp4")
+	make_video(tmp_path, "manual-runs", "monthly", "SLSV_2026-10-25.mp4")
+	make_video(tmp_path, "manual-runs", "monthly", "SLSV_2026-09-25.mp4")
+
+	out, _ = render(tmp_path)
+
+	assert "aria-current" not in out
+
+	out, _ = render(
+		tmp_path,
+		get={"camera": CAMERA, "job": "monthly", "video": "SLSV_2026-10-25.mp4", "source": "auto"},
+	)
+
+	assert out.count('aria-current="true"') == 1
+	marked = out.split('aria-current="true"')[0].rsplit("<a ", 1)[1]
+	assert "source=auto" in marked
+	assert "SLSV_2026-10-25.mp4" in marked

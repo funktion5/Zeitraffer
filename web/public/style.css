@@ -385,6 +385,15 @@ video {
 	transform: rotate(90deg);
 }
 
+/* The video in the player: the same mark screen readers get through aria-current. */
+.video-library li a[aria-current] {
+	background: var(--color-surface-hover);
+	border-color: var(--color-primary);
+
+	color: var(--color-text);
+	font-weight: 600;
+}
+
 .video-library-source + .video-library-source {
 	margin-top: 1.5rem;
 }

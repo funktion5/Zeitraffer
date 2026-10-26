@@ -242,3 +242,27 @@ def test_navigation_link_exists_in_the_header(tmp_path):
 
 	assert '<a href="/">Kameras</a>' in out
 	assert '<a href="/highlights.php">Highlights</a>' in out
+
+
+def test_json_delete_answers_with_the_outcome_instead_of_a_redirect(tmp_path):
+	date = days_ago(1)
+	make_day(tmp_path, "A", date, [item("a.jpg")])
+
+	out, args = render(tmp_path, post={**delete_post("A", date, "a.jpg"), "response": "json"})
+
+	assert json.loads(out) == {"deleted": True, "message": "Bild erfolgreich gelöscht."}
+	assert args[3:] == ["/usr/local/sbin/timelapse-web-delete-highlight", "A", date, "a.jpg"]
+
+
+def test_json_delete_reports_a_refusal_without_calling_the_wrapper(tmp_path):
+	date = days_ago(1)
+	make_day(tmp_path, "A", date, [item("a.jpg")])
+
+	post = {**delete_post("A", date, "a.jpg", token="wrong"), "response": "json"}
+	out, args = render(tmp_path, post=post)
+
+	assert json.loads(out) == {
+		"deleted": False,
+		"message": "Die Anfrage ist ungültig (Sicherheitstoken).",
+	}
+	assert args == []

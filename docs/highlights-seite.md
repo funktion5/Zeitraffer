@@ -52,7 +52,10 @@ löscht nichts automatisch.
 ## Löschen
 
 Ein Klick auf **Löschen** öffnet einen Bestätigungsdialog mit dem Dateinamen. Erst nach
-**Löschen** im Dialog wird das Bild entfernt, danach erscheint „Bild erfolgreich gelöscht.“.
+**Löschen** im Dialog wird das Bild entfernt. Das geschieht im Hintergrund: das Bild verschwindet
+ohne Neuladen, die Anzahl im Kameratitel passt sich an und die Seite bleibt an derselben Stelle.
+Schlägt es fehl, steht der Grund im Dialog. Ohne JavaScript lädt die Seite neu und zeigt
+„Bild erfolgreich gelöscht.“.
 Die `manifest.json` bleibt unverändert; die Seite zeigt das Bild nicht mehr, weil die Datei fehlt.
 
 Läuft der Flagger für einen Tag erneut (nur von Hand), ersetzt er den ganzen Ordner des Tages:

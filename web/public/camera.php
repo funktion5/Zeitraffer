@@ -6,6 +6,7 @@ session_start();
 require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/job-runner.php";
 require_once __DIR__ . "/../src/video-delete.php";
+require_once __DIR__ . "/../src/json-response.php";
 
 $camera = $_GET["camera"] ?? "";
 $availableCameras = findAvailableCameras();
@@ -76,6 +77,7 @@ $allowedWindowTolerances = [
 ];
 
 $formMessage = null;
+$videoDeleted = false;
 $formIsValid = false;
 $activeJobId = null;
 $activeJobType = null;
@@ -141,16 +143,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				);
 
 				$formMessage = $deleteResult["message"];
-
-				if ($deleteResult["deleted"]) {
-					header(
-						"Location: /camera.php?camera="
-						. rawurlencode($camera)
-						. "&deleted=1"
-					);
-
-					exit;
-				}
+				$videoDeleted = $deleteResult["deleted"];
 			}
 		}
 
@@ -238,6 +231,21 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
 	} else {
 		$formMessage = "Unbekannte Anfrage.";
+	}
+
+	// The background delete (confirm-delete.php) only needs the outcome.
+	if (($_POST["response"] ?? null) === "json") {
+		respondWithJson(200, ["deleted" => $videoDeleted, "message" => $formMessage]);
+	}
+
+	// Without JavaScript: back to the page with the same list open.
+	if ($videoDeleted) {
+		header(
+			"Location: /camera.php?"
+			. http_build_query(["camera" => $camera, "job" => $submittedJob, "deleted" => "1"])
+		);
+
+		exit;
 	}
 }
 
@@ -396,7 +404,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 									}
 									?>
 									<li class="video-library-item">
-										<a href="/camera.php?<?= htmlspecialchars(http_build_query($videoQuery), ENT_QUOTES, "UTF-8") ?>">
+										<a
+											href="/camera.php?<?= htmlspecialchars(http_build_query($videoQuery), ENT_QUOTES, "UTF-8") ?>"
+											<?= $selectedVideo !== null && $source === $selectedSource && $job === $selectedJob && $video["filename"] === $selectedVideo["filename"] ? 'aria-current="true"' : "" ?>
+										>
 											<?= htmlspecialchars($videoDisplayLabel, ENT_QUOTES, "UTF-8") ?>
 										</a>
 
@@ -597,6 +608,49 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	  <?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
 
 	  <script>
+		// After a background delete (confirm-delete.php): drop the entry and keep its list open.
+		// Deleting the video that is playing reloads the page without it, same list open.
+		const playingVideo = <?= json_encode(
+			$selectedVideo !== null && $selectedSource === "manual"
+				? ["job" => $selectedJob, "filename" => $selectedVideo["filename"]]
+				: null,
+			JSON_HEX_TAG | JSON_HEX_AMP,
+		) ?>;
+
+		document.addEventListener("deleted", (event) => {
+			const form = event.target;
+			const job = form.elements.job.value;
+			const filename = form.elements.video.value;
+
+			if (playingVideo !== null && playingVideo.job === job && playingVideo.filename === filename) {
+				window.location.replace("/camera.php?" + new URLSearchParams({
+					camera: form.elements.camera.value,
+					job,
+				}));
+				return;
+			}
+
+			const item = form.closest("li");
+			const next = item.nextElementSibling ?? item.previousElementSibling;
+			const details = item.closest("details");
+			const source = item.closest("[data-video-source]");
+			item.remove();
+
+			// Last video of this job type: its group goes, and an empty list says so.
+			if (next === null) {
+				details.remove();
+
+				if (source.querySelector("details") === null) {
+					const empty = document.createElement("p");
+					empty.textContent = "Keine manuellen Videos gefunden.";
+					source.append(empty);
+				}
+			}
+
+			// Keep the keyboard in the list instead of dropping it to the page start.
+			(next?.querySelector("a") ?? source.querySelector("summary"))?.focus();
+		});
+
 	    const videoWasDeleted = <?= json_encode($videoWasDeleted, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 
 	    // Drop ?deleted=1 from the URL so a later refresh doesn't re-show the message.
