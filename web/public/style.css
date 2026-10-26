@@ -675,7 +675,8 @@ button {
 	cursor: pointer;
 }
 
-button:hover {
+/* :where keeps the old specificity, so the class hover rules (e.g. red delete) still win. */
+button:hover:where(:not(:disabled)) {
 	background: var(--color-primary);
 	color: var(--color-background);
 }
@@ -770,6 +771,16 @@ body > section li a:hover {
 /* -------------------------------------------------------------------------- */
 /* Scrollbars                                                                 */
 /* -------------------------------------------------------------------------- */
+
+/* Read by screen readers, not shown. */
+.visually-hidden {
+	position: absolute;
+	width: 1px;
+	height: 1px;
+	overflow: hidden;
+	clip-path: inset(50%);
+	white-space: nowrap;
+}
 
 * {
 	scrollbar-width: thin;

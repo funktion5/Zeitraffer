@@ -1,14 +1,10 @@
 import json
-import os
-import shutil
-import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from web_highlights_test import item, make_day, write_config
-from web_php_test import SUDO_PATH, fake_sudo
+from web_php_test import SUDO_PATH, fake_sudo, render_page
 
-WEB = Path(__file__).resolve().parent.parent / "web"
 TOKEN = "test-token"
 
 
@@ -17,61 +13,10 @@ def days_ago(count: int) -> str:
 	return (datetime.now(timezone.utc).date() - timedelta(days=count)).isoformat()
 
 
-# Render web/public/highlights.php from a copy in tmp_path: the copy's projectRoot() is
-# tmp_path itself, and the session already holds TOKEN. Returns stdout and the sudo arguments.
+# highlights.php with sudo faked.
 def render(tmp_path: Path, get=None, post=None, sudo_exit: int = 0):
-	site = tmp_path / "web"
-	if not site.exists():
-		shutil.copytree(WEB, site)
-		delete = site / "src" / "highlight-delete.php"
-		text = delete.read_text()
-		assert SUDO_PATH in text
-		delete.write_text(text.replace(SUDO_PATH, str(fake_sudo(tmp_path))))
-	(tmp_path / "videos").mkdir(exist_ok=True)
-	sessions = tmp_path / "sessions"
-	sessions.mkdir(exist_ok=True)
-	args_file = tmp_path / "sudo-args.txt"
-	args_file.unlink(missing_ok=True)
-
-	driver = tmp_path / "page-driver.php"
-	driver.write_text(
-		"<?php\n"
-		'session_id("highlightstest");\n'
-		"session_start();\n"
-		f"$_SESSION['csrf_token'] = {json.dumps(TOKEN)};\n"
-		"session_write_close();\n"
-		f"$_SERVER['REQUEST_METHOD'] = {json.dumps('POST' if post is not None else 'GET')};\n"
-		f"$_GET = json_decode({json.dumps(json.dumps(get or {}))}, true);\n"
-		f"$_POST = json_decode({json.dumps(json.dumps(post or {}))}, true);\n"
-		f"require {json.dumps(str(site / 'public' / 'highlights.php'))};\n"
-	)
-	result = subprocess.run(
-		[
-			"php",
-			"-d",
-			"display_errors=1",
-			"-d",
-			"error_reporting=-1",
-			"-d",
-			f"session.save_path={sessions}",
-			str(driver),
-		],
-		capture_output=True,
-		text=True,
-		env={
-			**os.environ,
-			"FAKE_SUDO_ARGS": str(args_file),
-			"FAKE_SUDO_EXIT": str(sudo_exit),
-			"FAKE_SUDO_OUT": "",
-			"FAKE_SUDO_ERR": "denied",
-		},
-		check=False,
-	)
-	assert result.returncode == 0, result.stdout + result.stderr
-	for problem in ("Warning:", "Notice:", "Deprecated:", "Fatal error"):
-		assert problem not in result.stdout, result.stdout
-	args = args_file.read_text().splitlines() if args_file.exists() else []
-	return result.stdout, args
+	swaps = {"src/highlight-delete.php": (SUDO_PATH, str(fake_sudo(tmp_path)))}
+	return render_page(tmp_path, "highlights.php", swaps, get or {}, post, sudo_exit, TOKEN)
 
 
 def delete_post(camera: str, date: str, file: str, token: str = TOKEN) -> dict:

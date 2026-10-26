@@ -380,7 +380,11 @@ unset($_SESSION["started_job"]);
 			];
 			?>
 			<?php foreach ($librarySources as $source => [$heading, $videoGroups, $emptyText]): ?>
-				<div class="video-library-source" data-video-source="<?= htmlspecialchars($source, ENT_QUOTES, "UTF-8") ?>">
+				<div
+					class="video-library-source"
+					data-video-source="<?= htmlspecialchars($source, ENT_QUOTES, "UTF-8") ?>"
+					data-empty-text="<?= htmlspecialchars($emptyText, ENT_QUOTES, "UTF-8") ?>"
+				>
 					<h2><?= htmlspecialchars($heading, ENT_QUOTES, "UTF-8") ?></h2>
 
 					<?php if ($videoGroups === []): ?>
@@ -629,18 +633,21 @@ unset($_SESSION["started_job"]);
 			item.remove();
 
 			// Last video of this job type: its group goes, and an empty list says so.
+			let empty = null;
+
 			if (next === null) {
 				details.remove();
 
 				if (source.querySelector("details") === null) {
-					const empty = document.createElement("p");
-					empty.textContent = "Keine manuellen Videos gefunden.";
+					empty = document.createElement("p");
+					empty.textContent = source.dataset.emptyText;
+					empty.tabIndex = -1;
 					source.append(empty);
 				}
 			}
 
 			// Keep the keyboard in the list instead of dropping it to the page start.
-			(next?.querySelector("a") ?? source.querySelector("summary"))?.focus();
+			(next?.querySelector("a") ?? source.querySelector("summary") ?? empty)?.focus();
 		});
 
 	    const videoWasDeleted = <?= json_encode($videoWasDeleted, JSON_HEX_TAG | JSON_HEX_AMP) ?>;

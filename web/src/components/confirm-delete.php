@@ -9,6 +9,9 @@ declare(strict_types=1);
 
 ?>
 
+<!-- Background deletes change the page silently; this tells screen readers what happened. -->
+<p id="delete-status" class="visually-hidden" role="status"></p>
+
 <dialog id="confirm-delete-dialog">
 	<h2 id="confirm-delete-title"><?= htmlspecialchars($deleteDialogTitle, ENT_QUOTES, "UTF-8") ?></h2>
 	<p id="confirm-delete-message"></p>
@@ -24,6 +27,7 @@ declare(strict_types=1);
 		const deleteDialog = document.querySelector("#confirm-delete-dialog");
 		const deleteDialogMessage = document.querySelector("#confirm-delete-message");
 		const deleteDialogConfirmButton = document.querySelector("#confirm-delete-button");
+		const deleteStatus = document.querySelector("#delete-status");
 		let pendingDeleteForm = null;
 
 		function buildDeleteConfirmMessage(name) {
@@ -87,6 +91,7 @@ declare(strict_types=1);
 
 			pendingDeleteForm = null;
 			deleteDialog.close();
+			deleteStatus.textContent = `${result.message} (${form.dataset.deleteName})`;
 			form.dispatchEvent(new CustomEvent("deleted", { bubbles: true }));
 		});
 	})();

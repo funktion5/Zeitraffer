@@ -479,10 +479,12 @@ passen (`cmp` wie oben).
 
 ### „Videoerstellung fehlgeschlagen“
 
-**Symptom:** Das Abschlussfenster meldet „… konnte nicht erstellt werden. Bitte das
-Anwendungsprotokoll prüfen.“
+**Symptom:** Das Abschlussfenster meldet „… konnte nicht erstellt werden.“ Bekannte Gründe nennt
+es selbst (z. B. „Zu wenige Tage mit Bildern im Zeitfenster: 21 von 30 (mindestens 25).“), sonst
+steht dort „Bitte das Anwendungsprotokoll prüfen.“
 
-**Prüfen:** `logs/<job>/<heute>.log` (das Protokoll trägt das Datum des Auftrags, nicht das
+**Prüfen:** `state/web-jobs/<id>.reason` (die Warnung, aus der der Grund stammt) und
+`logs/<job>/<heute>.log` (das Protokoll trägt das Datum des Auftrags, nicht das
 Zieldatum), dort die Zeilen zur gewählten Kamera.
 
 **Ursache:** Fast immer zu wenige Bilder: Kamera ohne Bilder an dem Tag, Monat/Jahr unter der
@@ -502,7 +504,8 @@ pgrep -af "src.main"
 ```
 
 **Ursache:** Entweder rendert er noch, oder der Prozess ist gestorben. Ein toter Prozess wird beim
-nächsten Abfragen als fehlgeschlagen gemeldet.
+nächsten Abfragen als fehlgeschlagen gemeldet, ebenso ein Auftrag, der nach einer Minute noch keine
+`.pid` hat.
 
 **Lösung:** Läuft `src.main` noch, abwarten. Wurde Apache in der Zwischenzeit neu gestartet, ist der
 Auftrag beendet worden; neu starten.

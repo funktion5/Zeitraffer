@@ -30,7 +30,7 @@ $csrfToken = $_SESSION["csrf_token"];
 $formMessage = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
-	$deleteResult = null;
+	$imageDeleted = false;
 	$submittedToken = $_POST["csrf_token"] ?? null;
 	$submittedCamera = $_POST["camera"] ?? null;
 	$submittedDate = $_POST["date"] ?? null;
@@ -58,9 +58,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	} else {
 		$deleteResult = deleteHighlightImage($submittedCamera, $submittedDate, $submittedFile);
 		$formMessage = $deleteResult["message"];
+		$imageDeleted = $deleteResult["deleted"];
 	}
-
-	$imageDeleted = ($deleteResult["deleted"] ?? false) === true;
 
 	// The background delete (confirm-delete.php) only needs the outcome.
 	if (($_POST["response"] ?? null) === "json") {

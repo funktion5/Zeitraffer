@@ -101,6 +101,11 @@ if ($status === "running") {
 		if (ctype_digit($pid) && !isWorkerPidAlive((int) $pid)) {
 			$status = "failed";
 		}
+
+	// The worker writes its PID within a second of the trigger's "running"; none after a minute
+	// means it never got going (and the browser would keep the create button locked).
+	} elseif (time() - (int) filemtime($statusFile) > 60) {
+		$status = "failed";
 	}
 }
 

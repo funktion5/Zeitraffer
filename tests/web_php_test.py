@@ -289,6 +289,66 @@ def fake_sudo(tmp_path: Path) -> Path:
 	return script
 
 
+# Render web/public/<page> from a copy of web/ in tmp_path, so projectRoot() is tmp_path. swaps maps
+# a file in web/ to (literal, replacement), applied once on the first copy; the assert guards
+# against silent no-op swaps. The session holds token and keeps everything else between calls,
+# so a POST and the GET after it share it. Returns stdout and the arguments fake sudo got.
+def render_page(tmp_path: Path, page: str, swaps: dict, get, post, sudo_exit: int, token: str):
+	site = tmp_path / "web"
+	if not site.exists():
+		shutil.copytree(WEB_SRC.parent, site)
+		for name, (old, new) in swaps.items():
+			path = site / name
+			text = path.read_text()
+			assert old in text, f"{old!r} not found in {name}"
+			path.write_text(text.replace(old, new))
+	(tmp_path / "videos").mkdir(exist_ok=True)
+	sessions = tmp_path / "sessions"
+	sessions.mkdir(exist_ok=True)
+	args_file = tmp_path / "sudo-args.txt"
+	args_file.unlink(missing_ok=True)
+
+	driver = tmp_path / "page-driver.php"
+	driver.write_text(
+		"<?php\n"
+		'session_id("pagetest");\n'
+		"session_start();\n"
+		f"$_SESSION['csrf_token'] = {json.dumps(token)};\n"
+		"session_write_close();\n"
+		f"$_SERVER['REQUEST_METHOD'] = {json.dumps('POST' if post is not None else 'GET')};\n"
+		f"$_GET = json_decode({json.dumps(json.dumps(get))}, true);\n"
+		f"$_POST = json_decode({json.dumps(json.dumps(post or {}))}, true);\n"
+		f"require {json.dumps(str(site / 'public' / page))};\n"
+	)
+	result = subprocess.run(
+		[
+			"php",
+			"-d",
+			"display_errors=1",
+			"-d",
+			"error_reporting=-1",
+			"-d",
+			f"session.save_path={sessions}",
+			str(driver),
+		],
+		capture_output=True,
+		text=True,
+		env={
+			**os.environ,
+			"FAKE_SUDO_ARGS": str(args_file),
+			"FAKE_SUDO_EXIT": str(sudo_exit),
+			"FAKE_SUDO_OUT": "",
+			"FAKE_SUDO_ERR": "denied",
+		},
+		check=False,
+	)
+	assert result.returncode == 0, result.stdout + result.stderr
+	for problem in ("Warning:", "Notice:", "Deprecated:", "Fatal error"):
+		assert problem not in result.stdout, result.stdout
+	args = args_file.read_text().splitlines() if args_file.exists() else []
+	return result.stdout, args
+
+
 def run_wrapper(tmp_path: Path, source: str, call: str, exit_code: int, out: str = ""):
 	args_file = tmp_path / "sudo-args.txt"
 	result = run_php(

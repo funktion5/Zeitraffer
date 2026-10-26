@@ -20,7 +20,7 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
 - kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums; Monthly braucht mindestens 25 der 30 Tage, Yearly mindestens 300 Tage mit Bildern im gewählten Zeitfenster (`min_coverage_days`), fehlende Tage werden im Video übersprungen
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
 - Live-Status per Polling im Abstand von fünf Sekunden, auf jeder Kameraseite (bei einer anderen Kamera mit deren Namen) samt Hinweis, dass ein neues Video erst danach starten kann; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
-- Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung. Das Löschen läuft im Hintergrund: der Eintrag verschwindet, die Liste bleibt offen und die Seite lädt nicht neu; wird das gerade laufende Video gelöscht, lädt die Seite ohne es neu (gleiche Liste offen). Schlägt das Löschen fehl, steht der Grund im Bestätigungsdialog. Ohne JavaScript läuft es wie bisher als Formular mit Weiterleitung
+- Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung. Das Löschen läuft im Hintergrund: der Eintrag verschwindet, die Liste bleibt offen und die Seite lädt nicht neu; wird das gerade laufende Video gelöscht, lädt die Seite ohne es neu (gleiche Liste offen). Schlägt das Löschen fehl, steht der Grund im Bestätigungsdialog; ein erfolgreiches Löschen meldet ein unsichtbarer Statusbereich an Screenreader. Ohne JavaScript läuft es wie bisher als Formular mit Weiterleitung
 
 Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](flagger.md) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](highlights-seite.md).
 
@@ -88,8 +88,9 @@ state/web-jobs/<32-stellige-job-id>.status
 
 Daneben schreibt der Worker `<job-id>.pid` mit seiner Prozess-ID. Steht in der Statusdatei noch
 `running`, der Prozess lebt aber nicht mehr (z. B. nach einem Neustart oder einem Apache-Neustart),
-meldet `job-status.php` `failed`, damit der Browser nicht endlos wartet. Die Statusdatei selbst
-bleibt dabei unverändert.
+meldet `job-status.php` `failed`, damit der Browser nicht endlos wartet. Dasselbe gilt, wenn nach
+über einer Minute noch gar keine `.pid` da ist (der Worker schreibt sie in der ersten Sekunde; fehlt
+sie, ist er nie richtig gestartet). Die Statusdatei selbst bleibt dabei unverändert.
 
 Endet ein Auftrag ohne Video, schreibt der Worker vor `failed` die Ursache nach
 `<job-id>.reason`: die letzte Warnung von `src.main` mit „- skipping“ (die Konsolenausgabe hebt
@@ -100,7 +101,7 @@ Woche nicht vollständig, keine Bilder am Tag, keine verwendbaren Bilder); unbek
 Browser weitergegeben, der Dialog zeigt dann den allgemeinen Hinweis. Die Änderung am Worker
 wirkt erst nach dem erneuten `sudo install` (README „Wrapper installieren“).
 
-Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Nach dem Start reicht `camera.php` die Auftragsdaten über die PHP-Session (`started_job`, einmalig gelesen) an die nächste Seite weiter; der Browser legt den laufenden Job dann in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis (bei `failed` mit der Ursache, falls bekannt) geöffnet. Eine fehlgeschlagene Abfrage (Netz weg, Pi beschäftigt) beendet das Warten nicht: der Browser fragt fünf Sekunden später erneut. Meldet der Endpunkt den Auftrag als unbekannt (404, Statusdatei entfernt), wird der Eintrag verworfen und der Button wieder freigegeben.
+Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Nach dem Start reicht `camera.php` die Auftragsdaten über die PHP-Session (`started_job`, einmalig gelesen) an die nächste Seite weiter; der Browser legt den laufenden Job dann in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis (bei `failed` mit der Ursache, falls bekannt) geöffnet. Holt der Browser eine Seite mit „Zurück“ aus seinem Zwischenspeicher, nimmt er das Warten dort wieder auf; ist der Auftrag inzwischen auf einer anderen Seite fertig gemeldet worden, hört die alte Abfrage auf, statt das Ergebnis ein zweites Mal zu zeigen. Eine fehlgeschlagene Abfrage (Netz weg, Pi beschäftigt) beendet das Warten nicht: der Browser fragt fünf Sekunden später erneut. Meldet der Endpunkt den Auftrag als unbekannt (404, Statusdatei entfernt), wird der Eintrag verworfen und der Button wieder freigegeben.
 
 Eine automatische Bereinigung alter Web-Statusdateien ist noch nicht implementiert.
 
@@ -121,10 +122,12 @@ python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py \
   tests/web_delete_test.py tests/web_php_test.py tests/web_camera_page_test.py
 ```
 
-- `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs
-- `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`
+- `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung, fehlgeschlagene Jobs und die Fehlergrund-Datei `.reason` des Workers
+- `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`, inklusive Übersetzung bekannter Fehlergründe und `failed` für einen Auftrag ohne `.pid` nach einer Minute
 - `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
-- `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter
+- `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter, Markierung des laufenden Videos, Löschen per `response=json`, Weiterleitung nach dem Start (Post/Redirect/Get). Die gemeinsame Hilfsfunktion `render_page()` dafür liegt in `web_php_test.py`
+
+Die Tests der Highlights-Seite stehen in [highlights-seite.md](highlights-seite.md#dateien-und-tests).
 
 Nicht automatisiert getestet sind die Speicheranzeige (`getStorageUsage`) und das JavaScript der Seiten.

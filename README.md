@@ -504,10 +504,13 @@ Benutzername und Passwort). Dort lässt sich:
 - für eine Kamera ein **Video für einen vergangenen Zeitraum** erstellen: Tag, Woche, Monat oder
   Jahr, jeweils bis zu einem gewählten Datum. Monats- und Jahresvideos können statt der Mittagszeit
   auch die Zeit um den **Sonnenuntergang** zeigen. Das Video entsteht im Hintergrund; ein Fenster
-  meldet, wenn es fertig ist.
-- ein so erstelltes Video **ansehen, herunterladen oder löschen**.
-- auf der Seite **Highlights** die Bilder ansehen, auf denen das Programm Tiere oder Flugobjekte
-  gefunden hat (siehe nächstes Kapitel).
+  meldet, wenn es fertig ist, und nennt bei einem Fehlschlag den Grund, sofern er bekannt ist (etwa
+  zu wenige Tage mit Bildern). Bis dahin lässt sich kein weiteres Video starten.
+- ein so erstelltes Video **ansehen, herunterladen oder löschen**; das Löschen lädt die Seite nicht
+  neu, die Liste bleibt offen.
+- auf der Seite **Highlights** die Bilder ansehen, groß anzeigen und löschen (auch direkt in der
+  Großansicht), auf denen das Programm Tiere oder Flugobjekte gefunden hat (siehe nächstes
+  Kapitel).
 
 Die nächtlich erstellten Videos lassen sich dort ebenfalls ansehen und herunterladen (löschen
 lassen sich nur die selbst erstellten).

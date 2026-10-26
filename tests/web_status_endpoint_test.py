@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
 
 import pytest
 
@@ -107,3 +108,22 @@ def test_status_endpoint_translates_known_failure_reasons_only(tmp_path, warning
 	assert payload == (
 		{"status": "failed", "reason": expected} if expected else {"status": "failed"}
 	)
+
+
+# A worker that died before writing its PID must not leave the job "running" forever (the
+# create button stays locked until the job ends); a fresh start without PID is still running.
+@pytest.mark.parametrize(("age_seconds", "expected"), [(5, "running"), (120, "failed")])
+def test_status_endpoint_fails_a_running_job_without_pid_after_a_minute(
+	tmp_path, age_seconds, expected
+):
+	job_id = "f" * 32
+	status_root = tmp_path / "web-jobs"
+	status_root.mkdir()
+	status_file = status_root / f"{job_id}.status"
+	status_file.write_text("running\n")
+	written = time.time() - age_seconds
+	os.utime(status_file, (written, written))
+
+	result = run_status_endpoint(status_root, f"id={job_id}")
+
+	assert json.loads(result.stdout) == {"status": expected}

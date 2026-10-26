@@ -126,7 +126,20 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}
 		}
 
+		// A page restored from the back/forward cache keeps its old poller; if another page of this
+		// tab has finished the job meanwhile, that poller must stop instead of showing it twice.
+		function isStillPending(pendingJob) {
+			const stored = sessionStorage.getItem(PENDING_JOB_KEY);
+
+			return stored !== null && JSON.parse(stored).jobId === pendingJob.jobId;
+		}
+
 		async function pollPendingJob(pendingJob) {
+			if (!isStillPending(pendingJob)) {
+				finishLiveStatus();
+				return;
+			}
+
 			try {
 				const response = await fetch(
 					`/job-status.php?id=${encodeURIComponent(pendingJob.jobId)}`,
@@ -153,9 +166,14 @@ $jobWatcherCurrentCamera = $camera ?? "";
 					if (liveStatus !== null) {
 						const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
 						const otherCamera = pendingJob.camera !== CURRENT_CAMERA ? ` (${pendingJob.camera})` : "";
-						liveStatus.hidden = false;
-						liveStatus.textContent = `${jobLabel}${otherCamera} für den ${formatGermanDate(pendingJob.targetDate)} läuft. `
+						const text = `${jobLabel}${otherCamera} für den ${formatGermanDate(pendingJob.targetDate)} läuft. `
 							+ "Ein neues Video kann erst danach gestartet werden.";
+						liveStatus.hidden = false;
+
+						// Unchanged text is not rewritten, so screen readers announce it once.
+						if (liveStatus.textContent !== text) {
+							liveStatus.textContent = text;
+						}
 					}
 
 					window.setTimeout(() => pollPendingJob(pendingJob), 5000);
@@ -193,5 +211,13 @@ $jobWatcherCurrentCamera = $camera ?? "";
 		}
 
 		resumePendingJob();
+
+		// Back/forward cache: a restored page did not run the line above again, but a job may
+		// have started (or ended) in this tab since it was first loaded.
+		window.addEventListener("pageshow", (event) => {
+			if (event.persisted) {
+				resumePendingJob();
+			}
+		});
 	})();
 </script>

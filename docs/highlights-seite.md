@@ -114,5 +114,5 @@ Nach jeder Änderung an `scripts/timelapse-web-delete-highlight` muss der Wrappe
 | `scripts/timelapse-web-delete-highlight` | Löschen als Projektbenutzer |
 
 Tests: `tests/web_highlights_test.py` (Bibliothek, Wrapper-Aufruf),
-`tests/web_highlights_page_test.py` (Seite, Filter, Löschen per POST),
+`tests/web_highlights_page_test.py` (Seite, Filter, Löschen per POST, auch mit `response=json`),
 `tests/web_delete_highlight_test.py` (Wrapper).
