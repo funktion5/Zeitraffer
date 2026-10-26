@@ -680,6 +680,11 @@ button:hover {
 	color: var(--color-background);
 }
 
+button:disabled {
+	opacity: 0.6;
+	cursor: progress;
+}
+
 
 /* -------------------------------------------------------------------------- */
 /* Job status                                                                 */

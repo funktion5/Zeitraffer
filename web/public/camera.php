@@ -78,13 +78,6 @@ $allowedWindowTolerances = [
 
 $formMessage = null;
 $videoDeleted = false;
-$formIsValid = false;
-$activeJobId = null;
-$activeJobType = null;
-$activeTargetDate = null;
-$activeDaylightBufferMinutes = null;
-$activeWindowTime = null;
-$activeWindowToleranceMinutes = null;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	$submittedAction = $_POST["action"] ?? null;
@@ -202,7 +195,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			$formMessage = "Die ausgewählte Fensterbreite ist ungültig.";
 
 		} else {
-			$formIsValid = true;
 			$daylightBufferMinutes = $jobUsesDaylightBuffer ? (int) $submittedBuffer : null;
 			// Only the sunset choice overrides the window; Daily/Weekly never get one.
 			$windowTime = $windowIsSunset ? "sunset" : null;
@@ -218,14 +210,22 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			);
 
 			$formMessage = $jobResult["message"];
-			$activeJobId = $jobResult["jobId"];
 
+			// Post/Redirect/Get: a reload or a second click cannot start the job again. The
+			// next page load hands it to the job watcher (see startedJob below).
 			if ($jobResult["started"]) {
-				$activeJobType = $submittedJob;
-				$activeTargetDate = $submittedDate;
-				$activeDaylightBufferMinutes = $daylightBufferMinutes;
-				$activeWindowTime = $windowTime;
-				$activeWindowToleranceMinutes = $windowToleranceMinutes;
+				$_SESSION["started_job"] = [
+					"jobId" => $jobResult["jobId"],
+					"job" => $submittedJob,
+					"targetDate" => $submittedDate,
+					"camera" => $submittedCamera,
+					"bufferMinutes" => $daylightBufferMinutes,
+					"windowTime" => $windowTime,
+					"windowToleranceMinutes" => $windowToleranceMinutes,
+				];
+				header("Location: /camera.php?camera=" . rawurlencode($camera));
+
+				exit;
 			}
 		}
 
@@ -248,6 +248,10 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		exit;
 	}
 }
+
+// Set once by the redirect after a job start; read and dropped on the next page load.
+$startedJob = $_SESSION["started_job"] ?? null;
+unset($_SESSION["started_job"]);
 
 ?>
 
@@ -466,7 +470,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
                 </p>
 	                <?php endif; ?>
 	              <p id="job-live-status" role="status" aria-live="polite" hidden></p>
-	            <form method="post"
+	            <form method="post" id="create-video-form"
                     action="/camera.php?camera=<?= rawurlencode($camera) ?>">
 							<input
 								type="hidden"
@@ -582,31 +586,19 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	  <?php $deleteDialogTitle = "Video löschen"; ?>
 	  <?php require __DIR__ . "/../src/components/confirm-delete.php"; ?>
 
-	  <script>
-	    // A job was just started on this exact page load: hand it to the shared
-	    // job-watcher (job-watcher.php, required right below) before it runs,
-	    // so it polls this job to completion from wherever the user happens to
-	    // be, even after navigating away, without needing a page reload here.
-	    const activeJobId = <?= json_encode($activeJobId, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
+	<script>
+		// A job was started right before this page load: hand it to the shared job-watcher
+		// (required right below), which polls it to completion from any page.
+		const startedJob = <?= json_encode($startedJob, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 
-	    if (activeJobId !== null) {
-	      sessionStorage.setItem(
-	        "timelapsePendingJob",
-	        JSON.stringify({
-	          jobId: activeJobId,
-	          job: <?= json_encode($activeJobType, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	          targetDate: <?= json_encode($activeTargetDate, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	          camera: <?= json_encode($camera, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	          bufferMinutes: <?= json_encode($activeDaylightBufferMinutes, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	          windowTime: <?= json_encode($activeWindowTime, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	          windowToleranceMinutes: <?= json_encode($activeWindowToleranceMinutes, JSON_HEX_TAG | JSON_HEX_AMP) ?>,
-	        }),
-	      );
-	    }
-	  </script>
+		if (startedJob !== null) {
+			sessionStorage.setItem("timelapsePendingJob", JSON.stringify(startedJob));
+		}
+	</script>
 
 	  <?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
 
+	<?php if ($camera !== ""): ?>
 	  <script>
 		// After a background delete (confirm-delete.php): drop the entry and keep its list open.
 		// Deleting the video that is playing reloads the page without it, same list open.
@@ -698,6 +690,37 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	    });
 
 	    updateDaylightBufferVisibility();
+
+		// One job at a time: the button is disabled from the click until the job this tab started
+		// is over (job-watcher.php enables it again). pageshow also runs on the first load and
+		// when the browser restores the page from its back/forward cache.
+		const createButton = document.querySelector('#create-video-form button[type="submit"]');
+		document.querySelector("#create-video-form").addEventListener("submit", () => {
+			createButton.disabled = true;
+		});
+		window.addEventListener("pageshow", () => {
+			createButton.disabled = sessionStorage.getItem("timelapsePendingJob") !== null;
+		});
+
+		// Yesterday by default and nothing after today, in the browser's (local) time.
+		function isoDate(date) {
+			return [
+				date.getFullYear(),
+				String(date.getMonth() + 1).padStart(2, "0"),
+				String(date.getDate()).padStart(2, "0"),
+			].join("-");
+		}
+
+		const targetDateInput = document.querySelector("#target-date");
+		const today = new Date();
+		targetDateInput.max = isoDate(today);
+
+		if (targetDateInput.value === "") {
+			const yesterday = new Date(today);
+			yesterday.setDate(yesterday.getDate() - 1);
+			targetDateInput.value = isoDate(yesterday);
+		}
 	  </script>
+	<?php endif; ?>
 	</body>
 </html>

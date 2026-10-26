@@ -110,6 +110,20 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}
 		}
 
+		// The job is over: drop the status line and let camera.php's form start the next one.
+		function finishLiveStatus() {
+			const liveStatus = document.querySelector("#job-live-status");
+			const createButton = document.querySelector('#create-video-form button[type="submit"]');
+
+			if (liveStatus !== null) {
+				liveStatus.hidden = true;
+			}
+
+			if (createButton !== null) {
+				createButton.disabled = false;
+			}
+		}
+
 		async function pollPendingJob(pendingJob) {
 			try {
 				const response = await fetch(
@@ -124,14 +138,15 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				const result = await response.json();
 
 				if (result.status === "running") {
-					if (CURRENT_CAMERA !== "" && CURRENT_CAMERA === pendingJob.camera) {
-						const liveStatus = document.querySelector("#job-live-status");
+					// On every camera page: it also explains the disabled "Video erstellen" button.
+					const liveStatus = document.querySelector("#job-live-status");
 
-						if (liveStatus !== null) {
-							const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
-							liveStatus.hidden = false;
-							liveStatus.textContent = `${jobLabel} für den ${formatGermanDate(pendingJob.targetDate)} läuft.`;
-						}
+					if (liveStatus !== null) {
+						const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
+						const otherCamera = pendingJob.camera !== CURRENT_CAMERA ? ` (${pendingJob.camera})` : "";
+						liveStatus.hidden = false;
+						liveStatus.textContent = `${jobLabel}${otherCamera} für den ${formatGermanDate(pendingJob.targetDate)} läuft. `
+							+ "Ein neues Video kann erst danach gestartet werden.";
 					}
 
 					window.setTimeout(() => pollPendingJob(pendingJob), 5000);
@@ -140,6 +155,7 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 				if (result.status === "completed" || result.status === "failed") {
 					sessionStorage.removeItem(PENDING_JOB_KEY);
+					finishLiveStatus();
 					showResult(pendingJob, result.status);
 					return;
 				}

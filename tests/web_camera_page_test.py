@@ -211,3 +211,44 @@ def test_selected_video_is_marked_in_the_list(tmp_path):
 	marked = out.split('aria-current="true"')[0].rsplit("<a ", 1)[1]
 	assert "source=auto" in marked
 	assert "SLSV_2026-10-25.mp4" in marked
+
+
+def create_post(token: str = TOKEN) -> dict:
+	return {
+		"action": "create-video",
+		"csrf_token": token,
+		"camera": CAMERA,
+		"job": "daily",
+		"target_date": "2026-10-25",
+		"daylight_buffer_minutes": "60",
+	}
+
+
+# Post/Redirect/Get: the POST answers with a redirect only, the next page load hands the job to
+# the watcher exactly once, so a reload cannot start it again.
+def test_started_job_redirects_and_reaches_the_watcher_once(tmp_path):
+	out, args = render(tmp_path, post=create_post())
+
+	assert out.strip() == ""
+	assert args[3] == "/usr/local/sbin/timelapse-web-trigger"
+	job_id = args[4]
+
+	out, _ = render(tmp_path)
+
+	assert f'"jobId":"{job_id}"' in out
+	assert '"bufferMinutes":60' in out
+
+	out, _ = render(tmp_path)
+
+	assert job_id not in out
+
+
+def test_busy_lock_keeps_the_form_page_with_its_message(tmp_path):
+	out, _ = render(tmp_path, post=create_post(), sudo_exit=75)
+
+	assert "Es läuft bereits ein anderer Zeitraffer-Auftrag." in out
+
+	# A refused start leaves nothing in the session for the next page load.
+	out, _ = render(tmp_path)
+
+	assert '"jobId"' not in out
