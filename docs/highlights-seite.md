@@ -13,6 +13,10 @@ lassen. Aufruf über den Link **Highlights** im Header oder direkt `/highlights.
 - Ein Klick auf ein Bild zeigt es groß. **← Vorheriges** / **Nächstes →** oder die
   Pfeiltasten blättern durch alle Bilder der Seite; **Schließen**, Esc oder ein Klick
   neben das Bild schließt die Großansicht. Ohne JavaScript öffnet der Klick das Bild direkt.
+- In der Großansicht gibt es auch **Löschen** (mit Bestätigung; danach erscheint das nächste
+  Bild, nach dem letzten der Seite wieder das erste wie bei **Nächstes →**; ist kein Bild mehr
+  übrig, schließt sie sich) und **Markierung zeigen** (dieselbe Einstellung wie auf der Seite:
+  ein Haken an einer Stelle gilt für beide).
 - **Markierung zeigen** blendet den Rahmen ein, in dem das Modell etwas erkannt hat, auch in
   der Großansicht. Das Bild selbst bleibt unverändert, auch beim Download.
 - Kameras ohne Treffer bleiben sichtbar:

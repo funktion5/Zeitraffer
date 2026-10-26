@@ -315,6 +315,16 @@ function highlightBoxStyle(array $item): string
 		<div class="highlights-viewer-nav">
 			<button type="button" id="highlights-viewer-prev">← Vorheriges</button>
 			<button type="button" id="highlights-viewer-next">Nächstes →</button>
+			<button type="button" id="highlights-viewer-delete" class="delete-video-button">
+				<svg viewBox="0 0 24 24" aria-hidden="true">
+					<path d="M9 3h6l1 1h4v2H4V4h4l1-1zm-3 5h12l-1 13H7L6 8z" />
+				</svg>
+				<span>Löschen</span>
+			</button>
+			<label class="highlights-viewer-toggle">
+				<input type="checkbox" id="highlights-viewer-show-boxes">
+				Markierung zeigen
+			</label>
 			<button type="button" id="highlights-viewer-close">Schließen</button>
 		</div>
 	</dialog>
@@ -346,6 +356,19 @@ function highlightBoxStyle(array $item): string
 		const viewerCaption = document.querySelector("#highlights-viewer-caption");
 		const viewerPrevious = document.querySelector("#highlights-viewer-prev");
 		const viewerNext = document.querySelector("#highlights-viewer-next");
+		const viewerDelete = document.querySelector("#highlights-viewer-delete");
+		const boxToggles = document.querySelectorAll(
+			"#highlights-show-boxes, #highlights-viewer-show-boxes",
+		);
+
+		// Two checkboxes, one setting: the CSS follows the one on the page.
+		boxToggles.forEach((toggle) => {
+			toggle.addEventListener("change", () => {
+				boxToggles.forEach((other) => {
+					other.checked = toggle.checked;
+				});
+			});
+		});
 		const viewerLinks = Array.from(document.querySelectorAll("a.highlights-open"));
 		let viewerIndex = 0;
 
@@ -392,6 +415,9 @@ function highlightBoxStyle(array $item): string
 			if (viewer.open) {
 				if (viewerLinks.length === 0) {
 					viewer.close();
+					// The image the viewer came from is gone: keep the keyboard near the top
+					// controls instead of dropping it to the page start.
+					document.querySelector("#highlights-show-boxes").focus();
 				} else {
 					showViewerImage(index);
 				}
@@ -405,6 +431,15 @@ function highlightBoxStyle(array $item): string
 
 		if (typeof viewer.showModal === "function") {
 			updateViewerNavigation();
+
+			// Same form as the image's own Löschen button, so the confirm dialog and the
+			// background delete (and the jump to the next image) work the same way.
+			viewerDelete.addEventListener("click", () => {
+				viewerLinks[viewerIndex]
+					.closest("li")
+					.querySelector("form[data-delete-confirm]")
+					.requestSubmit();
+			});
 
 			viewerLinks.forEach((link) => {
 				link.addEventListener("click", (event) => {

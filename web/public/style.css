@@ -806,7 +806,8 @@ body > section li a:hover {
 
 .highlights-filter select:focus-visible,
 .highlights-filter button:focus-visible,
-.highlights-toggle input:focus-visible {
+.highlights-toggle input:focus-visible,
+.highlights-viewer-toggle input:focus-visible {
 	outline: 2px solid var(--color-primary);
 	outline-offset: 2px;
 }
@@ -819,14 +820,16 @@ body > section li a:hover {
 	color: var(--color-danger);
 }
 
-.highlights-toggle label {
+.highlights-toggle label,
+.highlights-viewer-toggle {
 	display: inline-flex;
 	align-items: center;
 	gap: 0.5rem;
 	cursor: pointer;
 }
 
-.highlights-toggle input {
+.highlights-toggle input,
+.highlights-viewer-toggle input {
 	accent-color: var(--color-primary);
 }
 

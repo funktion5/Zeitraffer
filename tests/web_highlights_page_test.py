@@ -105,6 +105,9 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	assert 'class="highlights-open"' in out
 	assert f'data-caption="Strandallee · {german} · 08:14 Uhr · Flugzeug? · 86 %"' in out
 	assert 'id="highlights-viewer"' in out
+	# The viewer has its own delete button and marker toggle.
+	assert 'id="highlights-viewer-delete"' in out
+	assert 'id="highlights-viewer-show-boxes"' in out
 	# The shared confirm dialog from components/confirm-delete.php.
 	assert '<h2 id="confirm-delete-title">Bild löschen</h2>' in out
 	assert 'data-delete-name="a.jpg"' in out
