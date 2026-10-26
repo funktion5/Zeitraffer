@@ -10,7 +10,7 @@ Pi: videos/<Kamera>/<Zeitraum>/*.mp4
   → Mac: videos/
   → Docker-Container "wordpress": wp-content/uploads/zeitraffer/ (schreibgeschützt)
   → Plugin frontend/zeitraffer/plugin-timelapse.php
-  → Shortcode [zeitraffer] und Player unter dem Webcam-Bild
+  → Shortcode [zeitraffer] und Player auf der Webcam-Seite
 ```
 
 ## Voraussetzungen für das Frontend
@@ -159,7 +159,7 @@ Die Seiten-URL und der Kameraordner heißen oft unterschiedlich (die Seite `hafe
 
 | Attribut | Pflicht | Bedeutung |
 |---|---|---|
-| `camera` | ja | Der Ordner der Kamera, klein geschrieben und bereinigt (nur `a-z`, `0-9`, `_`, `-`). Aus `Nordufer_tele` wird `nordufer_tele`; der Kasten „Zeitraffer“ im Kameraeintrag zeigt den richtigen Wert. Ohne dieses Attribut wird `?camera=` aus der URL verwendet. |
+| `camera` | nein | Der Ordner der Kamera, klein geschrieben und bereinigt (nur `a-z`, `0-9`, `_`, `-`). Aus `Nordufer_tele` wird `nordufer_tele`; der Kasten „Zeitraffer“ im Kameraeintrag zeigt den richtigen Wert. Ohne dieses Attribut gilt auf der Seite einer Webcam (siehe „Shortcode auf der Webcam-Seite“) deren Feld „foldername“, sonst `?camera=` aus der URL. |
 | `title` | nein | Überschreibt den Titel des Kameraeintrags. Normalerweise nicht nötig. |
 | `description` | nein | Überschreibt den Auszug des Kameraeintrags. Normalerweise nicht nötig. |
 | `heading` | nein | Ebene der Überschrift des Players, `2` bis `6`, Standard `2`. So lässt sich die Überschrift in die Struktur der Seite einpassen, z. B. `heading="4"` für Seiten, deren Abschnittstitel `h4` sind. Ungültige Werte ergeben `2`. |
@@ -187,13 +187,11 @@ Hinweise:
 - **Ein Player pro Seite:** Der Player verwendet feste Element-IDs; mehrere `[zeitraffer]` auf derselben Seite funktionieren nicht.
 - **Überschrift:** Das Plugin gibt eine eigene Überschrift aus („Zeitraffer – Zeitraum“, ohne Kameranamen, weil die Seite die Kamera schon im Titel nennt). Standard ist `<h2>`; die Ebene lässt sich mit `heading` anpassen. Ob sie zur Überschriftenstruktur der Seite passt, sollte auf einer Testseite geprüft werden.
 
-### Player unter dem Webcam-Bild
+### Shortcode auf der Webcam-Seite
 
-`[f5_webcams_last]` (Plugin f5-webcams) zeigt das neueste Webcam-Bild. Direkt darunter gibt das Zeitraffer-Plugin den Player derselben Kamera aus; dafür ist kein eigener Shortcode nötig. Technisch löst f5-webcams nach dem Bild den Hook `f5_webcams_after_webcam` mit dem Ordnernamen der Webcam aus, und das Zeitraffer-Plugin hängt sich daran.
+Auf der Seite einer Webcam (`/webcams/<name>/`) steht `[zeitraffer]` ohne Attribute am Anfang des Beitragsinhalts. Das Template von f5-webcams gibt zuerst das Bild aus, danach den Beitragsinhalt, danach die Karte; der Player sitzt also zwischen Bild und weiterem Inhalt. Welche Videos erscheinen, entscheidet das ACF-Feld „foldername“ derselben Webcam, aus dem f5-webcams auch den Bildordner (`uploads/webcams/<foldername>/`) bildet. Der Videoordner (`uploads/zeitraffer/<foldername>/`) muss genauso heißen; Groß- und Kleinschreibung spielt keine Rolle, aber Unterstriche und Bindestriche müssen stimmen. Ein Attribut `camera` überschreibt das. Gibt es keinen passenden Videoordner, sehen Besucher nichts, angemeldete Redakteure einen Hinweis. Der Kameraeintrag (Zeitraffer → Alle Kameras) muss veröffentlicht sein.
 
-- Der Videoordner muss dem Feld „foldername“ der Webcam entsprechen (wie beim Slug oben bereinigt). Passt kein Ordner, bleibt der Player weg.
-- Es gelten dieselben Sichtbarkeitsregeln wie oben (Entwurf = für Besucher nichts).
-- Die Überschrift des Players steht eine Ebene unter der des Webcam-Bildes (`h4` wird `h5`).
+Das Plugin f5-webcams bleibt dabei unverändert; das Zeitraffer-Plugin liest nur dessen Feld „foldername“. Der Player erscheint nur dort, wo der Shortcode steht; unter dem Bild von `[f5_webcams_last]` (neueste Webcam in Seitenleiste oder Startseite) gibt das Plugin nichts aus.
 
 Der ältere Aufbau mit einer gemeinsamen Playerseite (`[zeitraffer]` ohne `camera`, Kamera aus `?camera=` in der URL) funktioniert weiter. Die frühere Kameraübersicht `[tl]` und der Filter `zeitraffer_camera_page_slug` sind entfernt.
 
