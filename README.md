@@ -231,7 +231,7 @@ sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
 
-Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`, auch wenn die PHP-Bibliothek nur `manual-runs` auflistet.
+Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
 
 Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
@@ -509,7 +509,8 @@ Benutzername und Passwort). Dort lässt sich:
 - auf der Seite **Highlights** die Bilder ansehen, auf denen das Programm Tiere oder Flugobjekte
   gefunden hat (siehe nächstes Kapitel).
 
-Die nächtlich erstellten Videos werden in der Weboberfläche derzeit nicht angezeigt.
+Die nächtlich erstellten Videos lassen sich dort ebenfalls ansehen und herunterladen (löschen
+lassen sich nur die selbst erstellten).
 
 Details zu Funktionen, Dateien und Abläufen: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 Wie man sie einrichtet, steht unter [Weboberfläche einrichten](#weboberfläche-einrichten).

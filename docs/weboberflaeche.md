@@ -8,6 +8,10 @@ Was die Weboberfläche kann, welche Dateien dazugehören und wie ein Video-Auftr
 Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
 
 - Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
+- Liste **Automatische Videos** aus `videos/<camera>/<job>/`: Täglich die letzten 7,
+  Wöchentlich/Monatlich/Jährlich jeweils das neueste. Nur ansehen und herunterladen, kein
+  Löschen (die Aufräumregel entfernt sie); die Auswahl trägt `source=auto` in der URL, weil
+  derselbe Dateiname auch unter den manuellen Videos vorkommen kann
 - Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“, bzw. das Zeitfenster bei Monthly/Yearly, z. B. „30.06.2025 (Sonnenuntergang ±60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
 - Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung); nur Löschen fragt vorher in einem Bestätigungsdialog nach
 - Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde
@@ -19,7 +23,7 @@ Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse au
 
 Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](flagger.md) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](highlights-seite.md).
 
-Die Bibliothek zeigt derzeit ausschließlich `manual-runs`. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Automatische Videos werden noch nicht in der Oberfläche aufgelistet, und eine Status-Datei-Bereinigung ist nicht implementiert.
+Beide Listen lesen nur die vier Job-Ordner (`daily`, `weekly`, `monthly`, `yearly`); `highlights/` und `manual-runs/` erscheinen also nie als Job. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Gelöscht werden können nur manuelle Videos: das Löschen prüft gegen die Liste der manuellen Videos, der Lösch-Wrapper lehnt automatische ab. Eine Status-Datei-Bereinigung ist nicht implementiert.
 
 Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`.
 
@@ -103,12 +107,13 @@ Wrapper, PHP-Helfer und Status-Endpunkt werden mit pytest geprüft (benötigt `p
 
 ```bash
 python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py \
-  tests/web_delete_test.py tests/web_php_test.py
+  tests/web_delete_test.py tests/web_php_test.py tests/web_camera_page_test.py
 ```
 
 - `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung und fehlgeschlagene Jobs
 - `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`
 - `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
+- `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter
 
-Nicht automatisiert getestet sind `camera.php` und die Speicheranzeige (`getStorageUsage`), weil beide feste Pfade ohne Umleitungsmöglichkeit verwenden.
+Nicht automatisiert getestet sind die Speicheranzeige (`getStorageUsage`) und das JavaScript der Seiten.

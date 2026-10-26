@@ -227,7 +227,7 @@ main > h1 {
 
 /* Camera page main grid */
 
-main > div {
+.camera-layout {
 	display: grid;
 	grid-template-columns: minmax(0, 1fr) 320px;
 	gap: 1.5rem;
@@ -263,7 +263,7 @@ section h2 {
 /* Video player                                                               */
 /* -------------------------------------------------------------------------- */
 
-main > div > section:first-child {
+.video-player {
 	min-width: 0;
 }
 
@@ -285,7 +285,7 @@ video {
 /* Video library                                                              */
 /* -------------------------------------------------------------------------- */
 
-main > div > section:nth-child(2) {
+.video-library {
 	grid-column: 2;
 	grid-row: 1;
 
@@ -293,7 +293,7 @@ main > div > section:nth-child(2) {
 	overflow-y: auto;
 }
 
-main > div > section:nth-child(2) details {
+.video-library details {
 	margin-bottom: 0.75rem;
 
 	background: var(--color-surface-light);
@@ -301,7 +301,7 @@ main > div > section:nth-child(2) details {
 	border-radius: var(--radius-small);
 }
 
-main > div > section:nth-child(2) summary {
+.video-library summary {
 	padding: 0.75rem;
 
 	color: var(--color-text);
@@ -311,19 +311,19 @@ main > div > section:nth-child(2) summary {
 	user-select: none;
 }
 
-main > div > section:nth-child(2) details[open] summary {
+.video-library details[open] summary {
 	border-bottom: 1px solid var(--color-border);
 }
 
-main > div > section:nth-child(2) details ul {
+.video-library details ul {
 	padding: 0.75rem;
 }
 
-main > div > section:nth-child(2) li + li {
+.video-library li + li {
 	margin-top: 0.35rem;
 }
 
-main > div > section:nth-child(2) li a {
+.video-library li a {
 	display: block;
 
 	padding: 0.6rem 0.7rem;
@@ -341,14 +341,14 @@ main > div > section:nth-child(2) li a {
 	font-size: 0.875rem;
 }
 
-main > div > section:nth-child(2) li a:hover {
+.video-library li a:hover {
 	background: var(--color-surface-hover);
 	border-color: var(--color-border-light);
 
 	color: var(--color-text);
 }
 
-main > div > section:nth-child(2) summary {
+.video-library summary {
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
@@ -364,11 +364,11 @@ main > div > section:nth-child(2) summary {
 	list-style: none;
 }
 
-main > div > section:nth-child(2) summary::-webkit-details-marker {
+.video-library summary::-webkit-details-marker {
 	display: none;
 }
 
-main > div > section:nth-child(2) summary::before {
+.video-library summary::before {
 	content: "›";
 
 	display: inline-block;
@@ -381,8 +381,12 @@ main > div > section:nth-child(2) summary::before {
 	transition: transform 0.15s ease;
 }
 
-main > div > section:nth-child(2) details[open] summary::before {
+.video-library details[open] summary::before {
 	transform: rotate(90deg);
+}
+
+.video-library-source + .video-library-source {
+	margin-top: 1.5rem;
 }
 
 
@@ -542,7 +546,7 @@ main > div > section:nth-child(2) details[open] summary::before {
 /* Video creation                                                             */
 /* -------------------------------------------------------------------------- */
 
-main > div > section:nth-child(3) {
+.video-create {
 	grid-column: 1 / -1;
 
 	margin-top: 0.5rem;

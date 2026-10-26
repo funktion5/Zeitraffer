@@ -91,13 +91,15 @@ function findAvailableCameras(): array
 	return array_values($cameras);
 }
 
-function findManualVideos(string $camera): array
+// $runFolder "manual-runs" lists the historical videos, "" the automatic ones in
+// videos/<camera>/<job>/. Only the four job folders are read, so highlights/ and manual-runs/
+// never show up as jobs.
+function findVideos(string $camera, string $runFolder): array
 {
-	$manualRoot = projectRoot() . "/videos/"
-		. $camera
-		. "/manual-runs";
+	$folderPath = $runFolder === "" ? "" : "/" . $runFolder;
+	$videoRoot = projectRoot() . "/videos/" . $camera . $folderPath;
 
-	if (!is_dir($manualRoot) || !is_readable($manualRoot)) {
+	if (!is_dir($videoRoot) || !is_readable($videoRoot)) {
 		return [];
 	}
 
@@ -111,7 +113,7 @@ function findManualVideos(string $camera): array
 	$videos = [];
 
 	foreach ($allowedJobs as $job) {
-		$jobPath = $manualRoot . "/" . $job;
+		$jobPath = $videoRoot . "/" . $job;
 
 		if (!is_dir($jobPath) || !is_readable($jobPath)) {
 			continue;
@@ -143,7 +145,8 @@ function findManualVideos(string $camera): array
 				"window" => $metadata["window"],
 				"url" => "/videos/"
 					. rawurlencode($camera)
-					. "/manual-runs/"
+					. $folderPath
+					. "/"
 					. rawurlencode($job)
 					. "/"
 					. rawurlencode($filename),

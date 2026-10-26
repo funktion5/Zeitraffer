@@ -17,19 +17,22 @@ if (!in_array($camera, $availableCameras, true)) {
   $camera = "";
 }
 
-$manualVideos = $camera === "" ? [] : findManualVideos($camera);
+$manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
+$automaticVideos = $camera === "" ? [] : findVideos($camera, "");
 
-$selectedJob = $_GET["job"] ?? "";
-$selectedFilename = $_GET["video"] ?? "";
+// Strings only: an array here (?job[]=x) would make the lookups below throw.
+$selectedJob = is_string($_GET["job"] ?? null) ? $_GET["job"] : "";
+$selectedFilename = is_string($_GET["video"] ?? null) ? $_GET["video"] : "";
+// Automatic videos are read-only; the same filename can exist in both lists.
+$selectedSource = ($_GET["source"] ?? null) === "auto" ? "auto" : "manual";
 $selectedVideo = null;
 $videoWasDeleted = ($_GET["deleted"] ?? null) === "1";
+$selectedList = $selectedSource === "auto" ? $automaticVideos : $manualVideos;
 
-if (isset($manualVideos[$selectedJob])) {
-  foreach ($manualVideos[$selectedJob] as $video) {
-    if ($video["filename"] === $selectedFilename) {
-      $selectedVideo = $video;
-			break;
-		}
+foreach ($selectedList[$selectedJob] ?? [] as $video) {
+	if ($video["filename"] === $selectedFilename) {
+		$selectedVideo = $video;
+		break;
 	}
 }
 
@@ -260,8 +263,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	        <?php if ($videoWasDeleted): ?>
 	          <p class="delete-success-message">Video erfolgreich gelöscht.</p>
 	        <?php endif; ?>
-	        <div>
-	          <section>
+	        <div class="camera-layout">
+	          <section class="video-player">
 	            <h2>Videoplayer</h2>
 
 	            <?php if ($selectedVideo === null): ?>
@@ -292,6 +295,7 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 									<span>Herunterladen</span>
 								</a>
 
+							<?php if ($selectedSource === "manual"): ?>
 							<form
 								method="post"
 								action="/camera.php?camera=<?= rawurlencode($camera) ?>"
@@ -351,135 +355,86 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 									<span>Löschen</span>
 								</button>
 							</form>
+							<?php endif; ?>
 							</div>
 	            <?php endif; ?>
 	          </section>
 
-	          <section>
-            <h2>Manuelle Videos</h2>
-            <?php if ($manualVideos === []): ?>
-              <p>Keine manuellen Videos gefunden.</p>
-            <?php else: ?>
-              <?php foreach ($manualVideos as $job => $videos): ?>
-                <details<?= $job === $selectedJob ? " open" : "" ?>>
-                  <summary>
-                    <?= htmlspecialchars(translateJobLabel($job), ENT_QUOTES, "UTF-8") ?>
-                  </summary>
-                    <ul>
-	                      <?php foreach ($videos as $video): ?>
-													<?php
-														$videoDisplayLabel = $video["date"] !== null ? formatGermanDate($video["date"]) : $video["filename"];
-														if ($video["bufferMinutes"] !== null) {
-															$videoDisplayLabel .= " ({$video["bufferMinutes"]} Min.)";
-														}
-														if ($video["window"] !== null) {
-															$videoDisplayLabel .= " ({$video["window"]})";
-														}
-													?>
-													<li class="video-library-item">
+		<section class="video-library">
+			<?php
+			$librarySources = [
+				"auto" => ["Automatische Videos", $automaticVideos, "Keine automatischen Videos gefunden."],
+				"manual" => ["Manuelle Videos", $manualVideos, "Keine manuellen Videos gefunden."],
+			];
+			?>
+			<?php foreach ($librarySources as $source => [$heading, $videoGroups, $emptyText]): ?>
+				<div class="video-library-source" data-video-source="<?= htmlspecialchars($source, ENT_QUOTES, "UTF-8") ?>">
+					<h2><?= htmlspecialchars($heading, ENT_QUOTES, "UTF-8") ?></h2>
 
-														<a href="/camera.php?<?= htmlspecialchars(
-															http_build_query([
-																"camera" => $camera,
-																"job" => $job,
-																"video" => $video["filename"],
-															]),
-															ENT_QUOTES,
-															"UTF-8",
-														) ?>">
-															<?= htmlspecialchars(
-																$videoDisplayLabel,
-																ENT_QUOTES,
-																"UTF-8",
-															) ?>
-														</a>
+					<?php if ($videoGroups === []): ?>
+						<p><?= htmlspecialchars($emptyText, ENT_QUOTES, "UTF-8") ?></p>
+					<?php endif; ?>
 
-														<form
-															method="post"
-															action="/camera.php?camera=<?= rawurlencode($camera) ?>"
-															class="video-library-delete-form"
-															data-delete-confirm
-															data-delete-name="<?= htmlspecialchars(
-																$video["filename"],
-																ENT_QUOTES,
-																"UTF-8",
-															) ?>"
-														>
-															<input
-																type="hidden"
-																name="action"
-																value="delete-video"
-															>
+					<?php foreach ($videoGroups as $job => $videos): ?>
+						<details<?= $source === $selectedSource && $job === $selectedJob ? " open" : "" ?>>
+							<summary>
+								<?= htmlspecialchars(translateJobLabel($job), ENT_QUOTES, "UTF-8") ?>
+							</summary>
+							<ul>
+								<?php foreach ($videos as $video): ?>
+									<?php
+									$videoDisplayLabel = $video["date"] !== null ? formatGermanDate($video["date"]) : $video["filename"];
+									if ($video["bufferMinutes"] !== null) {
+										$videoDisplayLabel .= " ({$video["bufferMinutes"]} Min.)";
+									}
+									if ($video["window"] !== null) {
+										$videoDisplayLabel .= " ({$video["window"]})";
+									}
+									$videoQuery = ["camera" => $camera, "job" => $job, "video" => $video["filename"]];
+									if ($source === "auto") {
+										$videoQuery["source"] = "auto";
+									}
+									?>
+									<li class="video-library-item">
+										<a href="/camera.php?<?= htmlspecialchars(http_build_query($videoQuery), ENT_QUOTES, "UTF-8") ?>">
+											<?= htmlspecialchars($videoDisplayLabel, ENT_QUOTES, "UTF-8") ?>
+										</a>
 
-															<input
-																type="hidden"
-																name="csrf_token"
-																value="<?= htmlspecialchars(
-																	$csrfToken,
-																	ENT_QUOTES,
-																	"UTF-8",
-																) ?>"
-															>
+										<?php if ($source === "manual"): ?>
+											<form
+												method="post"
+												action="/camera.php?camera=<?= rawurlencode($camera) ?>"
+												class="video-library-delete-form"
+												data-delete-confirm
+												data-delete-name="<?= htmlspecialchars($video["filename"], ENT_QUOTES, "UTF-8") ?>"
+											>
+												<input type="hidden" name="action" value="delete-video">
+												<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, "UTF-8") ?>">
+												<input type="hidden" name="camera" value="<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>">
+												<input type="hidden" name="job" value="<?= htmlspecialchars($job, ENT_QUOTES, "UTF-8") ?>">
+												<input type="hidden" name="video" value="<?= htmlspecialchars($video["filename"], ENT_QUOTES, "UTF-8") ?>">
 
-															<input
-																type="hidden"
-																name="camera"
-																value="<?= htmlspecialchars(
-																	$camera,
-																	ENT_QUOTES,
-																	"UTF-8",
-																) ?>"
-															>
-
-															<input
-																type="hidden"
-																name="job"
-																value="<?= htmlspecialchars(
-																	$job,
-																	ENT_QUOTES,
-																	"UTF-8",
-																) ?>"
-															>
-
-															<input
-																type="hidden"
-																name="video"
-																value="<?= htmlspecialchars(
-																	$video["filename"],
-																	ENT_QUOTES,
-																	"UTF-8",
-																) ?>"
-															>
-
-															<button
-																type="submit"
-																class="video-library-delete"
-																title="Video löschen"
-																aria-label="<?= htmlspecialchars(
-																	$video["filename"],
-																	ENT_QUOTES,
-																	"UTF-8",
-																) ?> löschen"
-															>
-																<svg
-																	viewBox="0 0 24 24"
-																	aria-hidden="true"
-																>
-																	<path
-																		d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z"
-																	/>
-																</svg>
-															</button>
-														</form>
-
-													</li>
-												<?php endforeach; ?>
-                    </ul>
-                </details>
-              <?php endforeach; ?>
-            <?php endif; ?>
-          </section>
-	          <section>
+												<button
+													type="submit"
+													class="video-library-delete"
+													title="Video löschen"
+													aria-label="<?= htmlspecialchars($video["filename"], ENT_QUOTES, "UTF-8") ?> löschen"
+												>
+													<svg viewBox="0 0 24 24" aria-hidden="true">
+														<path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z" />
+													</svg>
+												</button>
+											</form>
+										<?php endif; ?>
+									</li>
+								<?php endforeach; ?>
+							</ul>
+						</details>
+					<?php endforeach; ?>
+				</div>
+			<?php endforeach; ?>
+		</section>
+	          <section class="video-create">
 	            <h2>Historisches Video erstellen</h2>
 
 	            <div class="job-instructions">

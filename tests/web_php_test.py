@@ -130,7 +130,7 @@ def test_find_manual_videos_lists_only_regular_mp4_files(tmp_path):
 	(job_dir / "link.mp4").symlink_to(tmp_path / "real.mp4")
 	(job_dir / "subdir.mp4").mkdir()
 
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("cam"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", "manual-runs"));')
 
 	assert sorted(v["filename"] for v in result["daily"]) == ["a.MP4", "cam_2026-03-05.mp4"]
 
@@ -148,7 +148,7 @@ def test_find_manual_videos_sorts_newest_first_and_exposes_metadata(tmp_path):
 		],
 	)
 
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("cam"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", "manual-runs"));')
 
 	monthly = result["monthly"]
 	assert [v["date"] for v in monthly] == ["2026-03-31", "2026-02-28", "2026-01-31"]
@@ -160,7 +160,7 @@ def test_find_manual_videos_sorts_newest_first_and_exposes_metadata(tmp_path):
 def test_find_manual_videos_url_encodes_names(tmp_path):
 	make_videos(tmp_path, "cam", "daily", ["my video#1.mp4"])
 
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("cam"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", "manual-runs"));')
 
 	assert result["daily"][0]["url"] == "/videos/cam/manual-runs/daily/my%20video%231.mp4"
 	assert result["daily"][0]["date"] is None
@@ -171,13 +171,13 @@ def test_find_manual_videos_ignores_unknown_job_directories(tmp_path):
 	make_videos(tmp_path, "cam", "hourly", ["cam_2026-03-05.mp4"])
 	make_videos(tmp_path, "cam", "yearly", ["cam_2026-12-31.mp4"])
 
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("cam"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", "manual-runs"));')
 
 	assert list(result) == ["yearly"]
 
 
 def test_find_manual_videos_without_manual_runs_returns_empty_list(tmp_path):
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("missing"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("missing", "manual-runs"));')
 
 	assert result == []
 
@@ -187,9 +187,24 @@ def test_find_manual_videos_without_manual_runs_returns_empty_list(tmp_path):
 def test_find_manual_videos_hides_in_progress_tmp_files(tmp_path):
 	make_videos(tmp_path, "cam", "daily", ["cam_2026-03-05.mp4", ".cam_2026-03-06.tmp.mp4"])
 
-	result = videos_library(tmp_path, 'echo json_encode(findManualVideos("cam"));')
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", "manual-runs"));')
 
 	assert [v["filename"] for v in result["daily"]] == ["cam_2026-03-05.mp4"]
+
+
+# Automatic videos live in videos/<camera>/<job>/; manual-runs and highlights are not jobs.
+def test_find_videos_reads_automatic_videos_from_the_camera_folder(tmp_path):
+	make_videos(tmp_path, "cam", "daily", ["cam_2026-10-22_60min.mp4"])
+	weekly = tmp_path / "videos" / "cam" / "weekly"
+	weekly.mkdir(parents=True)
+	(weekly / "cam_2026-10-25.mp4").write_bytes(b"x")
+	(tmp_path / "videos" / "cam" / "highlights" / "2026-10-25").mkdir(parents=True)
+
+	result = videos_library(tmp_path, 'echo json_encode(findVideos("cam", ""));')
+
+	assert list(result) == ["weekly"]
+	assert result["weekly"][0]["date"] == "2026-10-25"
+	assert result["weekly"][0]["url"] == "/videos/cam/weekly/cam_2026-10-25.mp4"
 
 
 # Config: only string camera names count; broken or missing config must never raise.
