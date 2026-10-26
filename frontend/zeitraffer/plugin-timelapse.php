@@ -1,6 +1,10 @@
 <?php
 /*
  * Plugin Name: Zeitraffer
+ * Description: Zeitraffer-Videos (Tag, Woche, Monat, Jahr) je Webcam, per Shortcode [zeitraffer] einbindbar.
+ * Version: 1.0.0
+ * Requires at least: 6.5
+ * Requires PHP: 8.4
  */
 declare(strict_types=1);
 
@@ -104,8 +108,23 @@ function tl_timelapse_caption_html(string $description): string {
   return $html;
 }
 
+// Folder of the webcam whose page is being rendered (post type "webcams" of the f5-webcams plugin).
+// The webcam's images live in <uploads>/webcams/<foldername>/ and its videos in a folder of the
+// same name, so the page itself says which videos belong under its image. "" on any other page.
+function tl_timelapse_current_webcam_folder(): string {
+  if (get_post_type() !== "webcams" || !function_exists("get_field")) {
+    return "";
+  }
+
+  // f5-webcams only trusts a string here and sanitizes it the same way.
+  $foldername = get_field("foldername", get_the_ID());
+
+  return is_string($foldername) ? sanitize_file_name($foldername) : "";
+}
+
 // [zeitraffer camera="<folder slug>" title="<display name>" description="<scene description>" heading="2"]
-// camera: folder slug; falls back to ?camera= so the shared-page setup keeps working.
+// camera: folder slug. Without it: the folder of the webcam page the shortcode sits on, else
+// ?camera= so the shared-page setup keeps working.
 // title: shown instead of the folder name (page slugs and folders often differ).
 // description: text alternative shown under the video.
 // heading: level of the player's heading (2-6), to fit the surrounding page's heading structure.
@@ -141,6 +160,8 @@ $cameras = tl_timelapse_get_cameras();
 
 if ($atts["camera"] !== "") {
   $slug = sanitize_key($atts["camera"]);
+} elseif (tl_timelapse_current_webcam_folder() !== "") {
+  $slug = sanitize_key(tl_timelapse_current_webcam_folder());
 } else {
   $slug = isset($_GET["camera"]) ? sanitize_key(wp_unslash($_GET["camera"])) : "";
 }
@@ -207,7 +228,9 @@ if (!$video) {
 $heading = "Zeitraffer";
 
 if ($video) {
-  $heading .= ' &ndash; <span id="zeitraffer_date">' . esc_html(tl_timelapse_video_span($video, $period)) . '</span>';
+  // aria-live: assets/script.js rewrites this text when a tab is clicked, without a reload, so
+  // screen readers announce the new time span.
+  $heading .= ' &ndash; <span id="zeitraffer_date" aria-live="polite">' . esc_html(tl_timelapse_video_span($video, $period)) . '</span>';
 }
 
 $html .= "<h" . $level . ">" . $heading . "</h" . $level . ">";
@@ -397,27 +420,6 @@ function tl_timelapse_handle_sync(): void {
   exit;
 }
 add_action("admin_post_zeitraffer_sync", "tl_timelapse_handle_sync");
-
-// Player under the image of [f5_webcams_last]. The folder name of the webcam the image shows is
-// the video folder, so the player follows the image without its own "latest webcam" lookup.
-// Unpublished or video-less cameras render nothing, as with the shortcode.
-function tl_timelapse_after_webcam(string $foldername, string $heading_tag): void {
-  // A webcam without a timelapse folder is normal; skip it quietly, without the editor's
-  // "camera not found" notice the shortcode would print under the image.
-  if (!isset(tl_timelapse_cameras_cached()[sanitize_key($foldername)])) {
-    return;
-  }
-
-  // One level below the webcam's heading (h4 -> h5), at most h6.
-  $level = min(6, (int) substr($heading_tag, 1) + 1);
-
-  // The shortcode escapes its own output.
-  echo tl_timelapse_camera_shortcode([ // phpcs:ignore WordPress.Security.EscapeOutput
-    "camera" => $foldername,
-    "heading" => (string) $level,
-  ]);
-}
-add_action("f5_webcams_after_webcam", "tl_timelapse_after_webcam", 10, 2);
 
 add_shortcode(
   "zeitraffer",
