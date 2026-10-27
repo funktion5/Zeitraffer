@@ -1,18 +1,19 @@
 #!/bin/bash
 # Run this on your own computer (macOS, Linux, or Windows inside WSL), never on the host itself.
-# Pulls everything a reinstall needs that is not in git into a local backup folder; migrate.sh
-# restores it. Needs bash, ssh, rsync and openssl on this computer.
+# Pulls everything the move to the VPS needs that is not in git into a local backup folder;
+# install.sh restores it (docs/vps.md). One-time: the Pi is retired afterwards, so this no longer
+# feeds migrate.sh. Needs bash, ssh, rsync and openssl on this computer.
 #
 # Host, user and backup folder come from backup.env next to this script
 # (gitignored — copy backup.env.example). Variables set on the command line win:
 #   BACKUP_HOST=192.0.2.10 ./backup.sh     if the hostname doesn't resolve
 #   SKIP_VIDEOS=1 ./backup.sh              everything except the videos
 #
-# The secrets (SSH folder, htpasswd, mount and sudoers files, Apache site) are encrypted with a
-# passphrase you enter here. Keep it in a password manager: without it the backup is useless.
+# The secret (the Apache htpasswd) is encrypted with a passphrase you enter here. No SSH key is
+# included: the VPS gets its own Storage Box key. Keep the passphrase in a password manager.
 set -euo pipefail
 
-# The backup holds an SSH private key and a password hash — keep every file
+# The backup holds a password hash and the finished videos — keep every file
 # this script creates private from the start, not just at the end.
 umask 077
 
@@ -123,27 +124,17 @@ PROJECT_DIR="${PROJECT_DIR//\$HOME/$REMOTE_HOME}"
 ssh "${SSH_OPTS[@]}" "$TARGET" "test -d $(quote "$PROJECT_DIR")" \
 	|| { echo "No project folder at ${PROJECT_DIR} on the host (set PROJECT_DIR)." >&2; exit 1; }
 
-# 1) Secrets. A file the host does not have (no SSHFS mount, no Apache), or cannot read without
-#    sudo, is skipped with a warning instead of failing the backup. The temporary archive gets a random name in the
-#    user's own home, never a fixed name in a shared /tmp.
+# 1) The one secret: the Apache htpasswd. install.sh needs nothing else from the host's system
+#    files: the sudoers file and the vhost are generated for the VPS, and the Storage Box key is
+#    a new one made there. The temporary archive gets a random name in the user's own home,
+#    never a fixed name in a shared /tmp.
 REMOTE_TAR="$(ssh "${SSH_OPTS[@]}" "$TARGET" 'mktemp "$HOME/.timelapse-backup.XXXXXX"')"
-# shellcheck disable=SC2016 # $f and $@ expand on the host
-PACK='umask 077; set --; for f in '"$(quote "$REMOTE_HOME/.ssh")"' /etc/timelapse/mount.env \
-	/etc/sudoers.d/timelapse-web /etc/apache2/.htpasswd /etc/apache2/sites-available/zeitraffer.conf; do
-	if [ -r "$f" ]; then set -- "$@" "$f"; else echo "  skipped (missing or not readable): $f" >&2; fi
-done; tar czf '"$(quote "$REMOTE_TAR")"' "$@" 2>/dev/null'
+PACK='umask 077; [ -r /etc/apache2/.htpasswd ] || { echo "No /etc/apache2/.htpasswd on the host." >&2; exit 1; }; tar czf '"$(quote "$REMOTE_TAR")"' /etc/apache2/.htpasswd 2>/dev/null'
 
-# Root-owned files need sudo, and sudo needs a terminal for its password prompt, so the check
-# and the packing run in one session. A host without sudo (no root) still gets the
-# user-level secrets (~/.ssh) backed up.
-echo "==> Packing secrets on the host (sudo password prompt)"
-ssh "${SSH_OPTS[@]}" -t "$TARGET" "
-	if command -v sudo >/dev/null 2>&1 && sudo -v; then
-		sudo sh -c $(quote "$PACK") && sudo chown $(quote "$BACKUP_USER") $(quote "$REMOTE_TAR")
-	else
-		echo '  No sudo on the host: backing up only what this user can read (~/.ssh).' >&2
-		sh -c $(quote "$PACK")
-	fi"
+# The file is root-owned, and sudo needs a terminal for its password prompt.
+echo "==> Packing the htpasswd on the host (sudo password prompt)"
+ssh "${SSH_OPTS[@]}" -t "$TARGET" \
+	"sudo sh -c $(quote "$PACK") && sudo chown $(quote "$BACKUP_USER") $(quote "$REMOTE_TAR")"
 
 # Streamed straight into openssl, so the unencrypted archive never lands on this computer.
 ssh "${SSH_OPTS[@]}" "$TARGET" "cat $(quote "$REMOTE_TAR")" \
@@ -178,7 +169,7 @@ for folder in models state; do
 done
 
 # 5) Finished videos. rsync -a keeps the file modes; after copying them back,
-#    run "./migrate.sh permissions" so Apache can read them again.
+#    run "./install.sh permissions" on the VPS so Apache can read them again.
 #    No -z: MP4s don't compress, and it only costs the host CPU.
 if [[ "$SKIP_VIDEOS" == "1" ]]; then
 	echo "==> Skipping videos (SKIP_VIDEOS=1)"
@@ -197,15 +188,6 @@ unset PASSPHRASE
 
 cat <<EOF
 
-After a reinstall:
-  1. A reinstalled host has new SSH host keys, so clear the old ones here first:
-       ssh-keygen -R ${BACKUP_HOST}
-  2. Copy the backup and the installer to the host:
-       scp "$DEST/pi-backup.tar.gz.enc" "$DEST/pi-crontab.txt" "$DEST/config.json" migrate.sh ${TARGET}:~/
-  3. On the host: ./migrate.sh (asks for the passphrase)
-  4. Copy models, state and videos back, then fix the permissions on the host:
-       rsync -a "$DEST/models/" ${TARGET}:${PROJECT_DIR}/models/
-       rsync -a "$DEST/state/" ${TARGET}:${PROJECT_DIR}/state/
-       rsync -a --progress "$DEST/videos/" ${TARGET}:${PROJECT_DIR}/videos/
-       ./migrate.sh permissions verify
+Next: docs/vps.md, step 3 onwards (copy the backup to the VPS, run install.sh, rsync models,
+state and videos). pi-crontab.txt is only a reference; it must not be installed on the VPS.
 EOF
