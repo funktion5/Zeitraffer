@@ -102,7 +102,7 @@ function tl_timelapse_caption_html(string $description): string {
   $html = "<p>Zeitraffer ohne Ton</p>";
 
   if ($description !== "") {
-    $html .= "<p>Beschreibung: " . esc_html($description) . "</p>";
+    $html .= "<p>" . esc_html($description) . "</p>";
   }
 
   return $html;
@@ -199,9 +199,9 @@ if (!$is_published) {
 }
 
 $periods = [
-  "daily" => "Tag",
-  "weekly" => "Woche",
-  "monthly" => "Monat",
+  "daily" => "Die letzten 24 Stunden",
+  "weekly" => "Die letzten 7 Tage",
+  "monthly" => "Die letzten 30 Tage",
   "yearly" => "Jahr",
 ];
 
@@ -235,14 +235,7 @@ if ($video) {
 
 $html .= "<h" . $level . ">" . $heading . "</h" . $level . ">";
 
-if ($video) {
-  $url = tl_timelapse_videos_url($cameras[$slug] . "/" . $period . "/" . basename($video));
-  // Video-only content needs a text alternative (WCAG 1.2.1); aria-label is just a name.
-  // playsinline keeps iOS from forcing the video fullscreen.
-  $html .= '<video id="zeitraffer_video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="zeitraffer_caption"></video>';
-  $html .= '<div id="zeitraffer_caption" class="zeitraffer_caption">' . tl_timelapse_caption_html($description) . '</div>';
-}
-
+// The tabs sit above the player, so they are in view when the video is not yet loaded.
 $html .= "<nav class='zeitraffer_nav' aria-label='Zeitraum'>";
 
 foreach ($periods as $key => $label) {
@@ -258,11 +251,19 @@ foreach ($periods as $key => $label) {
 
   // href keeps the tab working without JavaScript; data-* is read by assets/script.js.
   $html .= "<a href='" . esc_url($link_url) . "' data-src='" . esc_url($item_url) . "' data-label='" . esc_attr($name . " " . $label) . "' data-date='" . esc_attr($item_span) . "'" . $current . ">" . esc_html($label) . "</a>";
-  }
+}
 
-  $html .= "</nav>";
+$html .= "</nav>";
 
-  $html .= "</div>";
+if ($video) {
+  $url =tl_timelapse_videos_url($cameras[$slug] . "/" . $period . "/" . basename($video));
+  // Video-only content needs a text alternative (WCAG 1.2.1); aria-label is just a name.
+  // playsinline keeps iOS from forcing the video fullscreen.
+  $html .= '<video id="zeitraffer_video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="zeitraffer_caption"></video>';
+  $html .= '<div id="zeitraffer_caption" class="zeitraffer_caption">' . tl_timelapse_caption_html($description) . '</div>';
+}
+
+$html .= "</div>";
 
 
 return $html;
