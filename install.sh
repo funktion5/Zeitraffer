@@ -91,6 +91,8 @@ step_preflight() {
 		|| fail "~/.ssh/config has no Host $BOX_ALIAS entry (HostName, User, Port, IdentityFile). See docs/vps.md, or set BOX_ALIAS."
 	local key
 	key="$(ssh -G "$BOX_ALIAS" | awk '$1 == "identityfile" {print $2; exit}')"
+	# ssh -G prints the path as written in the config, so a leading ~ is still a literal ~.
+	key="${key/#\~/$HOME}"
 	[[ -f "$key" ]] || fail "The key of Host $BOX_ALIAS ($key) does not exist."
 	sudo -v || fail "sudo access is required."
 }
