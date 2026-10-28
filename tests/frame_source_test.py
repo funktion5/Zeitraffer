@@ -4,7 +4,6 @@ import multiprocessing
 import os
 import stat
 import subprocess
-import time
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,12 +19,11 @@ from src.frame_source import (
 	HEARTBEAT_SECONDS,
 	NAME_LISTING_TIMEOUT_SECONDS,
 	RSYNC_IDLE_TIMEOUT_SECONDS,
-	STALE_CACHE_AGE_SECONDS,
 	FrameFetchError,
 	LocalFrameSource,
 	SshFrameSource,
 	create_frame_cache,
-	release_stale,
+	release_leftovers,
 )
 from src.storage_filter import StorageBox
 
@@ -702,13 +700,12 @@ def test_rsync_is_killed_when_the_worker_is_told_to_stop(monkeypatch, tmp_path):
 	assert len(rsync.calls) == 1
 
 
-# Folders under temp/frame-cache that are old, carry the marker and are real folders. The newest
-# of them is kept, and so is anything without the marker.
-def stale_cache(tmp_path):
+# Folders under temp/frame-cache the way an earlier run leaves them: two with the marker, and one
+# without it that is none of our business.
+def leftover_cache(tmp_path):
 	parent = tmp_path / "temp" / "frame-cache"
-	old_time = time.time() - STALE_CACHE_AGE_SECONDS - 60
 
-	for name, marker in (("old", True), ("fresh", True), ("old-no-marker", False)):
+	for name, marker in (("run-1", True), ("run-2", True), ("foreign", False)):
 		folder = parent / name
 		folder.mkdir(parents=True)
 		(folder / "a.jpg").write_bytes(b"frame")
@@ -716,50 +713,51 @@ def stale_cache(tmp_path):
 		if marker:
 			(folder / FRAME_CACHE_MARKER).touch()
 
-		if name.startswith("old"):
-			os.utime(folder, (old_time, old_time))
-
 	return parent
 
 
-def test_release_stale_removes_only_old_folders_with_the_marker(tmp_path):
-	parent = stale_cache(tmp_path)
+def test_release_leftovers_removes_every_folder_with_the_marker(tmp_path):
+	parent = leftover_cache(tmp_path)
 
-	release_stale(tmp_path / "temp")
+	release_leftovers(tmp_path / "temp")
 
-	assert not (parent / "old").exists()
-	assert (parent / "fresh" / "a.jpg").is_file()
-	assert (parent / "old-no-marker" / "a.jpg").is_file()
+	assert not (parent / "run-1").exists()
+	assert not (parent / "run-2").exists()
+	assert (parent / "foreign" / "a.jpg").is_file()
 
 
-def test_release_stale_does_not_follow_a_symlinked_cache_folder(tmp_path):
+def test_release_leftovers_does_not_follow_a_symlinked_cache_folder(tmp_path):
 	outside = tmp_path / "elsewhere" / "frame-cache"
-	old = outside / "old"
-	old.mkdir(parents=True)
-	(old / FRAME_CACHE_MARKER).touch()
-	old_time = time.time() - STALE_CACHE_AGE_SECONDS - 60
-	os.utime(old, (old_time, old_time))
+	leftover = outside / "run-1"
+	leftover.mkdir(parents=True)
+	(leftover / FRAME_CACHE_MARKER).touch()
 	temp = tmp_path / "temp"
 	temp.mkdir()
 	(temp / "frame-cache").symlink_to(outside)
 
-	release_stale(temp)
+	release_leftovers(temp)
 
-	assert old.is_dir()
+	assert leftover.is_dir()
 
 
-def test_release_stale_without_a_cache_folder_does_nothing(tmp_path):
-	release_stale(tmp_path / "temp")
+def test_release_leftovers_without_a_cache_folder_does_nothing(tmp_path):
+	release_leftovers(tmp_path / "temp")
 
 	assert not (tmp_path / "temp").exists()
 
 
-# A run that starts sweeps what an earlier run left behind (a crash, a hard kill, an orphaned
-# rsync), once: later calls in the same run reuse the exported root and sweep nothing.
-def test_choosing_a_new_cache_root_sweeps_stale_folders(ssh_env):
-	parent = stale_cache(ssh_env)
+# A run that starts clears what an earlier run left behind (a crash, a hard kill). It does so once:
+# later calls in the same run reuse the exported root and must never clear the run's own cache.
+def test_choosing_a_new_cache_root_clears_leftovers_once(ssh_env):
+	parent = leftover_cache(ssh_env)
 
 	images_module.get_frame_source()
 
-	assert not (parent / "old").exists()
-	assert (parent / "fresh").is_dir()
+	assert not (parent / "run-1").exists()
+	assert (parent / "foreign").is_dir()
+
+	(parent / "run-3").mkdir()
+	(parent / "run-3" / FRAME_CACHE_MARKER).touch()
+	images_module.get_frame_source()
+
+	assert (parent / "run-3").is_dir()
