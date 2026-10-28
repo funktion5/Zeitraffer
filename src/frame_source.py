@@ -1,5 +1,5 @@
 import os
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -18,7 +18,9 @@ class FrameFetchError(OSError):
 class FrameSource(Protocol):
 	def list_cameras(self) -> list[str]: ...
 
-	def list_names(self, camera: str) -> list[str]: ...
+	# Iterable, not list: a slow source must be able to hand names over while it is still listing,
+	# because the progress ticks that keep a scan alive are driven by the names arriving.
+	def list_names(self, camera: str) -> Iterable[str]: ...
 
 	def path_for(self, camera: str, name: str) -> Path: ...
 
@@ -43,9 +45,10 @@ class LocalFrameSource:
 			if path.is_dir() and not path.name.startswith(".")
 		)
 
-	def list_names(self, camera: str) -> list[str]:
+	def list_names(self, camera: str) -> Iterator[str]:
 		with os.scandir(self.root / camera) as entries:
-			return [entry.name for entry in entries]
+			for entry in entries:
+				yield entry.name
 
 	def path_for(self, camera: str, name: str) -> Path:
 		return self.root / camera / name

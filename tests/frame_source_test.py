@@ -1,5 +1,7 @@
 from pathlib import Path
+from types import SimpleNamespace
 
+import src.frame_source as frame_source_module
 import src.images as images_module
 from src.frame_source import FrameFetchError, LocalFrameSource
 
@@ -26,6 +28,32 @@ def test_local_list_names_returns_every_entry_name(tmp_path):
 	names = LocalFrameSource(tmp_path).list_names("Alpha")
 
 	assert sorted(names) == ["a_20260101T1000.jpg", "b.JPG", "c.txt"]
+
+
+# The isolated workers tick a progress callback per name and kill a scan that goes quiet for the
+# stall timeout. A slow mount must keep yielding names while the folder is read, not hand over the
+# whole listing at the end.
+def test_local_list_names_streams_entries_while_the_folder_is_read(monkeypatch, tmp_path):
+	events = []
+
+	class SlowEntries:
+		def __enter__(self):
+			return self
+
+		def __exit__(self, *exc_info):
+			return False
+
+		def __iter__(self):
+			for name in ("a.jpg", "b.jpg"):
+				events.append(f"read {name}")
+				yield SimpleNamespace(name=name)
+
+	monkeypatch.setattr(frame_source_module.os, "scandir", lambda path: SlowEntries())
+
+	for name in LocalFrameSource(tmp_path).list_names("Alpha"):
+		events.append(f"got {name}")
+
+	assert events == ["read a.jpg", "got a.jpg", "read b.jpg", "got b.jpg"]
 
 
 def test_local_path_for_joins_root_camera_and_name(tmp_path):
