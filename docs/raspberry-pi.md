@@ -35,6 +35,14 @@ tail -30 /var/log/pi-health.log      # letzte Messwerte vor dem Reset
 
 ## Neuinstallation des Raspberry Pi
 
+> **Stand 27.10.2026:** `backup.sh` sichert nur noch die Anmeldedaten der Weboberfläche (htpasswd,
+> verschlüsselt) sowie `config.json`, Crontab, `models/`, `state/` und `videos/`. SSH-Schlüssel,
+> `mount.env`, sudoers-Datei und Apache-Site sind nicht mehr im Backup, weil der Umzug auf den VPS
+> sie nicht braucht ([vps.md](vps.md)). Die Tabelle und die Schritte unten beschreiben den Stand
+> davor. `migrate.sh` bricht bei einem neuen Backup im Schritt `restore_backup` ab. Für einen frischen
+> Pi ist `install.sh` der Weg; Pi-spezifisches (WLAN abschalten, Absturzprotokoll) gehört nicht dazu.
+> Bleibt der Pi stillgelegt, kann dieser Abschnitt zusammen mit `migrate.sh` entfallen.
+
 Bei einer Neuinstallation des Betriebssystems gehen alle Dateien verloren, die nicht im Git-Repository liegen. Zwei Skripte übernehmen Sicherung und Wiederherstellung:
 
 | Skript | Läuft auf | Aufgabe |

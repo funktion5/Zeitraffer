@@ -54,7 +54,7 @@ Platzhalter in den folgenden Beispielen:
 | `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
 | `<login>` | Benutzername der Apache-Basisauthentifizierung |
 
-Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen neu installierten Pi mit vorhandenem Backup übernimmt `migrate.sh` alle Schritte; siehe [Neuinstallation des Raspberry Pi](docs/raspberry-pi.md#neuinstallation-des-raspberry-pi).
+Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host (VPS, Pi oder anderer Rechner) übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte, ohne SSHFS-Mount (die Bilder werden pro Lauf von der Storage Box geholt). Ablauf und Vorbereitung: [Umzug auf den VPS](docs/vps.md). `migrate.sh` richtet nur noch einen Pi mit einem Backup aus der Zeit vor dem 27.10.2026 ein; siehe [Neuinstallation des Raspberry Pi](docs/raspberry-pi.md#neuinstallation-des-raspberry-pi).
 
 ### Systempakete installieren
 
@@ -620,9 +620,13 @@ kaputten Speicherkarte, schnell wieder läuft:
 - **Absturzprotokoll:** Der Pi schreibt laufend auf, wie viel Speicher und Rechenleistung er
   braucht, damit sich unerwartete Neustarts im Nachhinein erklären lassen.
 
-Ob das Programm dauerhaft auf dem Pi bleibt, ist noch offen.
+Der Umzug auf einen VPS ist vorbereitet (Stand 27.10.2026: installiert und geprüft, der Handtest
+und die Cron-Umstellung stehen aus); danach wird der Pi stillgelegt. Dafür gibt es `install.sh` und
+ein einmaliges Backup, siehe [docs/vps.md](docs/vps.md). `backup.sh` sichert seitdem nur noch die
+Anmeldedaten der Weboberfläche (verschlüsselt) sowie Einstellungen, Modelle, Zustand und Videos; SSH-Schlüssel
+sind nicht mehr dabei.
 
-Details zu Sicherung, Neuinstallation und Absturzprotokoll: [docs/raspberry-pi.md](docs/raspberry-pi.md).
+Details zu Neuinstallation und Absturzprotokoll des Pi: [docs/raspberry-pi.md](docs/raspberry-pi.md).
 
 ---
 
@@ -649,7 +653,7 @@ Fertig und im täglichen Einsatz:
   Löschen
 - automatische Wiederholung nach Stromausfall, Protokolle, Aufräumen alter Videos
 - Erkennung leerer, abgeschnittener und doppelter Bilder
-- Sicherung (verschlüsselt) und Wiederherstellung des Raspberry Pi
+- Installationsskript `install.sh` für einen frischen Debian- oder Ubuntu-Host
 - Speicherfilter, Yearly-Backfill und Werkzeuge für das NAS-Archiv
 - automatische Tests bei jeder Änderung
 
@@ -657,6 +661,7 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
+- Betrieb auf dem VPS: installiert und mit `install.sh verify` geprüft, Handtest und Cron stehen aus
 
 ---
 
@@ -664,8 +669,8 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - die fertigen Videos automatisch auf die echte Website bringen
 - Verpixelung neuer Bilder laufend (alle paar Minuten) starten
-- eine Installationsanleitung und ein Installationsskript für einen beliebigen Server, falls das
-  Programm vom Raspberry Pi umzieht
+- VPS: Handtest mit einer Kamera, Cron umstellen, HTTPS (Zertifikat per DNS-Prüfung bei Hetzner),
+  per Weboberfläche gestartete Jobs (sie lesen noch aus `/mnt/cameras`); Liste in [docs/vps.md](docs/vps.md)
 
 ---
 
@@ -686,7 +691,8 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [cli.md](docs/cli.md) | alle Befehle und Optionen |
 | [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill, Staging für Hosts ohne Mount |
 | [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
-| [raspberry-pi.md](docs/raspberry-pi.md) | Sicherung, Neuinstallation, Absturzprotokoll |
+| [vps.md](docs/vps.md) | Umzug auf einen VPS: Backup, `install.sh`, Handtest, bekannte Lücken |
+| [raspberry-pi.md](docs/raspberry-pi.md) | Neuinstallation des Pi, Absturzprotokoll |
 | [docker.md](docs/docker.md) | Versuch mit Docker (derzeit nicht im Einsatz) |
 | [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
 | [youtube-description-prompt.md](docs/youtube-description-prompt.md), [youtube-texts.md](docs/youtube-texts.md) | Texte für YouTube-Beschreibungen |

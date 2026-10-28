@@ -95,8 +95,10 @@ grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
 ## Installation
 
 Kurzfassung als Checkliste. Die vollständigen Schritte stehen im
-[README unter Installation](../README.md#installation); für einen Raspberry Pi mit vorhandener
-Sicherung erledigt `migrate.sh` alles ([raspberry-pi.md](raspberry-pi.md)).
+[README unter Installation](../README.md#installation); auf einem frischen Debian- oder
+Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte, ohne SSHFS-Mount
+([vps.md](vps.md)). Ein Pi mit einem Backup von vor dem 27.10.2026 geht noch mit `migrate.sh`
+([raspberry-pi.md](raspberry-pi.md)).
 
 | # | Schritt | Funktioniert, wenn |
 |---|---|---|
@@ -196,7 +198,8 @@ Auf dem eigenen Rechner (macOS, Linux, Windows mit WSL) im Repository-Ordner:
 SKIP_VIDEOS=1 ./backup.sh    # ohne Videos
 ```
 
-Wiederherstellung: [raspberry-pi.md](raspberry-pi.md).
+Einspielen auf einem neuen Host: [vps.md](vps.md). Das Backup enthält nur noch die htpasswd
+verschlüsselt, dazu `config.json`, Crontab (nur zum Nachlesen), `models/`, `state/` und `videos/`.
 
 ---
 

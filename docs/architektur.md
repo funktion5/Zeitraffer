@@ -309,6 +309,7 @@ timelapse/
 ├── Dockerfile
 ├── .dockerignore
 ├── .gitignore
+├── install.sh
 ├── migrate.sh
 ├── pyproject.toml
 ├── README.md
@@ -322,8 +323,10 @@ werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind n
 Was in welcher Datei unter `docs/` steht, listet das README unter
 [Dokumentation](../README.md#dokumentation).
 
-`backup.sh` und `migrate.sh` sichern bzw. stellen einen Raspberry Pi bei einer Neuinstallation
-wieder her; siehe [Neuinstallation des Raspberry Pi](raspberry-pi.md#neuinstallation-des-raspberry-pi).
+`install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne SSHFS-Mount);
+`backup.sh` holt dafür einmalig, was nicht im Git liegt. Ablauf: [vps.md](vps.md). `migrate.sh`
+stellt nur noch einen Pi mit einem älteren Backup wieder her; siehe
+[Neuinstallation des Raspberry Pi](raspberry-pi.md#neuinstallation-des-raspberry-pi).
 `scripts/stage-frames.py` und `scripts/timelapse-nightly-staged` sind der Weg für einen Host ohne
 SSHFS-Mount; siehe [werkzeuge.md](werkzeuge.md#staging-für-hosts-ohne-mount).
 
