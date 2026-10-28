@@ -33,13 +33,9 @@ def get_frame_source() -> FrameSource:
 	return LocalFrameSource(CAMERA_ROOT)
 
 
-# Returns all available camera directories from the mounted camera storage.
+# Returns all available cameras from the frame source, sorted: a source need not list in order.
 def get_cameras():
-	return sorted(
-		path.name
-		for path in CAMERA_ROOT.iterdir()
-		if path.is_dir() and not path.name.startswith(".")
-	)
+	return sorted(get_frame_source().list_cameras())
 
 
 # Return the requested cameras without duplicates; unknown names are an error.

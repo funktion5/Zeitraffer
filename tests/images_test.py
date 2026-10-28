@@ -182,6 +182,17 @@ def test_get_cameras():
 	assert all(not camera.startswith(".") for camera in cameras)
 
 
+def test_get_cameras_uses_the_frame_source(monkeypatch):
+	class FakeSource:
+		# Unsorted on purpose: a listing over ssh comes back in no particular order.
+		def list_cameras(self):
+			return ["B", "A"]
+
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeSource())
+
+	assert get_cameras() == ["A", "B"]
+
+
 def test_get_image_range(tmp_path, monkeypatch):
 	camera_root = tmp_path / "cameras"
 	camera_directory = camera_root / "Test-Camera"
