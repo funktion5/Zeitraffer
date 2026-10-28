@@ -465,6 +465,7 @@ normalen Betrieb auf dem Pi ist keine davon nötig.
 |---|---|---|
 | `TIMELAPSE_CAMERA_ROOT` | `/mnt/cameras` | Ordner mit den Kamerabildern, z. B. ein Staging-Ordner statt des SSHFS-Mounts |
 | `TIMELAPSE_STORAGE_BOX` | aus dem SSHFS-Mount | Storage Box für Speicherfilter, Verpixelung und Staging auf Hosts ohne Mount: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen in `~/.ssh/config` unter dem Alias, nie im Repository |
+| `TIMELAPSE_FRAME_SOURCE` | `local` | Woher die Jobs die Kamerabilder lesen: `local` (Ordner, siehe `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box aus `TIMELAPSE_STORAGE_BOX`, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Im Aufbau: `ssh` kann bisher nur listen, das Holen der Bilder folgt |
 | `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
 | `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
 | `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |

@@ -1,5 +1,9 @@
 import json
+import multiprocessing
+import os
+import stat
 import subprocess
+from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -8,11 +12,15 @@ import pytest
 import src.frame_source as frame_source_module
 import src.images as images_module
 from src.frame_source import (
+	FRAME_CACHE_ENV,
+	FRAME_CACHE_MARKER,
 	NAME_LISTING_TIMEOUT_SECONDS,
 	FrameFetchError,
 	LocalFrameSource,
 	SshFrameSource,
+	create_frame_cache,
 )
+from src.storage_filter import StorageBox
 
 
 def test_frame_fetch_error_is_an_oserror():
@@ -218,3 +226,123 @@ def test_ssh_unsafe_names_from_the_box_are_refused(name):
 
 	with pytest.raises(FrameFetchError):
 		source.list_names(name)
+
+
+# The ssh source with a box from the environment, a cache root inside tmp_path and no cache root
+# chosen yet (the monkeypatch round trip makes the test restore "unset" afterwards).
+@pytest.fixture
+def ssh_env(monkeypatch, tmp_path):
+	monkeypatch.setenv("TIMELAPSE_FRAME_SOURCE", "ssh")
+	monkeypatch.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+	monkeypatch.setenv(FRAME_CACHE_ENV, "placeholder")
+	monkeypatch.delenv(FRAME_CACHE_ENV)
+	monkeypatch.setattr(images_module, "PROJECT_ROOT", tmp_path)
+
+	return tmp_path
+
+
+@pytest.mark.parametrize("value", [None, "", "local"])
+def test_unset_or_local_gives_the_local_source(monkeypatch, value):
+	if value is None:
+		monkeypatch.delenv("TIMELAPSE_FRAME_SOURCE", raising=False)
+	else:
+		monkeypatch.setenv("TIMELAPSE_FRAME_SOURCE", value)
+
+	assert images_module.get_frame_source() == LocalFrameSource(images_module.CAMERA_ROOT)
+
+
+def test_ssh_gives_an_ssh_source_with_the_box_from_the_environment(ssh_env):
+	source = images_module.get_frame_source()
+
+	assert isinstance(source, SshFrameSource)
+	assert source.box == StorageBox(remote="box", base_directory="cameras")
+	assert source.cache_root.parent == ssh_env / "temp" / "frame-cache"
+
+
+def test_unknown_value_is_rejected(monkeypatch):
+	monkeypatch.setenv("TIMELAPSE_FRAME_SOURCE", "nfs")
+
+	with pytest.raises(ValueError, match="'local' or 'ssh'"):
+		images_module.get_frame_source()
+
+
+# Choosing the folder must not touch the disk: a run that only lists leaves nothing behind.
+def test_cache_root_is_chosen_once_and_exported_without_creating_it(ssh_env):
+	first = images_module.get_frame_source().cache_root
+	second = images_module.get_frame_source().cache_root
+
+	assert first == second
+	assert os.environ[FRAME_CACHE_ENV] == str(first)
+	assert not first.exists()
+
+
+def test_cache_root_is_created_once_with_a_marker(tmp_path):
+	root = tmp_path / "frame-cache" / "run-1"
+
+	create_frame_cache(root)
+	create_frame_cache(root)
+
+	assert (root / FRAME_CACHE_MARKER).is_file()
+	assert sorted(path.name for path in root.iterdir()) == [FRAME_CACHE_MARKER]
+
+
+# Fetched frames are unblurred and show people: only the login user may read them.
+def test_cache_root_is_owner_only(tmp_path):
+	root = tmp_path / "frame-cache" / "run-1"
+	old_umask = os.umask(0o002)
+
+	try:
+		create_frame_cache(root)
+		assert stat.S_IMODE(root.stat().st_mode) == 0o700
+
+		# A folder that already exists with looser rights is tightened too.
+		root.chmod(0o777)
+		create_frame_cache(root)
+		assert stat.S_IMODE(root.stat().st_mode) == 0o700
+
+	finally:
+		os.umask(old_umask)
+
+
+# macOS (and future Python defaults) start workers with "spawn", which shares no module variables.
+def test_spawned_child_process_sees_the_same_cache_root(ssh_env):
+	root = images_module.get_frame_source().cache_root
+
+	with multiprocessing.get_context("spawn").Pool(1) as pool:
+		assert pool.apply(os.getenv, (FRAME_CACHE_ENV,)) == str(root)
+
+
+# A root chosen inside a worker never reaches the parent, whose cleanup would then find nothing and
+# leave unblurred frames on disk. So the parent has to choose it before the worker is started.
+def start_images_scan():
+	day = date(2026, 9, 16)
+	noon = datetime(2026, 9, 16, 12)
+	images_module.find_images_isolated("Alpha", day, noon, noon, 0, 1)
+
+
+def start_daily_scan():
+	day = date(2026, 9, 16)
+	noon = datetime(2026, 9, 16, 12)
+	images_module.find_daily_images_isolated("Alpha", day, noon, noon, day, 0, 1)
+
+
+def start_interval_scan():
+	day = date(2026, 9, 16)
+	images_module.find_interval_images_isolated("Alpha", day, day, 1, {}, 90)
+
+
+@pytest.mark.parametrize("start_scan", [start_images_scan, start_daily_scan, start_interval_scan])
+def test_a_worker_that_is_the_first_caller_does_not_create_its_own_root(
+	ssh_env, monkeypatch, start_scan
+):
+	seen = []
+
+	def fake_run_isolated_worker(**kwargs):
+		seen.append(os.environ.get(FRAME_CACHE_ENV))
+		return []
+
+	monkeypatch.setattr(images_module, "run_isolated_worker", fake_run_isolated_worker)
+
+	start_scan()
+
+	assert seen[0] is not None

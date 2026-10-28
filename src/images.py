@@ -7,7 +7,8 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from src.frame_source import FrameSource, LocalFrameSource
+from src.config import PROJECT_ROOT
+from src.frame_source import FrameSource, LocalFrameSource, SshFrameSource, frame_cache_root
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
@@ -28,9 +29,31 @@ class ImageRange:
 	unrecognized_files: int
 
 
+FRAME_SOURCE_ENV = "TIMELAPSE_FRAME_SOURCE"
+
+
 # Built on every call, not once at import, so a patched CAMERA_ROOT keeps working in tests.
+# "ssh" is a switch of its own, not implied by TIMELAPSE_STORAGE_BOX: that one is already set on
+# hosts for the blur jobs and must not change where the frames come from.
 def get_frame_source() -> FrameSource:
-	return LocalFrameSource(CAMERA_ROOT)
+	kind = os.environ.get(FRAME_SOURCE_ENV) or "local"
+
+	if kind == "local":
+		return LocalFrameSource(CAMERA_ROOT)
+
+	if kind == "ssh":
+		# Imported here: storage_filter imports this module.
+		from src.storage_filter import get_storage_box
+
+		return SshFrameSource(get_storage_box(), frame_cache_root(PROJECT_ROOT))
+
+	raise ValueError(f"{FRAME_SOURCE_ENV} must be 'local' or 'ssh', not {kind!r}")
+
+
+# Workers inherit the cache root through the environment, so it has to be chosen here, in the
+# parent, before the first worker starts. Also fails early when the ssh source is misconfigured.
+def _prepare_frame_source() -> None:
+	get_frame_source()
 
 
 # Returns all available cameras from the frame source, sorted: a source need not list in order.
@@ -699,6 +722,8 @@ def find_images_isolated(
 	daylight_buffer_minutes: int,
 	stall_timeout_seconds: float,
 ) -> list[Path]:
+	_prepare_frame_source()
+
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_images_worker,
@@ -724,6 +749,8 @@ def find_daily_images_isolated(
 	daylight_buffer_minutes: int,
 	stall_timeout_seconds: float,
 ) -> list[Path]:
+	_prepare_frame_source()
+
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_daily_images_worker,
@@ -768,6 +795,8 @@ def find_interval_images_isolated(
 	tolerance_minutes: int,
 	remove_duplicates_by_date: bool = False,
 ) -> list[Path]:
+	_prepare_frame_source()
+
 	return run_isolated_worker(
 		camera=camera,
 		target=_find_interval_images_worker,

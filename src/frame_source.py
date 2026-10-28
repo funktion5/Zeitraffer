@@ -1,4 +1,5 @@
 import os
+import secrets
 import shlex
 import subprocess
 from collections.abc import Callable, Iterable, Iterator
@@ -31,6 +32,35 @@ def checked_name(name: str) -> str:
 		raise FrameFetchError(f"Refusing unsafe name from the storage box: {name!r}")
 
 	return name
+
+
+# Fetched frames are unblurred, so they live in a folder of their own under temp/ that only this
+# user can read. The folder is chosen once per run and handed to every worker process through the
+# environment: a worker started with "spawn" (macOS) shares no module variables, and a root chosen
+# inside a worker would never reach the parent, whose cleanup would then find nothing.
+FRAME_CACHE_ENV = "TIMELAPSE_FRAME_CACHE"
+FRAME_CACHE_MARKER = ".frame-cache"
+
+
+# Only names the folder: nothing is created on disk until frames are fetched, so a run that merely
+# lists leaves nothing behind.
+def frame_cache_root(project_root: Path) -> Path:
+	configured = os.environ.get(FRAME_CACHE_ENV)
+
+	if configured:
+		return Path(configured)
+
+	root = project_root / "temp" / "frame-cache" / f"{os.getpid()}-{secrets.token_hex(4)}"
+	os.environ[FRAME_CACHE_ENV] = str(root)
+
+	return root
+
+
+# The marker lets the guarded cleanup tell this folder from any other under temp/.
+def create_frame_cache(root: Path) -> None:
+	root.mkdir(mode=0o700, parents=True, exist_ok=True)
+	root.chmod(0o700)
+	(root / FRAME_CACHE_MARKER).touch()
 
 
 # Where camera frames come from. The frame-reading code asks a source for names and paths and
