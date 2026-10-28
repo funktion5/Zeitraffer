@@ -150,9 +150,11 @@ Tests (fake `subprocess.Popen` and `time.sleep`): `test_fetch_runs_rsync_with_nu
 
 **Files:** Modify `src/frame_source.py`; Test `tests/frame_source_test.py`.
 
-**Interfaces:** `SshFrameSource.release(camera) -> None` and `release_all() -> None` remove `cache_root/camera` or the whole cache root, but only when `cache_root` carries the `.frame-cache` marker and resolves strictly inside `<PROJECT_ROOT>/temp`; unsafe camera names (containing `/`, `.` or `..`) raise `ValueError`.
+**Interfaces:** `SshFrameSource.release(camera) -> None` and `release_all() -> None` remove `cache_root/camera` or the whole cache root. `SshFrameSource` gets a third field `temp_root: Path = PROJECT_ROOT / "temp"` (`build_frame_source` passes `project_root / "temp"`). Both raise `ValueError` unless `cache_root` resolves (symlinks followed) strictly inside `temp_root` and carries the `.frame-cache` marker; unsafe camera names (containing `/`, `.` or `..`, or empty) raise `ValueError`; a missing folder is fine; any other deletion error is raised, because frames left behind unnoticed are unblurred.
 
-Tests: `test_release_removes_only_the_named_camera_folder`, `test_release_all_removes_the_cache_root`, `test_release_refuses_a_cache_root_without_the_marker`, `test_release_refuses_a_root_outside_temp`, `test_release_refuses_unsafe_camera_names`, `test_release_ignores_a_missing_folder` (Review Focus 5).
+Tests: `test_release_removes_only_the_named_camera_folder`, `test_release_all_removes_the_cache_root`, `test_release_refuses_a_cache_root_without_the_marker`, `test_release_refuses_a_root_outside_temp` (a folder elsewhere, `temp/` itself and a symlink leading out), `test_release_refuses_unsafe_camera_names`, `test_release_ignores_a_missing_folder` (Review Focus 5).
+
+**Not part of this task, still open (Review Focus 8):** a worker stopped on a stall gets SIGTERM, then SIGKILL after 1 s (`_stop_worker_process` in `src/image_worker.py`), and nothing in the worker handles SIGTERM, so its rsync child keeps running and can recreate the camera folder after `release`. Proposed Task 12b: (1) in `_run_target` turn SIGTERM into `SystemExit`, and in `SshFrameSource._fetch` wrap the wait in `try/finally` that kills a still-running rsync; (2) a safety net `release_stale()` that removes marker-carrying folders under `temp/frame-cache` older than a day, called when a run starts.
 
 ### Task 13: equivalence of the two sources
 

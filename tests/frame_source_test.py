@@ -261,6 +261,7 @@ def test_ssh_gives_an_ssh_source_with_the_box_from_the_environment(ssh_env):
 	assert isinstance(source, SshFrameSource)
 	assert source.box == StorageBox(remote="box", base_directory="cameras")
 	assert source.cache_root.parent == ssh_env / "temp" / "frame-cache"
+	assert source.temp_root == ssh_env / "temp"
 
 
 def test_unknown_value_is_rejected(monkeypatch):
@@ -576,3 +577,99 @@ def test_localize_refuses_unsafe_names_before_any_rsync(monkeypatch, tmp_path):
 		source.localize("Alpha", [Path("/cache/Alpha/-rf.jpg")])
 
 	assert rsync.calls == []
+
+
+# A source whose cache folder sits inside tmp_path/temp, holds the marker and one frame per camera.
+def source_with_frames(tmp_path, *cameras):
+	root = tmp_path / "temp" / "frame-cache" / "run-1"
+	create_frame_cache(root)
+
+	for camera in cameras:
+		(root / camera).mkdir()
+		(root / camera / "a.jpg").write_bytes(b"frame")
+
+	return SshFrameSource(FakeBox(), root, tmp_path / "temp")
+
+
+def test_release_removes_only_the_named_camera_folder(tmp_path):
+	source = source_with_frames(tmp_path, "Alpha", "Beta")
+
+	source.release("Alpha")
+
+	assert not (source.cache_root / "Alpha").exists()
+	assert (source.cache_root / "Beta" / "a.jpg").is_file()
+	assert (source.cache_root / FRAME_CACHE_MARKER).is_file()
+
+
+def test_release_all_removes_the_cache_root(tmp_path):
+	source = source_with_frames(tmp_path, "Alpha", "Beta")
+
+	source.release_all()
+
+	assert not source.cache_root.exists()
+	assert (tmp_path / "temp" / "frame-cache").is_dir()
+
+
+def test_release_refuses_a_cache_root_without_the_marker(tmp_path):
+	source = source_with_frames(tmp_path, "Alpha")
+	(source.cache_root / FRAME_CACHE_MARKER).unlink()
+
+	with pytest.raises(ValueError, match="marker"):
+		source.release("Alpha")
+
+	with pytest.raises(ValueError, match="marker"):
+		source.release_all()
+
+	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
+
+
+# Strictly inside temp/: a folder elsewhere, temp/ itself and a symlink that leads out all count
+# as outside, and nothing in them is touched.
+def test_release_refuses_a_root_outside_temp(tmp_path):
+	outside = tmp_path / "elsewhere" / "run-1"
+	create_frame_cache(outside)
+	(outside / "Alpha").mkdir()
+	(outside / "Alpha" / "a.jpg").write_bytes(b"frame")
+	temp = tmp_path / "temp"
+	create_frame_cache(temp)
+	link = temp / "frame-cache-link"
+	link.symlink_to(outside)
+
+	for root in (outside, temp, link):
+		source = SshFrameSource(FakeBox(), root, temp)
+
+		with pytest.raises(ValueError, match="inside"):
+			source.release_all()
+
+		with pytest.raises(ValueError, match="inside"):
+			source.release("Alpha")
+
+	assert (outside / "Alpha" / "a.jpg").is_file()
+	assert (temp / FRAME_CACHE_MARKER).is_file()
+
+
+@pytest.mark.parametrize("camera", ["../Beta", "a/b", ".", "..", ""])
+def test_release_refuses_unsafe_camera_names(tmp_path, camera):
+	source = source_with_frames(tmp_path, "Alpha", "Beta")
+
+	with pytest.raises(ValueError, match="camera name"):
+		source.release(camera)
+
+	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
+	assert (source.cache_root / "Beta" / "a.jpg").is_file()
+
+
+# A job that failed before it fetched anything, or a second release, must not raise.
+def test_release_ignores_a_missing_folder(tmp_path):
+	temp = tmp_path / "temp"
+	never_created = SshFrameSource(FakeBox(), temp / "frame-cache" / "run-9", temp)
+
+	never_created.release("Alpha")
+	never_created.release_all()
+
+	source = source_with_frames(tmp_path, "Alpha")
+	source.release("Gamma")
+	source.release("Alpha")
+	source.release("Alpha")
+
+	assert not (source.cache_root / "Alpha").exists()

@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
+from src.config import PROJECT_ROOT
 from src.logger import logger
 
 if TYPE_CHECKING:
@@ -78,6 +79,16 @@ def create_frame_cache(root: Path) -> None:
 	(root / FRAME_CACHE_MARKER).touch()
 
 
+# A folder that is already gone is fine (a job that failed before it fetched anything, or a second
+# release). Any other failure is raised: frames left behind unnoticed would be unblurred.
+def _remove(path: Path) -> None:
+	try:
+		shutil.rmtree(path)
+
+	except FileNotFoundError:
+		pass
+
+
 # Ticks while waiting: a retry wait longer than the stall timeout would otherwise get the worker
 # killed as "stalled" before the retry happens.
 def _sleep_with_progress(seconds: float, progress_callback: Callable[[], None] | None) -> None:
@@ -144,11 +155,13 @@ class LocalFrameSource:
 
 
 # Frames on the Storage Box: names are listed over ssh, files are fetched into a cache folder on
-# this machine. Listing only here; fetching and cleanup follow in the next tasks.
+# this machine and removed again by release().
 @dataclass(frozen=True)
 class SshFrameSource:
 	box: "StorageBox"
 	cache_root: Path
+	# release() only ever deletes strictly inside this folder, see _guarded_root.
+	temp_root: Path = PROJECT_ROOT / "temp"
 
 	def list_cameras(self) -> list[str]:
 		output = self._ls(self.box.base_directory or ".", "camera listing")
@@ -269,6 +282,43 @@ class SshFrameSource:
 		elapsed = time.monotonic() - started
 		logger.info(f"Camera {camera}: fetched {len(missing)} frames in {elapsed:.1f} s")
 
+	# Drops this run's fetched copies of one camera. The caller does it when the camera's job is
+	# done, also after a failure: the frames are unblurred.
+	def release(self, camera: str) -> None:
+		try:
+			checked_name(camera)
+
+		except FrameFetchError as error:
+			raise ValueError(f"Unsafe camera name: {camera!r}") from error
+
+		root = self._guarded_root()
+
+		if root is not None:
+			_remove(root / camera)
+
+	def release_all(self) -> None:
+		root = self._guarded_root()
+
+		if root is not None:
+			_remove(root)
+
+	# Deleting is only ever allowed strictly inside temp/, after resolving symlinks and "..", and
+	# only in a folder that carries the marker, so a wrong cache_root can never wipe anything else.
+	# None means there is nothing to release.
+	def _guarded_root(self) -> Path | None:
+		if not self.cache_root.exists():
+			return None
+
+		root = self.cache_root.resolve()
+
+		if self.temp_root.resolve() not in root.parents:
+			raise ValueError(f"Frame cache must be inside {self.temp_root}: {root}")
+
+		if not (root / FRAME_CACHE_MARKER).is_file():
+			raise ValueError(f"Not a frame cache folder (marker missing): {root}")
+
+		return root
+
 	def _ls(self, directory: str, what: str) -> str:
 		try:
 			result = self.box.run(f"ls -l {shlex.quote(directory)}", NAME_LISTING_TIMEOUT_SECONDS)
@@ -299,6 +349,8 @@ def build_frame_source(camera_root: Path, project_root: Path) -> FrameSource:
 		# Imported here: storage_filter imports src.images, which imports this module.
 		from src.storage_filter import get_storage_box
 
-		return SshFrameSource(get_storage_box(), frame_cache_root(project_root))
+		return SshFrameSource(
+			get_storage_box(), frame_cache_root(project_root), project_root / "temp"
+		)
 
 	raise ValueError(f"{FRAME_SOURCE_ENV} must be 'local' or 'ssh', not {kind!r}")
