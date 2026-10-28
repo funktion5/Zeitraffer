@@ -466,6 +466,49 @@ def test_daily_worker_localizes_previous_day_and_selected_frames_before_filterin
 	]
 
 
+# Only the daylight frames of the date are fetched, before the empty-file filter reads them.
+def test_images_worker_localizes_selected_frames_before_filtering(monkeypatch):
+	names = [
+		"camera_26-09-15_11-00-00-00.jpg",
+		"camera_26-09-16_09-00-00-00.jpg",
+		"camera_26-09-16_11-00-00-00.jpg",
+		"camera_26-09-16_13-00-00-00.jpg",
+		"camera_26-09-16_15-00-00-00.jpg",
+	]
+	source = FakeFrameSource(names)
+
+	def fake_filter_empty_images(camera, images, progress_callback):
+		assert len(source.localized) == 1
+		return images
+
+	def progress():
+		pass
+
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: source)
+	monkeypatch.setattr(images_module, "filter_empty_images", fake_filter_empty_images)
+	timezone = ZoneInfo("Europe/Berlin")
+
+	images_module._find_images_worker(
+		camera="Test-Camera",
+		target_date=date(2026, 9, 16),
+		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
+		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
+		daylight_buffer_minutes=0,
+		progress_callback=progress,
+	)
+
+	assert source.localized == [
+		(
+			"Test-Camera",
+			[
+				Path("/cache/Test-Camera/camera_26-09-16_11-00-00-00.jpg"),
+				Path("/cache/Test-Camera/camera_26-09-16_13-00-00-00.jpg"),
+			],
+			progress,
+		)
+	]
+
+
 # Daily discovery must remove previous-day content in one camera scan.
 def test_find_daily_images_worker_filters_previous_and_current_duplicates(
 	tmp_path,

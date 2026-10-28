@@ -595,7 +595,9 @@ def _find_images_worker(
 		daylight_buffer_minutes=daylight_buffer_minutes,
 	)
 
-	# Validate only selected images to avoid unnecessary metadata access.
+	# Fetch and validate only selected images to avoid unnecessary metadata access.
+	get_frame_source().localize(camera, images, progress_callback)
+
 	return filter_empty_images(
 		camera=camera,
 		images=images,
