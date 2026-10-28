@@ -1124,6 +1124,39 @@ def test_find_daily_images_isolated_uses_shared_worker_supervisor(monkeypatch):
 	]
 
 
+# Window and tolerance apply to the names the frame source lists; the paths come from it too.
+def test_find_interval_images_reads_names_from_the_source(monkeypatch):
+	# Dropped: 61 min from noon, before the range, not a jpg, no date. The other three stay.
+	names = [
+		"20260916T120500.jpg",
+		"20260915T123000.jpg",
+		"20260916T115500.jpg",
+		"20260915T130100.jpg",
+		"20260914T120000.jpg",
+		"20260915T120000.txt",
+		"unknown-format.jpg",
+	]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+	progress_calls = []
+
+	result = find_interval_images(
+		camera="Test-Camera",
+		start_date=date(2026, 9, 15),
+		end_date=date(2026, 9, 16),
+		target_seconds_by_date=NOON,
+		tolerance_minutes=30,
+		progress_callback=lambda: progress_calls.append(1),
+	)
+
+	# Sorted by date and capture time, not by listing order.
+	assert result == [
+		Path("/cache/Test-Camera/20260915T123000.jpg"),
+		Path("/cache/Test-Camera/20260916T115500.jpg"),
+		Path("/cache/Test-Camera/20260916T120500.jpg"),
+	]
+	assert len(progress_calls) == 7
+
+
 def test_find_interval_images_returns_all_images_inside_daily_window(
 	tmp_path,
 	monkeypatch,

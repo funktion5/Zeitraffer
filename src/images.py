@@ -280,48 +280,47 @@ def find_interval_images(
 	tolerance_minutes: int = 90,
 	progress_callback: Callable[[], None] | None = None,
 ) -> list[Path]:
-	camera_path = CAMERA_ROOT / camera
+	source = get_frame_source()
 	images: list[tuple[date, int, Path]] = []
 
 	tolerance_seconds = tolerance_minutes * 60
 
-	with os.scandir(camera_path) as entries:
-		for entry in entries:
-			if progress_callback is not None:
-				progress_callback()
+	for name in source.list_names(camera):
+		if progress_callback is not None:
+			progress_callback()
 
-			if not entry.name.lower().endswith(".jpg"):
-				continue
+		if not name.lower().endswith(".jpg"):
+			continue
 
-			image_date = extract_date(entry.name)
+		image_date = extract_date(name)
 
-			if image_date is None:
-				continue
+		if image_date is None:
+			continue
 
-			if not (start_date <= image_date <= end_date):
-				continue
+		if not (start_date <= image_date <= end_date):
+			continue
 
-			image_time = extract_time(entry.name)
+		image_time = extract_time(name)
 
-			if image_time is None:
-				continue
+		if image_time is None:
+			continue
 
-			hour, minute, second = image_time
+		hour, minute, second = image_time
 
-			capture_seconds = hour * 60 * 60 + minute * 60 + second
+		capture_seconds = hour * 60 * 60 + minute * 60 + second
 
-			distance_seconds = abs(capture_seconds - target_seconds_by_date[image_date])
+		distance_seconds = abs(capture_seconds - target_seconds_by_date[image_date])
 
-			if distance_seconds > tolerance_seconds:
-				continue
+		if distance_seconds > tolerance_seconds:
+			continue
 
-			images.append(
-				(
-					image_date,
-					capture_seconds,
-					camera_path / entry.name,
-				)
+		images.append(
+			(
+				image_date,
+				capture_seconds,
+				source.path_for(camera, name),
 			)
+		)
 
 	images.sort()
 
