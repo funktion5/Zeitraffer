@@ -352,6 +352,39 @@ def test_find_images_for_dates_returns_empty_requested_date(
 	assert result == {target_date: []}
 
 
+# The names and the paths both come from the frame source, not from CAMERA_ROOT.
+def test_find_images_for_dates_uses_names_and_paths_from_the_source(monkeypatch):
+	class FakeSource:
+		def list_names(self, camera):
+			return [
+				"a_20260101T1000.jpg",
+				"camera_260101_130000.JPG",
+				"c_20260101T1100.txt",
+				"d_20260102T1000.jpg",
+			]
+
+		def path_for(self, camera, name):
+			return Path("/cache") / camera / name
+
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeSource())
+	progress_calls = []
+
+	result = find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[date(2026, 1, 1)],
+		progress_callback=lambda: progress_calls.append(1),
+	)
+
+	assert result == {
+		date(2026, 1, 1): [
+			Path("/cache/Test-Camera/a_20260101T1000.jpg"),
+			Path("/cache/Test-Camera/camera_260101_130000.JPG"),
+		]
+	}
+	# Once per listed name, as the scandir loop did per entry.
+	assert len(progress_calls) == 4
+
+
 # Daily discovery must remove previous-day content in one camera scan.
 def test_find_daily_images_worker_filters_previous_and_current_duplicates(
 	tmp_path,

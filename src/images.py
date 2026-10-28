@@ -69,27 +69,26 @@ def find_images_for_dates(
 	target_dates: list[date],
 	progress_callback: Callable[[], None] | None = None,
 ) -> dict[date, list[Path]]:
-	camera_path = CAMERA_ROOT / camera
+	source = get_frame_source()
 	unique_dates = list(dict.fromkeys(target_dates))
 
 	patterns_by_date = {target_date: date_patterns(target_date) for target_date in unique_dates}
 	images_by_date = {target_date: [] for target_date in unique_dates}
 
-	# Scan the camera directory once and match known date formats by filename.
-	with os.scandir(camera_path) as entries:
-		for entry in entries:
-			if progress_callback is not None:
-				progress_callback()
+	# List the camera once and match known date formats by filename.
+	for name in source.list_names(camera):
+		if progress_callback is not None:
+			progress_callback()
 
-			if not entry.name.lower().endswith(".jpg"):
+		if not name.lower().endswith(".jpg"):
+			continue
+
+		for target_date, target_patterns in patterns_by_date.items():
+			if not any(date_pattern in name for date_pattern in target_patterns):
 				continue
 
-			for target_date, target_patterns in patterns_by_date.items():
-				if not any(date_pattern in entry.name for date_pattern in target_patterns):
-					continue
-
-				images_by_date[target_date].append(camera_path / entry.name)
-				break
+			images_by_date[target_date].append(source.path_for(camera, name))
+			break
 
 	return {target_date: sorted(images) for target_date, images in images_by_date.items()}
 
