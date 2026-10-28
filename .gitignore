@@ -47,3 +47,7 @@ sandbox/
 
 # Docker trial: local volumes (results, SSH files for the storage box)
 docker-data/
+
+# Exports and reports (attendee lists and the like) hold personal data and never belong in git
+report-*.csv
+frontend/*.csv

@@ -661,6 +661,14 @@ def test_read_only_ssh_modules_send_no_write_commands() -> None:
 			assert not re.search(rf"(^|\s)({verbs})(\s|$)", string), f"{module}: {string!r}"
 
 
+# A pull must not delete or move anything on the box either: rsync options that do (for example
+# --remove-source-files) are forbidden for the pull-only modules, whatever the command direction.
+def test_pull_only_modules_use_no_rsync_option_that_changes_the_box() -> None:
+	for module in PULL_ONLY_SSH_MODULES:
+		for string in _string_constants(PROJECT_ROOT / module):
+			assert not re.match(r"--(delete|remove)", string), f"{module}: {string!r}"
+
+
 def test_camera_mount_stays_read_only() -> None:
 	unit = (PROJECT_ROOT / "systemd" / "cameras-sshfs.service").read_text(encoding="utf-8")
 	exec_start = next(line for line in unit.splitlines() if line.startswith("ExecStart="))

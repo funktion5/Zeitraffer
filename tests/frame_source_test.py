@@ -2,8 +2,10 @@ import itertools
 import json
 import multiprocessing
 import os
+import signal
 import stat
 import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -183,26 +185,48 @@ def test_ssh_listing_timeout_is_below_the_configured_stall_timeout():
 	assert NAME_LISTING_TIMEOUT_SECONDS < stall_timeout
 
 
-# Names come from a remote system and end up in local paths and the rsync file list.
-@pytest.mark.parametrize("name", ["../../x.jpg", "..", "-rf.jpg", "tab\there.jpg", "a/b.jpg"])
-def test_ssh_unsafe_names_from_the_box_are_refused(name):
-	source = SshFrameSource(FakeBox([LS_FILE.format(name)]), Path("/cache"))
+UNSAFE_NAMES = ["../../x.jpg", "..", "-rf.jpg", "tab\there.jpg", "a/b.jpg"]
+# Spaces and shell characters are fine in a file name (names travel in a file list) but not in a
+# camera name, which goes into rsync's remote path: older rsync versions pass that to the box's
+# shell.
+UNSAFE_CAMERAS = [*UNSAFE_NAMES, "a b", "a;b", "$HOME", "a`b`", "a'b", "Caf\u00e9"]
+
+
+# Names come from a remote system. One odd entry must not take a whole camera, or every camera,
+# down (the local source simply counts such a file), so a listing skips it and reports it.
+@pytest.mark.parametrize("name", UNSAFE_NAMES)
+def test_ssh_listing_skips_unsafe_file_names_and_keeps_the_rest(name):
+	box = FakeBox([LS_FILE.format(name), LS_FILE.format("ok.jpg")])
+
+	assert SshFrameSource(box, Path("/cache")).list_names("Alpha") == ["ok.jpg"]
+
+
+@pytest.mark.parametrize("name", UNSAFE_CAMERAS)
+def test_ssh_camera_listing_skips_unsafe_camera_names(name):
+	box = FakeBox([LS_DIRECTORY.format(name), LS_DIRECTORY.format("Alpha")])
+
+	assert SshFrameSource(box, Path("/cache")).list_cameras() == ["Alpha"]
+
+
+# Asking for a path to such a name is a bug or an attack, and raises.
+@pytest.mark.parametrize("name", UNSAFE_NAMES)
+def test_ssh_path_for_refuses_unsafe_file_names(name):
+	with pytest.raises(FrameFetchError):
+		SshFrameSource(FakeBox(), Path("/cache")).path_for("Alpha", name)
+
+
+@pytest.mark.parametrize("camera", UNSAFE_CAMERAS)
+def test_ssh_refuses_unsafe_camera_names_everywhere(camera):
+	source = SshFrameSource(FakeBox(), Path("/cache"))
 
 	with pytest.raises(FrameFetchError):
-		source.list_names("Alpha")
+		source.list_names(camera)
 
 	with pytest.raises(FrameFetchError):
-		SshFrameSource(FakeBox([LS_DIRECTORY.format(name)]), Path("/cache")).list_cameras()
-
-	# The same check guards the one place that builds local paths, and the camera argument.
-	with pytest.raises(FrameFetchError):
-		source.path_for("Alpha", name)
+		source.path_for(camera, "a.jpg")
 
 	with pytest.raises(FrameFetchError):
-		source.path_for(name, "a.jpg")
-
-	with pytest.raises(FrameFetchError):
-		source.list_names(name)
+		source.localize(camera, [Path("/cache/x/a.jpg")])
 
 
 # The ssh source with a box from the environment, a cache root inside tmp_path and no cache root
@@ -338,13 +362,25 @@ class FakeRsync:
 		self.interrupt = interrupt
 		self.calls = []
 		self.inputs = []
+		self.processes = []
 		self.killed = 0
 
 	def __call__(self, command, **kwargs):
 		self.calls.append((command, kwargs))
 		exit_code = self.exit_codes[min(len(self.calls), len(self.exit_codes)) - 1]
+		# A pid no system has, so a missing patch of os.killpg could never hit a real process group.
+		process = FakeProcess(self, command, exit_code, 9_000_000 + len(self.calls))
+		self.processes.append(process)
 
-		return FakeProcess(self, command, exit_code)
+		return process
+
+	# Stands in for os.killpg: rsync was started as a session leader, so its group is its pid.
+	def killpg(self, group_id, signal_number):
+		assert signal_number == signal.SIGKILL
+
+		for process in self.processes:
+			if process.pid == group_id:
+				process.kill()
 
 	# The names sent to rsync on standard input in call number `index`.
 	def names(self, index):
@@ -352,8 +388,9 @@ class FakeRsync:
 
 
 class FakeProcess:
-	def __init__(self, rsync, command, exit_code):
+	def __init__(self, rsync, command, exit_code, pid):
 		self.rsync = rsync
+		self.pid = pid
 		self.command = command
 		self.exit_code = exit_code
 		self.input = None
@@ -395,9 +432,11 @@ def fetcher(monkeypatch, tmp_path, *exit_codes, stderr=b"", slow_rounds=0, inter
 	rsync = FakeRsync(*exit_codes, stderr=stderr, slow_rounds=slow_rounds, interrupt=interrupt)
 	sleeps = []
 	monkeypatch.setattr(frame_source_module.subprocess, "Popen", rsync)
+	monkeypatch.setattr(frame_source_module.os, "killpg", rsync.killpg)
 	monkeypatch.setattr(frame_source_module.time, "sleep", sleeps.append)
 
-	return SshFrameSource(FakeBox(), tmp_path / "cache"), rsync, sleeps
+	# temp_root is tmp_path, so the cache folder counts as inside it for the guarded cleanup.
+	return SshFrameSource(FakeBox(), tmp_path / "cache", tmp_path), rsync, sleeps
 
 
 def frames(source, *names):
@@ -416,6 +455,8 @@ def test_fetch_runs_rsync_with_nul_separated_names(monkeypatch, tmp_path):
 	assert f"--timeout={RSYNC_IDLE_TIMEOUT_SECONDS}" in command
 	assert "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes" in command
 	assert rsync.inputs[0] == b"a.jpg\0b.jpg\0"
+	# Its own process group, so one signal reaches rsync and the processes it starts.
+	assert rsync.calls[0][1]["start_new_session"] is True
 	assert all(path.is_file() for path in frames(source, "a.jpg", "b.jpg"))
 	assert (tmp_path / "cache" / FRAME_CACHE_MARKER).is_file()
 
@@ -672,35 +713,54 @@ def test_rsync_is_killed_when_the_worker_is_told_to_stop(monkeypatch, tmp_path):
 	assert len(rsync.calls) == 1
 
 
-# Folders under temp/frame-cache the way an earlier run leaves them: two with the marker, and one
-# without it that is none of our business.
+# A process id that belonged to a process that has ended.
+def dead_pid():
+	process = subprocess.Popen([sys.executable, "-c", "pass"])
+	process.wait()
+
+	return process.pid
+
+
+# Folders under temp/frame-cache the way runs leave them: one of a run that is over, one of a run
+# that is still going (this process), and three that are none of our business.
 def leftover_cache(tmp_path):
 	parent = tmp_path / "temp" / "frame-cache"
+	folders = {
+		"over": f"{dead_pid()}-aaaaaaaa",
+		"running": f"{os.getpid()}-bbbbbbbb",
+		"no-marker": f"{dead_pid()}-cccccccc",
+		"odd-name": "marked-but-odd",
+		"foreign": "foreign",
+	}
 
-	for name, marker in (("run-1", True), ("run-2", True), ("foreign", False)):
+	for key, name in folders.items():
 		folder = parent / name
 		folder.mkdir(parents=True)
 		(folder / "a.jpg").write_bytes(b"frame")
 
-		if marker:
+		if key in ("over", "running", "odd-name"):
 			(folder / FRAME_CACHE_MARKER).touch()
 
-	return parent
+	return {key: parent / name for key, name in folders.items()}
 
 
-def test_release_leftovers_removes_every_folder_with_the_marker(tmp_path):
-	parent = leftover_cache(tmp_path)
+# Another job may be running (a flagger or backfill that starts while the nightly run works, before
+# it holds the run lock), so only the folders of runs that are over are removed.
+def test_release_leftovers_removes_only_folders_of_runs_that_are_over(tmp_path):
+	folders = leftover_cache(tmp_path)
 
 	release_leftovers(tmp_path / "temp")
 
-	assert not (parent / "run-1").exists()
-	assert not (parent / "run-2").exists()
-	assert (parent / "foreign" / "a.jpg").is_file()
+	assert not folders["over"].exists()
+	assert (folders["running"] / "a.jpg").is_file()
+	assert (folders["no-marker"] / "a.jpg").is_file()
+	assert (folders["odd-name"] / "a.jpg").is_file()
+	assert (folders["foreign"] / "a.jpg").is_file()
 
 
 def test_release_leftovers_does_not_follow_a_symlinked_cache_folder(tmp_path):
 	outside = tmp_path / "elsewhere" / "frame-cache"
-	leftover = outside / "run-1"
+	leftover = outside / f"{dead_pid()}-aaaaaaaa"
 	leftover.mkdir(parents=True)
 	(leftover / FRAME_CACHE_MARKER).touch()
 	temp = tmp_path / "temp"
@@ -719,17 +779,43 @@ def test_release_leftovers_without_a_cache_folder_does_nothing(tmp_path):
 
 
 # A run that starts clears what an earlier run left behind (a crash, a hard kill). It does so once:
-# later calls in the same run reuse the exported root and must never clear the run's own cache.
+# later calls in the same run reuse the exported root and must never clear anything again.
 def test_choosing_a_new_cache_root_clears_leftovers_once(ssh_env):
-	parent = leftover_cache(ssh_env)
+	folders = leftover_cache(ssh_env)
 
 	images_module.get_frame_source()
 
-	assert not (parent / "run-1").exists()
-	assert (parent / "foreign").is_dir()
+	assert not folders["over"].exists()
+	assert folders["running"].is_dir()
 
-	(parent / "run-3").mkdir()
-	(parent / "run-3" / FRAME_CACHE_MARKER).touch()
+	again = folders["over"].parent / f"{dead_pid()}-dddddddd"
+	again.mkdir()
+	(again / FRAME_CACHE_MARKER).touch()
 	images_module.get_frame_source()
 
-	assert (parent / "run-3").is_dir()
+	assert again.is_dir()
+
+
+# TIMELAPSE_FRAME_CACHE is an environment variable: a stray export in a shell or crontab must not
+# make a run reuse an old folder, or point its cleanup and chmod at an arbitrary directory. Only a
+# folder like <project>/temp/frame-cache/<pid>-<random> is accepted.
+def test_a_cache_root_from_the_environment_must_be_a_run_folder(ssh_env, monkeypatch):
+	parent = ssh_env / "temp" / "frame-cache"
+	elsewhere = ssh_env / "other" / "frame-cache" / "12-aaaaaaaa"
+	rejected = [
+		ssh_env,
+		parent,
+		parent / "not-a-run",
+		parent / "12-xyz",
+		parent / "12-aaaaaaaa" / "x",
+	]
+
+	for value in [*rejected, elsewhere]:
+		monkeypatch.setenv(FRAME_CACHE_ENV, str(value))
+
+		with pytest.raises(ValueError, match=FRAME_CACHE_ENV):
+			images_module.get_frame_source()
+
+	monkeypatch.setenv(FRAME_CACHE_ENV, str(parent / "12-aaaaaaaa"))
+
+	assert images_module.get_frame_source().cache_root == parent / "12-aaaaaaaa"

@@ -1,7 +1,9 @@
 import os
+import re
 import secrets
 import shlex
 import shutil
+import signal
 import subprocess
 import time
 from collections.abc import Callable, Iterable, Iterator
@@ -40,14 +42,49 @@ class FrameFetchError(OSError):
 
 # Names from the storage box are data from a remote system and end up in local paths and the rsync
 # file list. Anything that could leave the cache folder, be read as an option, or fake a second
-# `ls -l` line is refused loudly, not cleaned up.
-def checked_name(name: str) -> str:
+# `ls -l` line is unsafe. A listing skips such an entry and reports it, so one odd file cannot take
+# a whole camera down; asking for a path to one is a bug or an attack and raises.
+def is_safe_name(name: str) -> bool:
 	unsafe = not name or not name.isprintable() or "/" in name or name in (".", "..")
 
-	if unsafe or name.startswith("-"):
+	return not unsafe and not name.startswith("-")
+
+
+def checked_name(name: str) -> str:
+	if not is_safe_name(name):
 		raise FrameFetchError(f"Refusing unsafe name from the storage box: {name!r}")
 
 	return name
+
+
+# A camera name also goes into rsync's remote path, which older rsync versions hand to the box's
+# shell, so it is held to a stricter rule than a file name: letters, digits, dots, dashes and
+# underscores only.
+CAMERA_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
+
+
+def is_safe_camera(name: str) -> bool:
+	return CAMERA_NAME.fullmatch(name) is not None
+
+
+def checked_camera(name: str) -> str:
+	if not is_safe_camera(name):
+		raise FrameFetchError(f"Refusing unsafe camera name from the storage box: {name!r}")
+
+	return name
+
+
+def _skip_unsafe(names: Iterable[str], is_safe: Callable[[str], bool], where: str) -> list[str]:
+	safe = []
+
+	for name in names:
+		if is_safe(name):
+			safe.append(name)
+
+		else:
+			logger.warning(f"Skipping unsafe name on the storage box ({where}): {name!r}")
+
+	return safe
 
 
 # Fetched frames are unblurred, so they live in a folder of their own under temp/ that only this
@@ -58,26 +95,52 @@ FRAME_CACHE_ENV = "TIMELAPSE_FRAME_CACHE"
 FRAME_CACHE_MARKER = ".frame-cache"
 
 
+# <pid>-<random>: the owner of a cache folder can be told from its name.
+CACHE_NAME = re.compile(r"(\d+)-[0-9a-f]{8}")
+
+
 # Only names the folder: nothing is created on disk until frames are fetched, so a run that merely
-# lists leaves nothing behind.
+# lists leaves nothing behind. A folder handed over through the environment must be one of ours:
+# a stray export in a shell or crontab must not make a run reuse an old folder, or point its cleanup
+# and chmod at an arbitrary directory.
 def frame_cache_root(project_root: Path) -> Path:
+	parent = project_root / "temp" / "frame-cache"
 	configured = os.environ.get(FRAME_CACHE_ENV)
 
 	if configured:
-		return Path(configured)
+		root = Path(configured)
 
-	root = project_root / "temp" / "frame-cache" / f"{os.getpid()}-{secrets.token_hex(4)}"
+		if root.parent != parent or CACHE_NAME.fullmatch(root.name) is None:
+			raise ValueError(f"{FRAME_CACHE_ENV} must be a folder like {parent}/<pid>-<random>")
+
+		return root
+
+	root = parent / f"{os.getpid()}-{secrets.token_hex(4)}"
 	os.environ[FRAME_CACHE_ENV] = str(root)
 	release_leftovers(project_root / "temp")
 
 	return root
 
 
-# Removes the frame cache folders an earlier run left behind (a crash, a hard kill, an orphaned
-# rsync that wrote after release()). Runs once per run, when a new cache root is chosen. Runs never
-# overlap (they share the run lock), so every folder with the marker belongs to a run that is over.
-# Only real folders directly inside temp/frame-cache are touched; a symlinked frame-cache folder is
-# not followed.
+def _process_is_alive(pid: int) -> bool:
+	try:
+		os.kill(pid, 0)
+
+	except ProcessLookupError:
+		return False
+
+	except PermissionError:
+		return True
+
+	return True
+
+
+# Removes the cache folders of runs that are over (a crash, a hard kill, an orphaned rsync that
+# wrote after release()). Runs once per run, when a new cache root is chosen. A folder belongs to
+# the process named in its name; it is removed only when that process is gone, so a job that is
+# still running (another one may start before it holds the run lock) keeps its frames. Only real
+# folders directly inside temp/frame-cache are touched; a symlinked frame-cache folder is not
+# followed.
 def release_leftovers(temp_root: Path) -> None:
 	parent = temp_root / "frame-cache"
 
@@ -85,7 +148,12 @@ def release_leftovers(temp_root: Path) -> None:
 		return
 
 	for folder in sorted(parent.iterdir()):
-		if folder.is_symlink() or not (folder / FRAME_CACHE_MARKER).is_file():
+		owner = CACHE_NAME.fullmatch(folder.name)
+
+		if owner is None or folder.is_symlink() or not (folder / FRAME_CACHE_MARKER).is_file():
+			continue
+
+		if _process_is_alive(int(owner.group(1))):
 			continue
 
 		logger.warning(f"Removing frame cache left behind by an earlier run: {folder}")
@@ -106,6 +174,17 @@ def _remove(path: Path) -> None:
 		shutil.rmtree(path)
 
 	except FileNotFoundError:
+		pass
+
+
+# rsync runs as the leader of its own process group (start_new_session), so one signal reaches the
+# receiver and ssh processes it started too. Killing only rsync's pid would orphan those, and they
+# would keep writing into the cache.
+def _kill_rsync(process: subprocess.Popen) -> None:
+	try:
+		os.killpg(process.pid, signal.SIGKILL)
+
+	except ProcessLookupError:
 		pass
 
 
@@ -191,21 +270,21 @@ class SshFrameSource:
 			fields = line.split(maxsplit=8)
 
 			if len(fields) == 9 and fields[0].startswith("d"):
-				cameras.append(checked_name(fields[8]))
+				cameras.append(fields[8])
 
-		return sorted(cameras)
+		return sorted(_skip_unsafe(cameras, is_safe_camera, "camera listing"))
 
 	def list_names(self, camera: str) -> list[str]:
 		# Imported here: storage_filter imports src.images, which imports this module.
 		from src.storage_filter import parse_ls_output
 
-		checked_name(camera)
+		checked_camera(camera)
 		output = self._ls(self.box.camera_directory(camera), f"listing for camera {camera}")
 
-		return [checked_name(name) for name in parse_ls_output(output)]
+		return _skip_unsafe(parse_ls_output(output), is_safe_name, f"camera {camera}")
 
 	def path_for(self, camera: str, name: str) -> Path:
-		return self.cache_root / checked_name(camera) / checked_name(name)
+		return self.cache_root / checked_camera(camera) / checked_name(name)
 
 	# Fetch what is not in the cache yet. A call never removes a file it did not fetch (manual
 	# Weekly localizes once per day); only a camera that fails for good loses its whole folder,
@@ -213,7 +292,7 @@ class SshFrameSource:
 	def localize(
 		self, camera: str, paths: list[Path], progress_callback: Callable[[], None] | None = None
 	) -> None:
-		camera_directory = self.cache_root / checked_name(camera)
+		camera_directory = self.cache_root / checked_camera(camera)
 		names = sorted({checked_name(path.name) for path in paths})
 
 		if not self._missing(camera_directory, names):
@@ -229,7 +308,7 @@ class SshFrameSource:
 
 			except OSError as error:
 				if wait_seconds is None:
-					shutil.rmtree(camera_directory, ignore_errors=True)
+					self.release(camera)
 					raise FrameFetchError(f"Could not fetch {camera}: {error}") from error
 
 				logger.warning(
@@ -267,7 +346,11 @@ class SshFrameSource:
 
 		try:
 			process = subprocess.Popen(
-				command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+				command,
+				stdin=subprocess.PIPE,
+				stdout=subprocess.DEVNULL,
+				stderr=subprocess.PIPE,
+				start_new_session=True,
 			)
 
 		except OSError as error:
@@ -287,7 +370,7 @@ class SshFrameSource:
 					pending_input = None
 
 					if time.monotonic() - started > RSYNC_TOTAL_TIMEOUT_SECONDS:
-						process.kill()
+						_kill_rsync(process)
 						process.communicate()
 						raise FrameFetchError(f"rsync did not finish for {camera}") from None
 
@@ -298,7 +381,7 @@ class SshFrameSource:
 			# Also when the worker is told to stop (its SIGTERM becomes SystemExit, see
 			# image_worker): a rsync left running would keep writing into the cleaned-up cache.
 			if process.poll() is None:
-				process.kill()
+				_kill_rsync(process)
 				process.wait()
 
 		if process.returncode != 0:
@@ -314,7 +397,7 @@ class SshFrameSource:
 	# done, also after a failure: the frames are unblurred.
 	def release(self, camera: str) -> None:
 		try:
-			checked_name(camera)
+			checked_camera(camera)
 
 		except FrameFetchError as error:
 			raise ValueError(f"Unsafe camera name: {camera!r}") from error
