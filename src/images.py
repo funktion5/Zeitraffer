@@ -627,6 +627,9 @@ def _find_daily_images_worker(
 		daylight_buffer_minutes=daylight_buffer_minutes,
 	)
 
+	# The empty and duplicate filters read the whole previous day as well as the selected frames.
+	get_frame_source().localize(camera, previous_images + current_images, progress_callback)
+
 	previous_images = filter_empty_images(
 		camera=camera,
 		images=previous_images,

@@ -35,16 +35,21 @@ requires_camera_storage = pytest.mark.skipif(
 
 
 # A frame source over fixed names, so the listing functions run without a camera folder. Paths
-# point under /cache, so a test fails if the code builds them from CAMERA_ROOT instead.
+# point under /cache, so a test fails if the code builds them from CAMERA_ROOT instead. Calls to
+# localize() are recorded as (camera, paths, progress_callback).
 class FakeFrameSource:
 	def __init__(self, names):
 		self.names = names
+		self.localized = []
 
 	def list_names(self, camera):
 		return list(self.names)
 
 	def path_for(self, camera, name):
 		return Path("/cache") / camera / name
+
+	def localize(self, camera, paths, progress_callback=None):
+		self.localized.append((camera, paths, progress_callback))
 
 
 @requires_camera_storage
@@ -409,6 +414,56 @@ def test_find_images_for_dates_uses_names_and_paths_from_the_source(monkeypatch)
 	}
 	# Once per listed name, as the scandir loop did per entry.
 	assert len(progress_calls) == 4
+
+
+# Frames must exist locally before a filter reads their bytes: all of the previous day (the
+# duplicate reference) and only the daylight frames of the target day.
+def test_daily_worker_localizes_previous_day_and_selected_frames_before_filtering(monkeypatch):
+	names = [
+		"camera_26-09-15_02-00-00-00.jpg",
+		"camera_26-09-15_20-00-00-00.jpg",
+		"camera_26-09-16_11-00-00-00.jpg",
+		"camera_26-09-16_15-00-00-00.jpg",
+	]
+	source = FakeFrameSource(names)
+
+	def fake_filter_empty_images(camera, images, progress_callback):
+		assert len(source.localized) == 1
+		return images
+
+	def progress():
+		pass
+
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: source)
+	monkeypatch.setattr(images_module, "filter_empty_images", fake_filter_empty_images)
+	monkeypatch.setattr(
+		images_module,
+		"filter_duplicate_images_against_reference",
+		lambda camera, reference_images, images, progress_callback: images,
+	)
+	timezone = ZoneInfo("Europe/Berlin")
+
+	images_module._find_daily_images_worker(
+		camera="Test-Camera",
+		target_date=date(2026, 9, 16),
+		sunrise=datetime(2026, 9, 16, 10, 0, tzinfo=timezone),
+		sunset=datetime(2026, 9, 16, 13, 0, tzinfo=timezone),
+		previous_date=date(2026, 9, 15),
+		daylight_buffer_minutes=0,
+		progress_callback=progress,
+	)
+
+	assert source.localized == [
+		(
+			"Test-Camera",
+			[
+				Path("/cache/Test-Camera/camera_26-09-15_02-00-00-00.jpg"),
+				Path("/cache/Test-Camera/camera_26-09-15_20-00-00-00.jpg"),
+				Path("/cache/Test-Camera/camera_26-09-16_11-00-00-00.jpg"),
+			],
+			progress,
+		)
+	]
 
 
 # Daily discovery must remove previous-day content in one camera scan.
