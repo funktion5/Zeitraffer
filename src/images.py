@@ -8,7 +8,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from src.config import PROJECT_ROOT
-from src.frame_source import FrameSource, LocalFrameSource, SshFrameSource, frame_cache_root
+from src.frame_source import FrameSource, build_frame_source
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
@@ -29,25 +29,10 @@ class ImageRange:
 	unrecognized_files: int
 
 
-FRAME_SOURCE_ENV = "TIMELAPSE_FRAME_SOURCE"
-
-
-# Built on every call, not once at import, so a patched CAMERA_ROOT keeps working in tests.
-# "ssh" is a switch of its own, not implied by TIMELAPSE_STORAGE_BOX: that one is already set on
-# hosts for the blur jobs and must not change where the frames come from.
+# Built on every call, not once at import, so a patched CAMERA_ROOT keeps working in tests. Which
+# source it is, is decided in src/frame_source.py by TIMELAPSE_FRAME_SOURCE.
 def get_frame_source() -> FrameSource:
-	kind = os.environ.get(FRAME_SOURCE_ENV) or "local"
-
-	if kind == "local":
-		return LocalFrameSource(CAMERA_ROOT)
-
-	if kind == "ssh":
-		# Imported here: storage_filter imports this module.
-		from src.storage_filter import get_storage_box
-
-		return SshFrameSource(get_storage_box(), frame_cache_root(PROJECT_ROOT))
-
-	raise ValueError(f"{FRAME_SOURCE_ENV} must be 'local' or 'ssh', not {kind!r}")
+	return build_frame_source(CAMERA_ROOT, PROJECT_ROOT)
 
 
 # Workers inherit the cache root through the environment, so it has to be chosen here, in the

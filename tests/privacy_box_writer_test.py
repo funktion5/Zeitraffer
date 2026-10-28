@@ -610,7 +610,9 @@ def test_default_clock_is_timezone_aware(box: FakeBox) -> None:
 # Python file that starts ssh/scp/sftp/rsync must be listed here as read-only or pull-only and is
 # checked for write commands.
 WRITER_MODULE = "src/privacy/box_writer.py"
-READ_ONLY_SSH_MODULES = {"src/storage_filter.py"}
+# frame_source.py lists camera folders over ssh. Task 11 of the ssh-frames plan adds the rsync
+# fetch there; it then moves to the pull-only set below together with a test for the direction.
+READ_ONLY_SSH_MODULES = {"src/storage_filter.py", "src/frame_source.py"}
 # May start rsync, but only to pull FROM the box into a local folder; stage_frames_test proves the
 # direction of the command. Every other command that can write stays forbidden for these.
 PULL_ONLY_SSH_MODULES = {"scripts/stage-frames.py"}

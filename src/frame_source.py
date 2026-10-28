@@ -156,3 +156,25 @@ class SshFrameSource:
 			raise FrameFetchError(f"Storage box {what} failed: {result.stderr.strip()}")
 
 		return result.stdout
+
+
+FRAME_SOURCE_ENV = "TIMELAPSE_FRAME_SOURCE"
+
+
+# "ssh" is a switch of its own, not implied by TIMELAPSE_STORAGE_BOX: that one is already set on
+# hosts for the blur jobs and must not change where the frames come from. Decided here, not in
+# src/images.py, because the structural test in tests/privacy_box_writer_test.py lists every module
+# that mentions ssh, and the big images module should not be one of them.
+def build_frame_source(camera_root: Path, project_root: Path) -> FrameSource:
+	kind = os.environ.get(FRAME_SOURCE_ENV) or "local"
+
+	if kind == "local":
+		return LocalFrameSource(camera_root)
+
+	if kind == "ssh":
+		# Imported here: storage_filter imports src.images, which imports this module.
+		from src.storage_filter import get_storage_box
+
+		return SshFrameSource(get_storage_box(), frame_cache_root(project_root))
+
+	raise ValueError(f"{FRAME_SOURCE_ENV} must be 'local' or 'ssh', not {kind!r}")
