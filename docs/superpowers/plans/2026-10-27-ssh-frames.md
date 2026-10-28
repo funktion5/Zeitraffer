@@ -32,6 +32,8 @@ Failure modes the spec implies that no task's happy path covers, most likely fir
 3. File names with spaces or other odd characters survive listing and fetching. [Tasks 9, 11]
 4. The box is unreachable or ssh would prompt (`BatchMode=yes`): the camera counts as failed, the others still run, the job exits non-zero. [Tasks 11, 14]
 5. After an error in the video build or a stalled worker, no fetched frames are left behind. [Tasks 12, 14]
+6. Several `localize` calls for one camera inside one job: manual Weekly runs one worker per day, and a later call must never remove frames an earlier call fetched. [Task 11]
+7. The cache root must exist, with `TIMELAPSE_FRAME_CACHE` exported, before the first worker process starts. A root created inside a worker never reaches the parent, so the parent's `release` would find nothing and unblurred frames stay on disk. [Task 10]
 
 ## Task protocol (applies to every task)
 
@@ -55,7 +57,7 @@ class FrameFetchError(OSError): ...
 
 class FrameSource(Protocol):
 	def list_cameras(self) -> list[str]: ...
-	def list_names(self, camera: str) -> list[str]: ...
+	def list_names(self, camera: str) -> Iterable[str]: ...  # may stream: ticks follow the names
 	def path_for(self, camera: str, name: str) -> Path: ...
 	def localize(
 		self, camera: str, paths: list[Path], progress_callback: Callable[[], None] | None = None
@@ -119,7 +121,7 @@ Same pattern (this feeds Monthly and Yearly; Yearly's lazy hashing then reads ca
 
 **Interfaces:** `class SshFrameSource` with `__init__(self, box, cache_root: Path)`, where `box` is any object with `remote`, `base_directory`, `camera_directory(camera)` and `run(command, timeout_seconds)` (the `StorageBox` shape; do not import it). Implements `list_cameras`, `list_names`, `path_for` (`cache_root / camera / name`).
 
-Tests (fake box returning canned `ls -l` output): `test_ssh_list_cameras_returns_directories_only`, `test_ssh_list_names_returns_regular_files`, `test_ssh_list_names_keeps_names_with_spaces`, `test_ssh_listing_failure_is_an_oserror`, `test_ssh_listing_timeout_is_a_timeouterror`, `test_ssh_path_for_points_into_the_cache`. Implement: camera listing as `list_box_cameras` in `scripts/stage-frames.py` does it; names via a lazy `from src.storage_filter import list_camera_files` (keys of its result). Leave `stage-frames.py` untouched until Task 31.
+Tests (fake box returning canned `ls -l` output): `test_ssh_list_cameras_returns_directories_only`, `test_ssh_list_names_returns_regular_files`, `test_ssh_list_names_keeps_names_with_spaces`, `test_ssh_listing_failure_is_an_oserror`, `test_ssh_listing_timeout_is_a_timeouterror`, `test_ssh_path_for_points_into_the_cache`. Implement: camera listing as `list_box_cameras` in `scripts/stage-frames.py` does it; names via a lazy `from src.storage_filter import list_camera_files` (keys of its result). Leave `stage-frames.py` untouched until Task 31. **Stall timeout (Phase A review):** the listing runs inside an isolated worker, which is killed after `image_scan_stall_timeout_seconds` (60 s) without a progress tick, and one `ls -l` over ssh sends no ticks. The listing timeout passed to `box.run` must stay below that value, so the real error is raised before the worker timeout hides it; pick the number here and test it.
 
 ### Task 10: choosing the source and the cache root
 
@@ -127,7 +129,9 @@ Tests (fake box returning canned `ls -l` output): `test_ssh_list_cameras_returns
 
 **Interfaces:** `get_frame_source()` reads `TIMELAPSE_FRAME_SOURCE`: unset or `local` gives `LocalFrameSource`; `ssh` gives `SshFrameSource(get_storage_box(), cache_root)` (lazy import of `get_storage_box`); anything else raises `ValueError` naming the allowed values. `cache_root` is `<PROJECT_ROOT>/temp/frame-cache/<unique suffix>`, created with a marker file `.frame-cache` on first use and exported as `TIMELAPSE_FRAME_CACHE`; later calls and child processes reuse that variable.
 
-Tests: `test_unset_or_local_gives_the_local_source`, `test_ssh_gives_an_ssh_source_with_the_box_from_the_environment`, `test_unknown_value_is_rejected`, `test_cache_root_is_created_once_with_a_marker`, `test_spawned_child_process_sees_the_same_cache_root` (Review Focus 1: use `multiprocessing.get_context("spawn")`).
+Tests: `test_unset_or_local_gives_the_local_source`, `test_ssh_gives_an_ssh_source_with_the_box_from_the_environment`, `test_unknown_value_is_rejected`, `test_cache_root_is_created_once_with_a_marker`, `test_spawned_child_process_sees_the_same_cache_root` (Review Focus 1: use `multiprocessing.get_context("spawn")`), `test_a_worker_that_is_the_first_caller_does_not_create_its_own_root` (Review Focus 7).
+
+The parent creates the root: every `*_isolated` function in `src/images.py` calls `get_frame_source()` before it starts its worker, and each entry point that reads frames (`src/main.py`, `scripts/yearly-backfill.py`, `nas/helpers/storagebox_fill.py`, the flagger) does so before any job work, so the variable is exported before a worker forks or spawns. These entry points do not all call `get_cameras()` in the parent.
 
 ### Task 11: `localize` fetches with rsync
 
@@ -135,9 +139,9 @@ Tests: `test_unset_or_local_gives_the_local_source`, `test_ssh_gives_an_ssh_sour
 
 **Interfaces:** `SshFrameSource.localize(camera, paths, progress_callback=None) -> None`. Constants `FETCH_BATCH_SIZE = 500`, `FETCH_RETRY_WAIT_SECONDS = (30, 120)`, `RSYNC_IDLE_TIMEOUT_SECONDS = 300`, `RSYNC_TOTAL_TIMEOUT_SECONDS = 3600`.
 
-Behaviour: fetch the file names of `paths` that are not already in the cache, in batches, with the same rsync command as `copy_camera` in `scripts/stage-frames.py` (`-t --from0 --files-from=- --timeout=...`, ssh with `BatchMode=yes` and `StrictHostKeyChecking=yes`); call `progress_callback` after every batch so the stall timeout of the isolated worker does not fire; delete leftover files in the camera's cache folder that are not wanted; retry on `OSError` with the waits above; after the last failure remove the camera's cache folder and raise `FrameFetchError`.
+Behaviour: fetch the file names of `paths` that are not already in the cache, in batches, with the same rsync command as `copy_camera` in `scripts/stage-frames.py` (`-t --from0 --files-from=- --timeout=...`, ssh with `BatchMode=yes` and `StrictHostKeyChecking=yes`); call `progress_callback` after every batch so the stall timeout of the isolated worker does not fire; never delete a file this call did not fetch (manual Weekly runs one worker, and so one `localize`, per day, and all seven days must still be there at the end; cleanup is `release`'s job); retry on `OSError` with the waits above; after the last failure remove the camera's cache folder and raise `FrameFetchError`.
 
-Tests (fake `subprocess.run` and `time.sleep`): `test_fetch_runs_rsync_with_nul_separated_names`, `test_fetch_keeps_names_with_spaces_intact`, `test_fetch_splits_1200_names_into_three_batches_and_reports_progress_each_time`, `test_failed_fetch_is_retried_with_the_configured_waits`, `test_exhausted_retries_remove_the_camera_cache_and_raise_frame_fetch_error`, `test_rsync_vanished_files_exit_code_23_fails_the_camera` (Review Focus 2), `test_leftover_files_outside_the_selection_are_removed`.
+Tests (fake `subprocess.run` and `time.sleep`): `test_fetch_runs_rsync_with_nul_separated_names`, `test_fetch_keeps_names_with_spaces_intact`, `test_fetch_splits_1200_names_into_three_batches_and_reports_progress_each_time`, `test_failed_fetch_is_retried_with_the_configured_waits`, `test_exhausted_retries_remove_the_camera_cache_and_raise_frame_fetch_error`, `test_rsync_vanished_files_exit_code_23_fails_the_camera` (Review Focus 2), `test_a_later_call_keeps_the_files_of_an_earlier_call` (Review Focus 6: two `localize` calls for one camera with different paths, both sets present afterwards).
 
 ### Task 12: `release` and guarded cleanup
 
@@ -216,7 +220,7 @@ Tests: `test_fetch_error_counts_as_failed_and_other_cameras_still_run` (Review F
 
 ### Task 24: nightly wrapper without staging
 
-**Files:** Modify `scripts/timelapse-nightly-staged`, `tests/nightly_staged_test.py`. The wrapper stops calling `stage-frames.py` and `--clean-only`; it keeps the lock, the per-camera loop, the verification and the report, and writes `cameras.json` through `python3 -m src.camera_list`. Tests: no staging call; the camera list is written; failure of one camera still gives exit 1. Hand check: one full nightly run on the VPS, report read by the user.
+**Files:** Modify `scripts/timelapse-nightly-staged`, `tests/nightly_staged_test.py`. The wrapper stops calling `stage-frames.py` and `--clean-only`, and stops exporting `TIMELAPSE_CAMERA_ROOT` (the staging folder); it keeps the lock, the per-camera loop, the verification and the report, and writes `cameras.json` through `python3 -m src.camera_list`. Tests: no staging call; the camera list is written; failure of one camera still gives exit 1. Hand check: one full nightly run on the VPS, report read by the user.
 
 **Phase D checkpoint:** a fresh reviewer reads Tasks 20 to 24.
 
@@ -252,7 +256,7 @@ Tests: `test_fetch_error_counts_as_failed_and_other_cameras_still_run` (Review F
 
 ### Task 30: docs and installer text
 
-**Files:** Modify `README.md` (SSHFS section out, frame-source section in), `docs/handbuch.md`, `docs/werkzeuge.md` (staging section), `docs/vps.md` (known gaps shrink), `docs/architektur.md`, `install.sh` (`cron_hint` text: no staging, flagger line). Test: `grep -rn "mnt/cameras\|sshfs" . --exclude-dir=.git --exclude-dir=frontend` returns only historical notes the user keeps.
+**Files:** Modify `Dockerfile` (the `/mnt/cameras` mount point), `compose.yaml` and `docker/entrypoint.sh` (the mount option and entry script), `migrate.sh` (Pi-only: mark it historical or drop its mount steps), `README.md` (SSHFS section out, frame-source section in), `docs/handbuch.md`, `docs/werkzeuge.md` (staging section), `docs/vps.md` (known gaps shrink), `docs/architektur.md`, `install.sh` (`cron_hint` text: no staging, flagger line). Test: `grep -rn "mnt/cameras\|sshfs" . --exclude-dir=.git --exclude-dir=frontend` returns only historical notes the user keeps.
 
 ### Task 31: retire `stage-frames.py`
 
