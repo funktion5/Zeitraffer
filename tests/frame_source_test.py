@@ -352,7 +352,6 @@ def test_a_worker_that_is_the_first_caller_does_not_create_its_own_root(
 	assert seen[0] is not None
 
 
-
 # Stands in for subprocess.Popen: records every rsync start, answers with the given exit codes (the
 # last one repeats) and on success creates the requested files, as a real transfer would. With
 # slow_rounds the process keeps "running" for that many heartbeat intervals first.
