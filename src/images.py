@@ -670,6 +670,9 @@ def _find_interval_images_worker(
 		target_seconds_by_date=target_seconds_by_date,
 	)
 
+	# Everything the job could open is fetched once; Yearly's lazy hashing then reads the cache.
+	get_frame_source().localize(camera, images, progress_callback)
+
 	# Remove unusable files before job-specific selection.
 	images = filter_empty_images(
 		camera=camera,

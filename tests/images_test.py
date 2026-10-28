@@ -52,6 +52,16 @@ class FakeFrameSource:
 		self.localized.append((camera, paths, progress_callback))
 
 
+# Fails if a worker runs the empty-file filter before it fetched its frames: that filter reads
+# file bytes.
+def require_localize_before_empty_filter(monkeypatch, source):
+	def fake_filter_empty_images(camera, images, progress_callback):
+		assert len(source.localized) == 1
+		return images
+
+	monkeypatch.setattr(images_module, "filter_empty_images", fake_filter_empty_images)
+
+
 @requires_camera_storage
 def test_cameras_with_known_dates():
 	# Use known dates with existing images to verify that the date-based
@@ -427,15 +437,11 @@ def test_daily_worker_localizes_previous_day_and_selected_frames_before_filterin
 	]
 	source = FakeFrameSource(names)
 
-	def fake_filter_empty_images(camera, images, progress_callback):
-		assert len(source.localized) == 1
-		return images
-
 	def progress():
 		pass
 
 	monkeypatch.setattr(images_module, "get_frame_source", lambda: source)
-	monkeypatch.setattr(images_module, "filter_empty_images", fake_filter_empty_images)
+	require_localize_before_empty_filter(monkeypatch, source)
 	monkeypatch.setattr(
 		images_module,
 		"filter_duplicate_images_against_reference",
@@ -477,15 +483,11 @@ def test_images_worker_localizes_selected_frames_before_filtering(monkeypatch):
 	]
 	source = FakeFrameSource(names)
 
-	def fake_filter_empty_images(camera, images, progress_callback):
-		assert len(source.localized) == 1
-		return images
-
 	def progress():
 		pass
 
 	monkeypatch.setattr(images_module, "get_frame_source", lambda: source)
-	monkeypatch.setattr(images_module, "filter_empty_images", fake_filter_empty_images)
+	require_localize_before_empty_filter(monkeypatch, source)
 	timezone = ZoneInfo("Europe/Berlin")
 
 	images_module._find_images_worker(
@@ -1219,6 +1221,46 @@ def test_find_daily_images_isolated_uses_shared_worker_supervisor(monkeypatch):
 			"stall_timeout_seconds": 10,
 			"operation_name": "Daily image scan",
 		}
+	]
+
+
+# Every candidate of the interval is fetched once, before the empty-file filter reads it.
+def test_interval_worker_localizes_all_candidates_before_filtering(monkeypatch):
+	# Candidates: inside the date range and within 30 minutes of noon. The other three are not.
+	names = [
+		"20260915T120000.jpg",
+		"20260916T115500.jpg",
+		"20260915T130100.jpg",
+		"20260914T120000.jpg",
+		"unknown-format.jpg",
+	]
+	source = FakeFrameSource(names)
+
+	def progress():
+		pass
+
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: source)
+	require_localize_before_empty_filter(monkeypatch, source)
+
+	images_module._find_interval_images_worker(
+		camera="Test-Camera",
+		start_date=date(2026, 9, 15),
+		end_date=date(2026, 9, 16),
+		target_seconds_by_date=NOON,
+		tolerance_minutes=30,
+		remove_duplicates_by_date=False,
+		progress_callback=progress,
+	)
+
+	assert source.localized == [
+		(
+			"Test-Camera",
+			[
+				Path("/cache/Test-Camera/20260915T120000.jpg"),
+				Path("/cache/Test-Camera/20260916T115500.jpg"),
+			],
+			progress,
+		)
 	]
 
 
