@@ -4,6 +4,7 @@ import multiprocessing
 import os
 import stat
 import subprocess
+import time
 from datetime import date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,10 +20,12 @@ from src.frame_source import (
 	HEARTBEAT_SECONDS,
 	NAME_LISTING_TIMEOUT_SECONDS,
 	RSYNC_IDLE_TIMEOUT_SECONDS,
+	STALE_CACHE_AGE_SECONDS,
 	FrameFetchError,
 	LocalFrameSource,
 	SshFrameSource,
 	create_frame_cache,
+	release_stale,
 )
 from src.storage_filter import StorageBox
 
@@ -355,12 +358,14 @@ def test_a_worker_that_is_the_first_caller_does_not_create_its_own_root(
 
 # Stands in for subprocess.Popen: records every rsync start, answers with the given exit codes (the
 # last one repeats) and on success creates the requested files, as a real transfer would. With
-# slow_rounds the process keeps "running" for that many heartbeat intervals first.
+# slow_rounds the process keeps "running" for that many heartbeat intervals first; with interrupt
+# the wait is cut short by SystemExit, which is what the worker's SIGTERM handler raises.
 class FakeRsync:
-	def __init__(self, *exit_codes, stderr=b"", slow_rounds=0):
+	def __init__(self, *exit_codes, stderr=b"", slow_rounds=0, interrupt=False):
 		self.exit_codes = exit_codes or (0,)
 		self.stderr = stderr
 		self.slow_rounds = slow_rounds
+		self.interrupt = interrupt
 		self.calls = []
 		self.inputs = []
 		self.killed = 0
@@ -390,6 +395,9 @@ class FakeProcess:
 			self.input = input
 			self.rsync.inputs.append(input)
 
+		if self.rsync.interrupt:
+			raise SystemExit(1)
+
 		if timeout is not None and self.rounds < self.rsync.slow_rounds:
 			self.rounds += 1
 			raise subprocess.TimeoutExpired(self.command, timeout)
@@ -404,10 +412,17 @@ class FakeProcess:
 
 	def kill(self):
 		self.rsync.killed += 1
+		self.returncode = -9
+
+	def poll(self):
+		return self.returncode
+
+	def wait(self):
+		return self.returncode
 
 
-def fetcher(monkeypatch, tmp_path, *exit_codes, stderr=b"", slow_rounds=0):
-	rsync = FakeRsync(*exit_codes, stderr=stderr, slow_rounds=slow_rounds)
+def fetcher(monkeypatch, tmp_path, *exit_codes, stderr=b"", slow_rounds=0, interrupt=False):
+	rsync = FakeRsync(*exit_codes, stderr=stderr, slow_rounds=slow_rounds, interrupt=interrupt)
 	sleeps = []
 	monkeypatch.setattr(frame_source_module.subprocess, "Popen", rsync)
 	monkeypatch.setattr(frame_source_module.time, "sleep", sleeps.append)
@@ -673,3 +688,78 @@ def test_release_ignores_a_missing_folder(tmp_path):
 	source.release("Alpha")
 
 	assert not (source.cache_root / "Alpha").exists()
+
+
+# The worker is stopped with SIGTERM, which image_worker turns into SystemExit: rsync must not be
+# left running to write into the cache after it has been cleaned up. Not retried either.
+def test_rsync_is_killed_when_the_worker_is_told_to_stop(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path, interrupt=True)
+
+	with pytest.raises(SystemExit):
+		source.localize("Alpha", frames(source, "a.jpg"))
+
+	assert rsync.killed == 1
+	assert len(rsync.calls) == 1
+
+
+# Folders under temp/frame-cache that are old, carry the marker and are real folders. The newest
+# of them is kept, and so is anything without the marker.
+def stale_cache(tmp_path):
+	parent = tmp_path / "temp" / "frame-cache"
+	old_time = time.time() - STALE_CACHE_AGE_SECONDS - 60
+
+	for name, marker in (("old", True), ("fresh", True), ("old-no-marker", False)):
+		folder = parent / name
+		folder.mkdir(parents=True)
+		(folder / "a.jpg").write_bytes(b"frame")
+
+		if marker:
+			(folder / FRAME_CACHE_MARKER).touch()
+
+		if name.startswith("old"):
+			os.utime(folder, (old_time, old_time))
+
+	return parent
+
+
+def test_release_stale_removes_only_old_folders_with_the_marker(tmp_path):
+	parent = stale_cache(tmp_path)
+
+	release_stale(tmp_path / "temp")
+
+	assert not (parent / "old").exists()
+	assert (parent / "fresh" / "a.jpg").is_file()
+	assert (parent / "old-no-marker" / "a.jpg").is_file()
+
+
+def test_release_stale_does_not_follow_a_symlinked_cache_folder(tmp_path):
+	outside = tmp_path / "elsewhere" / "frame-cache"
+	old = outside / "old"
+	old.mkdir(parents=True)
+	(old / FRAME_CACHE_MARKER).touch()
+	old_time = time.time() - STALE_CACHE_AGE_SECONDS - 60
+	os.utime(old, (old_time, old_time))
+	temp = tmp_path / "temp"
+	temp.mkdir()
+	(temp / "frame-cache").symlink_to(outside)
+
+	release_stale(temp)
+
+	assert old.is_dir()
+
+
+def test_release_stale_without_a_cache_folder_does_nothing(tmp_path):
+	release_stale(tmp_path / "temp")
+
+	assert not (tmp_path / "temp").exists()
+
+
+# A run that starts sweeps what an earlier run left behind (a crash, a hard kill, an orphaned
+# rsync), once: later calls in the same run reuse the exported root and sweep nothing.
+def test_choosing_a_new_cache_root_sweeps_stale_folders(ssh_env):
+	parent = stale_cache(ssh_env)
+
+	images_module.get_frame_source()
+
+	assert not (parent / "old").exists()
+	assert (parent / "fresh").is_dir()

@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 
 import pytest
 
@@ -248,3 +249,33 @@ def test_run_target_limits_progress_reports(
 		("progress", None),
 		("success", "done"),
 	]
+
+
+# Leave a marker from a finally block, as a worker does to stop a child process it started.
+def cleanup_worker(
+	marker_path,
+	progress_callback,
+):
+	try:
+		time.sleep(10)
+
+	finally:
+		Path(marker_path).write_text("cleaned up")
+
+
+# The parent stops a stalled worker with SIGTERM. The worker must turn that into a normal exit, so
+# its cleanup code runs and a child process it started (rsync) is stopped with it instead of being
+# left behind to write into a folder that has already been cleaned up.
+def test_a_stopped_worker_runs_its_cleanup_code(tmp_path):
+	marker = tmp_path / "marker"
+
+	with pytest.raises(TimeoutError):
+		run_isolated_worker(
+			camera="Test-Camera",
+			target=cleanup_worker,
+			kwargs={"marker_path": str(marker)},
+			stall_timeout_seconds=1,
+			operation_name="Test operation",
+		)
+
+	assert marker.read_text() == "cleaned up"

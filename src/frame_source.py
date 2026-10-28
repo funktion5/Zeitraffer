@@ -57,6 +57,12 @@ def checked_name(name: str) -> str:
 FRAME_CACHE_ENV = "TIMELAPSE_FRAME_CACHE"
 FRAME_CACHE_MARKER = ".frame-cache"
 
+# Safety net for what release() cannot reach: a run killed hard, a crash, an rsync orphaned by a
+# worker that was killed. Three days is far longer than any job runs; the age is read from the
+# folder, which changes whenever a camera folder is added or removed, so it is a guess until a
+# real long run shows otherwise.
+STALE_CACHE_AGE_SECONDS = 3 * 24 * 60 * 60
+
 
 # Only names the folder: nothing is created on disk until frames are fetched, so a run that merely
 # lists leaves nothing behind.
@@ -68,8 +74,31 @@ def frame_cache_root(project_root: Path) -> Path:
 
 	root = project_root / "temp" / "frame-cache" / f"{os.getpid()}-{secrets.token_hex(4)}"
 	os.environ[FRAME_CACHE_ENV] = str(root)
+	release_stale(project_root / "temp")
 
 	return root
+
+
+# Removes frame cache folders that an earlier run left behind. Runs once per run, when a new cache
+# root is chosen. Only real folders directly inside temp/frame-cache that carry the marker and are
+# older than STALE_CACHE_AGE_SECONDS are touched; a symlinked frame-cache folder is not followed.
+def release_stale(temp_root: Path) -> None:
+	parent = temp_root / "frame-cache"
+
+	if parent.is_symlink() or not parent.is_dir():
+		return
+
+	cutoff = time.time() - STALE_CACHE_AGE_SECONDS
+
+	for folder in sorted(parent.iterdir()):
+		if folder.is_symlink() or not (folder / FRAME_CACHE_MARKER).is_file():
+			continue
+
+		if folder.stat().st_mtime >= cutoff:
+			continue
+
+		logger.warning(f"Removing frame cache left behind by an earlier run: {folder}")
+		_remove(folder)
 
 
 # The marker lets the guarded cleanup tell this folder from any other under temp/.
@@ -257,21 +286,29 @@ class SshFrameSource:
 		# times out loses nothing, the next one carries on.
 		pending_input = "\0".join(missing).encode() + b"\0"
 
-		while True:
-			try:
-				_, stderr = process.communicate(pending_input, timeout=HEARTBEAT_SECONDS)
-				break
+		try:
+			while True:
+				try:
+					_, stderr = process.communicate(pending_input, timeout=HEARTBEAT_SECONDS)
+					break
 
-			except subprocess.TimeoutExpired:
-				pending_input = None
+				except subprocess.TimeoutExpired:
+					pending_input = None
 
-				if time.monotonic() - started > RSYNC_TOTAL_TIMEOUT_SECONDS:
-					process.kill()
-					process.communicate()
-					raise FrameFetchError(f"rsync did not finish for camera {camera}") from None
+					if time.monotonic() - started > RSYNC_TOTAL_TIMEOUT_SECONDS:
+						process.kill()
+						process.communicate()
+						raise FrameFetchError(f"rsync did not finish for {camera}") from None
 
-				if progress_callback is not None:
-					progress_callback()
+					if progress_callback is not None:
+						progress_callback()
+
+		finally:
+			# Also when the worker is told to stop (its SIGTERM becomes SystemExit, see
+			# image_worker): a rsync left running would keep writing into the cleaned-up cache.
+			if process.poll() is None:
+				process.kill()
+				process.wait()
 
 		if process.returncode != 0:
 			raise FrameFetchError(

@@ -1,3 +1,4 @@
+import signal
 import time
 from collections.abc import Callable
 from multiprocessing import Process, Queue
@@ -28,6 +29,13 @@ def _stop_worker_process(
 		process.join(WORKER_PROCESS_STOP_TIMEOUT_SECONDS)
 
 
+# The parent stops a stalled worker with SIGTERM. Raising SystemExit instead of dying on the spot
+# lets the worker's finally blocks run, which is how a child process it started (rsync) is stopped
+# with it. SIGKILL, the fallback after the grace period, still cannot be handled.
+def _exit_on_sigterm(signal_number: int, frame: object) -> None:
+	raise SystemExit(1)
+
+
 # Run the target inside the worker process and send its result back. The target
 # receives a throttled progress_callback; expected filesystem errors are
 # forwarded, anything else crashes the worker and surfaces as RuntimeError.
@@ -36,6 +44,8 @@ def _run_target(
 	kwargs: dict[str, Any],
 	result_queue: Queue,
 ) -> None:
+	signal.signal(signal.SIGTERM, _exit_on_sigterm)
+
 	last_progress_report = time.monotonic()
 
 	def report_progress() -> None:

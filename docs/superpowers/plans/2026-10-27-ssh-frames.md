@@ -154,7 +154,15 @@ Tests (fake `subprocess.Popen` and `time.sleep`): `test_fetch_runs_rsync_with_nu
 
 Tests: `test_release_removes_only_the_named_camera_folder`, `test_release_all_removes_the_cache_root`, `test_release_refuses_a_cache_root_without_the_marker`, `test_release_refuses_a_root_outside_temp` (a folder elsewhere, `temp/` itself and a symlink leading out), `test_release_refuses_unsafe_camera_names`, `test_release_ignores_a_missing_folder` (Review Focus 5).
 
-**Not part of this task, still open (Review Focus 8):** a worker stopped on a stall gets SIGTERM, then SIGKILL after 1 s (`_stop_worker_process` in `src/image_worker.py`), and nothing in the worker handles SIGTERM, so its rsync child keeps running and can recreate the camera folder after `release`. Proposed Task 12b: (1) in `_run_target` turn SIGTERM into `SystemExit`, and in `SshFrameSource._fetch` wrap the wait in `try/finally` that kills a still-running rsync; (2) a safety net `release_stale()` that removes marker-carrying folders under `temp/frame-cache` older than a day, called when a run starts.
+### Task 12b: stop the rsync child with its worker (Review Focus 8)
+
+**Files:** Modify `src/image_worker.py`, `src/frame_source.py`; Test `tests/image_worker_test.py`, `tests/frame_source_test.py`. Approved by the user 2026-10-28.
+
+**Problem:** a worker stopped on a stall gets SIGTERM, then SIGKILL after 1 s (`_stop_worker_process`), nothing in the worker handled SIGTERM, so its rsync child kept running and could recreate the camera folder after `release`, leaving unblurred frames behind.
+
+**Changes:** (1) `_run_target` turns SIGTERM into `SystemExit`, so the worker's `finally` blocks run; (2) `SshFrameSource._fetch` waits for rsync inside `try/finally` and kills a still-running rsync on the way out, whatever the reason (SystemExit, Ctrl-C, an error); (3) safety net `release_stale(temp_root)`: removes folders directly inside `temp/frame-cache` that carry the marker and are older than `STALE_CACHE_AGE_SECONDS` (3 days, a guess), never following a symlinked `frame-cache`; it runs once per run, when `frame_cache_root` chooses a new root. SIGKILL cannot be handled, which is what the sweep is for.
+
+Tests: `test_a_stopped_worker_runs_its_cleanup_code` (a real worker process, stopped by the stall timeout, leaves a marker from its `finally`), `test_rsync_is_killed_when_the_worker_is_told_to_stop`, `test_release_stale_removes_only_old_folders_with_the_marker`, `test_release_stale_does_not_follow_a_symlinked_cache_folder`, `test_release_stale_without_a_cache_folder_does_nothing`, `test_choosing_a_new_cache_root_sweeps_stale_folders`.
 
 ### Task 13: equivalence of the two sources
 
