@@ -1,11 +1,15 @@
 import os
 import secrets
 import shlex
+import shutil
 import subprocess
+import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
+
+from src.logger import logger
 
 if TYPE_CHECKING:
 	from src.storage_filter import StorageBox
@@ -14,6 +18,17 @@ if TYPE_CHECKING:
 # image_scan_stall_timeout_seconds (60 in config.json) without one. This timeout has to fire first,
 # or the worker is reported as stalled and the real error is hidden. A test pins the relation.
 NAME_LISTING_TIMEOUT_SECONDS = 45
+
+# The same worker is killed after 60 s without a progress tick, and a running rsync sends none. So
+# everything that waits (the rsync itself, the pauses between retries) wakes up every
+# HEARTBEAT_SECONDS to tick. rsync's own --timeout then ends a transfer that stopped moving bytes,
+# and a worker killed on a stall leaves its rsync running, so the short idle timeout also bounds how
+# long such an orphan can keep writing into the cache. The total limit only catches a trickling
+# process. All of these are guesses until measured on the real box.
+HEARTBEAT_SECONDS = 10
+FETCH_RETRY_WAIT_SECONDS = (30, 120)
+RSYNC_IDLE_TIMEOUT_SECONDS = 60
+RSYNC_TOTAL_TIMEOUT_SECONDS = 60 * 60
 
 
 # Frames of one camera could not be listed or fetched. An OSError, so the jobs treat it as an
@@ -61,6 +76,20 @@ def create_frame_cache(root: Path) -> None:
 	root.mkdir(mode=0o700, parents=True, exist_ok=True)
 	root.chmod(0o700)
 	(root / FRAME_CACHE_MARKER).touch()
+
+
+# Ticks while waiting: a retry wait longer than the stall timeout would otherwise get the worker
+# killed as "stalled" before the retry happens.
+def _sleep_with_progress(seconds: float, progress_callback: Callable[[], None] | None) -> None:
+	remaining = seconds
+
+	while remaining > 0:
+		step = min(remaining, HEARTBEAT_SECONDS)
+		time.sleep(step)
+		remaining -= step
+
+		if progress_callback is not None:
+			progress_callback()
 
 
 # Where camera frames come from. The frame-reading code asks a source for names and paths and
@@ -144,6 +173,101 @@ class SshFrameSource:
 
 	def path_for(self, camera: str, name: str) -> Path:
 		return self.cache_root / checked_name(camera) / checked_name(name)
+
+	# Fetch what is not in the cache yet. A call never removes a file it did not fetch (manual
+	# Weekly localizes once per day); only a camera that fails for good loses its whole folder,
+	# because a half-fetched camera must never be handed on.
+	def localize(
+		self, camera: str, paths: list[Path], progress_callback: Callable[[], None] | None = None
+	) -> None:
+		camera_directory = self.cache_root / checked_name(camera)
+		names = sorted({checked_name(path.name) for path in paths})
+
+		if not self._missing(camera_directory, names):
+			return
+
+		create_frame_cache(self.cache_root)
+		camera_directory.mkdir(exist_ok=True)
+
+		for wait_seconds in (*FETCH_RETRY_WAIT_SECONDS, None):
+			try:
+				self._fetch(camera, camera_directory, names, progress_callback)
+				return
+
+			except OSError as error:
+				if wait_seconds is None:
+					shutil.rmtree(camera_directory, ignore_errors=True)
+					raise FrameFetchError(f"Could not fetch {camera}: {error}") from error
+
+				logger.warning(
+					f"Fetching camera {camera} failed, retrying in {wait_seconds} s: {error}"
+				)
+				_sleep_with_progress(wait_seconds, progress_callback)
+
+	def _missing(self, camera_directory: Path, names: list[str]) -> list[str]:
+		return [name for name in names if not (camera_directory / name).exists()]
+
+	def _fetch(
+		self,
+		camera: str,
+		camera_directory: Path,
+		names: list[str],
+		progress_callback: Callable[[], None] | None,
+	) -> None:
+		# Recomputed on every attempt: a retry only fetches what the failed one did not deliver.
+		missing = self._missing(camera_directory, names)
+
+		# Pulls from the box into the cache, never the other way round (tested, and enforced by the
+		# structural guard in tests/privacy_box_writer_test.py).
+		command = [
+			"rsync",
+			"-t",
+			"--from0",
+			"--files-from=-",
+			f"--timeout={RSYNC_IDLE_TIMEOUT_SECONDS}",
+			"-e",
+			"ssh -o BatchMode=yes -o StrictHostKeyChecking=yes",
+			f"{self.box.remote}:{self.box.camera_directory(camera)}/",
+			f"{camera_directory}/",
+		]
+		started = time.monotonic()
+
+		try:
+			process = subprocess.Popen(
+				command, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE
+			)
+
+		except OSError as error:
+			raise FrameFetchError(f"rsync could not start for camera {camera}: {error}") from error
+
+		# One rsync for everything the job needs. The names go in with the first call; a call that
+		# times out loses nothing, the next one carries on.
+		pending_input = "\0".join(missing).encode() + b"\0"
+
+		while True:
+			try:
+				_, stderr = process.communicate(pending_input, timeout=HEARTBEAT_SECONDS)
+				break
+
+			except subprocess.TimeoutExpired:
+				pending_input = None
+
+				if time.monotonic() - started > RSYNC_TOTAL_TIMEOUT_SECONDS:
+					process.kill()
+					process.communicate()
+					raise FrameFetchError(f"rsync did not finish for camera {camera}") from None
+
+				if progress_callback is not None:
+					progress_callback()
+
+		if process.returncode != 0:
+			raise FrameFetchError(
+				f"rsync failed for camera {camera} (exit {process.returncode}): "
+				f"{stderr.decode(errors='replace').strip()}"
+			)
+
+		elapsed = time.monotonic() - started
+		logger.info(f"Camera {camera}: fetched {len(missing)} frames in {elapsed:.1f} s")
 
 	def _ls(self, directory: str, what: str) -> str:
 		try:

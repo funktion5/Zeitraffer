@@ -1,3 +1,4 @@
+import itertools
 import json
 import multiprocessing
 import os
@@ -12,9 +13,12 @@ import pytest
 import src.frame_source as frame_source_module
 import src.images as images_module
 from src.frame_source import (
+	FETCH_RETRY_WAIT_SECONDS,
 	FRAME_CACHE_ENV,
 	FRAME_CACHE_MARKER,
+	HEARTBEAT_SECONDS,
 	NAME_LISTING_TIMEOUT_SECONDS,
+	RSYNC_IDLE_TIMEOUT_SECONDS,
 	FrameFetchError,
 	LocalFrameSource,
 	SshFrameSource,
@@ -346,3 +350,230 @@ def test_a_worker_that_is_the_first_caller_does_not_create_its_own_root(
 	start_scan()
 
 	assert seen[0] is not None
+
+
+
+# Stands in for subprocess.Popen: records every rsync start, answers with the given exit codes (the
+# last one repeats) and on success creates the requested files, as a real transfer would. With
+# slow_rounds the process keeps "running" for that many heartbeat intervals first.
+class FakeRsync:
+	def __init__(self, *exit_codes, stderr=b"", slow_rounds=0):
+		self.exit_codes = exit_codes or (0,)
+		self.stderr = stderr
+		self.slow_rounds = slow_rounds
+		self.calls = []
+		self.inputs = []
+		self.killed = 0
+
+	def __call__(self, command, **kwargs):
+		self.calls.append((command, kwargs))
+		exit_code = self.exit_codes[min(len(self.calls), len(self.exit_codes)) - 1]
+
+		return FakeProcess(self, command, exit_code)
+
+	# The names sent to rsync on standard input in call number `index`.
+	def names(self, index):
+		return self.inputs[index].decode().split("\0")[:-1]
+
+
+class FakeProcess:
+	def __init__(self, rsync, command, exit_code):
+		self.rsync = rsync
+		self.command = command
+		self.exit_code = exit_code
+		self.input = None
+		self.rounds = 0
+		self.returncode = None
+
+	def communicate(self, input=None, timeout=None):
+		if input is not None:
+			self.input = input
+			self.rsync.inputs.append(input)
+
+		if timeout is not None and self.rounds < self.rsync.slow_rounds:
+			self.rounds += 1
+			raise subprocess.TimeoutExpired(self.command, timeout)
+
+		self.returncode = self.exit_code
+
+		if self.exit_code == 0 and self.input is not None:
+			for name in self.input.decode().split("\0")[:-1]:
+				(Path(self.command[-1]) / name).write_bytes(b"frame")
+
+		return None, self.rsync.stderr
+
+	def kill(self):
+		self.rsync.killed += 1
+
+
+def fetcher(monkeypatch, tmp_path, *exit_codes, stderr=b"", slow_rounds=0):
+	rsync = FakeRsync(*exit_codes, stderr=stderr, slow_rounds=slow_rounds)
+	sleeps = []
+	monkeypatch.setattr(frame_source_module.subprocess, "Popen", rsync)
+	monkeypatch.setattr(frame_source_module.time, "sleep", sleeps.append)
+
+	return SshFrameSource(FakeBox(), tmp_path / "cache"), rsync, sleeps
+
+
+def frames(source, *names):
+	return [source.path_for("Alpha", name) for name in names]
+
+
+def test_fetch_runs_rsync_with_nul_separated_names(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", frames(source, "b.jpg", "a.jpg"))
+
+	command = rsync.calls[0][0]
+	assert command[0] == "rsync"
+	assert "--from0" in command
+	assert "--files-from=-" in command
+	assert f"--timeout={RSYNC_IDLE_TIMEOUT_SECONDS}" in command
+	assert "ssh -o BatchMode=yes -o StrictHostKeyChecking=yes" in command
+	assert rsync.inputs[0] == b"a.jpg\0b.jpg\0"
+	assert all(path.is_file() for path in frames(source, "a.jpg", "b.jpg"))
+	assert (tmp_path / "cache" / FRAME_CACHE_MARKER).is_file()
+
+
+# Direction: the box is the source and the cache folder the destination, never the reverse. This is
+# what lets frame_source.py start rsync under the structural guard in privacy_box_writer_test.
+def test_fetch_rsync_pulls_from_the_box_into_the_cache(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", frames(source, "a.jpg"))
+
+	command = rsync.calls[0][0]
+	assert command[-2] == "box:cameras/Alpha/"
+	assert command[-1] == f"{tmp_path / 'cache' / 'Alpha'}/"
+	assert not command[-1].startswith("box:")
+
+
+def test_fetch_keeps_names_with_spaces_intact(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", frames(source, "my frame 01.jpg"))
+
+	assert rsync.inputs[0] == b"my frame 01.jpg\0"
+	assert frames(source, "my frame 01.jpg")[0].is_file()
+
+
+# Everything the job needs goes through one rsync, however many frames that is.
+def test_all_frames_are_fetched_with_one_rsync(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+	names = [f"{index:05d}.jpg" for index in range(1200)]
+
+	source.localize("Alpha", frames(source, *names))
+
+	assert len(rsync.calls) == 1
+	assert rsync.names(0) == names
+
+
+# The worker running this is killed after 60 s without a progress tick, and a running rsync sends
+# none. So the wait for it wakes up every heartbeat and ticks, and a process that is still moving
+# bytes is never killed.
+def test_the_wait_for_rsync_ticks_so_the_worker_is_not_killed_as_stalled(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path, slow_rounds=3)
+	ticks = []
+
+	source.localize("Alpha", frames(source, "a.jpg"), lambda: ticks.append(1))
+
+	assert len(rsync.calls) == 1
+	assert len(ticks) == 3
+	assert rsync.killed == 0
+	assert frames(source, "a.jpg")[0].is_file()
+
+
+def test_failed_fetch_is_retried_with_the_configured_waits(monkeypatch, tmp_path):
+	source, rsync, sleeps = fetcher(monkeypatch, tmp_path, 255, 255, 0)
+	ticks = []
+
+	source.localize("Alpha", frames(source, "a.jpg"), lambda: ticks.append(1))
+
+	assert len(rsync.calls) == 3
+	assert sum(sleeps) == sum(FETCH_RETRY_WAIT_SECONDS)
+	assert frames(source, "a.jpg")[0].is_file()
+	# The waits are sliced and tick: a wait longer than the stall timeout would otherwise get the
+	# worker killed as "stalled" before the retry happens.
+	assert max(sleeps) <= HEARTBEAT_SECONDS
+	assert len(ticks) == len(sleeps)
+
+
+def test_exhausted_retries_remove_the_camera_folder_and_raise(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path, 255, stderr=b"connection refused")
+	earlier = source.path_for("Alpha", "earlier.jpg")
+	earlier.parent.mkdir(parents=True)
+	earlier.write_bytes(b"frame")
+
+	with pytest.raises(FrameFetchError, match="exit 255.*connection refused"):
+		source.localize("Alpha", frames(source, "a.jpg"))
+
+	assert len(rsync.calls) == len(FETCH_RETRY_WAIT_SECONDS) + 1
+	# A half-fetched camera must never be handed on.
+	assert not (tmp_path / "cache" / "Alpha").exists()
+
+
+# A frame listed on the box can vanish before rsync runs: the camera fails, it is never built from
+# fewer frames.
+def test_rsync_vanished_files_exit_code_23_fails_the_camera(monkeypatch, tmp_path):
+	source, _, _ = fetcher(monkeypatch, tmp_path, 23, stderr=b"some files vanished")
+
+	with pytest.raises(FrameFetchError, match="exit 23"):
+		source.localize("Alpha", frames(source, "a.jpg", "b.jpg"))
+
+	assert not (tmp_path / "cache" / "Alpha").exists()
+
+
+# rsync's own idle timeout normally ends a hung transfer; this is the outer limit for a process
+# that trickles forever. The fake clock jumps one heartbeat per reading.
+def test_an_rsync_that_never_finishes_is_killed_and_fails_the_camera(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path, 255, slow_rounds=10**9)
+	clock = itertools.count(0, HEARTBEAT_SECONDS)
+	monkeypatch.setattr(frame_source_module.time, "monotonic", lambda: next(clock))
+
+	with pytest.raises(FrameFetchError, match="did not finish"):
+		source.localize("Alpha", frames(source, "a.jpg"))
+
+	assert rsync.killed == len(FETCH_RETRY_WAIT_SECONDS) + 1
+	assert not (tmp_path / "cache" / "Alpha").exists()
+
+
+def test_rsync_that_cannot_start_fails_the_camera(monkeypatch, tmp_path):
+	source, _, _ = fetcher(monkeypatch, tmp_path)
+
+	def missing_rsync(command, **kwargs):
+		raise FileNotFoundError("rsync")
+
+	monkeypatch.setattr(frame_source_module.subprocess, "Popen", missing_rsync)
+
+	with pytest.raises(FrameFetchError, match="could not start"):
+		source.localize("Alpha", frames(source, "a.jpg"))
+
+
+# Manual Weekly runs one worker, and so one localize, per day: a later call must keep what an
+# earlier one fetched, and fetch only what is missing.
+def test_a_later_call_keeps_the_files_of_an_earlier_call(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", frames(source, "a.jpg", "b.jpg"))
+	source.localize("Alpha", frames(source, "b.jpg", "c.jpg"))
+
+	assert all(path.is_file() for path in frames(source, "a.jpg", "b.jpg", "c.jpg"))
+	assert rsync.names(1) == ["c.jpg"]
+
+
+def test_nothing_missing_runs_no_rsync_and_creates_nothing(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", [])
+
+	assert rsync.calls == []
+	assert not (tmp_path / "cache").exists()
+
+
+def test_localize_refuses_unsafe_names_before_any_rsync(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	with pytest.raises(FrameFetchError):
+		source.localize("Alpha", [Path("/cache/Alpha/-rf.jpg")])
+
+	assert rsync.calls == []
