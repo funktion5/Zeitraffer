@@ -7,6 +7,7 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from src.frame_source import FrameSource, LocalFrameSource
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
@@ -25,6 +26,11 @@ class ImageRange:
 	earliest_date: date | None
 	latest_date: date | None
 	unrecognized_files: int
+
+
+# Built on every call, not once at import, so a patched CAMERA_ROOT keeps working in tests.
+def get_frame_source() -> FrameSource:
+	return LocalFrameSource(CAMERA_ROOT)
 
 
 # Returns all available camera directories from the mounted camera storage.
