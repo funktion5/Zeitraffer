@@ -147,33 +147,30 @@ def get_image_range(
 	camera: str,
 	progress_callback: Callable[[], None] | None = None,
 ) -> ImageRange:
-	camera_path = CAMERA_ROOT / camera
-
 	earliest_date = None
 	latest_date = None
 	unrecognized_files = 0
 
 	# Inspect filenames without triggering additional file metadata lookups.
-	with os.scandir(camera_path) as entries:
-		for entry in entries:
-			if progress_callback is not None:
-				progress_callback()
+	for name in get_frame_source().list_names(camera):
+		if progress_callback is not None:
+			progress_callback()
 
-			if not entry.name.lower().endswith(".jpg"):
-				continue
+		if not name.lower().endswith(".jpg"):
+			continue
 
-			image_date = extract_date(entry.name)
+		image_date = extract_date(name)
 
-			# Track files whose filename format is not supported.
-			if image_date is None:
-				unrecognized_files += 1
-				continue
+		# Track files whose filename format is not supported.
+		if image_date is None:
+			unrecognized_files += 1
+			continue
 
-			if earliest_date is None or image_date < earliest_date:
-				earliest_date = image_date
+		if earliest_date is None or image_date < earliest_date:
+			earliest_date = image_date
 
-			if latest_date is None or image_date > latest_date:
-				latest_date = image_date
+		if latest_date is None or image_date > latest_date:
+			latest_date = image_date
 
 	return ImageRange(
 		earliest_date=earliest_date,

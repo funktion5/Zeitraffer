@@ -34,6 +34,19 @@ requires_camera_storage = pytest.mark.skipif(
 )
 
 
+# A frame source over fixed names, so the listing functions run without a camera folder. Paths
+# point under /cache, so a test fails if the code builds them from CAMERA_ROOT instead.
+class FakeFrameSource:
+	def __init__(self, names):
+		self.names = names
+
+	def list_names(self, camera):
+		return list(self.names)
+
+	def path_for(self, camera, name):
+		return Path("/cache") / camera / name
+
+
 @requires_camera_storage
 def test_cameras_with_known_dates():
 	# Use known dates with existing images to verify that the date-based
@@ -238,6 +251,25 @@ def test_get_image_range_with_unknown_format(tmp_path, monkeypatch):
 	assert result.latest_date is None
 
 
+# The range is computed from the names the frame source lists.
+def test_get_image_range_reads_names_from_the_source(monkeypatch):
+	names = [
+		"20260910T120000.jpg",
+		"camera_260920_130000.JPG",
+		"unknown-format.jpg",
+		"notes.txt",
+	]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+	progress_calls = []
+
+	result = get_image_range("Test-Camera", lambda: progress_calls.append(1))
+
+	assert result.earliest_date == date(2026, 9, 10)
+	assert result.latest_date == date(2026, 9, 20)
+	assert result.unrecognized_files == 1
+	assert len(progress_calls) == 4
+
+
 def test_select_daylight_images_uses_daylight_buffer():
 	target_date = date(2026, 9, 16)
 	timezone = ZoneInfo("Europe/Berlin")
@@ -354,19 +386,13 @@ def test_find_images_for_dates_returns_empty_requested_date(
 
 # The names and the paths both come from the frame source, not from CAMERA_ROOT.
 def test_find_images_for_dates_uses_names_and_paths_from_the_source(monkeypatch):
-	class FakeSource:
-		def list_names(self, camera):
-			return [
-				"a_20260101T1000.jpg",
-				"camera_260101_130000.JPG",
-				"c_20260101T1100.txt",
-				"d_20260102T1000.jpg",
-			]
-
-		def path_for(self, camera, name):
-			return Path("/cache") / camera / name
-
-	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeSource())
+	names = [
+		"a_20260101T1000.jpg",
+		"camera_260101_130000.JPG",
+		"c_20260101T1100.txt",
+		"d_20260102T1000.jpg",
+	]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
 	progress_calls = []
 
 	result = find_images_for_dates(
