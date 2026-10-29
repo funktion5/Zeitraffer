@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo
 
 import cv2
 import numpy as np
+import pytest
 from flagger_fakes import SequenceForward
 
 import src.flagger.run as run
@@ -219,3 +220,86 @@ def test_a_truncated_jpeg_is_skipped_as_failed(tmp_path):
 	scan = scan_images([truncated], FlagEverything(), "Europe/Berlin")
 
 	assert (scan.flagged, scan.checked, scan.failed) == ([], 0, 1)
+
+
+class RecordingFrameSource:
+	def __init__(self, events, release_errors):
+		self.events = events
+		self.release_errors = release_errors or {}
+
+	def release(self, camera):
+		self.events.append(f"release:{camera}")
+
+		if camera in self.release_errors:
+			raise self.release_errors[camera]
+
+
+# One list for every report write and every release, so a test can check their order.
+def recorded_events(monkeypatch, release_errors=None):
+	events = []
+	write_report = run.write_report
+
+	def recording_write_report(*args, **kwargs):
+		events.append(f"write:{args[1]}")
+		return write_report(*args, **kwargs)
+
+	monkeypatch.setattr(run, "write_report", recording_write_report)
+	monkeypatch.setattr(
+		run, "get_frame_source", lambda: RecordingFrameSource(events, release_errors)
+	)
+
+	return events
+
+
+def test_frames_are_released_after_the_report_is_written(tmp_path, monkeypatch):
+	image = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(monkeypatch, {"Cam": [image]})
+	events = recorded_events(monkeypatch)
+
+	run_cameras(CONFIG, ["Cam"], DAY, FlagEverything(), tmp_path / "videos", "det", NOW)
+
+	# The report copies the flagged images out of the fetched frames, so they go afterwards.
+	assert events == ["write:Cam", "release:Cam"]
+
+
+def test_frames_are_released_when_the_detector_fails(tmp_path, monkeypatch):
+	image = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(monkeypatch, {"Cam": [image]})
+	events = recorded_events(monkeypatch)
+
+	class BrokenDetector:
+		def __call__(self, blob):
+			raise RuntimeError("model failed")
+
+	with pytest.raises(RuntimeError, match="model failed"):
+		run_cameras(CONFIG, ["Cam"], DAY, BrokenDetector(), tmp_path / "videos", "det", NOW)
+
+	assert events == ["release:Cam"]
+
+
+def test_a_fetch_error_fails_that_camera_and_still_releases_its_frames(tmp_path, monkeypatch):
+	image = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(monkeypatch, {"Broken": OSError("rsync failed"), "Cam": [image]})
+	events = recorded_events(monkeypatch)
+
+	code = run_cameras(
+		CONFIG, ["Broken", "Cam"], DAY, FlagNothing(), tmp_path / "videos", "det", NOW
+	)
+
+	assert code == 1
+	assert events == ["release:Broken", "write:Cam", "release:Cam"]
+
+
+def test_a_failed_release_fails_the_run_not_the_others(tmp_path, monkeypatch, caplog):
+	image = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(monkeypatch, {"First": [image], "Second": [image]})
+	events = recorded_events(monkeypatch, {"First": OSError("cannot remove the frame cache")})
+
+	with caplog.at_level(logging.ERROR, logger="timelapse"):
+		code = run_cameras(
+			CONFIG, ["First", "Second"], DAY, FlagNothing(), tmp_path / "videos", "det", NOW
+		)
+
+	assert code == 1
+	assert events == ["write:First", "release:First", "write:Second", "release:Second"]
+	assert "[First] could not remove fetched frames" in caplog.text
