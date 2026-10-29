@@ -11,6 +11,7 @@ from src.images import (
 	extract_time,
 	filter_duplicate_images_isolated,
 	find_images_isolated,
+	get_frame_source,
 )
 from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
@@ -262,6 +263,19 @@ def run_weekly_job(
 			failed_count += 1
 
 			continue
+
+		finally:
+			# A historical run fetches unblurred frames for seven days: they go after every
+			# outcome of this camera. The automatic Weekly joins existing Dailies and fetches none.
+			if manual_run:
+				try:
+					get_frame_source().release(camera)
+
+				except OSError:
+					# A camera that was already built is then counted as created and as failed;
+					# the failure is what has to show.
+					logger.exception(f"Could not remove fetched frames for camera: {camera}")
+					failed_count += 1
 
 		created_count += 1
 

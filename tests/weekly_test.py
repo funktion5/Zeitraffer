@@ -903,3 +903,167 @@ def test_run_manual_weekly_handles_ffmpeg_error(
 
 	assert retention_calls == []
 	assert "Failed to process Weekly for camera: Scheunenviertel" in caplog.text
+
+
+# Records every release in one event log with the video builds, so tests can check the order.
+class FakeFrameSource:
+	def __init__(self, events, release_errors):
+		self.events = events
+		self.release_errors = release_errors
+
+	def release(self, camera):
+		self.events.append(f"release:{camera}")
+
+		if camera in self.release_errors:
+			raise self.release_errors[camera]
+
+
+# Replace everything a historical Weekly reaches outside itself and return the event log.
+def patch_manual_weekly(monkeypatch, collect, create_error=None, release_errors=None):
+	events = []
+
+	def fake_create_timelapse(camera, **kwargs):
+		events.append(f"create:{camera}")
+
+		if create_error is not None:
+			raise create_error
+
+		return Path(f"videos/{camera}/manual-runs/weekly/video.mp4")
+
+	monkeypatch.setattr(weekly_module, "collect_weekly_images", collect)
+	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
+	monkeypatch.setattr(weekly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
+	monkeypatch.setattr(
+		weekly_module,
+		"get_frame_source",
+		lambda: FakeFrameSource(events, release_errors or {}),
+	)
+
+	return events
+
+
+def run_manual_weekly(cameras):
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=cameras,
+		target_date=date(2026, 9, 16),
+		manual_run=True,
+	)
+
+
+# A camera whose frames cannot be fetched counts as failed; the others still run and any
+# frames fetched for the days before the failure are removed.
+def test_manual_weekly_fetch_error_counts_as_failed_and_other_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	def fake_collect_weekly_images(camera, **kwargs):
+		# The worker forwards a failed fetch to the parent as a plain OSError.
+		if camera == "Unreachable-Camera":
+			raise OSError("rsync from the box failed")
+
+		return [Path("image.jpg")], []
+
+	events = patch_manual_weekly(monkeypatch, fake_collect_weekly_images)
+
+	run_manual_weekly(["Unreachable-Camera", "Working-Camera"])
+
+	assert events == [
+		"release:Unreachable-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# No frames at all leaves the window incomplete: a skip, not a failure, and the frames fetched
+# for the scan still go.
+def test_manual_weekly_without_frames_is_skipped_not_failed(
+	monkeypatch,
+	caplog,
+):
+	window = [date(2026, 9, 10) + timedelta(days=offset) for offset in range(7)]
+
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([], window))
+
+	run_manual_weekly(["Test-Camera"])
+
+	assert events == ["release:Test-Camera"]
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
+# The frames are unblurred, so they may only be removed after the video is built from them.
+def test_manual_weekly_releases_after_success(
+	monkeypatch,
+):
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([Path("image.jpg")], []))
+
+	run_manual_weekly(["Test-Camera"])
+
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+
+
+# A failed video build must not leave the fetched frames behind.
+def test_manual_weekly_releases_when_the_video_build_raises(
+	monkeypatch,
+	caplog,
+):
+	events = patch_manual_weekly(
+		monkeypatch,
+		lambda **kwargs: ([Path("image.jpg")], []),
+		create_error=subprocess.CalledProcessError(returncode=1, cmd=["ffmpeg"]),
+	)
+
+	run_manual_weekly(["Test-Camera"])
+
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+# A cleanup that fails is logged loudly and counted, but it must not stop the later cameras.
+def test_manual_weekly_release_error_is_logged_and_later_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	events = patch_manual_weekly(
+		monkeypatch,
+		lambda **kwargs: ([Path("image.jpg")], []),
+		release_errors={"First-Camera": OSError("cannot remove the frame cache")},
+	)
+
+	run_manual_weekly(["First-Camera", "Second-Camera"])
+
+	assert events == [
+		"create:First-Camera",
+		"release:First-Camera",
+		"create:Second-Camera",
+		"release:Second-Camera",
+	]
+	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
+	assert "failed=1" in caplog.text
+
+
+# The automatic Weekly joins existing Dailies and reads no frames, so it must not need a frame
+# source at all.
+def test_automatic_weekly_does_not_touch_the_frame_source(
+	monkeypatch,
+	caplog,
+):
+	def forbidden_frame_source():
+		raise AssertionError("the automatic Weekly reads no frames")
+
+	monkeypatch.setattr(weekly_module, "get_frame_source", forbidden_frame_source)
+	monkeypatch.setattr(
+		weekly_module,
+		"create_automatic_weekly_video",
+		lambda **kwargs: Path("videos/Test-Camera/weekly/video.mp4"),
+	)
+	monkeypatch.setattr(weekly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
+
+	weekly_module.run_weekly_job(
+		config=TEST_CONFIG,
+		cameras=["Test-Camera"],
+		target_date=date(2026, 9, 16),
+	)
+
+	assert "created=1 | skipped=0 | failed=0" in caplog.text
