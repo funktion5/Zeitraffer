@@ -1,3 +1,4 @@
+import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
@@ -539,3 +540,138 @@ def test_run_monthly_job_resolves_sunset_per_day(
 	# Evening centres that differ between days, never the 12:00 default.
 	assert all(seconds > 16 * 60 * 60 for seconds in target_seconds_by_date.values())
 	assert len(set(target_seconds_by_date.values())) > 1
+
+
+# Records every release in one event log with the video builds, so tests can check the order.
+class FakeFrameSource:
+	def __init__(self, events, release_errors):
+		self.events = events
+		self.release_errors = release_errors
+
+	def release(self, camera):
+		self.events.append(f"release:{camera}")
+
+		if camera in self.release_errors:
+			raise self.release_errors[camera]
+
+
+# Replace everything the Monthly job reaches outside itself and return the event log.
+def patch_monthly_job(monkeypatch, find, create_error=None, release_errors=None):
+	events = []
+
+	def fake_create_timelapse(camera, **kwargs):
+		events.append(f"create:{camera}")
+
+		if create_error is not None:
+			raise create_error
+
+		return Path(f"videos/{camera}/monthly/video.mp4")
+
+	monkeypatch.setattr(monthly_module, "find_interval_images_isolated", find)
+	monkeypatch.setattr(monthly_module, "create_timelapse", fake_create_timelapse)
+	monkeypatch.setattr(monthly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
+	monkeypatch.setattr(
+		monthly_module,
+		"get_frame_source",
+		lambda: FakeFrameSource(events, release_errors or {}),
+	)
+
+	return events
+
+
+def run_monthly(cameras):
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=cameras,
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+	)
+
+
+# A camera whose frames cannot be fetched counts as failed; the others still run and any
+# partly fetched frames of the failed camera are removed.
+def test_fetch_error_counts_as_failed_and_other_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	def fake_find_interval_images_isolated(camera, **kwargs):
+		# The worker forwards a failed fetch to the parent as a plain OSError.
+		if camera == "Unreachable-Camera":
+			raise OSError("rsync from the box failed")
+
+		return create_complete_monthly_images()
+
+	events = patch_monthly_job(monkeypatch, fake_find_interval_images_isolated)
+
+	run_monthly(["Unreachable-Camera", "Working-Camera"])
+
+	assert events == [
+		"release:Unreachable-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# Zero frames after the filters is a skip, not a failure, and the fetched frames still go.
+def test_zero_frames_is_skipped_not_failed(
+	monkeypatch,
+	caplog,
+):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: [])
+
+	run_monthly(["Test-Camera"])
+
+	assert events == ["release:Test-Camera"]
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
+# The frames are unblurred, so they may only be removed after the video is built from them.
+def test_release_runs_after_success(
+	monkeypatch,
+):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+
+	run_monthly(["Test-Camera"])
+
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+
+
+# A failed video build must not leave the fetched frames behind.
+def test_release_runs_when_the_video_build_raises(
+	monkeypatch,
+	caplog,
+):
+	events = patch_monthly_job(
+		monkeypatch,
+		lambda **kwargs: create_complete_monthly_images(),
+		create_error=subprocess.CalledProcessError(returncode=1, cmd=["ffmpeg"]),
+	)
+
+	run_monthly(["Test-Camera"])
+
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+# A cleanup that fails is logged loudly and counted, but it must not stop the later cameras.
+def test_release_error_is_logged_and_later_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	events = patch_monthly_job(
+		monkeypatch,
+		lambda **kwargs: create_complete_monthly_images(),
+		release_errors={"First-Camera": OSError("cannot remove the frame cache")},
+	)
+
+	run_monthly(["First-Camera", "Second-Camera"])
+
+	assert events == [
+		"create:First-Camera",
+		"release:First-Camera",
+		"create:Second-Camera",
+		"release:Second-Camera",
+	]
+	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
+	assert "failed=1" in caplog.text
