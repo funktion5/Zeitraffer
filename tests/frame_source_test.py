@@ -638,24 +638,12 @@ def test_release_removes_only_the_named_camera_folder(tmp_path):
 	assert (source.cache_root / FRAME_CACHE_MARKER).is_file()
 
 
-def test_release_all_removes_the_cache_root(tmp_path):
-	source = source_with_frames(tmp_path, "Alpha", "Beta")
-
-	source.release_all()
-
-	assert not source.cache_root.exists()
-	assert (tmp_path / "temp" / "frame-cache").is_dir()
-
-
 def test_release_refuses_a_cache_root_without_the_marker(tmp_path):
 	source = source_with_frames(tmp_path, "Alpha")
 	(source.cache_root / FRAME_CACHE_MARKER).unlink()
 
 	with pytest.raises(ValueError, match="marker"):
 		source.release("Alpha")
-
-	with pytest.raises(ValueError, match="marker"):
-		source.release_all()
 
 	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
 
@@ -674,9 +662,6 @@ def test_release_refuses_a_root_outside_temp(tmp_path):
 
 	for root in (outside, temp, link):
 		source = SshFrameSource(FakeBox(), root, temp)
-
-		with pytest.raises(ValueError, match="inside"):
-			source.release_all()
 
 		with pytest.raises(ValueError, match="inside"):
 			source.release("Alpha")
@@ -702,7 +687,6 @@ def test_release_ignores_a_missing_folder(tmp_path):
 	never_created = SshFrameSource(FakeBox(), temp / "frame-cache" / "run-9", temp)
 
 	never_created.release("Alpha")
-	never_created.release_all()
 
 	source = source_with_frames(tmp_path, "Alpha")
 	source.release("Gamma")

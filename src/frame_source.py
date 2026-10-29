@@ -407,12 +407,6 @@ class SshFrameSource:
 		if root is not None:
 			_remove(root / camera)
 
-	def release_all(self) -> None:
-		root = self._guarded_root()
-
-		if root is not None:
-			_remove(root)
-
 	# Deleting is only ever allowed strictly inside temp/, after resolving symlinks and "..", and
 	# only in a folder that carries the marker, so a wrong cache_root can never wipe anything else.
 	# None means there is nothing to release.

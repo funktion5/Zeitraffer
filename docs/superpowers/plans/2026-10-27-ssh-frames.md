@@ -150,9 +150,9 @@ Tests (fake `subprocess.Popen` and `time.sleep`): `test_fetch_runs_rsync_with_nu
 
 **Files:** Modify `src/frame_source.py`; Test `tests/frame_source_test.py`.
 
-**Interfaces:** `SshFrameSource.release(camera) -> None` and `release_all() -> None` remove `cache_root/camera` or the whole cache root. `SshFrameSource` gets a third field `temp_root: Path = PROJECT_ROOT / "temp"` (`build_frame_source` passes `project_root / "temp"`). Both raise `ValueError` unless `cache_root` resolves (symlinks followed) strictly inside `temp_root` and carries the `.frame-cache` marker; unsafe camera names (containing `/`, `.` or `..`, or empty) raise `ValueError`; a missing folder is fine; any other deletion error is raised, because frames left behind unnoticed are unblurred.
+**Interfaces:** `SshFrameSource.release(camera) -> None` removes `cache_root/camera`. (A `release_all()` was planned here too and deleted after Phase C: no job ever called it, and `release_leftovers` covers the crash case.) `SshFrameSource` gets a third field `temp_root: Path = PROJECT_ROOT / "temp"` (`build_frame_source` passes `project_root / "temp"`). It raises `ValueError` unless `cache_root` resolves (symlinks followed) strictly inside `temp_root` and carries the `.frame-cache` marker; unsafe camera names (containing `/`, `.` or `..`, or empty) raise `ValueError`; a missing folder is fine; any other deletion error is raised, because frames left behind unnoticed are unblurred.
 
-Tests: `test_release_removes_only_the_named_camera_folder`, `test_release_all_removes_the_cache_root`, `test_release_refuses_a_cache_root_without_the_marker`, `test_release_refuses_a_root_outside_temp` (a folder elsewhere, `temp/` itself and a symlink leading out), `test_release_refuses_unsafe_camera_names`, `test_release_ignores_a_missing_folder` (Review Focus 5).
+Tests: `test_release_removes_only_the_named_camera_folder`, `test_release_refuses_a_cache_root_without_the_marker`, `test_release_refuses_a_root_outside_temp` (a folder elsewhere, `temp/` itself and a symlink leading out), `test_release_refuses_unsafe_camera_names`, `test_release_ignores_a_missing_folder` (Review Focus 5).
 
 ### Task 12b: stop the rsync child with its worker (Review Focus 8)
 
