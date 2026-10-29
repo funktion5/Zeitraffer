@@ -1,6 +1,7 @@
 import subprocess
 from datetime import date
 
+from src.image_worker import WorkerExitedError
 from src.images import find_interval_images_isolated, release_camera_frames
 from src.interval_window import (
 	IntervalWindow,
@@ -133,6 +134,7 @@ def run_monthly_job(
 			OSError,
 			TimeoutError,
 			subprocess.CalledProcessError,
+			WorkerExitedError,
 		):
 			logger.exception(f"Failed to process Monthly for camera: {camera}")
 			failed_count += 1

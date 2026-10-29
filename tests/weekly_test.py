@@ -7,6 +7,7 @@ from frame_source_fakes import RecordingFrameSource
 import src.date_coverage as date_coverage_module
 import src.images as images_module
 import src.jobs.weekly as weekly_module
+from src.image_worker import WorkerExitedError
 
 TEST_CONFIG = {
 	"location": {
@@ -959,6 +960,29 @@ def test_manual_weekly_fetch_error_counts_as_failed_and_other_cameras_still_run(
 
 	assert events == [
 		"release:Unreachable-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# A worker that dies is not an OSError, but it only costs that camera: the others still run.
+def test_manual_weekly_dead_worker_fails_that_camera_and_other_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	def fake_collect_weekly_images(camera, **kwargs):
+		if camera == "Crashed-Camera":
+			raise WorkerExitedError("Daily image scan worker exited unexpectedly")
+
+		return [Path("image.jpg")], []
+
+	events = patch_manual_weekly(monkeypatch, fake_collect_weekly_images)
+
+	run_manual_weekly(["Crashed-Camera", "Working-Camera"])
+
+	assert events == [
+		"release:Crashed-Camera",
 		"create:Working-Camera",
 		"release:Working-Camera",
 	]

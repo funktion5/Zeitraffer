@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import src.image_worker as image_worker_module
-from src.image_worker import exit_on_sigterm, run_isolated_worker
+from src.image_worker import WorkerExitedError, exit_on_sigterm, run_isolated_worker
 
 
 # Return a successful worker result.
@@ -121,6 +121,23 @@ def test_run_isolated_worker_resets_timeout_on_progress(
 	)
 
 	assert result == "expected-result"
+
+
+# The jobs catch exactly this error per camera, so one dead worker does not stop the others. It
+# stays a RuntimeError, but other RuntimeErrors (the blur check) are not caught along with it.
+def test_a_dead_worker_raises_the_worker_exited_error(monkeypatch):
+	monkeypatch.setattr(image_worker_module, "WORKER_POLL_INTERVAL_SECONDS", 0.01)
+
+	with pytest.raises(WorkerExitedError, match="worker exited unexpectedly") as caught:
+		run_isolated_worker(
+			camera="Test-Camera",
+			target=exiting_worker,
+			kwargs={},
+			stall_timeout_seconds=1,
+			operation_name="Test operation",
+		)
+
+	assert isinstance(caught.value, RuntimeError)
 
 
 # A worker that exits without returning a queue result must be treated as unexpected failure.

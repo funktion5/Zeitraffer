@@ -15,6 +15,13 @@ WORKER_POLL_INTERVAL_SECONDS = 5
 PROGRESS_REPORT_INTERVAL_SECONDS = 1
 
 
+# A worker process that died without reporting a result (killed for memory, crashed inside a
+# library). The jobs catch exactly this error per camera, so one dead worker costs that camera only.
+# It stays a RuntimeError, and other RuntimeErrors (the blur check) are not caught along with it.
+class WorkerExitedError(RuntimeError):
+	pass
+
+
 # Stop a stalled worker and force-kill it only if termination is not enough.
 def _stop_worker_process(
 	process: Process,
@@ -148,7 +155,7 @@ def _wait_for_worker(
 
 				result_queue.close()
 
-				raise RuntimeError(
+				raise WorkerExitedError(
 					f"{operation_name} worker exited unexpectedly "
 					f"for camera: {camera} "
 					f"(exit code: {process.exitcode})"

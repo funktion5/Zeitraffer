@@ -9,6 +9,7 @@ from src.date_coverage import (
 	get_latest_completed_date,
 	get_min_coverage_days,
 )
+from src.image_worker import WorkerExitedError
 from src.images import (
 	find_interval_images_isolated,
 	release_camera_frames,
@@ -151,6 +152,7 @@ def run_yearly_job(
 			OSError,
 			TimeoutError,
 			subprocess.CalledProcessError,
+			WorkerExitedError,
 		):
 			# Operational errors only skip the affected camera.
 			logger.exception(f"Failed to process Yearly for camera: {camera}")

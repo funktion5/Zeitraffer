@@ -13,6 +13,7 @@ from frame_source_fakes import RecordingFrameSource
 import src.flagger.run as run
 import src.images as images_module
 from src.flagger.run import run_cameras, scan_images, select_daily_images
+from src.image_worker import WorkerExitedError
 
 BERLIN = ZoneInfo("Europe/Berlin")
 DAY = date(2026, 10, 20)
@@ -278,6 +279,26 @@ def test_a_fetch_error_fails_that_camera_and_still_releases_its_frames(tmp_path,
 
 	assert code == 1
 	assert events == ["release:Broken", "write:Cam", "release:Cam"]
+
+
+# A worker that dies is not an OSError, but it only costs that camera: the others still run.
+def test_a_dead_worker_fails_that_camera_and_the_others_still_run(tmp_path, monkeypatch):
+	image = write_image(tmp_path / "src", "cam-26-10-20_08-14-58-20.jpg")
+	prepared_images(
+		monkeypatch,
+		{
+			"Crashed": WorkerExitedError("Daily image scan worker exited unexpectedly"),
+			"Cam": [image],
+		},
+	)
+	events = recorded_events(monkeypatch)
+
+	code = run_cameras(
+		CONFIG, ["Crashed", "Cam"], DAY, FlagNothing(), tmp_path / "videos", "det", NOW
+	)
+
+	assert code == 1
+	assert events == ["release:Crashed", "write:Cam", "release:Cam"]
 
 
 def test_a_failed_release_fails_the_run_not_the_others(tmp_path, monkeypatch, caplog):

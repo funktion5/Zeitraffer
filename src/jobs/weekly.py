@@ -7,6 +7,7 @@ from src.date_coverage import (
 	get_latest_completed_date,
 	get_missing_dates,
 )
+from src.image_worker import WorkerExitedError
 from src.images import (
 	extract_time,
 	filter_duplicate_images_isolated,
@@ -258,6 +259,7 @@ def run_weekly_job(
 		except (
 			OSError,
 			subprocess.CalledProcessError,
+			WorkerExitedError,
 		):
 			logger.exception(f"Failed to process Weekly for camera: {camera}")
 			failed_count += 1

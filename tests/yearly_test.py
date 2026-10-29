@@ -6,6 +6,7 @@ from frame_source_fakes import RecordingFrameSource
 
 import src.images as images_module
 import src.jobs.yearly as yearly_module
+from src.image_worker import WorkerExitedError
 from src.jobs.yearly import run_yearly_job
 from src.interval_window import SUNSET, IntervalWindow
 
@@ -838,6 +839,32 @@ def test_fetch_error_counts_as_failed_and_other_cameras_still_run(
 	assert events == [
 		"find:Unreachable-Camera",
 		"release:Unreachable-Camera",
+		"find:Working-Camera",
+		"select:Working-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# A worker that dies is not an OSError, but it only costs that camera: the others still run.
+def test_a_dead_worker_fails_that_camera_and_other_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	def fake_find_interval_images_isolated(camera, **kwargs):
+		if camera == "Crashed-Camera":
+			raise WorkerExitedError("Interval image scan worker exited unexpectedly")
+
+		return create_complete_yearly_images()
+
+	events = patch_yearly_job(monkeypatch, fake_find_interval_images_isolated)
+
+	run_yearly(["Crashed-Camera", "Working-Camera"])
+
+	assert events == [
+		"find:Crashed-Camera",
+		"release:Crashed-Camera",
 		"find:Working-Camera",
 		"select:Working-Camera",
 		"create:Working-Camera",
