@@ -307,7 +307,10 @@ def find_deletion_candidates(
 	)
 
 	hashes = hash_in_batches(storage_box, camera, names_to_hash)
-	camera_path = images_module.CAMERA_ROOT / camera
+
+	# The report names the files as the storage box has them (the folder under its base directory),
+	# not as a mount would show them: a host without a mount has no such path.
+	camera_path = Path(storage_box.camera_directory(camera))
 
 	candidates = [(camera_path / name, "empty") for name in empty_names]
 	candidates.extend(
@@ -395,7 +398,10 @@ def main(argv: list[str] | None = None) -> int:
 		storage_box = get_storage_box()
 
 	except OSError:
-		logger.exception("Storage filter needs the SSHFS camera mount to be up.")
+		logger.exception(
+			f"Storage filter has no storage box: set {STORAGE_BOX_ENV}="
+			"<ssh alias>[:<base directory>]."
+		)
 		raise
 
 	run_started = datetime.now(tz=LOG_TIMEZONE)

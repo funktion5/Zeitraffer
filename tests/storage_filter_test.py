@@ -50,6 +50,12 @@ def _write(camera_path: Path, name: str, content: bytes) -> Path:
 	return path
 
 
+# The report names a file as the storage box has it, its folder under the base directory, and not
+# as a mount shows it: a host without a mount has no such path.
+def on_box(path: Path) -> Path:
+	return Path(path.parent.name) / path.name
+
+
 def test_ls_output_keeps_regular_files_with_sizes():
 	output = (
 		"total 12\n"
@@ -159,7 +165,32 @@ def test_empty_images_are_reported(local_box):
 	empty = _write(local_box, "cam_250101_120000.jpg", b"")
 	_write(local_box, "cam_250101_121500.jpg", b"frame")
 
-	assert find_deletion_candidates(BOX, "Cam", TODAY) == [(empty, "empty")]
+	assert find_deletion_candidates(BOX, "Cam", TODAY) == [(on_box(empty), "empty")]
+
+
+# The camera root belongs to the mount: the report must not depend on it.
+def test_report_paths_do_not_depend_on_the_camera_root(local_box, monkeypatch):
+	monkeypatch.setattr(
+		storage_filter_module.images_module, "CAMERA_ROOT", Path("/nowhere/cameras")
+	)
+	empty = _write(local_box, "cam_250101_120000.jpg", b"")
+
+	candidates = find_deletion_candidates(BOX, "Cam", TODAY)
+
+	assert candidates == [(on_box(empty), "empty")]
+	assert "nowhere" not in str(candidates[0][0])
+
+
+def test_report_paths_include_the_base_directory_of_the_box(tmp_path, monkeypatch):
+	monkeypatch.setattr(StorageBox, "run", run_in(tmp_path))
+	folder = tmp_path / "base" / "Cam"
+	folder.mkdir(parents=True)
+	empty = _write(folder, "cam_250101_120000.jpg", b"")
+	box = StorageBox(remote="user@box", base_directory="base")
+
+	candidates = find_deletion_candidates(box, "Cam", TODAY)
+
+	assert candidates == [(Path("base/Cam") / empty.name, "empty")]
 
 
 def test_later_same_day_duplicates_are_reported(local_box):
@@ -169,8 +200,8 @@ def test_later_same_day_duplicates_are_reported(local_box):
 	_write(local_box, "cam_250101_160000.jpg", b"diff")
 
 	assert find_deletion_candidates(BOX, "Cam", TODAY) == [
-		(later, "duplicate"),
-		(latest, "duplicate"),
+		(on_box(later), "duplicate"),
+		(on_box(latest), "duplicate"),
 	]
 
 
@@ -184,8 +215,8 @@ def test_duplicates_are_found_across_batch_boundaries(local_box, monkeypatch):
 	other_copy = _write(local_box, "cam_250101_130000.jpg", b"diff")
 
 	assert find_deletion_candidates(BOX, "Cam", TODAY) == [
-		(copy, "duplicate"),
-		(other_copy, "duplicate"),
+		(on_box(copy), "duplicate"),
+		(on_box(other_copy), "duplicate"),
 	]
 
 
@@ -304,6 +335,21 @@ def isolated_main(monkeypatch):
 	monkeypatch.setattr(storage_filter_module, "cleanup_old_logs", lambda retention_days: None)
 	monkeypatch.setattr(storage_filter_module, "get_cameras", lambda: ["Cam"])
 	monkeypatch.setattr(storage_filter_module, "get_storage_box", lambda: BOX)
+
+
+# A host without a mount has nothing to bring up: the message names the setting that is missing.
+@pytest.mark.usefixtures("isolated_main")
+def test_main_names_the_setting_when_there_is_no_storage_box(monkeypatch, caplog):
+	def no_storage_box():
+		raise OSError("No storage box found")
+
+	monkeypatch.setattr(storage_filter_module, "get_storage_box", no_storage_box)
+
+	with pytest.raises(OSError, match="No storage box found"):
+		storage_filter_module.main(["--cameras", "Cam"])
+
+	assert storage_filter_module.STORAGE_BOX_ENV in caplog.text
+	assert "SSHFS" not in caplog.text
 
 
 @pytest.mark.usefixtures("isolated_main")
