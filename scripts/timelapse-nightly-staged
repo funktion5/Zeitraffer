@@ -21,7 +21,7 @@ cd "$PROJECT_ROOT" || exit 70
 
 # Static ffmpeg and ffprobe live in ~/bin on the web server.
 export PATH="${HOME}/bin:${PATH}"
-export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-box}"
+export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-storagebox}"
 export TIMELAPSE_FRAME_SOURCE=ssh
 # The web server kills large encoder processes; a lighter preset keeps FFmpeg small enough.
 export TIMELAPSE_X264_PRESET="${TIMELAPSE_X264_PRESET:-ultrafast}"
@@ -171,6 +171,12 @@ touch "$marker"
 
 "$PYTHON" -m src.main </dev/null >"$main_out" 2>&1 &
 MAIN_PID=$!
+
+# A stop that arrived after the check above and before the pipeline had a pid.
+if [[ "$STOPPED" -ne 0 ]]; then
+	kill -TERM "$MAIN_PID" 2>/dev/null
+fi
+
 wait "$MAIN_PID"
 main_rc=$?
 
@@ -179,6 +185,9 @@ while kill -0 "$MAIN_PID" 2>/dev/null; do
 	wait "$MAIN_PID"
 	main_rc=$?
 done
+
+# Done: a later signal must not be sent to a pid that something else may have taken over.
+MAIN_PID=""
 
 if [[ "$STOPPED" -ne 0 ]]; then
 	note "STOPPED by signal (exit ${STOPPED}): the run was cut short, src.main exited with ${main_rc}"
@@ -219,10 +228,25 @@ while IFS= read -r camera <&3; do
 	fi
 done 3<"${RUN_DIR}/cameras.txt"
 
+# The pipeline lists the cameras again on its own: one that appeared or vanished since the list above
+# is not verified in the loop, but if it failed, the log names it and the night must not pass.
+unlisted="$(sort -u "${RUN_DIR}/failed-cameras.txt" | grep -Fxvf "${RUN_DIR}/cameras.txt")"
+
+if [[ -n "$unlisted" ]]; then
+	note "FAILED (run): failed but not in this run's camera list: ${unlisted//$'\n'/, }"
+	run_failed=1
+fi
+
 note "Cameras: ${total}, failed: ${failed_count}"
 
 if [[ "$failed_count" -gt 0 ]]; then
 	note "Failed: ${failed_list}"
+fi
+
+# A stop during the verification must not end as a pass or an ordinary failure.
+if [[ "$STOPPED" -ne 0 ]]; then
+	note "STOPPED by signal (exit ${STOPPED}) during the verification: the result above may be incomplete"
+	exit "$STOPPED"
 fi
 
 if [[ "$failed_count" -gt 0 || "$run_failed" -ne 0 ]]; then

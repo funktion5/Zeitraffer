@@ -18,17 +18,17 @@ FAKE_PYTHON = r"""#!/bin/bash
 R="$TIMELAPSE_PROJECT_ROOT"
 if [[ "$1" == "-m" && "$2" == "src.camera_list" ]]; then
 	echo "camera_list" >> "$R/fake/events"
-	rc="$(cat "$R/fake/list_rc" 2>/dev/null || echo 0)"
-	if [[ "$rc" == 0 ]]; then
-		mkdir -p "$R/state/web-jobs"
-		cp "$R/fake/cameras" "$R/state/web-jobs/cameras.txt"
-		cat "$R/fake/cameras"
+	if [[ -n "${FAKE_LIST_SLEEP:-}" ]]; then
+		echo "list started" >> "$R/fake/events"
+		sleep "$FAKE_LIST_SLEEP"
 	fi
+	rc="$(cat "$R/fake/list_rc" 2>/dev/null || echo 0)"
+	[[ "$rc" == 0 ]] && cat "$R/fake/cameras"
 	exit "$rc"
 elif [[ "$1" == "-m" && "$2" == "src.main" ]]; then
 	[[ -n "${FAKE_READ_STDIN:-}" ]] && cat > /dev/null
 	echo "main preset=$TIMELAPSE_X264_PRESET source=${TIMELAPSE_FRAME_SOURCE-unset}" \
-		"root=${TIMELAPSE_CAMERA_ROOT-unset}" >> "$R/fake/events"
+		"root=${TIMELAPSE_CAMERA_ROOT-unset} box=${TIMELAPSE_STORAGE_BOX-unset}" >> "$R/fake/events"
 	if [[ -d "$R/fake/videos" ]]; then
 		mkdir -p "$R/videos"
 		cp -R "$R/fake/videos/." "$R/videos/"
@@ -52,8 +52,13 @@ elif [[ "$1" == "-m" && "$2" == "src.main" ]]; then
 fi
 """
 
-# The video's "duration" is simply the file's content.
-FAKE_FFPROBE = '#!/bin/bash\ncat "${@: -1}"\n'
+# The video's "duration" is simply the file's content. Every call is recorded in its own file, so
+# a test can tell that the verification has started, and it can be slowed down.
+FAKE_FFPROBE = r"""#!/bin/bash
+echo call >> "$TIMELAPSE_PROJECT_ROOT/fake/ffprobe_calls"
+[[ -n "${FAKE_FFPROBE_SLEEP:-}" ]] && sleep "$FAKE_FFPROBE_SLEEP"
+cat "${@: -1}"
+"""
 
 
 def summary(job: str, failed: int = 0) -> str:
@@ -106,7 +111,12 @@ class Project:
 	def environment(self, **extra_env: str) -> dict:
 		inherited = dict(os.environ)
 
-		for name in ("TIMELAPSE_X264_PRESET", "TIMELAPSE_CAMERA_ROOT", "TIMELAPSE_FRAME_SOURCE"):
+		for name in (
+			"TIMELAPSE_X264_PRESET",
+			"TIMELAPSE_CAMERA_ROOT",
+			"TIMELAPSE_FRAME_SOURCE",
+			"TIMELAPSE_STORAGE_BOX",
+		):
 			inherited.pop(name, None)
 
 		return {
@@ -153,6 +163,13 @@ def commands(events: list[str]) -> list[str]:
 	return [event.split(" preset=")[0] for event in events]
 
 
+def wait_for(condition, timeout_seconds: float = 10.0) -> None:
+	deadline = time.monotonic() + timeout_seconds
+
+	while not condition() and time.monotonic() < deadline:
+		time.sleep(0.05)
+
+
 # One run covers every camera: the list is written first, then the pipeline runs once, and nothing
 # stages frames any more.
 def test_one_run_covers_all_cameras_and_the_list_is_written_first(project):
@@ -160,12 +177,14 @@ def test_one_run_covers_all_cameras_and_the_list_is_written_first(project):
 
 	assert result.returncode == 0
 	assert commands(project.events()) == ["camera_list", "main"]
-	assert (project.root / "state" / "web-jobs" / "cameras.txt").is_file()
+	# What the wrapper took from the camera list's stdout is what it then verifies.
+	captured = next((project.root / "logs" / "nightly").glob("*/cameras.txt")).read_text()
+	assert captured == "Alpha\nBravo Cam\n"
 	assert "Cameras: 2, failed: 0" in project.report()
 	assert "ok: 1 videos verified" in project.report()
 
 
-def test_pipeline_reads_over_ssh_with_the_default_preset_and_no_camera_root(project):
+def test_pipeline_reads_over_ssh_with_the_default_preset_box_and_no_camera_root(project):
 	project.run()
 
 	main_event = next(event for event in project.events() if event.startswith("main"))
@@ -173,6 +192,15 @@ def test_pipeline_reads_over_ssh_with_the_default_preset_and_no_camera_root(proj
 	assert "preset=ultrafast" in main_event
 	assert "source=ssh" in main_event
 	assert "root=unset" in main_event
+	assert "box=storagebox" in main_event
+
+
+def test_the_box_alias_can_be_overridden(project):
+	project.run(TIMELAPSE_STORAGE_BOX="otherbox:/base")
+
+	main_event = next(event for event in project.events() if event.startswith("main"))
+
+	assert "box=otherbox:/base" in main_event
 
 
 def test_the_preset_can_be_overridden(project):
@@ -208,14 +236,16 @@ def test_no_cameras_is_fatal(project):
 	assert "main" not in " ".join(commands(project.events()))
 
 
-# A camera error is caught by the jobs and only logged, so the log line names the camera.
-def test_a_logged_camera_failure_fails_that_camera_and_only_that_one(project):
+# A camera error is caught by the jobs and only logged, so the log line names the camera. The four
+# jobs word it differently: the Daily says "timelapse", the others name themselves.
+@pytest.mark.parametrize("what", ["timelapse", "Weekly", "Monthly", "Yearly"])
+def test_a_logged_camera_failure_fails_that_camera_and_only_that_one(project, what):
 	project.main_lines(
-		summary("Daily"),
-		failure("Weekly", "Bravo Cam"),
-		summary("Weekly", failed=1),
-		summary("Monthly"),
-		summary("Yearly"),
+		summary("Daily", failed=1 if what == "timelapse" else 0),
+		failure(what, "Bravo Cam"),
+		summary("Weekly", failed=1 if what == "Weekly" else 0),
+		summary("Monthly", failed=1 if what == "Monthly" else 0),
+		summary("Yearly", failed=1 if what == "Yearly" else 0),
 	)
 
 	result = project.run()
@@ -230,9 +260,9 @@ def test_a_logged_camera_failure_fails_that_camera_and_only_that_one(project):
 # A frame cache that could not be removed is counted as failed by the job and names its camera too.
 def test_a_frame_cache_that_could_not_be_removed_fails_that_camera(project):
 	project.main_lines(
-		summary("Daily"),
 		"x | ERROR | Could not remove fetched frames for camera: Alpha",
-		summary("Weekly", failed=1),
+		summary("Daily", failed=1),
+		summary("Weekly"),
 		summary("Monthly"),
 		summary("Yearly"),
 	)
@@ -241,6 +271,26 @@ def test_a_frame_cache_that_could_not_be_removed_fails_that_camera(project):
 
 	assert result.returncode == 1
 	assert "Failed: Alpha" in project.report()
+
+
+# The wrapper's list and the pipeline's own listing are two separate calls: a camera that appeared
+# or vanished in between and then failed is named by the log but is not in the verified list.
+def test_a_failed_camera_that_is_not_in_the_list_still_fails_the_run(project):
+	project.main_lines(
+		summary("Daily", failed=1),
+		failure("timelapse", "Zulu"),
+		summary("Weekly"),
+		summary("Monthly"),
+		summary("Yearly"),
+	)
+
+	result = project.run()
+	report = project.report()
+
+	assert result.returncode == 1
+	assert "FAILED (run)" in report
+	assert "Zulu" in report
+	assert "Cameras: 2, failed: 0" in report
 
 
 # A failure the log does not attribute to a camera must still end the night with exit 1.
@@ -296,6 +346,22 @@ def test_a_leftover_partial_file_fails_that_camera(project):
 	assert "partial file left behind" in project.report()
 
 
+# Only what this run wrote is verified: a bad video from an earlier night is not this run's failure.
+def test_an_old_video_is_not_verified_again(project):
+	old_video = project.root / "videos" / "Alpha" / "daily" / "old.mp4"
+	old_video.parent.mkdir(parents=True)
+	old_video.write_text("0")
+	week_ago = time.time() - 7 * 24 * 60 * 60
+	os.utime(old_video, (week_ago, week_ago))
+
+	result = project.run()
+	report = project.report()
+
+	assert result.returncode == 0
+	assert "ok: 1 videos verified" in report
+	assert "ok: 2 videos verified" not in report
+
+
 def test_a_held_run_lock_stops_the_run(project):
 	lock_path = project.root / "state" / "zeitraffer-run.lock"
 	lock_path.parent.mkdir()
@@ -322,14 +388,38 @@ def test_a_pipeline_that_reads_its_input_does_not_hang(project):
 # before it exits, and the report says why the run ended.
 def test_stopping_the_wrapper_stops_the_run(project):
 	process = project.start(FAKE_MAIN_SLEEP="30")
-	deadline = time.monotonic() + 10
-
-	while "started" not in project.events() and time.monotonic() < deadline:
-		time.sleep(0.05)
+	wait_for(lambda: "started" in project.events())
 
 	process.send_signal(signal.SIGTERM)
 	process.wait(timeout=20)
 
 	assert process.returncode == 143
 	assert "main got TERM" in project.events()
+	assert "STOPPED" in project.report()
+
+
+# A stop while the camera list is written is noticed as soon as that call returns: the pipeline is
+# never started.
+def test_a_stop_while_the_camera_list_is_written_ends_the_run_before_it_starts(project):
+	process = project.start(FAKE_LIST_SLEEP="2")
+	wait_for(lambda: "list started" in project.events())
+
+	process.send_signal(signal.SIGTERM)
+	process.wait(timeout=20)
+
+	assert process.returncode == 143
+	assert not any(event.startswith("main") for event in project.events())
+	assert "STOPPED before the run started" in project.report()
+
+
+# The pipeline is done by then, so there is nothing to forward, but the stop must not be lost: the
+# exit code says it was stopped, not that the verification passed.
+def test_a_stop_during_the_verification_is_not_swallowed(project):
+	process = project.start(FAKE_FFPROBE_SLEEP="1")
+	wait_for(lambda: (project.fake / "ffprobe_calls").exists())
+
+	process.send_signal(signal.SIGTERM)
+	process.wait(timeout=30)
+
+	assert process.returncode == 143
 	assert "STOPPED" in project.report()
