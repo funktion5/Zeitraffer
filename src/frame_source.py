@@ -156,7 +156,14 @@ def release_leftovers(temp_root: Path) -> None:
 		if _process_is_alive(int(owner.group(1))):
 			continue
 
-		logger.warning(f"Removing frame cache left behind by an earlier run: {folder}")
+		# A finished run leaves its run folder with only the marker: normal, not a leftover. Only
+		# frames in it are worth a warning.
+		if any(child.name != FRAME_CACHE_MARKER for child in folder.iterdir()):
+			logger.warning(f"Removing frame cache left behind by an earlier run: {folder}")
+
+		else:
+			logger.info(f"Removing the empty frame cache of an earlier run: {folder}")
+
 		_remove(folder)
 
 

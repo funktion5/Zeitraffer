@@ -1,5 +1,6 @@
 import itertools
 import json
+import logging
 import multiprocessing
 import os
 import signal
@@ -751,6 +752,30 @@ def test_release_leftovers_removes_only_folders_of_runs_that_are_over(tmp_path):
 	assert (folders["no-marker"] / "a.jpg").is_file()
 	assert (folders["odd-name"] / "a.jpg").is_file()
 	assert (folders["foreign"] / "a.jpg").is_file()
+
+
+# A finished run leaves its run folder with only the marker, so the next run finding that is the
+# normal case and must not warn. Frames left in it are a real leftover and keep the warning.
+def test_the_empty_folder_of_a_finished_run_is_removed_without_a_warning(tmp_path, caplog):
+	folder = tmp_path / "temp" / "frame-cache" / f"{dead_pid()}-aaaaaaaa"
+	create_frame_cache(folder)
+
+	with caplog.at_level(logging.INFO, logger="timelapse"):
+		release_leftovers(tmp_path / "temp")
+
+	assert not folder.exists()
+	assert [record.levelno for record in caplog.records] == [logging.INFO]
+
+
+def test_a_leftover_with_frames_is_removed_with_a_warning(tmp_path, caplog):
+	folders = leftover_cache(tmp_path)
+
+	with caplog.at_level(logging.INFO, logger="timelapse"):
+		release_leftovers(tmp_path / "temp")
+
+	assert not folders["over"].exists()
+	assert [record.levelno for record in caplog.records] == [logging.WARNING]
+	assert "left behind by an earlier run" in caplog.text
 
 
 def test_release_leftovers_does_not_follow_a_symlinked_cache_folder(tmp_path):
