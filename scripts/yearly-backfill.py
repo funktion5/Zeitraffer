@@ -30,7 +30,12 @@ from src.date_coverage import (  # noqa: E402
 	get_latest_completed_date,
 	get_missing_dates,
 )
-from src.images import find_interval_images_isolated, get_cameras  # noqa: E402
+from src.image_worker import WorkerExitedError, exit_on_sigterm  # noqa: E402
+from src.images import (  # noqa: E402
+	find_interval_images_isolated,
+	get_cameras,
+	release_camera_frames,
+)
 from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
 from src.privacy.anonymize import PrivacyCheckError  # noqa: E402
@@ -200,6 +205,9 @@ def main() -> int:
 		f"force={args.force} | blur_people={args.blur_people} | run_id={RUN_ID}"
 	)
 
+	# Frames that could not be removed are unblurred leftovers: the run says so with its exit code.
+	release_failed = False
+
 	with acquire_run_lock(), report_path.open("w", newline="") as report_file:
 		writer = csv.DictWriter(report_file, fieldnames=fieldnames, delimiter=";")
 		writer.writeheader()
@@ -220,10 +228,22 @@ def main() -> int:
 					)
 
 				# A privacy doubt means no video for this year; the other years and cameras go on.
-				except (OSError, TimeoutError, subprocess.CalledProcessError, PrivacyCheckError):
+				except (
+					OSError,
+					TimeoutError,
+					subprocess.CalledProcessError,
+					PrivacyCheckError,
+					WorkerExitedError,
+				):
 					# Operational errors only skip this camera/year, like the Yearly job.
 					logger.exception(f"Failed Yearly backfill {year} for camera: {camera}")
 					result = {"camera": camera, "year": year, "status": "failed"}
+
+				finally:
+					# The fetched frames are unblurred and the video is built from them: they go
+					# after every outcome of this camera and year, and the next year starts clean.
+					if not release_camera_frames(camera):
+						release_failed = True
 
 				writer.writerow(result)
 				# Flush per row so a crash or reboot keeps the finished rows.
@@ -231,8 +251,9 @@ def main() -> int:
 
 	logger.info(f"Yearly backfill finished | report={report_path} | run_id={RUN_ID}")
 
-	return 0
+	return 1 if release_failed else 0
 
 
 if __name__ == "__main__":
+	exit_on_sigterm()
 	sys.exit(main())
