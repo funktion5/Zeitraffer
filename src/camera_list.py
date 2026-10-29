@@ -16,7 +16,13 @@ CAMERA_LIST_PATH = PROJECT_ROOT / "state" / "web-jobs" / "cameras.json"
 # The page may read at any moment, so the file is replaced in one step: it holds the old list or
 # the new one, never half of it, and a failed write leaves the old list and no temporary file.
 def write_camera_list(destination: Path, cameras: list[str]) -> None:
+	created = not destination.parent.exists()
 	destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+	# The umask cuts mkdir's mode down (a cron job may run with 077), and the web server user has to
+	# enter the folder. A folder that already exists keeps the mode it has.
+	if created:
+		destination.parent.chmod(0o755)
 
 	descriptor, temporary = tempfile.mkstemp(dir=destination.parent, prefix=f".{destination.name}.")
 
@@ -54,7 +60,14 @@ def main() -> int:
 
 		return 1
 
-	write_camera_list(CAMERA_LIST_PATH, cameras)
+	try:
+		write_camera_list(CAMERA_LIST_PATH, cameras)
+
+	except OSError as error:
+		logger.error(f"Camera list not updated: {error}")
+
+		return 1
+
 	logger.info(f"Camera list written: {len(cameras)} cameras")
 
 	# The nightly wrapper reads the cameras to verify from here. Only the names go to stdout; the
