@@ -1,11 +1,12 @@
 import os
+import signal
 import time
 from pathlib import Path
 
 import pytest
 
 import src.image_worker as image_worker_module
-from src.image_worker import run_isolated_worker
+from src.image_worker import exit_on_sigterm, run_isolated_worker
 
 
 # Return a successful worker result.
@@ -279,3 +280,18 @@ def test_a_stopped_worker_runs_its_cleanup_code(tmp_path):
 		)
 
 	assert marker.read_text() == "cleaned up"
+
+
+# The job entry points install the same handler: a stop signal must unwind the running job, so the
+# finally block that removes the fetched frames runs, instead of the process dying on the spot.
+def test_exit_on_sigterm_turns_sigterm_into_system_exit():
+	previous_handler = signal.getsignal(signal.SIGTERM)
+
+	try:
+		exit_on_sigterm()
+
+		with pytest.raises(SystemExit):
+			signal.raise_signal(signal.SIGTERM)
+
+	finally:
+		signal.signal(signal.SIGTERM, previous_handler)

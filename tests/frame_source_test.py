@@ -474,6 +474,17 @@ def test_fetch_rsync_pulls_from_the_box_into_the_cache(monkeypatch, tmp_path):
 	assert not command[-1].startswith("box:")
 
 
+# The blur cache recognises a frame by the size and modification time of its local copy, and copy2
+# keeps the time of the fetched file. Without -t every fetched frame would look new and each
+# earlier detection would be lost.
+def test_fetch_keeps_the_modification_time_of_the_box(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+
+	source.localize("Alpha", frames(source, "a.jpg"))
+
+	assert "-t" in rsync.calls[0][0]
+
+
 def test_fetch_keeps_names_with_spaces_intact(monkeypatch, tmp_path):
 	source, rsync, _ = fetcher(monkeypatch, tmp_path)
 

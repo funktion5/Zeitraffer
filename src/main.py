@@ -2,6 +2,7 @@ import argparse
 from datetime import date
 
 from src.config import load_config
+from src.image_worker import exit_on_sigterm
 from src.images import get_cameras, require_cameras
 from src.interval_window import (
 	IntervalWindow,
@@ -286,4 +287,5 @@ def main():
 
 
 if __name__ == "__main__":
+	exit_on_sigterm()
 	main()

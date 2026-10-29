@@ -36,6 +36,12 @@ def _exit_on_sigterm(signal_number: int, frame: object) -> None:
 	raise SystemExit(1)
 
 
+# Also installed by the job entry points (main, flagger): a stopped job unwinds through its finally
+# blocks, which remove the fetched frames, instead of dying with them still on disk.
+def exit_on_sigterm() -> None:
+	signal.signal(signal.SIGTERM, _exit_on_sigterm)
+
+
 # Run the target inside the worker process and send its result back. The target
 # receives a throttled progress_callback; expected filesystem errors are
 # forwarded, anything else crashes the worker and surfaces as RuntimeError.
@@ -44,7 +50,7 @@ def _run_target(
 	kwargs: dict[str, Any],
 	result_queue: Queue,
 ) -> None:
-	signal.signal(signal.SIGTERM, _exit_on_sigterm)
+	exit_on_sigterm()
 
 	last_progress_report = time.monotonic()
 

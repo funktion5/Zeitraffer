@@ -23,6 +23,7 @@ from src.flagger.report import (
 )
 from src.flagger.settings import load_flagger_settings
 from src.flagger.yolox import Forward, OnnxForward, detect_image, detector_id
+from src.image_worker import exit_on_sigterm
 from src.images import (
 	JPEG_END_MARKER,
 	find_daily_images_isolated,
@@ -322,4 +323,5 @@ def run_folder(args: argparse.Namespace, model: Path, timezone: str, now: dateti
 
 
 if __name__ == "__main__":
+	exit_on_sigterm()
 	sys.exit(main())

@@ -4,6 +4,7 @@ import sys
 
 import pytest
 
+import src.images as images_module
 import src.main as main_module
 from src.interval_window import SUNSET, IntervalWindow
 
@@ -654,6 +655,35 @@ def test_main_routes_date_alias_to_historical_daily(
 			},
 		)
 	]
+
+
+# The CLI finds its cameras through the frame source, never by listing the mount itself, so the
+# ssh source works for every entry point without a mount.
+def test_main_discovers_cameras_through_the_frame_source(
+	monkeypatch,
+):
+	real_get_cameras = main_module.get_cameras
+
+	class FakeFrameSource:
+		def list_cameras(self):
+			return ["Camera-B", "Camera-A"]
+
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			date_value=date(2026, 9, 16),
+			cameras=["Camera-B"],
+		),
+	)
+
+	monkeypatch.setattr(main_module, "get_cameras", real_get_cameras)
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource())
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert job_calls[0][1]["cameras"] == ["Camera-B"]
 
 
 # Camera filters without a manual or historical date must be rejected.
