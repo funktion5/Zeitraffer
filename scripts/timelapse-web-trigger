@@ -6,7 +6,7 @@ set -euo pipefail
 # sudo does not always reset HOME to the target user's home.
 PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
 LOCK_FILE="${TIMELAPSE_WEB_LOCK_FILE:-${PROJECT_ROOT}/state/zeitraffer-run.lock}"
-CAMERA_ROOT="${TIMELAPSE_CAMERA_ROOT:-/mnt/cameras}"
+CAMERA_LIST="${PROJECT_ROOT}/state/web-jobs/cameras.json"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 WORKER="${TIMELAPSE_WEB_WORKER:-/usr/local/libexec/timelapse-web-worker}"
 
@@ -70,7 +70,26 @@ if [[ -z "$CAMERA" || "$CAMERA" == *"/"* || "$CAMERA" == "." || "$CAMERA" == "..
 	exit 64
 fi
 
-if [[ ! -d "${CAMERA_ROOT}/${CAMERA}" ]]; then
+# The cameras come from the list file the nightly run writes (python3 -m src.camera_list), not from
+# a folder: the storage is not mounted on this host. The name is handed over as an argument and has
+# to equal an entry as a whole, so it is never spliced into code or taken for a pattern. -I ignores
+# the working directory and the environment. A missing or unusable file lists no camera.
+camera_is_listed() {
+	python3 -I -c '
+import json
+import sys
+
+try:
+	with open(sys.argv[1], encoding="utf-8") as file:
+		cameras = json.load(file)
+except (OSError, ValueError):
+	sys.exit(1)
+
+sys.exit(0 if isinstance(cameras, list) and sys.argv[2] in cameras else 1)
+' "$CAMERA_LIST" "$1"
+}
+
+if ! camera_is_listed "$CAMERA"; then
 	echo "Camera not found: $CAMERA" >&2
 	exit 66
 fi

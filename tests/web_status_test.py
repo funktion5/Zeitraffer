@@ -301,10 +301,10 @@ def test_web_worker_leaves_no_reason_on_success(tmp_path):
 def prepare_web_trigger(tmp_path: Path) -> tuple[dict, Path, Path]:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
-	camera_root = tmp_path / "cameras"
 	invocation_file = tmp_path / "worker-arguments"
-	project_root.mkdir()
-	(camera_root / "Scheunenviertel").mkdir(parents=True)
+	# The cameras come from the list file the nightly run writes, not from a folder.
+	status_root.mkdir(parents=True)
+	(status_root / "cameras.json").write_text('["Alpha", "Scheunenviertel"]')
 
 	fake_worker = tmp_path / "fake-worker"
 	fake_worker.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >"$TIMELAPSE_TEST_INVOCATION_FILE"\n')
@@ -313,7 +313,6 @@ def prepare_web_trigger(tmp_path: Path) -> tuple[dict, Path, Path]:
 	environment = {
 		**os.environ,
 		"TIMELAPSE_PROJECT_ROOT": str(project_root),
-		"TIMELAPSE_CAMERA_ROOT": str(camera_root),
 		"TIMELAPSE_WEB_LOCK_FILE": str(tmp_path / "run.lock"),
 		"TIMELAPSE_WEB_STATUS_HELPER": str(STATUS_HELPER),
 		"TIMELAPSE_WEB_STATUS_ROOT": str(status_root),
@@ -393,7 +392,73 @@ def test_web_trigger_rejects_busy_lock(tmp_path):
 
 	assert result.returncode == 75
 	assert result.stderr.strip() == "Another timelapse job is already running."
-	assert not status_root.exists()
+	assert [path.name for path in status_root.iterdir()] == ["cameras.json"]
+	assert not invocation_file.exists()
+
+
+def run_trigger(environment: dict, camera: str) -> subprocess.CompletedProcess:
+	return subprocess.run(
+		[str(WEB_TRIGGER), "a" * 32, "daily", "2026-09-22", camera, "60"],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+
+# The list file is the only source of cameras: a folder of that name does not make a camera.
+def test_web_trigger_rejects_a_camera_that_is_not_in_the_list(tmp_path):
+	environment, status_root, invocation_file = prepare_web_trigger(tmp_path)
+	(tmp_path / "cameras" / "Folderonly").mkdir(parents=True)
+	environment["TIMELAPSE_CAMERA_ROOT"] = str(tmp_path / "cameras")
+
+	result = run_trigger(environment, "Folderonly")
+
+	assert result.returncode == 66
+	assert result.stderr.strip() == "Camera not found: Folderonly"
+	assert [path.name for path in status_root.iterdir()] == ["cameras.json"]
+	assert not invocation_file.exists()
+
+
+# No usable list means no camera can be started, the same as the web page shows. A string instead
+# of a list is one of the cases: "Scheunen" would be found inside it by a plain substring test.
+@pytest.mark.parametrize(
+	"list_content",
+	[None, "{not json", '"Scheunenviertel"', '{"first": "Scheunenviertel"}'],
+)
+def test_web_trigger_accepts_no_camera_without_a_usable_list(tmp_path, list_content):
+	environment, status_root, invocation_file = prepare_web_trigger(tmp_path)
+	list_path = status_root / "cameras.json"
+	list_path.unlink()
+
+	if list_content is not None:
+		list_path.write_text(list_content)
+
+	result = run_trigger(environment, "Scheunenviertel")
+
+	assert result.returncode == 66
+	assert not invocation_file.exists()
+
+
+# The name arrives from the web layer. It must equal a list entry as a whole, and nothing in it may
+# be taken for code, a pattern or a second entry.
+@pytest.mark.parametrize(
+	"camera",
+	[
+		"Scheunen",
+		"scheunenviertel",
+		"Scheunenviertel ",
+		'x"] or True or ["',
+		"Alpha\nScheunenviertel",
+		"*",
+	],
+)
+def test_web_trigger_compares_the_camera_as_a_whole_name(tmp_path, camera):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+
+	result = run_trigger(environment, camera)
+
+	assert result.returncode == 66
 	assert not invocation_file.exists()
 
 
