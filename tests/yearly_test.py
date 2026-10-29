@@ -1,3 +1,4 @@
+import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
@@ -764,3 +765,184 @@ def test_run_yearly_job_resolves_sunset_per_day(
 	# Evening centres that differ between days, never the 12:00 default.
 	assert all(seconds > 16 * 60 * 60 for seconds in target_seconds_by_date.values())
 	assert len(set(target_seconds_by_date.values())) > 1
+
+
+# Records every step in one event log, so tests can check the order of scan, selection, video
+# build and release.
+class FakeFrameSource:
+	def __init__(self, events, release_errors):
+		self.events = events
+		self.release_errors = release_errors
+
+	def release(self, camera):
+		self.events.append(f"release:{camera}")
+
+		if camera in self.release_errors:
+			raise self.release_errors[camera]
+
+
+# Replace everything the Yearly job reaches outside itself and return the event log.
+def patch_yearly_job(monkeypatch, find, create_error=None, release_errors=None):
+	events = []
+
+	def recording_find(camera, **kwargs):
+		events.append(f"find:{camera}")
+
+		return find(camera=camera, **kwargs)
+
+	def fake_select_yearly_images_isolated(camera, images, **kwargs):
+		events.append(f"select:{camera}")
+
+		return images
+
+	def fake_create_timelapse(camera, **kwargs):
+		events.append(f"create:{camera}")
+
+		if create_error is not None:
+			raise create_error
+
+		return Path(f"videos/{camera}/yearly/video.mp4")
+
+	monkeypatch.setattr(yearly_module, "find_interval_images_isolated", recording_find)
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		fake_select_yearly_images_isolated,
+	)
+	monkeypatch.setattr(yearly_module, "create_timelapse", fake_create_timelapse)
+	monkeypatch.setattr(yearly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
+	monkeypatch.setattr(
+		yearly_module,
+		"get_frame_source",
+		lambda: FakeFrameSource(events, release_errors or {}),
+	)
+
+	return events
+
+
+def run_yearly(cameras):
+	run_yearly_job(
+		config=TEST_CONFIG,
+		cameras=cameras,
+		framerate=YEARLY_FRAMERATE,
+		target_date=TARGET_DATE,
+	)
+
+
+# A camera whose frames cannot be fetched counts as failed; the others still run and any
+# partly fetched frames of the failed camera are removed.
+def test_fetch_error_counts_as_failed_and_other_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	def fake_find_interval_images_isolated(camera, **kwargs):
+		# The worker forwards a failed fetch to the parent as a plain OSError.
+		if camera == "Unreachable-Camera":
+			raise OSError("rsync from the box failed")
+
+		return create_complete_yearly_images()
+
+	events = patch_yearly_job(monkeypatch, fake_find_interval_images_isolated)
+
+	run_yearly(["Unreachable-Camera", "Working-Camera"])
+
+	assert events == [
+		"find:Unreachable-Camera",
+		"release:Unreachable-Camera",
+		"find:Working-Camera",
+		"select:Working-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# Zero frames after the filters is a skip, not a failure, and the fetched frames still go.
+def test_zero_frames_is_skipped_not_failed(
+	monkeypatch,
+	caplog,
+):
+	events = patch_yearly_job(monkeypatch, lambda **kwargs: [])
+
+	run_yearly(["Test-Camera"])
+
+	assert events == ["find:Test-Camera", "release:Test-Camera"]
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
+# The frames are unblurred, so they may only be removed after the video is built from them.
+def test_release_runs_after_success(
+	monkeypatch,
+):
+	events = patch_yearly_job(monkeypatch, lambda **kwargs: create_complete_yearly_images())
+
+	run_yearly(["Test-Camera"])
+
+	assert events == [
+		"find:Test-Camera",
+		"select:Test-Camera",
+		"create:Test-Camera",
+		"release:Test-Camera",
+	]
+
+
+# A failed video build must not leave the fetched frames behind.
+def test_release_runs_when_the_video_build_raises(
+	monkeypatch,
+	caplog,
+):
+	events = patch_yearly_job(
+		monkeypatch,
+		lambda **kwargs: create_complete_yearly_images(),
+		create_error=subprocess.CalledProcessError(returncode=1, cmd=["ffmpeg"]),
+	)
+
+	run_yearly(["Test-Camera"])
+
+	assert events[-2:] == ["create:Test-Camera", "release:Test-Camera"]
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+# A cleanup that fails is logged loudly and counted, but it must not stop the later cameras.
+def test_release_error_is_logged_and_later_cameras_still_run(
+	monkeypatch,
+	caplog,
+):
+	events = patch_yearly_job(
+		monkeypatch,
+		lambda **kwargs: create_complete_yearly_images(),
+		release_errors={"First-Camera": OSError("cannot remove the frame cache")},
+	)
+
+	run_yearly(["First-Camera", "Second-Camera"])
+
+	assert "release:First-Camera" in events
+	assert events[-2:] == ["create:Second-Camera", "release:Second-Camera"]
+	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
+	assert "failed=1" in caplog.text
+
+
+# The selection hashes the files, so it must read the paths the scan fetched, in one pass, and
+# the frames must still be there: nothing is released between the scan and the selection.
+def test_yearly_selection_reads_the_fetched_files(
+	monkeypatch,
+):
+	fetched = create_complete_yearly_images()
+	events = patch_yearly_job(monkeypatch, lambda **kwargs: fetched)
+
+	def fake_select_yearly_images_isolated(camera, images, **kwargs):
+		events.append(f"select:{camera}")
+		assert images == fetched
+
+		return images
+
+	monkeypatch.setattr(
+		yearly_module,
+		"select_yearly_images_isolated",
+		fake_select_yearly_images_isolated,
+	)
+
+	run_yearly(["Test-Camera"])
+
+	assert events.count("find:Test-Camera") == 1
+	assert events.index("select:Test-Camera") < events.index("release:Test-Camera")

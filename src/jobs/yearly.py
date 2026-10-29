@@ -11,6 +11,7 @@ from src.date_coverage import (
 )
 from src.images import (
 	find_interval_images_isolated,
+	get_frame_source,
 )
 from src.interval_window import (
 	IntervalWindow,
@@ -156,6 +157,19 @@ def run_yearly_job(
 			failed_count += 1
 
 			continue
+
+		finally:
+			# The fetched frames are unblurred and the selection and the video both read them:
+			# they go after every outcome of this camera, including a failed fetch that left
+			# part of them behind.
+			try:
+				get_frame_source().release(camera)
+
+			except OSError:
+				# A camera that was already built is then counted as created and as failed;
+				# the failure is what has to show.
+				logger.exception(f"Could not remove fetched frames for camera: {camera}")
+				failed_count += 1
 
 		created_count += 1
 
