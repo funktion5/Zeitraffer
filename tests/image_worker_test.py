@@ -1,5 +1,6 @@
 import os
 import signal
+import threading
 import time
 from pathlib import Path
 
@@ -280,6 +281,51 @@ def test_a_stopped_worker_runs_its_cleanup_code(tmp_path):
 		)
 
 	assert marker.read_text() == "cleaned up"
+
+
+# Report the worker's process id, then block as a worker does while rsync fetches frames.
+def blocked_worker(
+	pid_path,
+	progress_callback,
+):
+	Path(pid_path).write_text(str(os.getpid()))
+	time.sleep(30)
+
+
+# A stop signal reaches only the parent. The job's finally block removes the fetched frames as
+# soon as the exception has left run_isolated_worker, so the worker (and the rsync it started) must
+# already be stopped by then, or it would write into the folder that was just removed.
+def test_a_stop_signal_stops_the_worker_before_the_exception_leaves(tmp_path):
+	pid_file = tmp_path / "pid"
+	previous_handler = signal.getsignal(signal.SIGTERM)
+
+	# Wait until the worker is really blocked, then stop the parent as `kill <pid>` would.
+	def stop_the_parent_when_the_worker_runs():
+		while not pid_file.exists():
+			time.sleep(0.05)
+
+		time.sleep(0.2)
+		os.kill(os.getpid(), signal.SIGTERM)
+
+	exit_on_sigterm()
+	threading.Thread(target=stop_the_parent_when_the_worker_runs, daemon=True).start()
+
+	try:
+		with pytest.raises(SystemExit):
+			run_isolated_worker(
+				camera="Test-Camera",
+				target=blocked_worker,
+				kwargs={"pid_path": str(pid_file)},
+				stall_timeout_seconds=60,
+				operation_name="Test operation",
+			)
+
+		# Signal 0 only probes: a stopped and collected worker has no process any more.
+		with pytest.raises(ProcessLookupError):
+			os.kill(int(pid_file.read_text()), 0)
+
+	finally:
+		signal.signal(signal.SIGTERM, previous_handler)
 
 
 # The job entry points install the same handler: a stop signal must unwind the running job, so the

@@ -908,7 +908,7 @@ def test_release_error_is_logged_and_later_cameras_still_run(
 	assert "release:First-Camera" in events
 	assert events[-2:] == ["create:Second-Camera", "release:Second-Camera"]
 	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
-	assert "failed=1" in caplog.text
+	assert "| failed=1 |" in caplog.text
 
 
 # The selection hashes the files, so it must read the paths the scan fetched, in one pass, and

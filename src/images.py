@@ -47,9 +47,10 @@ def get_cameras():
 
 
 # The fetched frames are unblurred, so every job removes them after each outcome of a camera. A
-# failed removal must be seen but must not stop the later cameras: it is logged here and the caller
-# counts it as a failure. A camera that was already built is then counted as created and as failed;
-# the failure is what has to show.
+# failed removal (an OSError) must be seen but must not stop the later cameras: it is logged here
+# and the caller counts it as a failure. A camera that was already built is then counted as created
+# and as failed; the failure is what has to show. Anything else, such as an invalid
+# TIMELAPSE_FRAME_SOURCE, is a setup error and ends the run loudly.
 def release_camera_frames(camera: str) -> bool:
 	try:
 		get_frame_source().release(camera)

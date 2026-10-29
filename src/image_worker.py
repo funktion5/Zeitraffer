@@ -92,6 +92,35 @@ def run_isolated_worker(
 
 	process.start()
 
+	try:
+		return _wait_for_worker(
+			process,
+			result_queue,
+			camera,
+			stall_timeout_seconds,
+			operation_name,
+		)
+
+	except BaseException:
+		# A stop signal or Ctrl-C reached the parent, which would otherwise leave the worker (and
+		# its rsync) running until the interpreter exits. The caller's finally block removes the
+		# fetched frames right after this, so the worker has to be stopped first. A no-op after
+		# the stops and errors below, which have already stopped it.
+		_stop_worker_process(process)
+
+		result_queue.close()
+
+		raise
+
+
+# Wait for the worker's result; progress reports reset the inactivity timer.
+def _wait_for_worker(
+	process: Process,
+	result_queue: Queue,
+	camera: str,
+	stall_timeout_seconds: float,
+	operation_name: str,
+) -> Any:
 	last_progress = time.monotonic()
 
 	while True:

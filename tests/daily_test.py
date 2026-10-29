@@ -899,4 +899,4 @@ def test_release_error_is_logged_and_later_cameras_still_run(
 		"release:Second-Camera",
 	]
 	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
-	assert "failed=1" in caplog.text
+	assert "| failed=1 |" in caplog.text
