@@ -57,6 +57,10 @@ def main() -> int:
 	write_camera_list(CAMERA_LIST_PATH, cameras)
 	logger.info(f"Camera list written: {len(cameras)} cameras")
 
+	# The nightly wrapper reads the cameras to verify from here. Only the names go to stdout; the
+	# logger writes to stderr.
+	sys.stdout.write("".join(f"{camera}\n" for camera in cameras))
+
 	return 0
 
 

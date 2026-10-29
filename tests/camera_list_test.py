@@ -67,20 +67,32 @@ def test_ignored_cameras_are_left_out(list_path, monkeypatch):
 	assert json.loads(list_path.read_text(encoding="utf-8")) == ["Alpha", "Gamma"]
 
 
+# The nightly wrapper reads the cameras it has to verify from here, one per line. Only the names go
+# to stdout: logging goes to stderr, so nothing else can end up in that list.
+def test_the_names_are_printed_one_per_line(list_path, monkeypatch, capsys):
+	listing(monkeypatch, ["Alpha", "Blurtest", "Gamma"], ignored=["Blurtest"])
+
+	assert main() == 0
+
+	assert capsys.readouterr().out == "Alpha\nGamma\n"
+
+
 # A listing that fails, or comes back empty, must not blank the web page until the next night.
-def test_a_failed_listing_keeps_the_old_file(list_path, monkeypatch):
+def test_a_failed_listing_keeps_the_old_file(list_path, monkeypatch, capsys):
 	write_camera_list(list_path, ["Old"])
 	failing_listing(monkeypatch)
 
 	assert main() == 1
 
 	assert json.loads(list_path.read_text(encoding="utf-8")) == ["Old"]
+	assert capsys.readouterr().out == ""
 
 
-def test_an_empty_listing_keeps_the_old_file(list_path, monkeypatch):
+def test_an_empty_listing_keeps_the_old_file(list_path, monkeypatch, capsys):
 	write_camera_list(list_path, ["Old"])
 	listing(monkeypatch, [])
 
 	assert main() == 1
 
 	assert json.loads(list_path.read_text(encoding="utf-8")) == ["Old"]
+	assert capsys.readouterr().out == ""

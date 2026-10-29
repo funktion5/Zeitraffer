@@ -1,12 +1,15 @@
 #!/bin/bash
 
-# Nightly run for a host that cannot mount the camera storage (the web server). Per camera: stage
-# its frames from the storage box, run the automatic pipeline on them, verify the videos, remove
-# the frames. A failing camera never stops the others; the exit code and the report tell.
+# Nightly run for a host that cannot mount the camera storage (the VPS, the web server). The
+# pipeline fetches its frames over ssh by itself, so this wrapper writes the camera list for the web
+# pages, runs the automatic pipeline once for every camera, and then verifies what came out: the exit
+# code, the job summaries, the cameras the log names as failed, and every new video. A failing camera
+# never stops the others; the exit code and the report tell.
 #
-# Exit codes: 0 = every camera staged, ran and verified; 1 = some cameras failed; 2 = fatal (box
-# unreachable, no cameras, staging aborted); 64 = bad setting; 70 = project folder unusable;
-# 75 = another run holds the lock. Nothing is sent anywhere; the report is a file.
+# Exit codes: 0 = everything ran and verified; 1 = the run or some cameras failed; 2 = fatal (the
+# camera list could not be written, or is empty); 64 = bad setting; 70 = project folder unusable;
+# 75 = another run holds the lock; 130 / 143 = stopped by Ctrl-C / SIGTERM. Nothing is sent
+# anywhere; the report is a file.
 
 set -u
 
@@ -19,7 +22,7 @@ cd "$PROJECT_ROOT" || exit 70
 # Static ffmpeg and ffprobe live in ~/bin on the web server.
 export PATH="${HOME}/bin:${PATH}"
 export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-box}"
-export TIMELAPSE_CAMERA_ROOT="${PROJECT_ROOT}/temp/camera-staging"
+export TIMELAPSE_FRAME_SOURCE=ssh
 # The web server kills large encoder processes; a lighter preset keeps FFmpeg small enough.
 export TIMELAPSE_X264_PRESET="${TIMELAPSE_X264_PRESET:-ultrafast}"
 
@@ -34,7 +37,7 @@ esac
 
 mkdir -p state logs/nightly || exit 70
 
-# The same lock as cron and the web UI, held for the whole run (stage-frames gets --no-lock).
+# The same lock as cron and the web UI, held for the whole run.
 exec 9>>"state/zeitraffer-run.lock"
 
 if ! flock -n 9; then
@@ -52,53 +55,36 @@ note() {
 	printf '%s\n' "$*" | tee -a "$REPORT"
 }
 
-# Unblurred frames must not stay on disk: removed after every camera and on any exit.
-clean_staging() {
-	"$PYTHON" scripts/stage-frames.py --clean-only --no-lock </dev/null >>"${RUN_DIR}/cleanup.out" 2>&1 \
-		|| note "WARNING: could not remove the staging folder (see ${RUN_DIR}/cleanup.out)"
+# A stop signal sent to this script alone must reach the pipeline: bash would otherwise hold the
+# signal until the whole run is over. The pipeline releases its frames on the way out, so it is
+# waited for below.
+STOPPED=0
+MAIN_PID=""
+
+stop_run() {
+	STOPPED="$1"
+
+	if [[ -n "$MAIN_PID" ]]; then
+		kill -TERM "$MAIN_PID" 2>/dev/null
+	fi
 }
 
-trap clean_staging EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'stop_run 130' INT
+trap 'stop_run 143' TERM
 
-# The exit code of src.main is not enough: a camera error is caught and only logged. So read the
-# summary line of every job and check that each video written during this camera's run is a real,
-# non-empty video. Sets VERIFY_PROBLEMS (empty when the camera is fine).
-verify_camera() {
-	local camera="$1" marker="$2" main_rc="$3" main_out="$4"
-	local finished=0 videos=0 line description failed skipped file duration
+# Check the videos this run wrote for one camera: none may be a hidden partial file or an empty or
+# unreadable video. Sets CAMERA_PROBLEMS (empty when the camera is fine) and VERIFIED_VIDEOS.
+verify_videos() {
+	local camera="$1" marker="$2"
+	local videos=0 file duration
 
-	VERIFY_PROBLEMS=""
-
-	if [[ "$main_rc" -ne 0 ]]; then
-		VERIFY_PROBLEMS+="src.main exited with ${main_rc}; "
-	fi
-
-	while IFS= read -r line; do
-		finished=$((finished + 1))
-		description="$(sed -e 's/^.*| INFO | //' -e 's/ | created=.*$//' <<<"$line")"
-		failed="$(sed -n 's/.*failed=\([0-9][0-9]*\).*/\1/p' <<<"$line")"
-		skipped="$(sed -n 's/.*skipped=\([0-9][0-9]*\).*/\1/p' <<<"$line")"
-
-		if [[ -z "$failed" || "$failed" -gt 0 ]]; then
-			VERIFY_PROBLEMS+="${description}: failed=${failed:-unreadable}; "
-		fi
-
-		if [[ -n "$skipped" && "$skipped" -gt 0 ]]; then
-			note "   skipped=${skipped}: ${description}"
-		fi
-	done < <(grep "timelapse job finished" "$main_out")
-
-	if [[ "$finished" -ne 4 ]]; then
-		VERIFY_PROBLEMS+="expected 4 job summary lines, found ${finished}; "
-	fi
+	CAMERA_PROBLEMS=""
 
 	if [[ -d "videos/${camera}" ]]; then
 		while IFS= read -r file; do
 			case "$(basename "$file")" in
 				.*)
-					VERIFY_PROBLEMS+="partial file left behind: ${file}; "
+					CAMERA_PROBLEMS+="partial file left behind: ${file}; "
 					continue
 					;;
 			esac
@@ -107,7 +93,7 @@ verify_camera() {
 			duration="$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$file" 2>/dev/null </dev/null)"
 
 			if [[ ! -s "$file" ]] || ! awk -v d="${duration:-0}" 'BEGIN { exit !(d + 0 > 0) }'; then
-				VERIFY_PROBLEMS+="empty or unreadable video: ${file}; "
+				CAMERA_PROBLEMS+="empty or unreadable video: ${file}; "
 			fi
 		done < <(find "videos/${camera}" -type f -name '*mp4' -newer "$marker")
 	fi
@@ -115,10 +101,57 @@ verify_camera() {
 	VERIFIED_VIDEOS="$videos"
 }
 
+# The exit code of src.main is not enough: a camera error is caught and only logged. So read the
+# summary line of every job, and the lines that name a failed camera. Writes the failed cameras to
+# failed-cameras.txt, one per line, and sets RUN_PROBLEMS (empty when the run is fine).
+verify_run() {
+	local main_rc="$1" main_out="$2"
+	local finished=0 failed_total=0 named=0 line description failed skipped
+
+	RUN_PROBLEMS=""
+
+	if [[ "$main_rc" -ne 0 ]]; then
+		RUN_PROBLEMS+="src.main exited with ${main_rc}; "
+	fi
+
+	while IFS= read -r line; do
+		finished=$((finished + 1))
+		description="$(sed -e 's/^.*| INFO | //' -e 's/ | created=.*$//' <<<"$line")"
+		failed="$(sed -n 's/.*failed=\([0-9][0-9]*\).*/\1/p' <<<"$line")"
+		skipped="$(sed -n 's/.*skipped=\([0-9][0-9]*\).*/\1/p' <<<"$line")"
+
+		if [[ -z "$failed" ]]; then
+			RUN_PROBLEMS+="${description}: failed=unreadable; "
+		else
+			failed_total=$((failed_total + failed))
+		fi
+
+		if [[ -n "$skipped" && "$skipped" -gt 0 ]]; then
+			note "   skipped=${skipped}: ${description}"
+		fi
+	done < <(grep "timelapse job finished" "$main_out")
+
+	if [[ "$finished" -ne 4 ]]; then
+		RUN_PROBLEMS+="expected 4 job summary lines, found ${finished}; "
+	fi
+
+	# Each failed camera of a job is logged once with its name, a frame cache that could not be
+	# removed too. The name is everything after "for camera: ".
+	grep -E 'Failed to process .* for camera: |Could not remove fetched frames for camera: ' "$main_out" \
+		| sed -e 's/^.*for camera: //' >"${RUN_DIR}/failed-cameras.txt"
+	named="$(grep -c . "${RUN_DIR}/failed-cameras.txt")"
+
+	if [[ "$failed_total" -gt "$named" ]]; then
+		RUN_PROBLEMS+="the job summaries count ${failed_total} failures but the log names ${named} cameras; "
+	fi
+}
+
 note "Nightly run ${RUN_ID} | preset=${TIMELAPSE_X264_PRESET} | box=${TIMELAPSE_STORAGE_BOX}"
 
-if ! "$PYTHON" scripts/stage-frames.py --list-cameras </dev/null >"${RUN_DIR}/cameras.txt" 2>"${RUN_DIR}/list-cameras.err"; then
-	note "FATAL: could not list the cameras on the storage box (see ${RUN_DIR}/list-cameras.err)"
+# Writes state/web-jobs/cameras.json for the web pages and prints the cameras for this run. An
+# old list would be stale, so a failure here ends the night.
+if ! "$PYTHON" -m src.camera_list </dev/null >"${RUN_DIR}/cameras.txt" 2>"${RUN_DIR}/list-cameras.err"; then
+	note "FATAL: could not write the camera list (see ${RUN_DIR}/list-cameras.err)"
 	exit 2
 fi
 
@@ -127,54 +160,63 @@ if [[ ! -s "${RUN_DIR}/cameras.txt" ]]; then
 	exit 2
 fi
 
+if [[ "$STOPPED" -ne 0 ]]; then
+	note "STOPPED before the run started"
+	exit "$STOPPED"
+fi
+
+marker="${RUN_DIR}/.run-start"
+main_out="${RUN_DIR}/main.out"
+touch "$marker"
+
+"$PYTHON" -m src.main </dev/null >"$main_out" 2>&1 &
+MAIN_PID=$!
+wait "$MAIN_PID"
+main_rc=$?
+
+# A stop signal ends the first wait early while the pipeline is still cleaning up: wait for it.
+while kill -0 "$MAIN_PID" 2>/dev/null; do
+	wait "$MAIN_PID"
+	main_rc=$?
+done
+
+if [[ "$STOPPED" -ne 0 ]]; then
+	note "STOPPED by signal (exit ${STOPPED}): the run was cut short, src.main exited with ${main_rc}"
+	exit "$STOPPED"
+fi
+
+verify_run "$main_rc" "$main_out"
+run_failed=0
+
+if [[ -n "$RUN_PROBLEMS" ]]; then
+	note "FAILED (run): ${RUN_PROBLEMS}(see ${main_out})"
+	run_failed=1
+fi
+
 total=0
 failed_count=0
 failed_list=""
-aborted=0
 
-# Read the list on fd 3: ffmpeg inside the pipeline would otherwise swallow it from stdin.
+# Read the list on fd 3: ffprobe inside the loop would otherwise swallow it from stdin.
 while IFS= read -r camera <&3; do
 	[[ -z "$camera" ]] && continue
 
 	total=$((total + 1))
-	started=$SECONDS
-	marker="${RUN_DIR}/.camera-start"
 	note "== ${camera}"
-	touch "$marker"
 
-	"$PYTHON" scripts/stage-frames.py --no-lock --cameras "$camera" </dev/null >"${RUN_DIR}/${camera}.stage.out" 2>&1
-	stage_rc=$?
+	verify_videos "$camera" "$marker"
 
-	if [[ "$stage_rc" -ne 0 ]]; then
-		note "   FAILED: staging exited with ${stage_rc} (see ${RUN_DIR}/${camera}.stage.out)"
-		failed_count=$((failed_count + 1))
-		failed_list+="${camera} (staging); "
-		clean_staging
-
-		# Exit 2 means the box or the staging folder itself is unusable: the next camera would fail too.
-		if [[ "$stage_rc" -eq 2 ]]; then
-			aborted=1
-			break
-		fi
-
-		continue
+	if grep -Fxq -- "$camera" "${RUN_DIR}/failed-cameras.txt"; then
+		CAMERA_PROBLEMS+="the log names it as failed; "
 	fi
 
-	"$PYTHON" -m src.main </dev/null >"${RUN_DIR}/${camera}.main.out" 2>&1
-	main_rc=$?
-
-	verify_camera "$camera" "$marker" "$main_rc" "${RUN_DIR}/${camera}.main.out"
-
-	if [[ -n "$VERIFY_PROBLEMS" ]]; then
-		note "   FAILED: ${VERIFY_PROBLEMS}(see ${RUN_DIR}/${camera}.main.out)"
+	if [[ -n "$CAMERA_PROBLEMS" ]]; then
+		note "   FAILED: ${CAMERA_PROBLEMS}(see ${main_out})"
 		failed_count=$((failed_count + 1))
 		failed_list+="${camera}; "
 	else
-		note "   ok: 4 jobs finished, ${VERIFIED_VIDEOS} videos verified"
+		note "   ok: ${VERIFIED_VIDEOS} videos verified"
 	fi
-
-	clean_staging
-	note "   $((SECONDS - started)) s"
 done 3<"${RUN_DIR}/cameras.txt"
 
 note "Cameras: ${total}, failed: ${failed_count}"
@@ -183,12 +225,7 @@ if [[ "$failed_count" -gt 0 ]]; then
 	note "Failed: ${failed_list}"
 fi
 
-if [[ "$aborted" -eq 1 ]]; then
-	note "ABORTED: staging hit a fatal error, the remaining cameras were not processed"
-	exit 2
-fi
-
-if [[ "$failed_count" -gt 0 ]]; then
+if [[ "$failed_count" -gt 0 || "$run_failed" -ne 0 ]]; then
 	exit 1
 fi
 
