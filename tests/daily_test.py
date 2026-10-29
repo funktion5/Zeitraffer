@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 import src.date_coverage as date_coverage_module
+import src.images as images_module
 import src.jobs.daily as daily_module
 
 TEST_CONFIG = {
@@ -805,7 +806,7 @@ def patch_daily_job(monkeypatch, find, create_error=None, release_errors=None):
 	monkeypatch.setattr(daily_module, "create_timelapse", fake_create_timelapse)
 	monkeypatch.setattr(daily_module, "cleanup_daily_retention", lambda **kwargs: None)
 	monkeypatch.setattr(
-		daily_module,
+		images_module,
 		"get_frame_source",
 		lambda: FakeFrameSource(events, release_errors or {}),
 	)

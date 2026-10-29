@@ -46,6 +46,22 @@ def get_cameras():
 	return sorted(get_frame_source().list_cameras())
 
 
+# The fetched frames are unblurred, so every job removes them after each outcome of a camera. A
+# failed removal must be seen but must not stop the later cameras: it is logged here and the caller
+# counts it as a failure. A camera that was already built is then counted as created and as failed;
+# the failure is what has to show.
+def release_camera_frames(camera: str) -> bool:
+	try:
+		get_frame_source().release(camera)
+
+	except OSError:
+		logger.exception(f"Could not remove fetched frames for camera: {camera}")
+
+		return False
+
+	return True
+
+
 # Return the requested cameras without duplicates; unknown names are an error.
 def require_cameras(
 	requested_cameras: list[str],

@@ -2,6 +2,7 @@ import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
+import src.images as images_module
 import src.jobs.monthly as monthly_module
 from src.jobs.monthly import run_monthly_job
 from src.interval_window import SUNSET, IntervalWindow
@@ -571,7 +572,7 @@ def patch_monthly_job(monkeypatch, find, create_error=None, release_errors=None)
 	monkeypatch.setattr(monthly_module, "create_timelapse", fake_create_timelapse)
 	monkeypatch.setattr(monthly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
 	monkeypatch.setattr(
-		monthly_module,
+		images_module,
 		"get_frame_source",
 		lambda: FakeFrameSource(events, release_errors or {}),
 	)

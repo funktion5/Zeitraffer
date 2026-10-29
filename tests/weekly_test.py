@@ -934,7 +934,7 @@ def patch_manual_weekly(monkeypatch, collect, create_error=None, release_errors=
 	monkeypatch.setattr(weekly_module, "create_timelapse", fake_create_timelapse)
 	monkeypatch.setattr(weekly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
 	monkeypatch.setattr(
-		weekly_module,
+		images_module,
 		"get_frame_source",
 		lambda: FakeFrameSource(events, release_errors or {}),
 	)
@@ -1052,7 +1052,7 @@ def test_automatic_weekly_does_not_touch_the_frame_source(
 	def forbidden_frame_source():
 		raise AssertionError("the automatic Weekly reads no frames")
 
-	monkeypatch.setattr(weekly_module, "get_frame_source", forbidden_frame_source)
+	monkeypatch.setattr(images_module, "get_frame_source", forbidden_frame_source)
 	monkeypatch.setattr(
 		weekly_module,
 		"create_automatic_weekly_video",

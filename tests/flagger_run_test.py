@@ -10,6 +10,7 @@ import pytest
 from flagger_fakes import SequenceForward
 
 import src.flagger.run as run
+import src.images as images_module
 from src.flagger.run import run_cameras, scan_images, select_daily_images
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -245,7 +246,7 @@ def recorded_events(monkeypatch, release_errors=None):
 
 	monkeypatch.setattr(run, "write_report", recording_write_report)
 	monkeypatch.setattr(
-		run, "get_frame_source", lambda: RecordingFrameSource(events, release_errors)
+		images_module, "get_frame_source", lambda: RecordingFrameSource(events, release_errors)
 	)
 
 	return events
@@ -302,4 +303,4 @@ def test_a_failed_release_fails_the_run_not_the_others(tmp_path, monkeypatch, ca
 
 	assert code == 1
 	assert events == ["write:First", "release:First", "write:Second", "release:Second"]
-	assert "[First] could not remove fetched frames" in caplog.text
+	assert "Could not remove fetched frames for camera: First" in caplog.text

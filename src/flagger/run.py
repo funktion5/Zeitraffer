@@ -28,8 +28,8 @@ from src.images import (
 	JPEG_END_MARKER,
 	find_daily_images_isolated,
 	get_cameras,
-	get_frame_source,
 	image_moment,
+	release_camera_frames,
 	require_cameras,
 )
 from src.logger import configure_file_logging, logger
@@ -188,11 +188,7 @@ def run_cameras(
 		finally:
 			# The fetched frames are unblurred and the report copies from them: they go after
 			# every outcome of this camera, including a detector error that ends the run.
-			try:
-				get_frame_source().release(camera)
-
-			except OSError as error:
-				logger.error(f"[{camera}] could not remove fetched frames: {error}")
+			if not release_camera_frames(camera):
 				any_failed = True
 
 		seconds = time.monotonic() - started

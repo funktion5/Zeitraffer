@@ -1,7 +1,7 @@
 import subprocess
 from datetime import date
 
-from src.images import find_interval_images_isolated, get_frame_source
+from src.images import find_interval_images_isolated, release_camera_frames
 from src.interval_window import (
 	IntervalWindow,
 	interval_window_from_config,
@@ -140,13 +140,7 @@ def run_monthly_job(
 		finally:
 			# The fetched frames are unblurred: they go after every outcome of this camera,
 			# including a failed fetch that left part of them behind.
-			try:
-				get_frame_source().release(camera)
-
-			except OSError:
-				# A camera that was already built is then counted as created and as failed;
-				# the failure is what has to show.
-				logger.exception(f"Could not remove fetched frames for camera: {camera}")
+			if not release_camera_frames(camera):
 				failed_count += 1
 
 	logger.info(
