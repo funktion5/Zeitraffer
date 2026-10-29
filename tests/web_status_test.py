@@ -1,4 +1,5 @@
 import fcntl
+import json
 import os
 import shlex
 from pathlib import Path
@@ -475,25 +476,41 @@ def test_web_trigger_accepts_no_camera_without_a_usable_list(tmp_path, list_cont
 	assert not invocation_file.exists()
 
 
-# The name arrives from the web layer. It must equal a list entry as a whole, and nothing in it may
-# be taken for code, a pattern or a second entry.
-@pytest.mark.parametrize(
-	"camera",
-	[
-		"Scheunen",
-		"scheunenviertel",
-		"Scheunenviertel ",
-		'x"] or True or ["',
-		"Alpha\nScheunenviertel",
-		"*",
-	],
-)
+# The name arrives from the web layer. A plain name must equal a list entry as a whole: a prefix or
+# another case is not the camera.
+@pytest.mark.parametrize("camera", ["Scheunen", "scheunenviertel"])
 def test_web_trigger_compares_the_camera_as_a_whole_name(tmp_path, camera):
 	environment, _, invocation_file = prepare_web_trigger(tmp_path)
 
 	result = run_trigger(environment, camera)
 
 	assert result.returncode == 66
+	assert not invocation_file.exists()
+
+
+# Only plain names pass, the same pattern as the web page applies, even when the list holds the
+# name (a list written by hand under the local source can): it ends up in a file path and as a
+# value of --cameras, where "-x" would be taken for an option.
+@pytest.mark.parametrize(
+	"camera",
+	[
+		"-x",
+		".hidden",
+		"a b",
+		"Scheunenviertel ",
+		"Alpha\nScheunenviertel",
+		'x"] or True or ["',
+		"*",
+	],
+)
+def test_web_trigger_rejects_a_camera_name_that_is_not_plain(tmp_path, camera):
+	environment, status_root, invocation_file = prepare_web_trigger(tmp_path)
+	(status_root / "cameras.json").write_text(json.dumps(["Alpha", camera]))
+
+	result = run_trigger(environment, camera)
+
+	assert result.returncode == 64
+	assert result.stderr.strip() == "Invalid camera name."
 	assert not invocation_file.exists()
 
 

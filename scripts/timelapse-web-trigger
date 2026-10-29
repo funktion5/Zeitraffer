@@ -65,7 +65,9 @@ if [[ "$NORMALIZED_DATE" != "$TARGET_DATE" ]]; then
 	exit 64
 fi
 
-if [[ -z "$CAMERA" || "$CAMERA" == *"/"* || "$CAMERA" == "." || "$CAMERA" == ".." ]]; then
+# Only plain names: the pattern the web page applies and the storage listing uses. The name ends up
+# in a file path and as the value of --cameras. This also covers an empty name, "/", "." and "..".
+if [[ ! "$CAMERA" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
 	echo "Invalid camera name." >&2
 	exit 64
 fi
