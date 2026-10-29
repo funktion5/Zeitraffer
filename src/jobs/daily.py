@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from src.config import automatic_daylight_buffer_for
 from src.date_coverage import get_latest_completed_date
 from src.diagnostics import log_missing_images_diagnostic
-from src.images import find_daily_images_isolated
+from src.images import find_daily_images_isolated, get_frame_source
 from src.logger import RUN_ID, format_run_context, logger
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
@@ -153,6 +153,19 @@ def run_daily_job(
 			failed_count += 1
 
 			continue
+
+		finally:
+			# The fetched frames are unblurred: they go after every outcome of this camera,
+			# including a failed fetch that left part of them behind.
+			try:
+				get_frame_source().release(camera)
+
+			except OSError:
+				# A leftover must be seen, but it must not stop the later cameras. A camera that
+				# was already built is then counted as created and as failed; the failure is
+				# what has to show.
+				logger.exception(f"Could not remove fetched frames for camera: {camera}")
+				failed_count += 1
 
 		created_count += 1
 
