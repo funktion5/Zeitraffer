@@ -28,3 +28,18 @@ class FakeBox:
 			raise self.raises
 
 		return subprocess.CompletedProcess([command], self.returncode, self.stdout, self.stderr)
+
+
+# Records every release as "release:<camera>" in an event log the test shares with the other steps
+# of a job, so it can check their order. release_errors maps a camera to the error its release
+# raises.
+class RecordingFrameSource:
+	def __init__(self, events, release_errors=None):
+		self.events = events
+		self.release_errors = release_errors or {}
+
+	def release(self, camera):
+		self.events.append(f"release:{camera}")
+
+		if camera in self.release_errors:
+			raise self.release_errors[camera]

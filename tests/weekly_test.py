@@ -2,6 +2,8 @@ import subprocess
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from frame_source_fakes import RecordingFrameSource
+
 import src.date_coverage as date_coverage_module
 import src.images as images_module
 import src.jobs.weekly as weekly_module
@@ -905,19 +907,6 @@ def test_run_manual_weekly_handles_ffmpeg_error(
 	assert "Failed to process Weekly for camera: Scheunenviertel" in caplog.text
 
 
-# Records every release in one event log with the video builds, so tests can check the order.
-class FakeFrameSource:
-	def __init__(self, events, release_errors):
-		self.events = events
-		self.release_errors = release_errors
-
-	def release(self, camera):
-		self.events.append(f"release:{camera}")
-
-		if camera in self.release_errors:
-			raise self.release_errors[camera]
-
-
 # Replace everything a historical Weekly reaches outside itself and return the event log.
 def patch_manual_weekly(monkeypatch, collect, create_error=None, release_errors=None):
 	events = []
@@ -936,7 +925,7 @@ def patch_manual_weekly(monkeypatch, collect, create_error=None, release_errors=
 	monkeypatch.setattr(
 		images_module,
 		"get_frame_source",
-		lambda: FakeFrameSource(events, release_errors or {}),
+		lambda: RecordingFrameSource(events, release_errors),
 	)
 
 	return events

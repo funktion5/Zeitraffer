@@ -8,6 +8,7 @@ import cv2
 import numpy as np
 import pytest
 from flagger_fakes import SequenceForward
+from frame_source_fakes import RecordingFrameSource
 
 import src.flagger.run as run
 import src.images as images_module
@@ -221,18 +222,6 @@ def test_a_truncated_jpeg_is_skipped_as_failed(tmp_path):
 	scan = scan_images([truncated], FlagEverything(), "Europe/Berlin")
 
 	assert (scan.flagged, scan.checked, scan.failed) == ([], 0, 1)
-
-
-class RecordingFrameSource:
-	def __init__(self, events, release_errors):
-		self.events = events
-		self.release_errors = release_errors or {}
-
-	def release(self, camera):
-		self.events.append(f"release:{camera}")
-
-		if camera in self.release_errors:
-			raise self.release_errors[camera]
 
 
 # One list for every report write and every release, so a test can check their order.

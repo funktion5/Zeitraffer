@@ -2,6 +2,8 @@ import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
+from frame_source_fakes import RecordingFrameSource
+
 import src.images as images_module
 import src.jobs.monthly as monthly_module
 from src.jobs.monthly import run_monthly_job
@@ -543,19 +545,6 @@ def test_run_monthly_job_resolves_sunset_per_day(
 	assert len(set(target_seconds_by_date.values())) > 1
 
 
-# Records every release in one event log with the video builds, so tests can check the order.
-class FakeFrameSource:
-	def __init__(self, events, release_errors):
-		self.events = events
-		self.release_errors = release_errors
-
-	def release(self, camera):
-		self.events.append(f"release:{camera}")
-
-		if camera in self.release_errors:
-			raise self.release_errors[camera]
-
-
 # Replace everything the Monthly job reaches outside itself and return the event log.
 def patch_monthly_job(monkeypatch, find, create_error=None, release_errors=None):
 	events = []
@@ -574,7 +563,7 @@ def patch_monthly_job(monkeypatch, find, create_error=None, release_errors=None)
 	monkeypatch.setattr(
 		images_module,
 		"get_frame_source",
-		lambda: FakeFrameSource(events, release_errors or {}),
+		lambda: RecordingFrameSource(events, release_errors),
 	)
 
 	return events
