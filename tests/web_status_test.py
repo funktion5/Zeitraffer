@@ -109,6 +109,7 @@ def run_web_worker(
 	window: tuple[str, str] | None = None,
 	expected_video_suffix: str | None = None,
 	python_stderr: str = "",
+	extra_environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
@@ -133,10 +134,14 @@ def run_web_worker(
 		video_path.parent.mkdir(parents=True)
 		video_path.write_text("existing video")
 
+	python_environment_file = tmp_path / "python-environment"
 	fake_python = tmp_path / "fake-python"
 	fake_python_lines = [
 		"#!/bin/bash",
 		f'printf "%s\\n" "$@" >"{python_arguments_file}"',
+		# What src.main would see of the frame source settings ("unset" when missing).
+		f'echo "${{TIMELAPSE_FRAME_SOURCE-unset}}" >"{python_environment_file}"',
+		f'echo "${{TIMELAPSE_STORAGE_BOX-unset}}" >>"{python_environment_file}"',
 	]
 
 	if publish_video:
@@ -163,12 +168,19 @@ def run_web_worker(
 	)
 	assert initial_result.returncode == 0
 
+	# The developer's own frame source settings must not leak into the worker under test.
+	inherited = {
+		key: value
+		for key, value in os.environ.items()
+		if key not in ("TIMELAPSE_FRAME_SOURCE", "TIMELAPSE_STORAGE_BOX")
+	}
 	environment = {
-		**os.environ,
+		**inherited,
 		"TIMELAPSE_PROJECT_ROOT": str(project_root),
 		"TIMELAPSE_WEB_PYTHON": str(fake_python),
 		"TIMELAPSE_WEB_STATUS_HELPER": str(STATUS_HELPER),
 		"TIMELAPSE_WEB_STATUS_ROOT": str(status_root),
+		**(extra_environment or {}),
 	}
 
 	command = [
@@ -196,8 +208,31 @@ def run_web_worker(
 	result.status_file = status_root / f"{job_id}.status"
 	result.video_path = video_path
 	result.python_arguments_file = python_arguments_file
+	result.python_environment_file = python_environment_file
 	result.reason_file = status_root / f"{job_id}.reason"
 	return result
+
+
+# The web worker runs as the login user through sudo, which clears the environment, and this host
+# has no mount: the job has to be told to read over ssh, and from which box.
+def test_web_worker_reads_frames_over_ssh_from_the_default_box(tmp_path):
+	result = run_web_worker(tmp_path, python_exit_code=0, publish_video=True)
+
+	assert result.python_environment_file.read_text().splitlines() == ["ssh", "storagebox"]
+
+
+def test_web_worker_passes_a_configured_box_and_always_reads_over_ssh(tmp_path):
+	result = run_web_worker(
+		tmp_path,
+		python_exit_code=0,
+		publish_video=True,
+		extra_environment={
+			"TIMELAPSE_FRAME_SOURCE": "local",
+			"TIMELAPSE_STORAGE_BOX": "boxalias:/base",
+		},
+	)
+
+	assert result.python_environment_file.read_text().splitlines() == ["ssh", "boxalias:/base"]
 
 
 # A successful Python process that publishes a video must complete.

@@ -96,6 +96,12 @@ fi
 # (e.g. the Pi rebooted mid-job).
 write_job_pid "$JOB_ID" "$$"
 
+# This host has no mount and sudo clears the environment, so say where the frames come from. The
+# alias is a Host entry in the ~/.ssh/config of the account this runs as; the key stays with that
+# account, and the web server user never holds one.
+export TIMELAPSE_FRAME_SOURCE=ssh
+export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-storagebox}"
+
 COMMAND=(
 	"$PYTHON"
 	-m
