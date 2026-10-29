@@ -55,23 +55,37 @@ function getIgnoredCameras(): array
 	);
 }
 
+// The camera names come from state/web-jobs/cameras.json, which the nightly run writes
+// (python3 -m src.camera_list): the web server user has no ssh key and the storage is not mounted
+// on this host. A missing or unusable file gives an empty list.
 function findAvailableCameras(): array
 {
-	$cameraRoot = "/mnt/cameras";
-	$ignoredCameras = getIgnoredCameras();
+	$listPath = projectRoot() . "/state/web-jobs/cameras.json";
 
-	if (!is_dir($cameraRoot) || !is_readable($cameraRoot)) {
+	if (!is_file($listPath) || !is_readable($listPath)) {
 		return [];
 	}
 
+	$content = file_get_contents($listPath);
+
+	if ($content === false) {
+		return [];
+	}
+
+	$list = json_decode($content, true);
+
+	if (!is_array($list)) {
+		return [];
+	}
+
+	$ignoredCameras = getIgnoredCameras();
 	$cameras = [];
 
-	foreach (scandir($cameraRoot) as $entry) {
-		if ($entry === "." || $entry === "..") {
-			continue;
-		}
-
-		if (str_starts_with($entry, ".")) {
+	foreach ($list as $entry) {
+		// The names end up in file paths, so only plain names pass: the pattern the Python side
+		// applies to the storage listing. It also keeps out ".", "..", hidden entries and "/".
+		// The D modifier stops "$" from accepting a trailing newline.
+		if (!is_string($entry) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $entry) !== 1) {
 			continue;
 		}
 
@@ -79,11 +93,7 @@ function findAvailableCameras(): array
 			continue;
 		}
 
-		$cameraPath = $cameraRoot . "/" . $entry;
-
-		if (is_dir($cameraPath)) {
-			$cameras[] = $entry;
-		}
+		$cameras[] = $entry;
 	}
 
 	natcasesort($cameras);

@@ -7,14 +7,15 @@ TOKEN = "test-token"
 CAMERA = "SLSV"
 
 
-# camera.php with the camera root at tmp_path/cameras and sudo faked.
+# camera.php with the camera list at tmp_path/state/web-jobs/cameras.json and sudo faked.
 def render(tmp_path: Path, get=None, post=None, sudo_exit: int = 0):
 	sudo = str(fake_sudo(tmp_path))
-	(tmp_path / "cameras" / CAMERA).mkdir(parents=True, exist_ok=True)
+	list_path = tmp_path / "state" / "web-jobs" / "cameras.json"
+	list_path.parent.mkdir(parents=True, exist_ok=True)
+	list_path.write_text(json.dumps([CAMERA]))
 	swaps = {
 		"src/video-delete.php": (SUDO_PATH, sudo),
 		"src/job-runner.php": (SUDO_PATH, sudo),
-		"src/video-library.php": ('"/mnt/cameras"', json.dumps(str(tmp_path / "cameras"))),
 	}
 	return render_page(
 		tmp_path, "camera.php", swaps, get or {"camera": CAMERA}, post, sudo_exit, TOKEN

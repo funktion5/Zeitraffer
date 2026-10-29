@@ -232,22 +232,56 @@ def test_get_ignored_cameras(tmp_path, config, expected):
 	assert result == expected
 
 
-def test_find_available_cameras_filters_and_sorts(tmp_path):
-	root = tmp_path / "cameras"
-	for name in ["cam10", "cam2", "Alpha", ".hidden", "Ignored"]:
-		(root / name).mkdir(parents=True)
-	(root / "afile").write_text("x")
+# The camera names come from state/web-jobs/cameras.json (python3 -m src.camera_list), because the
+# web server user has no ssh key and the storage is not mounted on this host.
+def available_cameras(tmp_path: Path, list_content: str | None):
+	list_path = tmp_path / "state" / "web-jobs" / "cameras.json"
+	list_path.parent.mkdir(parents=True)
+
+	if list_content is not None:
+		list_path.write_text(list_content)
+
+	return library(
+		tmp_path,
+		"echo json_encode(findAvailableCameras());",
+		**{PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
+	)
+
+
+def test_find_available_cameras_reads_the_list_filters_and_sorts(tmp_path):
+	# Ignored cameras are dropped here too, so a camera added to ignored_cameras disappears
+	# without waiting for the next nightly rewrite of the list.
 	config_path = tmp_path / "config" / "config.json"
 	config_path.parent.mkdir()
 	config_path.write_text('{"ignored_cameras": ["Ignored"]}')
 
-	result = library(
-		tmp_path,
-		"echo json_encode(findAvailableCameras());",
-		**{"/mnt/cameras": root, PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
-	)
+	result = available_cameras(tmp_path, '["cam10", "cam2", "Alpha", "Ignored"]')
 
 	assert result == ["Alpha", "cam2", "cam10"]
+
+
+@pytest.mark.parametrize(
+	"list_content",
+	[
+		None,
+		"{not json",
+		'"Alpha"',
+		'{"first": 1}',
+	],
+)
+def test_find_available_cameras_gives_nothing_without_a_usable_list(tmp_path, list_content):
+	assert available_cameras(tmp_path, list_content) == []
+
+
+# The names end up in file paths (videos/<camera>/...), so only the plain names the Python side
+# also accepts get through, even if the file were edited.
+def test_find_available_cameras_drops_unsafe_names(tmp_path):
+	unsafe = ["../etc", ".hidden", "a/b", "", "-dash", "with space", "Alpha\n", 7, None, ["Nested"]]
+	names = ["Alpha", *unsafe, "Bravo_1.x-2"]
+
+	result = available_cameras(tmp_path, json.dumps(names))
+
+	assert result == ["Alpha", "Bravo_1.x-2"]
 
 
 def run_privileged(tmp_path: Path, argv: list):
