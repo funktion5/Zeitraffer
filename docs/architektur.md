@@ -229,8 +229,7 @@ timelapse/
 │   ├── weboberflaeche.md
 │   ├── werkzeuge.md
 │   ├── wordpress.md
-│   ├── youtube-description-prompt.md
-│   └── youtube-texts.md
+│   └── youtube/   (Regeln und Texte für YouTube-Beschreibungen)
 ├── frontend/
 │   └── zeitraffer/
 │       ├── assets/   (CSS und JavaScript des Plugins)
@@ -243,13 +242,14 @@ timelapse/
 │   ├── nas-extract.py
 │   └── README.md
 ├── scripts/
+│   ├── web/   (Wrapper der Weboberfläche, installiert unter /usr/local/)
+│   │   ├── timelapse-web-delete
+│   │   ├── timelapse-web-delete-highlight
+│   │   ├── timelapse-web-status.sh
+│   │   ├── timelapse-web-trigger
+│   │   └── timelapse-web-worker
 │   ├── storage-filter-all
 │   ├── timelapse-nightly-staged
-│   ├── timelapse-web-delete
-│   ├── timelapse-web-delete-highlight
-│   ├── timelapse-web-status.sh
-│   ├── timelapse-web-trigger
-│   ├── timelapse-web-worker
 │   └── yearly-backfill.py
 ├── src/
 │   ├── flagger/
@@ -287,6 +287,11 @@ timelapse/
 │   ├── video.py
 │   └── yearly_selection.py
 ├── tests/   (pytest, eine *_test.py-Datei pro Modul)
+│   ├── flagger/   (Tests des Highlights-Flaggers und seine Fakes)
+│   ├── jobs/   (Tests von Daily, Weekly, Monthly, Yearly)
+│   ├── privacy/   (Tests der Verpixelung)
+│   ├── web/   (Tests der Weboberfläche und ihrer Wrapper)
+│   └── conftest.py, frame_source_fakes.py, privacy_fakes.py, *_test.py   (übrige Module)
 ├── web/
 │   ├── public/
 │   │   ├── camera.php

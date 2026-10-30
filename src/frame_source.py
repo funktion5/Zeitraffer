@@ -337,7 +337,7 @@ class SshFrameSource:
 		missing = self._missing(camera_directory, names)
 
 		# Pulls from the box into the cache, never the other way round (tested, and enforced by the
-		# structural guard in tests/privacy_box_writer_test.py).
+		# structural guard in tests/privacy/privacy_box_writer_test.py).
 		command = [
 			"rsync",
 			"-t",
@@ -469,8 +469,8 @@ def _default_source_kind(camera_root: Path | None) -> str:
 
 
 # An explicit TIMELAPSE_FRAME_SOURCE always wins. Decided here, not in src/images.py, because the
-# structural test in tests/privacy_box_writer_test.py lists every module that mentions ssh, and the
-# big images module should not be one of them.
+# structural test in tests/privacy/privacy_box_writer_test.py lists every module that mentions ssh,
+# and the big images module should not be one of them.
 def build_frame_source(camera_root: Path | None, project_root: Path) -> FrameSource:
 	kind = os.environ.get(FRAME_SOURCE_ENV) or _default_source_kind(camera_root)
 

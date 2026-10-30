@@ -245,12 +245,12 @@ EOF
 
 step_web_bridge() {
 	log "Installing the web-to-Python bridge wrappers and the sudoers rules"
-	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-trigger" /usr/local/sbin/timelapse-web-trigger
-	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-delete" /usr/local/sbin/timelapse-web-delete
-	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-delete-highlight" /usr/local/sbin/timelapse-web-delete-highlight
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-trigger" /usr/local/sbin/timelapse-web-trigger
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete" /usr/local/sbin/timelapse-web-delete
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete-highlight" /usr/local/sbin/timelapse-web-delete-highlight
 	sudo install -d -o root -g root -m 755 /usr/local/libexec
-	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-worker" /usr/local/libexec/timelapse-web-worker
-	sudo install -m 644 -o root -g root "$PROJECT_ROOT/scripts/timelapse-web-status.sh" /usr/local/libexec/timelapse-web-status.sh
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker" /usr/local/libexec/timelapse-web-worker
+	sudo install -m 644 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-status.sh" /usr/local/libexec/timelapse-web-status.sh
 
 	# Generated for this account, then checked by visudo before it can lock sudo out.
 	local sudoers

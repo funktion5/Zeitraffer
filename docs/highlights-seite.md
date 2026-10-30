@@ -79,7 +79,7 @@ Als root, wie bei den anderen Wrappern ([README: Wrapper installieren](../README
 
 ```bash
 sudo install -o root -g root -m 755 \
-  scripts/timelapse-web-delete-highlight \
+  scripts/web/timelapse-web-delete-highlight \
   /usr/local/sbin/timelapse-web-delete-highlight
 sudo visudo -f /etc/sudoers.d/timelapse-web
 ```
@@ -90,7 +90,7 @@ In `visudo` diese Zeile ergänzen (`<benutzer>` = Besitzer des Projektordners):
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
 ```
 
-Nach jeder Änderung an `scripts/timelapse-web-delete-highlight` muss der Wrapper erneut mit
+Nach jeder Änderung an `scripts/web/timelapse-web-delete-highlight` muss der Wrapper erneut mit
 `sudo install` installiert werden. Bei einer Neuinstallation erledigt das `install.sh`.
 
 ## Fehlersuche
@@ -113,8 +113,8 @@ Nach jeder Änderung an `scripts/timelapse-web-delete-highlight` muss der Wrappe
 | `web/public/highlights.php` | Seite, Filter, Löschen |
 | `web/src/highlights-library.php` | Berichte lesen und prüfen |
 | `web/src/highlight-delete.php` | Aufruf des Wrappers |
-| `scripts/timelapse-web-delete-highlight` | Löschen als Projektbenutzer |
+| `scripts/web/timelapse-web-delete-highlight` | Löschen als Projektbenutzer |
 
-Tests: `tests/web_highlights_test.py` (Bibliothek, Wrapper-Aufruf),
-`tests/web_highlights_page_test.py` (Seite, Filter, Löschen per POST, auch mit `response=json`),
-`tests/web_delete_highlight_test.py` (Wrapper).
+Tests: `tests/web/web_highlights_test.py` (Bibliothek, Wrapper-Aufruf),
+`tests/web/web_highlights_page_test.py` (Seite, Filter, Löschen per POST, auch mit `response=json`),
+`tests/web/web_delete_highlight_test.py` (Wrapper).

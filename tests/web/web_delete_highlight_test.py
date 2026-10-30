@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-WRAPPER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-delete-highlight"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+WRAPPER = REPO_ROOT / "scripts" / "web" / "timelapse-web-delete-highlight"
 
 
 # Run the wrapper against a temporary project root instead of the real videos/.

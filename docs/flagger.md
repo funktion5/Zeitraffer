@@ -205,10 +205,10 @@ Ausschnitte, 4 Threads), Spitzenspeicher etwa 210 MB. Bei rund 140 Daily-Bildern
 ## Tests
 
 ```bash
-.venv/bin/python3 -m pytest tests/flagger_*_test.py
+.venv/bin/python3 -m pytest tests/flagger/flagger_*_test.py
 ```
 
-Alle Tests außer `tests/flagger_acceptance_test.py` laufen mit einem künstlichen Modell und
+Alle Tests außer `tests/flagger/flagger_acceptance_test.py` laufen mit einem künstlichen Modell und
 brauchen weder `models/` noch Kamerabilder (so auch in CI). Der Abnahmetest braucht das Modell
 in `models/` und das Testbild `sandbox/flagger-samples/strandallee-26-10-20_08-14-58-20.jpg`
 (beides nicht im Repository); fehlt eines, wird er übersprungen.

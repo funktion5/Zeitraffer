@@ -544,7 +544,7 @@ Auftrag, dessen Worker nie gestartet ist, gilt nach einer Minute als fehlgeschla
 
 ```bash
 sudo -l -U www-data                                    # Regeln für trigger, delete und delete-highlight?
-cmp scripts/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
+cmp scripts/web/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
 tail /var/log/apache2/zeitraffer-error.log
 ```
 

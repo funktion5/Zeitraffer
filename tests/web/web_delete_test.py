@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-WEB_DELETE = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-delete"
+WEB_DELETE = Path(__file__).resolve().parents[2] / "scripts" / "web" / "timelapse-web-delete"
 
 
 # Run the delete wrapper against a temporary project root instead of the real videos/.

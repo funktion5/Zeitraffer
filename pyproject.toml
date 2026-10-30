@@ -1,6 +1,9 @@
 [tool.pytest.ini_options]
 # archive/ holds retired code and its tests: kept for reference, neither run nor linted.
 testpaths = ["tests"]
+# The shared fakes (frame_source_fakes, privacy_fakes) live in tests/ and are imported by bare
+# name from the subfolders (tests/jobs, tests/flagger, ...), so tests/ must be on the path.
+pythonpath = ["tests"]
 
 [tool.ruff]
 target-version = "py313"

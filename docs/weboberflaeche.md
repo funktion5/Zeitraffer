@@ -119,8 +119,7 @@ Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlau
 Wrapper, PHP-Helfer und Status-Endpunkt werden mit pytest geprüft (benötigt `php` auf der Kommandozeile):
 
 ```bash
-python3 -m pytest tests/web_status_test.py tests/web_status_endpoint_test.py \
-  tests/web_delete_test.py tests/web_php_test.py tests/web_camera_page_test.py
+python3 -m pytest tests/web
 ```
 
 - `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung, fehlgeschlagene Jobs und die Fehlergrund-Datei `.reason` des Workers

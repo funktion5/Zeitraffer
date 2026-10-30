@@ -9,9 +9,10 @@ import time
 import pytest
 
 
-STATUS_HELPER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-status.sh"
-WEB_WORKER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-worker"
-WEB_TRIGGER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-web-trigger"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+STATUS_HELPER = REPO_ROOT / "scripts" / "web" / "timelapse-web-status.sh"
+WEB_WORKER = REPO_ROOT / "scripts" / "web" / "timelapse-web-worker"
+WEB_TRIGGER = REPO_ROOT / "scripts" / "web" / "timelapse-web-trigger"
 
 
 # Run one status helper command against an isolated status directory.

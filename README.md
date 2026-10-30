@@ -241,19 +241,19 @@ Die versionierten Skripte werden als geschützte Laufzeitkopien installiert:
 ```bash
 sudo install -d -o root -g root -m 755 /usr/local/libexec
 sudo install -o root -g root -m 644 \
-  scripts/timelapse-web-status.sh \
+  scripts/web/timelapse-web-status.sh \
   /usr/local/libexec/timelapse-web-status.sh
 sudo install -o root -g root -m 755 \
-  scripts/timelapse-web-worker \
+  scripts/web/timelapse-web-worker \
   /usr/local/libexec/timelapse-web-worker
 sudo install -o root -g root -m 755 \
-  scripts/timelapse-web-trigger \
+  scripts/web/timelapse-web-trigger \
   /usr/local/sbin/timelapse-web-trigger
 sudo install -o root -g root -m 755 \
-  scripts/timelapse-web-delete \
+  scripts/web/timelapse-web-delete \
   /usr/local/sbin/timelapse-web-delete
 sudo install -o root -g root -m 755 \
-  scripts/timelapse-web-delete-highlight \
+  scripts/web/timelapse-web-delete-highlight \
   /usr/local/sbin/timelapse-web-delete-highlight
 ```
 
@@ -661,6 +661,6 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [vps.md](docs/vps.md) | Umzug auf einen VPS: Backup, `install.sh`, Handtest, bekannte Lücken |
 | [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
 | [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
-| [youtube-description-prompt.md](docs/youtube-description-prompt.md), [youtube-texts.md](docs/youtube-texts.md) | Texte für YouTube-Beschreibungen |
+| [youtube/description-prompt](docs/youtube/youtube-description-prompt.md), [youtube/texts](docs/youtube/youtube-texts.md) | Texte für YouTube-Beschreibungen |
 
 Pläne und Entwürfe für neue Funktionen liegen in `docs/plans/` und `docs/superpowers/`.

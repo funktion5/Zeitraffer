@@ -8,7 +8,7 @@ import subprocess
 import pytest
 
 
-WEB_SRC = Path(__file__).resolve().parent.parent / "web" / "src"
+WEB_SRC = Path(__file__).resolve().parents[2] / "web" / "src"
 # The PHP derives the project folder from its own location; tests swap that call for a temp dir.
 PROJECT_ROOT_CALL = "dirname(__DIR__, 2)"
 SUDO_PATH = "/usr/bin/sudo"

@@ -7,7 +7,7 @@ import time
 import pytest
 
 
-STATUS_ENDPOINT = Path(__file__).resolve().parent.parent / "web" / "public" / "job-status.php"
+STATUS_ENDPOINT = Path(__file__).resolve().parents[2] / "web" / "public" / "job-status.php"
 
 
 # Execute the status endpoint through PHP CLI with controlled request data.
