@@ -29,7 +29,7 @@ NOON = defaultdict(lambda: 12 * 60 * 60)
 # These tests read the real camera storage. It is only mounted on the Pi, not on CI runners. A
 # mount, not just the folder: the Docker image keeps an empty /mnt/cameras as its mount point.
 requires_camera_storage = pytest.mark.skipif(
-	not os.path.ismount(images_module.CAMERA_ROOT),
+	images_module.CAMERA_ROOT is None or not os.path.ismount(images_module.CAMERA_ROOT),
 	reason=f"camera storage {images_module.CAMERA_ROOT} is not mounted",
 )
 
@@ -1707,9 +1707,10 @@ def _camera_root_in_fresh_process(env_value: str | None) -> str:
 	return result.stdout.strip()
 
 
-def test_camera_root_defaults_to_storage_box_mount():
-	assert _camera_root_in_fresh_process(None) == "/mnt/cameras"
-	assert _camera_root_in_fresh_process("") == "/mnt/cameras"
+# No /mnt/cameras default: without the variable the source is chosen from the box (or refused).
+def test_camera_root_is_unset_without_the_environment():
+	assert _camera_root_in_fresh_process(None) == "None"
+	assert _camera_root_in_fresh_process("") == "None"
 
 
 def test_camera_root_can_be_overridden_by_environment(tmp_path):

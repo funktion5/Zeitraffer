@@ -447,14 +447,37 @@ class SshFrameSource:
 FRAME_SOURCE_ENV = "TIMELAPSE_FRAME_SOURCE"
 
 
-# "ssh" is a switch of its own, not implied by TIMELAPSE_STORAGE_BOX: that one is already set on
-# hosts for the blur jobs and must not change where the frames come from. Decided here, not in
-# src/images.py, because the structural test in tests/privacy_box_writer_test.py lists every module
-# that mentions ssh, and the big images module should not be one of them.
-def build_frame_source(camera_root: Path, project_root: Path) -> FrameSource:
-	kind = os.environ.get(FRAME_SOURCE_ENV) or "local"
+# Unset, the source follows what is configured: a camera folder chosen on purpose first (the NAS
+# tools set only that, and a shell may export the box as well for the blur jobs), then the storage
+# box. There is no default folder any more, so nothing configured is a setup error, not an empty
+# camera list.
+def _default_source_kind(camera_root: Path | None) -> str:
+	if camera_root is not None:
+		return "local"
+
+	# Imported here: storage_filter imports src.images, which imports this module.
+	from src.storage_filter import STORAGE_BOX_ENV
+
+	if os.environ.get(STORAGE_BOX_ENV, "").strip():
+		return "ssh"
+
+	raise ValueError(
+		"No frame source configured: set TIMELAPSE_CAMERA_ROOT (a folder of camera images) "
+		f"or {STORAGE_BOX_ENV} (an ssh alias, optionally ':<base directory>'), "
+		f"or choose with {FRAME_SOURCE_ENV}"
+	)
+
+
+# An explicit TIMELAPSE_FRAME_SOURCE always wins. Decided here, not in src/images.py, because the
+# structural test in tests/privacy_box_writer_test.py lists every module that mentions ssh, and the
+# big images module should not be one of them.
+def build_frame_source(camera_root: Path | None, project_root: Path) -> FrameSource:
+	kind = os.environ.get(FRAME_SOURCE_ENV) or _default_source_kind(camera_root)
 
 	if kind == "local":
+		if camera_root is None:
+			raise ValueError(f"{FRAME_SOURCE_ENV}=local needs TIMELAPSE_CAMERA_ROOT")
+
 		return LocalFrameSource(camera_root)
 
 	if kind == "ssh":

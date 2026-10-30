@@ -73,7 +73,8 @@ def test_ls_output_keeps_regular_files_with_sizes():
 	}
 
 
-def test_storage_box_comes_from_the_live_sshfs_mount(tmp_path):
+def test_storage_box_comes_from_the_live_sshfs_mount(tmp_path, monkeypatch):
+	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
 	mounts = tmp_path / "mounts"
 	mounts.write_text(
 		"/dev/root / ext4 rw 0 0\nuser-sub1@box.example: /mnt/cameras fuse.sshfs ro,nosuid 0 0\n"
@@ -82,7 +83,16 @@ def test_storage_box_comes_from_the_live_sshfs_mount(tmp_path):
 	assert get_storage_box(mounts) == StorageBox("user-sub1@box.example", "")
 
 
+# Without a camera folder there is no mount to look at: the error names the variable to set.
+def test_storage_box_without_environment_or_camera_root_names_the_variable(tmp_path, monkeypatch):
+	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", None)
+
+	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
+		get_storage_box(tmp_path / "no-mounts")
+
+
 def test_storage_box_from_environment_wins_over_the_mount(tmp_path, monkeypatch):
+	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
 	mounts = tmp_path / "mounts"
 	mounts.write_text("user-sub1@box.example: /mnt/cameras fuse.sshfs ro,nosuid 0 0\n")
 	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box")

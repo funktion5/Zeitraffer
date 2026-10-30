@@ -243,14 +243,82 @@ def ssh_env(monkeypatch, tmp_path):
 	return tmp_path
 
 
-@pytest.mark.parametrize("value", [None, "", "local"])
-def test_unset_or_local_gives_the_local_source(monkeypatch, value):
-	if value is None:
-		monkeypatch.delenv("TIMELAPSE_FRAME_SOURCE", raising=False)
+# With TIMELAPSE_FRAME_SOURCE unset or blank the source follows what is configured: an explicit
+# camera folder first, then the storage box. There is no /mnt/cameras default any more.
+@pytest.fixture(params=[None, ""])
+def unset_source(request, ssh_env, monkeypatch):
+	if request.param is None:
+		monkeypatch.delenv("TIMELAPSE_FRAME_SOURCE")
 	else:
-		monkeypatch.setenv("TIMELAPSE_FRAME_SOURCE", value)
+		monkeypatch.setenv("TIMELAPSE_FRAME_SOURCE", request.param)
 
-	assert images_module.get_frame_source() == LocalFrameSource(images_module.CAMERA_ROOT)
+	monkeypatch.delenv("TIMELAPSE_STORAGE_BOX")
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", None)
+
+	return monkeypatch
+
+
+def test_unset_with_only_a_camera_root_gives_the_local_source(unset_source, tmp_path):
+	unset_source.setattr(images_module, "CAMERA_ROOT", tmp_path / "cameras")
+
+	assert images_module.get_frame_source() == LocalFrameSource(tmp_path / "cameras")
+
+
+def test_unset_with_only_a_box_gives_the_ssh_source(unset_source):
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+
+	source = images_module.get_frame_source()
+
+	assert isinstance(source, SshFrameSource)
+	assert source.box == StorageBox(remote="box", base_directory="cameras")
+
+
+# The box is also exported on hosts for the blur jobs, so it must not override a folder that was
+# chosen on purpose (the NAS tools set only the folder, a shell may have both).
+def test_unset_with_a_camera_root_and_a_box_gives_the_local_source(unset_source, tmp_path):
+	unset_source.setattr(images_module, "CAMERA_ROOT", tmp_path / "cameras")
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+
+	assert images_module.get_frame_source() == LocalFrameSource(tmp_path / "cameras")
+
+
+def test_unset_without_a_root_or_a_box_names_both_variables(unset_source):
+	with pytest.raises(ValueError) as error:
+		images_module.get_frame_source()
+
+	assert "TIMELAPSE_CAMERA_ROOT" in str(error.value)
+	assert "TIMELAPSE_STORAGE_BOX" in str(error.value)
+
+
+def test_a_blank_box_counts_as_unset(unset_source):
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "  ")
+
+	with pytest.raises(ValueError, match="TIMELAPSE_STORAGE_BOX"):
+		images_module.get_frame_source()
+
+
+def test_explicit_local_gives_the_local_source_even_with_a_box(unset_source, tmp_path):
+	unset_source.setattr(images_module, "CAMERA_ROOT", tmp_path / "cameras")
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+	unset_source.setenv("TIMELAPSE_FRAME_SOURCE", "local")
+
+	assert images_module.get_frame_source() == LocalFrameSource(tmp_path / "cameras")
+
+
+def test_explicit_local_without_a_root_names_the_variable(unset_source):
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+	unset_source.setenv("TIMELAPSE_FRAME_SOURCE", "local")
+
+	with pytest.raises(ValueError, match="TIMELAPSE_CAMERA_ROOT"):
+		images_module.get_frame_source()
+
+
+def test_explicit_ssh_wins_over_a_camera_root(unset_source, tmp_path):
+	unset_source.setattr(images_module, "CAMERA_ROOT", tmp_path / "cameras")
+	unset_source.setenv("TIMELAPSE_STORAGE_BOX", "box:cameras")
+	unset_source.setenv("TIMELAPSE_FRAME_SOURCE", "ssh")
+
+	assert isinstance(images_module.get_frame_source(), SshFrameSource)
 
 
 def test_ssh_gives_an_ssh_source_with_the_box_from_the_environment(ssh_env):

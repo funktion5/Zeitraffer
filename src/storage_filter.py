@@ -83,6 +83,10 @@ def get_storage_box(mounts_path: Path = MOUNTS_PATH) -> StorageBox:
 
 		return StorageBox(remote=remote, base_directory=base_directory)
 
+	# No camera folder is configured, so there is no mount to read the box from either.
+	if images_module.CAMERA_ROOT is None:
+		raise OSError(f"{STORAGE_BOX_ENV} is not set and no camera folder is configured")
+
 	camera_root = str(images_module.CAMERA_ROOT)
 
 	for line in mounts_path.read_text().splitlines():

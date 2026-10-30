@@ -12,11 +12,11 @@ from src.frame_source import FrameSource, build_frame_source
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
-DEFAULT_CAMERA_ROOT = Path("/mnt/cameras")
-
 # Read from the environment so isolated worker processes inherit an alternative source
-# (e.g. the NAS archive) without any argument plumbing.
-CAMERA_ROOT = Path(os.environ.get("TIMELAPSE_CAMERA_ROOT") or DEFAULT_CAMERA_ROOT)
+# (e.g. the NAS archive) without any argument plumbing. None when unset: there is no default
+# folder, the source is then chosen from the storage box (see src/frame_source.py).
+_camera_root_setting = os.environ.get("TIMELAPSE_CAMERA_ROOT")
+CAMERA_ROOT = Path(_camera_root_setting) if _camera_root_setting else None
 
 # Every camera ends a complete JPEG with this marker; an upload cut off part-way lacks it.
 JPEG_END_MARKER = b"\xff\xd9"
