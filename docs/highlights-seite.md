@@ -73,7 +73,7 @@ und Dateiname gegen die aktuelle Liste und ruft dann über `sudo` den festen Wra
 nur eine `.jpg` direkt in `videos/<Kamera>/highlights/<Datum>/`, nie die `manifest.json`, und
 lehnt Symlinks ab.
 
-## Einmalige Einrichtung auf dem Pi
+## Einmalige Einrichtung auf dem Server
 
 Als root, wie bei den anderen Wrappern ([README: Wrapper installieren](../README.md#wrapper-installieren)):
 

@@ -8,6 +8,11 @@ der Ordner `DEST` aus `backup.env` (Standard `~/timelapse-backup`). Er sollte ni
 `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die unverschlüsselten
 Videos hochgeladen.
 
+**Stand 30.10.2026:** Der Umzug ist abgeschlossen. Die Crontab des Pi ist leer, die Crontab des VPS
+enthält die beiden Zeilen aus `./install.sh cron_hint` (02:00 Verpixelung nachholen und Nachtlauf,
+04:00 Flagger). Die erste Nacht auf dem VPS war die vom 30. auf den 31.10.; die ersten Nächte
+werden gelesen (Bericht des Nachtlaufs, Zusammenfassungen, Verpixelungs- und Flagger-Protokoll).
+
 Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Jobs lesen die Bilder per ssh von der
 Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-staged`; der frühere
 Plan liegt im [Archiv](../archive/staging/docs/plans/web-server-nightly-run.md)).
@@ -167,10 +172,15 @@ nachvollziehen, sonst bleiben veraltete Kopien liegen.
 - **Port 80:** Bei `WEB_PORT` ungleich 80 lauscht Apache weiter auf 80 (Debian-Standard in
   `ports.conf`) und zeigt dort die Debian-Standardseite. Auf dem VPS sperrt das die Hetzner-Firewall.
   Auf einem Host ohne Firewall `Listen 80` in `/etc/apache2/ports.conf` auskommentieren.
-- **Flagger und 5-Minuten-Verpixelung:** Der Flagger hat eine eigene Cron-Zeile (`./install.sh cron_hint`),
-  die Uhrzeit (Vorschlag 04:00) ist nach der gemessenen Dauer des Nachtlaufs zu prüfen. Die
-  5-Minuten-Verpixelung ist nicht in Cron.
+- **Flagger und laufende Verpixelung:** Der Flagger hat eine eigene Cron-Zeile (`./install.sh cron_hint`)
+  und steht seit dem 30.10.2026 mit 04:00 in der Crontab; ob der Nachtlauf bis dahin fertig ist,
+  zeigt der Bericht der ersten Nächte. Die laufende Verpixelung neuer Bilder ist nicht in Cron
+  (Entwurf: [Plan](plans/2026-10-30-live-blur-cron.md)).
+- **Weboberfläche für das Team:** Die Oberfläche des Pi zeigt seit dem Umzug keine neuen Videos
+  mehr. Der Zugang zur Oberfläche des VPS (HTTP auf `WEB_PORT`, HTTPS steht aus) ist für die
+  Kolleginnen und Kollegen noch zu klären.
 - **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard, wie auf
-  dem Pi); der Nachtlauf dauerte damit rund 41 Minuten. Die Qualität steht seit dem 30.10.2026 auf CRF 28
-  (`timelapse.crf` in `config/config.json`); Dateigröße und Laufzeit damit sind auf dem VPS noch zu
-  messen ([Plan](plans/2026-10-30-video-crf.md)).
+  dem Pi); der Nachtlauf dauerte damit rund 41 Minuten (Lauf vom 29.10., noch mit dem früheren CRF).
+  Die Qualität steht seit dem 30.10.2026 auf CRF 28 (`timelapse.crf` in `config/config.json`); an
+  einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB).
+  Die Laufzeit des Nachtlaufs mit CRF 28 zeigen die ersten Nächte ([Plan](plans/2026-10-30-video-crf.md)).

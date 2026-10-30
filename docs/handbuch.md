@@ -24,13 +24,16 @@ für die jeweiligen Werte.
 
 ## Überblick
 
+Stand: Der Betrieb läuft seit dem 30.10.2026 auf einem VPS (Debian 13); der frühere Raspberry Pi
+ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
+
 ### Was wann läuft
 
 | Was | Wann | Gestartet von |
 |---|---|---|
 | Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Highlights-Flagger | eigene Cron-Zeile nach dem Nachtlauf (Vorschlag 04:00 Uhr) | Cron |
+| Highlights-Flagger | 04:00 Uhr, eigene Cron-Zeile (ob der Nachtlauf bis dahin fertig ist, zeigt sein Bericht) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
@@ -45,6 +48,8 @@ für die jeweiligen Werte.
 | Highlights | `videos/<Kamera>/highlights/<Datum>/` |
 | Protokolle | `logs/<job>/<Datum des Laufs>.log`, z. B. `logs/daily/`, `logs/flagger/` |
 | Laufsperre | `state/zeitraffer-run.lock` |
+| Sperre der Box-Verpixelung | `state/privacy-blur.lock` |
+| Status der Box-Verpixelung | `state/privacy/box/<Kamera>/<JJJJ-MM>.jsonl` |
 | Marker „nächtlicher Lauf unterbrochen“ | `state/run-in-progress` |
 | Status der Web-Aufträge | `state/web-jobs/` |
 | Zwischendateien | `temp/` |
@@ -55,9 +60,12 @@ für die jeweiligen Werte.
 
 ### Grundregeln
 
-- **Immer nur ein Lauf auf einmal.** Nächtlicher Lauf, Web-Aufträge, Flagger, Speicherfilter,
-  Backfill und Verpixelung teilen sich die Sperre `state/zeitraffer-run.lock`. Wer sie nicht
-  bekommt, bricht ab oder überspringt.
+- **Immer nur ein Lauf auf einmal.** Nächtlicher Lauf, Web-Aufträge, Flagger, Speicherfilter und
+  Backfill teilen sich die Sperre `state/zeitraffer-run.lock`; das nächtliche Nachholen der
+  Verpixelung läuft unter derselben Sperre. Die Verpixelung auf der Storage Box hat zusätzlich
+  eine eigene Sperre (`state/privacy-blur.lock`), damit sich zwei Runden nie überschneiden; ohne
+  `flock` gestartet läuft sie auch parallel zum Zeitraffer-Lauf. Wer eine Sperre nicht bekommt,
+  bricht ab oder überspringt.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
   Storage Box ist die einzige Ausnahme und sichert vorher das Original.
 - **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Bei `src.main` ist der Exit-Code
@@ -129,7 +137,10 @@ kill -TERM -- -<PID>      # abgekoppelten Lauf beenden (PID aus pgrep)
 
 Auf dem Server liest jeder Befehl die Bilder per ssh; dafür muss `TIMELAPSE_STORAGE_BOX` gesetzt
 sein. Die Cron-Zeilen setzen sie selbst, in der Shell einmal `export TIMELAPSE_STORAGE_BOX=<ssh-alias>`.
-Ohne sie bricht ein Befehl mit einer Fehlermeldung ab.
+Alternativ liest `TIMELAPSE_CAMERA_ROOT` die Bilder aus einem lokalen Ordner (zum Beispiel dem
+NAS-Archiv, [nas.md](nas.md)); `TIMELAPSE_FRAME_SOURCE` (`local` oder `ssh`) erzwingt eine der
+beiden Quellen. Ohne `TIMELAPSE_STORAGE_BOX` und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Befehl
+mit einer Fehlermeldung ab.
 
 Der Lauf startet automatisch um 02:00 Uhr über Cron (Zeilen:
 [betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Von Hand (alle Kameras, alle vier Jobs, Zieltag
@@ -237,8 +248,9 @@ Crontab fehlt oder der Rechner war aus.
 ### Kamera-Speicher nicht erreichbar
 
 **Symptom:** Im Protokoll steht direkt am Anfang `Failed to access camera storage.` mit einem
-`OSError` (zum Beispiel `Storage box listing failed ...` oder `TIMELAPSE_STORAGE_BOX is not set`),
-und es entstehen gar keine Videos.
+`OSError` (zum Beispiel `Storage box listing failed ...` oder `TIMELAPSE_STORAGE_BOX is not set`)
+oder einem `ValueError` (`No frame source configured: set TIMELAPSE_CAMERA_ROOT ... or
+TIMELAPSE_STORAGE_BOX ...`), und es entstehen gar keine Videos.
 
 **Prüfen:**
 
@@ -372,6 +384,52 @@ sudo chown -R "$(id -un):$(id -gn)" ~/timelapse/videos   # Eigentümer zurück a
 `permissions` allein reicht hier nicht: es ändert nur Rechte, nicht den Eigentümer.
 
 Dann die Kamera mit `--target-date` nachholen. Läufe nie mit `sudo` starten.
+
+### Video wirkt gestaucht oder hat schwarze Balken
+
+**Symptom:** Ein Video ist schmaler oder breiter gestaucht als erwartet, oder die Bilder ab einem
+Datum haben schwarze Balken. Im Protokoll steht `Frames of 2 different sizes (640x480, 1920x1080):
+fitting every frame into 1920x1080`.
+
+**Prüfen:**
+
+```bash
+ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 <Video>.mp4
+```
+
+**Ursache:** Eine Kamera wurde getauscht, die neuen Bilder haben eine andere Größe (Beispiel
+Uferstrasse: 640×480 bis August 2026, danach 1920×1080). FFmpeg nimmt die Größe des ersten Bildes
+und streckt alle anderen darauf; deshalb wirkte ein Jahresvideo über den Wechsel hinweg gestaucht.
+Seit dem 30.10.2026 passt das Programm bei Daily, Monthly und Yearly alle Bilder in die größte
+vorkommende Größe ein: Seitenverhältnis bleibt, schwarze Balken füllen den Rest (die alten
+4:3-Bilder bekommen Balken links und rechts und sind etwas weicher, weil sie vergrößert werden).
+Haben alle Bilder dieselbe Größe, ändert sich nichts.
+
+**Lösung:** Meist nichts: die Balken sind gewollt, und sie verschwinden von selbst, wenn die alten
+Bilder aus dem Zeitraum fallen (beim Yearly nach 365 Tagen). Ein Video, das vor der Korrektur
+entstanden ist, bleibt gestaucht, bis es neu erstellt wird (das nächtliche Yearly ersetzt sich
+selbst). **Bekannte Lücke:** Das Weekly setzt
+fertige Tagesvideos zusammen und passt nichts an; liegt ein Kamerawechsel in den 7 Tagen, kann es
+gestaucht sein.
+
+### Videodateien zu groß oder Qualität nicht gut genug
+
+**Hintergrund:** Die Qualität steuert x264 über den CRF-Wert: niedriger ist besser und größer,
+höher ist kleiner. Der Standard ist seit dem 30.10.2026 **28** (`timelapse.crf` in
+`config/config.json`). An einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 %
+kleiner als bei CRF 23 (9,9 statt 21,2 MiB), bei der Durchsicht ohne sichtbaren Mangel.
+
+**Lösung:** Dauerhaft `timelapse.crf` ändern (ganze Zahl 0 bis 51). Für einen einzelnen Lauf den
+Wert vor den Befehl setzen:
+
+```bash
+TIMELAPSE_X264_CRF=23 .venv/bin/python3 -m src.main --jobs yearly --target-date <Datum> --cameras <Kamera>
+```
+
+Ein ungültiger Wert bricht das Encodieren mit `TIMELAPSE_X264_CRF must be a whole number from 0 to
+51` (bzw. `timelapse.crf must be ...`) ab, es entsteht kein Video. Die Änderung gilt nur für neu
+erstellte Videos. `TIMELAPSE_X264_PRESET` ändert dagegen Laufzeit, Speicherbedarf und Größe, nicht
+den CRF-Wert ([README](../README.md#umgebungsvariablen)).
 
 ### Festplatte voll
 
@@ -671,6 +729,12 @@ Fehlerbilder und Lösungen stehen in den eigenen Tabellen:
 [verpixelung-box.md](verpixelung-box.md#fehlersuche) (Storage Box). Grundsatz: Im Zweifel bricht
 die Verpixelung ab und schreibt nichts; ein Abbruch ist also kein Datenverlust.
 
+`Unsafe storage box remote: '<Wert>'` heißt: Der Alias in `TIMELAPSE_STORAGE_BOX` (der Teil vor
+einem `:`) enthält ein Zeichen, das die Verpixelung nicht akzeptiert. Erlaubt sind Buchstaben,
+Ziffern, `.`, `_` und `-` (am Anfang ein Buchstabe oder eine Ziffer, damit der Wert nie als
+ssh-Option gelesen wird), optional als `benutzer@host`. Den Eintrag in `~/.ssh/config` danach
+benennen oder den Alias in der Cron-Zeile korrigieren.
+
 ### Speicherfilter
 
 `TIMELAPSE_STORAGE_BOX is not set` heißt: Die Storage Box ist nicht angegeben; die Variable setzen
@@ -719,11 +783,24 @@ den Test entsprechend anpassen.
 
 ### Push wird blockiert
 
-**Ursache:** Der lokale Pre-Push-Hook führt `ruff check`, `ruff format --check` und `pytest` aus und
-bricht bei einem Fehler ab.
+**Ursache:** Nur wenn lokal ein Pre-Push-Hook (`.git/hooks/pre-push`, nicht versioniert) eingerichtet
+ist: Er führt `ruff check`, `ruff format --check` und `pytest` aus und bricht bei einem Fehler ab
+([architektur.md](architektur.md#github-actions-und-pre-push-hook)). Im Klon auf dem Mac steht
+Stand 30.10.2026 keiner; dort prüft erst CI.
 
 **Lösung:** `ruff format .` und den Fehler beheben. `git push --no-verify` nur im Notfall; CI prüft
 dasselbe ohnehin.
+
+### Tests laufen auf dem Mac nicht vollständig durch
+
+**Ursache:** Auf macOS schlagen rund 67 Tests aus Plattformgründen fehl (BSD-`ls` und BSD-`date`
+statt GNU, `spawn` statt `fork`; Stand 29.10.2026: 897 bestanden, 67 fehlgeschlagen, ohne
+`onnxruntime`). Das ist kein Fehler im Code.
+
+**Lösung:** Maßgeblich sind der VPS und CI (beide Linux). Änderungen mit `rsync --no-perms` auf den
+VPS bringen ([vps.md](vps.md#code-auf-den-vps-bringen-solange-er-nicht-pullen-kann)) und dort
+`.venv/bin/python3 -m pytest`, `ruff check .` und `ruff format --check .` ausführen. Fehlschläge,
+die über die bekannten macOS-Fälle hinausgehen, sind echt.
 
 ---
 

@@ -61,6 +61,11 @@ docker compose config
 
 ## Schritt 2: Videos vom Pi holen
 
+Hinweis (Stand 30.10.2026): Die Videos entstehen seit dem Umzug auf dem VPS, der Pi ist stillgelegt.
+Skript und Variable heißen noch `pull-videos.sh` und `PI`, nehmen aber jeden ssh-Login, auch einen
+Alias aus `~/.ssh/config`: `PI=<ssh-alias-des-VPS> docker/pull-videos.sh`. Das ist noch nicht
+ausprobiert; der Pfad `timelapse/videos/` gilt auf dem VPS ebenfalls.
+
 Der Container erwartet die Videos unter `videos/` im Projektordner, in derselben Struktur wie auf dem Pi:
 
 ```text

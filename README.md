@@ -622,16 +622,22 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
-- Betrieb auf dem VPS: installiert, alle Job-Arten und ein voller Nachtlauf von Hand geprüft; Cron steht aus
+- Betrieb auf dem VPS seit dem 30.10.2026: Cron läuft (02:00 Verpixelung nachholen und Nachtlauf,
+  04:00 Flagger); alle Job-Arten und ein voller Nachtlauf wurden vorher von Hand geprüft, die
+  ersten Nächte werden noch gelesen
+- Bilder verschiedener Größen in einem Video (Kamerawechsel) werden mit schwarzen Balken
+  eingepasst statt gestaucht; gilt ab der ersten Nacht auf dem VPS
 
 ---
 
 ## Noch offen
 
 - die fertigen Videos automatisch auf die echte Website bringen
-- Verpixelung neuer Bilder laufend (alle paar Minuten) starten
-- VPS: Cron einrichten (die Cron-Zeilen des Pi vorher entfernen), HTTPS (Zertifikat per DNS-Prüfung
-  bei Hetzner); Liste in [docs/vps.md](docs/vps.md)
+- Verpixelung neuer Bilder laufend starten; es gibt nur einen Entwurf (jede Minute tagsüber)
+  ([docs/plans/2026-10-30-live-blur-cron.md](docs/plans/2026-10-30-live-blur-cron.md)), nichts ist entschieden
+- VPS: HTTPS (Zertifikat per DNS-Prüfung bei Hetzner), Zugang der Kollegen zur Weboberfläche des
+  VPS, ein Deploy-Schlüssel, damit der VPS den Code selbst holen kann; Liste in
+  [docs/vps.md](docs/vps.md)
 
 ---
 

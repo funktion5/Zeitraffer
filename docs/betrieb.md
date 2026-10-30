@@ -58,8 +58,9 @@ anderen nicht aufhält:
 0 4 * * * cd <projektpfad> && TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX=<ssh-alias> <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
 
-Die Uhrzeit muss nach dem Ende des Nachtlaufs liegen: 04:00 ist ein erster Vorschlag, die
-tatsächliche Laufzeit steht in `logs/nightly/<Lauf>/report.txt`. Er nimmt die Sperre selbst, gehört
+Die Uhrzeit muss nach dem Ende des Nachtlaufs liegen: 04:00 steht seit dem 30.10.2026 auf dem VPS in
+der Crontab; ob der Nachtlauf bis dahin fertig ist, zeigt `logs/nightly/<Lauf>/report.txt`. Er
+nimmt die Sperre selbst, gehört
 also nicht in `flock -c`. Er prüft den Vortag und braucht für fünf Kameras ca. 40 Minuten
 (gemessen auf dem früheren Host).
 

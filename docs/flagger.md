@@ -170,13 +170,13 @@ bekommt keinen Ordner.
 
 ## Fehlerverhalten
 
-- Eine fehlgeschlagene Kamera (Mount weg, Zeitüberschreitung beim Scannen) hält die anderen
+- Eine fehlgeschlagene Kamera (Storage Box nicht erreichbar, Zeitüberschreitung beim Scannen) hält die anderen
   nicht auf; der Exit-Code ist dann `1`.
 - Ein unlesbares oder abgeschnittenes Bild (ohne JPEG-Endmarke `FF D9`) oder ein Dateiname ohne
   erkennbare Uhrzeit wird übersprungen, geloggt
   und mitgezählt (`failed=` im Log). Anders als bei der Verpixelung ist das kein Abbruch: ein
   verpasster Treffer kostet nichts.
-- Konnte von einer Kamera kein einziges Bild gelesen werden (z. B. Mount-Aussetzer), gilt das
+- Konnte von einer Kamera kein einziges Bild gelesen werden (z. B. Aussetzer der ssh-Verbindung), gilt das
   als Fehler: es wird nichts geschrieben, ein älterer Bericht für den Tag bleibt stehen.
 - Ein ungültiger `flagger`-Abschnitt in der Config wird geloggt und beendet den Lauf mit `1`.
 - Fehler beim Aufräumen werden geloggt und ändern den Exit-Code nicht.

@@ -285,7 +285,7 @@ python3 -m src.main \
   Video. Ein ungeprüftes Bild wird nie verwendet.
 - Ergebnisse der Erkennung werden in `state/privacy/<Kamera>.jsonl` zwischengespeichert; ein
   erneuter Lauf prüft nur neue oder geänderte Bilder.
-- Die Erkennung dauert auf dem Pi ca. 7,5–10 Sekunden pro Bild.
+- Die Erkennung dauerte auf dem früheren Raspberry Pi 4 ca. 7,5–10 Sekunden pro Bild (der VPS ist unvermessen).
 
 Noch nicht abgedeckt: automatische Läufe, Weekly, Monthly, Yearly und die Weboberfläche.
 

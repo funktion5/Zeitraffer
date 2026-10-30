@@ -157,8 +157,8 @@ Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dai
   verwirft bekannte Fehlerkennungen und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder
   Zweifel bricht den Lauf ab
 - `detect.py`: Erkennung von Personen und Fahrzeugen (YOLOX), läuft als eigener Prozess
-- `blur_box.py`: Runde über neue Bilder auf der Storage Box; liest und schreibt nur per SSH, nie
-  über den Mount
+- `blur_box.py`: Runde über neue Bilder auf der Storage Box; liest und schreibt nur per SSH (einen
+  Mount gibt es nicht mehr)
 - `box_writer.py`: einzige Stelle, die auf die Box schreibt (Sicherung des Originals, Upload,
   geprüfter Tausch)
 
@@ -407,8 +407,9 @@ Schlägt ein Schritt fehl, laufen die folgenden nicht mehr; ein roter Lauf heiß
 zwingend, dass Tests fehlgeschlagen sind. Ein neuerer Push auf denselben Branch bricht einen noch
 laufenden älteren Lauf ab.
 
-Lokal führt `.git/hooks/pre-push` (nicht versioniert) dieselben drei Prüfungen aus und blockiert
-den Push bei einem Fehler. Er prüft den Arbeitsstand, also auch nicht committete Änderungen.
+Ein lokaler Hook `.git/hooks/pre-push` (nicht versioniert; im Klon auf dem Mac steht Stand
+30.10.2026 keiner) kann dieselben drei Prüfungen ausführen und den Push bei einem Fehler
+blockieren. Er prüft den Arbeitsstand, also auch nicht committete Änderungen.
 Notfalls umgehen mit:
 
 ```bash

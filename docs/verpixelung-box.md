@@ -51,7 +51,7 @@ flowchart TD
 5. **Vorprüfung:** Name und Zeitfenster werden geprüft, bevor eine Erkennung dafür läuft. Ein
    Bild, das nie geschrieben werden dürfte, wird gleich als `refused` vermerkt.
 6. **Erkennen:** Das Bild wird per SSH (`scp`, nur lesend, über `box_writer.fetch`) nach
-   `temp/blur-box/` geladen, **nie über den Mount**: Der kann hängen oder alte Daten liefern.
+   `temp/blur-box/` geladen; einen Mount gibt es nicht mehr (er konnte hängen oder alte Daten liefern).
    Endet die Kopie nicht mit dem JPEG-Endmarker, läuft der Upload noch: nächste Runde. Ist sie
    nach 10 Minuten immer noch unvollständig, gilt der Upload als hängen geblieben und wird jede
    Runde als Fehler geloggt, bis es vollständig ist. Sonst geht sie an den Detektor (Zeitlimit
@@ -116,7 +116,8 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
   Laufs. Läuft noch eine Runde, wird die neue übersprungen.
 - Die Verpixelung läuft auch parallel zum nächtlichen Lauf. Gemessen: Die Encodes des
   nächtlichen Laufs belegen höchstens 52–69 % des Arbeitsspeichers, der Detektor braucht ca.
-  220 MB (12 %) zusätzlich; das passt. Startet der Pi trotzdem neu, geht nichts verloren
+  220 MB (12 %) zusätzlich; das passt (Messung auf dem früheren Pi mit 2 GB, der VPS hat 3,8 GB).
+  Startet der Rechner trotzdem neu, geht nichts verloren
   (Statusdatei vor dem Tausch, geprüfte Sicherung), und die Runde nach dem Neustart holt nach.
   Entschieden am 2026-10-16: keine Pause und keine Speichergrenze.
 - Exit-Code 1, wenn ein Bild fehlgeschlagen oder abgelehnt ist, und wenn der Lauf vor dem ersten
@@ -254,9 +255,10 @@ Im Zweifel bleibt das Bild **unverändert**. Der Schreibcode erzwingt:
   ab, damit ein Netzwerkfehler nie als „noch keine Sicherung da" gelesen wird.
 - Jeder Schreibschritt wird danach per SHA-256 geprüft.
 
-Tests sichern das zusätzlich ab: Nur `box_writer.py` und `storage_filter.py` dürfen `ssh` oder
-`scp` starten, `storage_filter.py` darf keine Schreibbefehle enthalten, und die Mount-Unit muss
-`-o ro` behalten.
+Tests sichern das zusätzlich ab: Nur `box_writer.py`, `storage_filter.py` und `frame_source.py`
+dürfen `ssh`, `scp` oder `rsync` starten. `storage_filter.py` darf keine Schreibbefehle enthalten,
+und `frame_source.py` holt per `rsync` nur von der Box in einen lokalen Ordner (ohne `--delete`
+oder `--remove-…`).
 
 ## Statusdatei
 
@@ -338,6 +340,7 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | `Not in privacy.blur_cameras, nothing written: …` | Kamera fehlt in `blur_cameras` | Kamera eintragen oder Aufruf prüfen |
 | `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes`, `ignore_top_share`, `skip_labels` oder `min_person_score` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
 | `No storage box: TIMELAPSE_STORAGE_BOX is not set` | Die Variable fehlt in der Cron-Zeile oder der Shell | `TIMELAPSE_STORAGE_BOX=<ssh-alias>` setzen |
+| `Unsafe storage box remote: '…'` | Der Alias enthält ein unzulässiges Zeichen | erlaubt: Buchstaben, Ziffern, `.`, `_`, `-` (am Anfang Buchstabe oder Ziffer), optional `benutzer@host`; Eintrag in `~/.ssh/config` und Cron-Zeile angleichen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |
 | `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | vorige Runde läuft noch | nichts; die nächste Runde holt nach |
 | `Refused, stays unblurred: …` | Bild zu alt oder Namensformat unbekannt | **Bild bleibt unverpixelt**; bei Bedarf von Hand bearbeiten |
