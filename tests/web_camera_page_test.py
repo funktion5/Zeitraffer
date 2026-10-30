@@ -40,6 +40,29 @@ def test_both_lists_are_shown_and_say_when_empty(tmp_path):
 	assert 'data-empty-text="Keine manuellen Videos gefunden."' in out
 
 
+# A successful background delete shows the green message above the player: the script unhides this
+# paragraph. Any full page load (reload, another video, another page) drops it again, no timer
+# needed.
+def test_the_delete_message_is_in_the_page_but_hidden_until_a_delete(tmp_path):
+	out, _ = render(tmp_path)
+
+	hidden = '<p class="delete-success-message" id="delete-success-message" hidden>'
+	assert hidden + "Video erfolgreich gelöscht.</p>" in out
+	# The background delete passes the server's message on with the "deleted" event.
+	assert "detail: { message: result.message }" in out
+	assert 'document.querySelector("#delete-success-message")' in out
+
+
+# Deleting the playing video reloads the page without it; ?deleted=1 makes the server show the
+# message there (the script then drops the parameter from the URL, so a refresh clears it).
+def test_the_delete_message_is_visible_after_a_reload_with_deleted(tmp_path):
+	out, _ = render(tmp_path, get={"camera": CAMERA, "deleted": "1"})
+
+	visible = '<p class="delete-success-message" id="delete-success-message">'
+	assert visible + "Video erfolgreich gelöscht.</p>" in out
+	assert 'deleted: "1"' in out
+
+
 def test_automatic_videos_are_listed_playable_and_read_only(tmp_path):
 	make_video(tmp_path, "", "daily", "SLSV_2026-10-25.mp4")
 	make_video(tmp_path, "manual-runs", "daily", "SLSV_2026-10-22_60min.mp4")

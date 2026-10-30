@@ -272,9 +272,7 @@ unset($_SESSION["started_job"]);
       <h1>Kamera nicht gefunden</h1>
     <?php else: ?>
 	      <h1><?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8")?></h1>
-	        <?php if ($videoWasDeleted): ?>
-	          <p class="delete-success-message">Video erfolgreich gelöscht.</p>
-	        <?php endif; ?>
+	        <p class="delete-success-message" id="delete-success-message"<?= $videoWasDeleted ? "" : " hidden" ?>>Video erfolgreich gelöscht.</p>
 	        <div class="camera-layout">
 	          <section class="video-player">
 	            <h2>Videoplayer</h2>
@@ -622,9 +620,15 @@ unset($_SESSION["started_job"]);
 				window.location.replace("/camera.php?" + new URLSearchParams({
 					camera: form.elements.camera.value,
 					job,
+					deleted: "1",
 				}));
 				return;
 			}
+
+			// Same green message as after a reload with ?deleted=1; any full page load drops it again.
+			const deletedMessage = document.querySelector("#delete-success-message");
+			deletedMessage.textContent = event.detail.message;
+			deletedMessage.hidden = false;
 
 			const item = form.closest("li");
 			const next = item.nextElementSibling ?? item.previousElementSibling;

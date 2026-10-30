@@ -129,9 +129,7 @@ function highlightBoxStyle(array $item): string
 	<main class="highlights-page">
 		<h1>Highlights</h1>
 
-		<?php if ($imageWasDeleted): ?>
-			<p class="delete-success-message">Bild erfolgreich gelöscht.</p>
-		<?php endif; ?>
+		<p class="delete-success-message" id="delete-success-message"<?= $imageWasDeleted ? "" : " hidden" ?>>Bild erfolgreich gelöscht.</p>
 
 		<?php if ($formMessage !== null): ?>
 			<p class="highlights-error" role="alert"><?= escapeHtml($formMessage) ?></p>
@@ -394,6 +392,11 @@ function highlightBoxStyle(array $item): string
 		// After a background delete (confirm-delete.php): drop the image from the grid and the
 		// viewer, fix the camera's count, and in the open viewer show the next image.
 		document.addEventListener("deleted", (event) => {
+			// Same green message as after a reload with ?deleted=1; any full page load drops it again.
+			const deletedMessage = document.querySelector("#delete-success-message");
+			deletedMessage.textContent = event.detail.message;
+			deletedMessage.hidden = false;
+
 			const item = event.target.closest("li");
 			const list = item.parentElement;
 			const section = item.closest(".highlights-camera");

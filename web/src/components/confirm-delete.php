@@ -5,7 +5,8 @@ declare(strict_types=1);
 // Shared confirm step for every form marked data-delete-confirm (camera.php, highlights.php);
 // the form's data-delete-name names the file in the question. The page sets
 // $deleteDialogTitle before including this after its forms. On confirm it deletes in the
-// background and fires "deleted" on the form; the page decides what to update.
+// background and fires "deleted" on the form (event.detail.message is the server's message);
+// the page decides what to update and shows the message.
 
 ?>
 
@@ -92,7 +93,9 @@ declare(strict_types=1);
 			pendingDeleteForm = null;
 			deleteDialog.close();
 			deleteStatus.textContent = `${result.message} (${form.dataset.deleteName})`;
-			form.dispatchEvent(new CustomEvent("deleted", { bubbles: true }));
+			form.dispatchEvent(
+				new CustomEvent("deleted", { bubbles: true, detail: { message: result.message } }),
+			);
 		});
 	})();
 </script>

@@ -61,6 +61,25 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	assert 'width="1920"' in out and 'height="1080"' in out
 
 
+# A successful background delete shows the green message under the heading: the script unhides this
+# paragraph, and any full page load drops it again. After a reload with ?deleted=1 the server shows
+# it.
+def test_the_delete_message_is_in_the_page_but_hidden_until_a_delete(tmp_path):
+	out, _ = render(tmp_path)
+
+	hidden = '<p class="delete-success-message" id="delete-success-message" hidden>'
+	assert hidden + "Bild erfolgreich gelöscht.</p>" in out
+	assert "detail: { message: result.message }" in out
+	assert 'document.querySelector("#delete-success-message")' in out
+
+
+def test_the_delete_message_is_visible_after_a_reload_with_deleted(tmp_path):
+	out, _ = render(tmp_path, get={"deleted": "1"})
+
+	visible = '<p class="delete-success-message" id="delete-success-message">'
+	assert visible + "Bild erfolgreich gelöscht.</p>" in out
+
+
 def test_default_period_is_seven_days(tmp_path):
 	make_day(tmp_path, "A", days_ago(3), [item("recent.jpg")])
 	make_day(tmp_path, "A", days_ago(10), [item("old.jpg")])
