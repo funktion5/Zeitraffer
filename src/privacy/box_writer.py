@@ -52,7 +52,10 @@ SSH_FAILURE_STATUS = 255
 
 CAMERA_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,63}")
 IMAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.jpg")
-REMOTE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*@[A-Za-z0-9][A-Za-z0-9.-]*")
+# An ssh alias from ~/.ssh/config (user, port and key live there) or user@host. The first character
+# is always a letter or digit, so a value can never be read by ssh or scp as an option, and nothing
+# a shell treats specially gets through.
+REMOTE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(@[A-Za-z0-9][A-Za-z0-9.-]*)?")
 SHA256 = re.compile(r"[0-9a-f]{64}")
 
 # Last line of defence: every path of a remote command must look like this.

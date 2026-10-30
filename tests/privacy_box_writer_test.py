@@ -261,11 +261,37 @@ def test_empty_allow_list_is_refused(box: FakeBox) -> None:
 
 
 @pytest.mark.parametrize(
-	"remote", ["-oProxyCommand=x", "box.example", "user@", "user@host;id", "user@host x"]
+	"remote",
+	[
+		"",
+		"-oProxyCommand=x",
+		"-x@host",
+		"user@",
+		"@host",
+		"user@-host",
+		"user@host;id",
+		"user@host x",
+		"a b",
+		"alias;id",
+		"$(id)",
+		"alias/../x",
+		"user@@host",
+	],
 )
 def test_unsafe_remote_is_refused(remote: str, box: FakeBox) -> None:
 	with pytest.raises(BoxWriteRefused, match="remote"):
 		BoxWriter(remote, "", [CAMERA], TIMEZONE, runner=box)
+
+
+# The box is named by an ssh alias in ~/.ssh/config (user, port and key live there), or by
+# user@host. A bare host name looks like an alias, so it is accepted as well; ssh decides what it
+# resolves to.
+@pytest.mark.parametrize(
+	"remote",
+	["user@box.example", "storagebox", "box", "box.example", "sub-1_x", "Box2@host-1.example"],
+)
+def test_an_ssh_alias_or_user_at_host_is_accepted(remote: str, box: FakeBox) -> None:
+	BoxWriter(remote, "", [CAMERA], TIMEZONE, runner=box)
 
 
 @pytest.mark.parametrize("base", ["..", "a/../b", "a b", "-x", "a;b", "./a"])
