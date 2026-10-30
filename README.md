@@ -133,7 +133,7 @@ TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list
 
 ### Cron installieren oder prüfen
 
-Die beiden Einträge aus [Zeitplanung mit Cron](docs/betrieb.md#zeitplanung-mit-cron) werden über
+Der Eintrag aus [Zeitplanung mit Cron](docs/betrieb.md#zeitplanung-mit-cron) werden über
 
 ```bash
 crontab -e
@@ -622,8 +622,8 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
-- Betrieb auf dem VPS seit dem 30.10.2026: Cron läuft (02:00 Verpixelung nachholen und Nachtlauf,
-  04:00 Flagger); alle Job-Arten und ein voller Nachtlauf wurden vorher von Hand geprüft, die
+- Betrieb auf dem VPS seit dem 30.10.2026: Cron läuft (02:00 Verpixelung nachholen, Nachtlauf,
+  danach der Flagger in derselben Zeile); alle Job-Arten und ein voller Nachtlauf wurden vorher von Hand geprüft, die
   ersten Nächte werden noch gelesen
 - Bilder verschiedener Größen in einem Video (Kamerawechsel) werden mit schwarzen Balken
   eingepasst statt gestaucht; gilt ab der ersten Nacht auf dem VPS

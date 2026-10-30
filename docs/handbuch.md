@@ -33,7 +33,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 |---|---|---|
 | Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Highlights-Flagger | 04:00 Uhr, eigene Cron-Zeile (ob der Nachtlauf bis dahin fertig ist, zeigt sein Bericht) | Cron |
+| Highlights-Flagger | direkt nach dem Nachtlauf, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
@@ -115,7 +115,7 @@ Box (Schritt 5) und Cron (Schritt 6) richtet man nach [vps.md](vps.md) von Hand 
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([README](../README.md#konfiguration)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
 | 5 | Zugriff auf die Storage Box einrichten ([README](../README.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die 02:00-Zeile und die Flagger-Zeile (`./install.sh cron_hint` druckt beide) |
+| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf und Flagger (`./install.sh cron_hint` druckt sie) |
 | 7 | Apache, Anmeldung, Wrapper, Dateirechte ([README](../README.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
 | 8 | Tests | `.venv/bin/python3 -m pytest` grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |

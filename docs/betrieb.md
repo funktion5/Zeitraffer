@@ -11,10 +11,10 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 
 Die installierte Crontab verpixelt täglich um 02:00 Uhr zuerst die noch offenen Bilder der
 letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)) und startet dann den
-Nachtlauf. Den [Highlights-Flagger](#highlights-flagger) startet eine eigene Zeile:
+Nachtlauf. Danach folgt in derselben Zeile der [Highlights-Flagger](#highlights-flagger):
 
 ```cron
-0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged
+0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
 
 Der Wrapper `scripts/timelapse-nightly-staged` nimmt die Sperre selbst. (Der Name stammt aus der Zeit,
@@ -51,21 +51,17 @@ Anwendung schreibt ihre eigenen Job-Logs.
 
 ### Highlights-Flagger
 
-Der [Highlights-Flagger](flagger.md) hat eine eigene Cron-Zeile, damit ein Fehler im einen Lauf den
-anderen nicht aufhält:
+Der [Highlights-Flagger](flagger.md) steht am Ende der 02:00-Zeile (siehe oben) und startet damit
+erst, wenn der Nachtlauf mit allen Videos fertig ist, egal wie lange der dauert; eine feste
+Uhrzeit gibt es nicht. Die Schritte sind mit `;` verbunden: Ein Fehler im einen Schritt hält den
+nächsten nicht auf. Der Flagger nimmt die Sperre selbst, gehört also nicht in `flock -c`;
+Arbeitsverzeichnis und `TIMELAPSE_STORAGE_BOX` stammen vom Anfang der Zeile (`cd`, `export`). Er
+prüft den Vortag und braucht für fünf Kameras ca. 40 Minuten (gemessen auf dem früheren Host).
 
-```cron
-0 4 * * * cd <projektpfad> && TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX=<ssh-alias> <projektpfad>/.venv/bin/python3 -m src.flagger.run
-```
-
-Die Uhrzeit muss nach dem Ende des Nachtlaufs liegen: 04:00 steht seit dem 30.10.2026 auf dem VPS in
-der Crontab; ob der Nachtlauf bis dahin fertig ist, zeigt `logs/nightly/<Lauf>/report.txt`. Er
-nimmt die Sperre selbst, gehört
-also nicht in `flock -c`. Er prüft den Vortag und braucht für fünf Kameras ca. 40 Minuten
-(gemessen auf dem früheren Host).
-
-- Hält der Nachtlauf die Sperre noch, wenn der Flagger startet, überspringt dieser die Nacht und
-  schreibt nur `Skipped:` in `logs/flagger/`.
+- Hält ein anderer Job die Sperre, wenn der Flagger startet (zum Beispiel ein Web-Auftrag),
+  überspringt er die Nacht und schreibt nur `Skipped:` in `logs/flagger/`.
+- Hängt der Nachtlauf, startet der Flagger gar nicht; das fällt am fehlenden Protokoll in
+  `logs/flagger/` auf.
 - Fehlende Tage lassen sich mit `--target-date` nachholen.
 
 Installierte Einträge prüfen:

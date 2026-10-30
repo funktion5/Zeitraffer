@@ -365,18 +365,17 @@ step_verify() {
 step_cron_hint() {
 	log "Crontab: nothing was installed"
 	cat <<EOF
-Paste these into 'crontab -e' yourself, and only after the old host's cron lines are gone: the same
-job must never run on both hosts. Run each command once by hand first (docs/vps.md).
+Paste this line into 'crontab -e' yourself, and only after the old host's cron lines are gone: the
+same job must never run on both hosts. Run each command once by hand first (docs/vps.md). If an
+older separate 04:00 flagger line is still there, delete it: the flagger would run twice.
 
-# Blur the last 48 h on the Storage Box, then the nightly run. The run reads the frames over ssh
-# (no copy step) and takes the run lock itself. TIMELAPSE_X264_PRESET=medium is FFmpeg's default,
-# i.e. what the old Pi produced; the wrapper would otherwise fall back to ultrafast.
-0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged
-
-# The highlights flagger, on its own line so one job never blocks the other. It takes the same run
-# lock and skips the night when the nightly run still holds it, so the time has to be late enough.
-# 04:00 is a first guess: look at when the nightly run ends (logs/nightly/<run>/report.txt) and adjust.
-0 4 * * * cd ${PROJECT_ROOT} && TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
+# Blur the last 48 h on the Storage Box, then the nightly run, then the highlights flagger. The
+# run reads the frames over ssh (no copy step) and takes the run lock itself. The flagger starts
+# only when the videos are done, however long that takes, so it needs no time of its own; it takes
+# the run lock itself too, so it stays outside flock. The steps are joined with ';', so a failing
+# step never stops the next one. TIMELAPSE_X264_PRESET=medium is FFmpeg's default, i.e. what the
+# old Pi produced; the wrapper would otherwise fall back to ultrafast.
+0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
 
 Not included: the 5-minute live blur job (docs/verpixelung-box.md).
 EOF
