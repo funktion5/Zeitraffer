@@ -12,7 +12,6 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-import src.images as images_module
 from src.config import PROJECT_ROOT, load_config
 from src.images import date_patterns, extract_date, get_cameras, require_cameras
 from src.logger import LOG_TIMEZONE, cleanup_old_logs, configure_file_logging, logger
@@ -20,9 +19,8 @@ from src.logger import LOG_TIMEZONE, cleanup_old_logs, configure_file_logging, l
 REPORT_ROOT = PROJECT_ROOT / "reports" / "storage-filter"
 RUN_LOCK_PATH = PROJECT_ROOT / "state" / "zeitraffer-run.lock"
 REPORT_COLUMNS = ("camera", "path", "reason")
-MOUNTS_PATH = Path("/proc/mounts")
 
-# Hosts without SSHFS (the web server) name the box here as "<ssh alias>[:<base directory>]".
+# The storage box is named here as "<ssh alias>[:<base directory>]".
 # The alias carries user, port and key via ~/.ssh/config, so none of them is in the repository.
 STORAGE_BOX_ENV = "TIMELAPSE_STORAGE_BOX"
 
@@ -70,33 +68,19 @@ class StorageBox:
 		)
 
 
-# Return the storage box: the explicit environment setting wins, otherwise the one behind the
-# live camera mount.
-def get_storage_box(mounts_path: Path = MOUNTS_PATH) -> StorageBox:
+# Return the storage box named by the environment. There is no mount to read it from any more.
+def get_storage_box() -> StorageBox:
 	configured = os.environ.get(STORAGE_BOX_ENV, "").strip()
 
-	if configured:
-		remote, _, base_directory = configured.partition(":")
+	if not configured:
+		raise OSError(f"{STORAGE_BOX_ENV} is not set")
 
-		if not remote:
-			raise OSError(f"{STORAGE_BOX_ENV} must start with an ssh alias or user@host")
+	remote, _, base_directory = configured.partition(":")
 
-		return StorageBox(remote=remote, base_directory=base_directory)
+	if not remote:
+		raise OSError(f"{STORAGE_BOX_ENV} must start with an ssh alias or user@host")
 
-	# No camera folder is configured, so there is no mount to read the box from either.
-	if images_module.CAMERA_ROOT is None:
-		raise OSError(f"{STORAGE_BOX_ENV} is not set and no camera folder is configured")
-
-	camera_root = str(images_module.CAMERA_ROOT)
-
-	for line in mounts_path.read_text().splitlines():
-		fields = line.split()
-
-		if len(fields) >= 3 and fields[1] == camera_root and fields[2] == "fuse.sshfs":
-			remote, _, base_directory = fields[0].partition(":")
-			return StorageBox(remote=remote, base_directory=base_directory)
-
-	raise OSError(f"No SSHFS mount found at {camera_root}")
+	return StorageBox(remote=remote, base_directory=base_directory)
 
 
 # Map regular file names to their size from `ls -l` output.

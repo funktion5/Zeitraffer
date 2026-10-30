@@ -315,13 +315,17 @@ step_verify() {
 		&& echo "detector model: present" \
 		|| warn "models/object_detection_yolox_2022nov.onnx is missing (blur and highlights need it)."
 
-	# The real code path of the nightly run: lists the cameras over ssh, read-only.
-	local cameras
-	if cameras="$(TIMELAPSE_STORAGE_BOX="$BOX_ALIAS" "$PROJECT_ROOT/.venv/bin/python3" scripts/stage-frames.py --list-cameras </dev/null 2>&1)"; then
+	# The real code path of the nightly run: lists the cameras over ssh, read-only on the box. It
+	# also refreshes state/web-jobs/cameras.json for the web pages. The log goes to stderr, so it is
+	# kept apart: only the camera names on stdout are counted.
+	local cameras camera_errors
+	camera_errors="$(mktemp)"
+	if cameras="$(TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX="$BOX_ALIAS" "$PROJECT_ROOT/.venv/bin/python3" -m src.camera_list </dev/null 2>"$camera_errors")"; then
 		echo "Storage Box: reachable, $(wc -l <<<"$cameras") cameras listed"
 	else
-		warn "Storage Box not reachable via the '$BOX_ALIAS' alias: $cameras"
+		warn "Storage Box not reachable via the '$BOX_ALIAS' alias: $(cat "$camera_errors")"
 	fi
+	rm -f "$camera_errors"
 
 	# 401 means Apache reached the docroot and asks for Basic Auth; 403 is the classic sign
 	# that www-data cannot traverse into the project.

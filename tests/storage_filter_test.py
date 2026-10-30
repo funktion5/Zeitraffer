@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 from privacy_fakes import run_in
 
+import src.images as images_module
 import src.storage_filter as storage_filter_module
 from src.storage_filter import (
 	StorageBox,
@@ -39,7 +40,7 @@ def no_storage_box_environment(monkeypatch):
 @pytest.fixture
 def local_box(tmp_path, monkeypatch):
 	monkeypatch.setattr(StorageBox, "run", run_in(tmp_path))
-	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", tmp_path)
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", tmp_path)
 	(tmp_path / "Cam").mkdir()
 	return tmp_path / "Cam"
 
@@ -73,52 +74,41 @@ def test_ls_output_keeps_regular_files_with_sizes():
 	}
 
 
-def test_storage_box_comes_from_the_live_sshfs_mount(tmp_path, monkeypatch):
-	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
-	mounts = tmp_path / "mounts"
-	mounts.write_text(
-		"/dev/root / ext4 rw 0 0\nuser-sub1@box.example: /mnt/cameras fuse.sshfs ro,nosuid 0 0\n"
-	)
-
-	assert get_storage_box(mounts) == StorageBox("user-sub1@box.example", "")
-
-
-# Without a camera folder there is no mount to look at: the error names the variable to set.
-def test_storage_box_without_environment_or_camera_root_names_the_variable(tmp_path, monkeypatch):
-	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", None)
-
-	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
-		get_storage_box(tmp_path / "no-mounts")
-
-
-def test_storage_box_from_environment_wins_over_the_mount(tmp_path, monkeypatch):
-	monkeypatch.setattr(storage_filter_module.images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
-	mounts = tmp_path / "mounts"
-	mounts.write_text("user-sub1@box.example: /mnt/cameras fuse.sshfs ro,nosuid 0 0\n")
+def test_storage_box_comes_from_the_environment(monkeypatch):
 	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box")
 
-	assert get_storage_box(mounts) == StorageBox("box", "")
+	assert get_storage_box() == StorageBox("box", "")
 
 
-def test_storage_box_environment_accepts_a_base_directory(tmp_path, monkeypatch):
+def test_storage_box_environment_accepts_a_base_directory(monkeypatch):
 	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box:archive/cams")
 
-	assert get_storage_box(tmp_path / "no-mounts") == StorageBox("box", "archive/cams")
+	assert get_storage_box() == StorageBox("box", "archive/cams")
 
 
-def test_storage_box_environment_without_alias_is_an_error(tmp_path, monkeypatch):
+def test_storage_box_environment_without_alias_is_an_error(monkeypatch):
 	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, ":archive")
 
 	with pytest.raises(OSError, match="ssh alias"):
-		get_storage_box(tmp_path / "no-mounts")
+		get_storage_box()
 
 
-def test_missing_mount_is_an_error(tmp_path):
-	mounts = tmp_path / "mounts"
-	mounts.write_text("/dev/root / ext4 rw 0 0\n")
+# There is no mount to fall back to: the error names the variable to set.
+@pytest.mark.parametrize("value", [None, "", "  "])
+def test_missing_storage_box_setting_is_an_error(monkeypatch, value):
+	if value is not None:
+		monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, value)
 
-	with pytest.raises(OSError, match="No SSHFS mount"):
-		get_storage_box(mounts)
+	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
+		get_storage_box()
+
+
+# The box no longer depends on the camera folder: a mount-like /proc/mounts line is never read.
+def test_storage_box_ignores_the_camera_folder(monkeypatch):
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
+
+	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
+		get_storage_box()
 
 
 def test_commands_run_over_ssh_with_strict_host_checking(monkeypatch):
@@ -180,9 +170,7 @@ def test_empty_images_are_reported(local_box):
 
 # The camera root belongs to the mount: the report must not depend on it.
 def test_report_paths_do_not_depend_on_the_camera_root(local_box, monkeypatch):
-	monkeypatch.setattr(
-		storage_filter_module.images_module, "CAMERA_ROOT", Path("/nowhere/cameras")
-	)
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", Path("/nowhere/cameras"))
 	empty = _write(local_box, "cam_250101_120000.jpg", b"")
 
 	candidates = find_deletion_candidates(BOX, "Cam", TODAY)
