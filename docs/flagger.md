@@ -31,7 +31,7 @@ Alle Pfade sind relativ zum Projektordner.
    Absturz. Ein Lauf mit `--target-date` räumt nicht auf, damit ein
    älterer Tag nicht gleich wieder gelöscht wird.
 
-Der Flagger liest nur. Er schreibt nie nach `/mnt/cameras` oder auf die Storage Box.
+Der Flagger liest nur. Er schreibt nie auf die Storage Box.
 
 ## Gruppen und Schwellen
 
@@ -86,7 +86,7 @@ In `config/config.json`:
 ```
 
 - `cameras`: die Kameras, die jede Nacht geprüft werden. Leer bedeutet: es wird nichts geprüft
-  (nur alte Berichte werden aufgeräumt). Jede Kamera muss unter `/mnt/cameras` existieren und
+  (nur alte Berichte werden aufgeräumt). Jede Kamera muss auf der Storage Box existieren und
   darf nicht in `ignored_cameras` stehen, sonst bricht der Lauf ab, bevor ein Bild gelesen wird.
 - `retention_days`: wie lange Berichte bleiben, mindestens 7 Tage.
 

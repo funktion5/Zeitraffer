@@ -244,7 +244,8 @@ Monthly- und Yearly-Läufe können eine oder mehrere Kameras verarbeiten. Ohne `
 verarbeiten sie alle erkannten und nicht global ignorierten Kameras. Ein historisches Weekly
 benötigt genau eine Kamera.
 
-Angeforderte Kameras müssen unter `/mnt/cameras` vorhanden sein und dürfen nicht über
+Angeforderte Kameras müssen auf der Storage Box (oder im Ordner aus `TIMELAPSE_CAMERA_ROOT`)
+vorhanden sein und dürfen nicht über
 `ignored_cameras` ausgeschlossen sein. Ist mindestens eine angeforderte Kamera nicht verfügbar,
 wird der vollständige Aufruf vor dem ersten Job abgebrochen.
 

@@ -18,7 +18,7 @@ Alle Pfade sind relativ zum Projektordner.
 
 ```mermaid
 flowchart LR
-    O[Originalbilder<br/>/mnt/cameras] --> K[Kopien in temp/]
+    O[Originalbilder<br/>Storage Box] --> K[Kopien in temp/]
     K --> C{Im Cache?}
     C -- ja --> B[Boxen aus Cache]
     C -- nein --> D[Detektor<br/>src/privacy/detect.py]

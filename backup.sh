@@ -48,7 +48,7 @@ BACKUP_USER="${BACKUP_USER:-${PI_USER:-}}"
 DEST="${DEST:-$HOME/timelapse-backup}"
 SKIP_VIDEOS="${SKIP_VIDEOS:-0}"
 
-# migrate.sh decrypts with the same settings; change both together.
+# install.sh decrypts with the same settings; change both together.
 CIPHER=(-aes-256-cbc -pbkdf2 -iter 600000 -md sha256)
 
 TARGET="${BACKUP_USER}@${BACKUP_HOST}"

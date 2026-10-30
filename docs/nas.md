@@ -12,7 +12,7 @@ das Home-Verzeichnis des Benutzers, unter dem das Projekt läuft.
 ```mermaid
 flowchart LR
     N[(NAS<br/>Tar- und Zip-Archive)] -->|nas/nas-extract.py<br/>nas/helpers/*_extract.py| L[~/nas-cameras/&lt;Kamera&gt;/]
-    S[(Storage Box<br/>/mnt/cameras)] -->|nas/helpers/storagebox_fill.py| L
+    S[(Storage Box)] -->|nas/helpers/storagebox_fill.py| L
     L -->|TIMELAPSE_CAMERA_ROOT| B[scripts/yearly-backfill.py]
     B --> V[videos/&lt;Kamera&gt;/manual-runs/yearly/]
 ```
@@ -80,7 +80,8 @@ Helfer lokal tun, ist verschieden:
 
 - `zip_extract.py`, `seqzip_extract.py` und `storagebox_fill.py` kopieren Bilder nach
   `~/nas-cameras/<Kamera>/`; vorhandene Dateien werden nie überschrieben. Die beiden Zip-Helfer
-  lesen über `/mnt/nas`, `storagebox_fill.py` über `/mnt/cameras`.
+  lesen über `/mnt/nas`, `storagebox_fill.py` über die Bildquelle (die Storage Box per ssh:
+`TIMELAPSE_STORAGE_BOX` setzen, `TIMELAPSE_CAMERA_ROOT` nicht).
 - `delete_dark.py` **löscht** Bilder in `~/nas-cameras/<Kamera>/`.
 - `render_letterbox.py` erstellt ein Video wie `yearly-backfill.py` unter
   `videos/<Kamera>/manual-runs/yearly/`.
@@ -107,7 +108,7 @@ und übersprungen.
 
 ## Kalenderjahr-Videos aus dem Archiv
 
-`TIMELAPSE_CAMERA_ROOT` ersetzt `/mnt/cameras` als Kamera-Wurzel. Der Ordnername unter
+`TIMELAPSE_CAMERA_ROOT` ersetzt die Storage Box als Kamera-Wurzel. Der Ordnername unter
 `~/nas-cameras/` ist der Kameraname und damit auch der Ordner unter `videos/`.
 
 ```bash

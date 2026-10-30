@@ -5,7 +5,8 @@ Was die Weboberfläche kann, welche Dateien dazugehören und wie ein Video-Auftr
 
 ## Aktueller Funktionsumfang
 
-Die Startseite listet die unter `/mnt/cameras` gefundenen Kameraverzeichnisse auf. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
+Die Startseite listet die Kameras aus der Kameraliste `state/web-jobs/cameras.json` auf, die der
+Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
 
 - Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
 - Liste **Automatische Videos** aus `videos/<camera>/<job>/`: Täglich die letzten 7,

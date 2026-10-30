@@ -185,8 +185,8 @@ Erkennungen deckten sich damit zu 80–100 %.
 ## Was auf der Box passiert
 
 Nur `src/privacy/box_writer.py` schreibt auf die Box, und nur über SSH. Auch gelesen wird nur
-über SSH (Liste, Download, Prüfsummen). Der Mount `/mnt/cameras` wird vom Box-Job nicht gelesen;
-er dient nur dazu, Benutzer und Host der Box zu finden, und bleibt schreibgeschützt (`-o ro`).
+über SSH (Liste, Download, Prüfsummen). Einen eingebundenen Ordner gibt es nicht; die Box nennt
+`TIMELAPSE_STORAGE_BOX` (ein Alias aus `~/.ssh/config`).
 
 Dateien in einem Kameraordner:
 
@@ -337,7 +337,7 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 |---|---|---|
 | `Not in privacy.blur_cameras, nothing written: …` | Kamera fehlt in `blur_cameras` | Kamera eintragen oder Aufruf prüfen |
 | `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes`, `ignore_top_share`, `skip_labels` oder `min_person_score` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
-| `No storage box: No SSHFS mount found …` | Kamera-Mount nicht aktiv; aus ihm liest der Job Benutzer und Host der Box | `cameras-sshfs.service` prüfen |
+| `No storage box: TIMELAPSE_STORAGE_BOX is not set` | Die Variable fehlt in der Cron-Zeile oder der Shell | `TIMELAPSE_STORAGE_BOX=<ssh-alias>` setzen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |
 | `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | vorige Runde läuft noch | nichts; die nächste Runde holt nach |
 | `Refused, stays unblurred: …` | Bild zu alt oder Namensformat unbekannt | **Bild bleibt unverpixelt**; bei Bedarf von Hand bearbeiten |

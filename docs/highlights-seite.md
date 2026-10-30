@@ -89,7 +89,7 @@ www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlig
 ```
 
 Nach jeder Änderung an `scripts/timelapse-web-delete-highlight` muss der Wrapper erneut mit
-`sudo install` installiert werden. Bei einer Neuinstallation erledigt das `migrate.sh`.
+`sudo install` installiert werden. Bei einer Neuinstallation erledigt das `install.sh`.
 
 ## Fehlersuche
 
