@@ -44,10 +44,11 @@ def write_camera_list(destination: Path, cameras: list[str]) -> None:
 # Written by the nightly run, and by hand after a camera is added or removed. A listing that fails
 # or comes back empty leaves the old file: the web page must not go blank because of a hiccup.
 def main() -> int:
+	# OSError: the storage is unreachable. ValueError: no frame source is configured at all.
 	try:
 		available = get_cameras()
 
-	except OSError as error:
+	except (OSError, ValueError) as error:
 		logger.error(f"Camera list not updated: {error}")
 
 		return 1

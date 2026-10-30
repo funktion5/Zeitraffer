@@ -1011,9 +1011,12 @@ def test_main_rejects_unknown_camera_for_historical_jobs(
 	assert job_calls == []
 
 
-# Failure to access complete camera storage must stop the run.
+# Failure to access complete camera storage must stop the run. An unconfigured source (no folder,
+# no storage box) is a ValueError and must be logged the same way.
+@pytest.mark.parametrize("error_type", [OSError, ValueError])
 def test_main_logs_and_raises_camera_storage_error(
 	monkeypatch,
+	error_type,
 ):
 	monkeypatch.setattr(
 		main_module,
@@ -1046,7 +1049,7 @@ def test_main_logs_and_raises_camera_storage_error(
 	)
 
 	def fake_get_cameras():
-		raise OSError("Camera storage unavailable")
+		raise error_type("Camera storage unavailable")
 
 	monkeypatch.setattr(
 		main_module,
@@ -1063,7 +1066,7 @@ def test_main_logs_and_raises_camera_storage_error(
 	)
 
 	with pytest.raises(
-		OSError,
+		error_type,
 		match="Camera storage unavailable",
 	):
 		main_module.main()

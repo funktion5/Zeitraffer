@@ -350,6 +350,18 @@ def test_main_names_the_setting_when_there_is_no_storage_box(monkeypatch, caplog
 	assert "SSHFS" not in caplog.text
 
 
+# The box is asked for first: with nothing configured the filter's own hint comes out, not the frame
+# source's "No frame source configured" error for a camera list the filter would never use.
+def test_main_asks_for_the_storage_box_before_it_lists_cameras(monkeypatch, caplog):
+	monkeypatch.setattr(storage_filter_module, "cleanup_old_logs", lambda retention_days: None)
+	monkeypatch.setattr(images_module, "CAMERA_ROOT", None)
+
+	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
+		storage_filter_module.main(["--all-cameras"])
+
+	assert "Storage filter has no storage box" in caplog.text
+
+
 @pytest.mark.usefixtures("isolated_main")
 def test_main_rejects_unknown_cameras():
 	with pytest.raises(ValueError, match="Missing"):

@@ -373,15 +373,8 @@ def main(argv: list[str] | None = None) -> int:
 	configure_file_logging("filter")
 	cleanup_old_logs(retention_days=config["log_retention_days"])
 
-	available_cameras = get_cameras()
-
-	if args.all_cameras:
-		ignored_cameras = set(config.get("ignored_cameras", []))
-		cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
-
-	else:
-		cameras = require_cameras(args.cameras, available_cameras)
-
+	# The box first: with nothing configured this gives the filter's own hint, not the frame
+	# source's error for a camera list the filter would not use anyway.
 	try:
 		storage_box = get_storage_box()
 
@@ -391,6 +384,15 @@ def main(argv: list[str] | None = None) -> int:
 			"<ssh alias>[:<base directory>]."
 		)
 		raise
+
+	available_cameras = get_cameras()
+
+	if args.all_cameras:
+		ignored_cameras = set(config.get("ignored_cameras", []))
+		cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
+
+	else:
+		cameras = require_cameras(args.cameras, available_cameras)
 
 	run_started = datetime.now(tz=LOG_TIMEZONE)
 	failed_cameras: list[str] = []

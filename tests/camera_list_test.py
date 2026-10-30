@@ -114,6 +114,23 @@ def test_a_failed_listing_keeps_the_old_file(list_path, monkeypatch, capsys):
 	assert capsys.readouterr().out == ""
 
 
+# No folder and no storage box configured is a ValueError from the frame source: the same exit 1
+# and the old list, not a traceback.
+def test_an_unconfigured_source_keeps_the_old_file(list_path, monkeypatch, capsys):
+	write_camera_list(list_path, ["Old"])
+
+	def unconfigured():
+		raise ValueError("No frame source configured")
+
+	monkeypatch.setattr(camera_list_module, "get_cameras", unconfigured)
+	monkeypatch.setattr(camera_list_module, "load_config", lambda: {"ignored_cameras": []})
+
+	assert main() == 1
+
+	assert json.loads(list_path.read_text(encoding="utf-8")) == ["Old"]
+	assert capsys.readouterr().out == ""
+
+
 # A write that fails (a folder owned by root, a full disk) is logged and ends with exit 1, so the
 # nightly wrapper reports it. The old list stays and no names are printed.
 def test_a_failed_write_exits_with_one_and_keeps_the_old_file(list_path, monkeypatch, capsys):

@@ -323,7 +323,7 @@ step_verify() {
 	if cameras="$(TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX="$BOX_ALIAS" "$PROJECT_ROOT/.venv/bin/python3" -m src.camera_list </dev/null 2>"$camera_errors")"; then
 		echo "Storage Box: reachable, $(wc -l <<<"$cameras") cameras listed"
 	else
-		warn "Storage Box not reachable via the '$BOX_ALIAS' alias: $(cat "$camera_errors")"
+		warn "Camera list failed (Storage Box alias '$BOX_ALIAS'): $(cat "$camera_errors")"
 	fi
 	rm -f "$camera_errors"
 

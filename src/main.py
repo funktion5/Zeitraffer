@@ -208,10 +208,11 @@ def main():
 	cleanup_old_logs(retention_days=config["log_retention_days"])
 
 	# Camera storage must be available before any job can continue.
+	# OSError: the storage is unreachable. ValueError: no frame source is configured at all.
 	try:
 		available_cameras = get_cameras()
 
-	except OSError:
+	except (OSError, ValueError):
 		logger.exception("Failed to access camera storage.")
 		raise
 
