@@ -73,6 +73,22 @@ Allgemeine Bildlogik:
 
 Unbekannte Dateinamensformate werden nicht geraten.
 
+### `src/frame_source.py`
+
+Die Bildquelle (`FrameSource`): Alle Jobs, die Kommandozeile, die Weboberfläche und die Werkzeuge
+listen und holen Kamerabilder über dieselbe Schnittstelle. `LocalFrameSource` liest einen Ordner
+(`TIMELAPSE_CAMERA_ROOT`, zum Beispiel das NAS-Archiv). `SshFrameSource` listet die Storage Box mit
+einem `ls -l` über ssh und holt die nötigen Bilder per rsync in einen Zwischenspeicher unter
+`temp/frame-cache/`; nach jeder Kamera werden sie wieder entfernt. Welche Quelle gilt, entscheidet
+`TIMELAPSE_FRAME_SOURCE`, sonst der gesetzte Ordner, sonst die Storage Box
+([README: Umgebungsvariablen](../README.md#umgebungsvariablen)).
+
+### `src/camera_list.py`
+
+Schreibt die Kameraliste der Weboberfläche nach `state/web-jobs/cameras.json`, weil der
+Webserver-Benutzer weder einen ssh-Schlüssel hat noch die Box selbst abfragt. Der Nachtlauf und
+`python3 -m src.camera_list` aktualisieren sie.
+
 ### `src/image_worker.py`
 
 Gemeinsame Infrastruktur für isolierte Worker-Prozesse.
@@ -178,8 +194,8 @@ Tägliches Bildfenster für Monthly und Yearly: Mitte als Uhrzeit oder Sonnenunt
 ### `src/storage_filter.py`
 
 Speicherfilter ([werkzeuge.md](werkzeuge.md)): listet leere und doppelte Bilder per `ls` und
-`sha256sum` direkt auf der Storage Box, ohne Bilder über SSHFS zu lesen. Seine Box-Anbindung
-(`StorageBox`) nutzen auch `scripts/stage-frames.py` und die Verpixelung.
+`sha256sum` direkt auf der Storage Box, ohne Bilder über das Netz zu lesen. Seine Box-Anbindung
+(`StorageBox`) nutzen auch die Bildquelle (`src/frame_source.py`) und die Verpixelung.
 
 ### `web/`
 
@@ -191,27 +207,23 @@ festen Wrapper. Aufbau und Dateien: [weboberflaeche.md](weboberflaeche.md).
 
 ```text
 timelapse/
+├── archive/   (stillgelegt: Raspberry Pi, Container-Test, Staging; siehe archive/README.md)
 ├── config/
-│   ├── config.json
-│   └── mount.env.example
+│   └── config.json
 ├── docker/
 │   ├── docker-compose.yml
-│   ├── entrypoint.sh
 │   ├── .env.example
-│   ├── pull-videos.sh
-│   └── storage-box.env.example
+│   └── pull-videos.sh
 ├── docs/
 │   ├── plans/   (Umsetzungspläne)
 │   ├── superpowers/   (Entwürfe (Specs) neuer Funktionen)
 │   ├── architektur.md
 │   ├── betrieb.md
 │   ├── cli.md
-│   ├── docker.md
 │   ├── flagger.md
 │   ├── handbuch.md
 │   ├── highlights-seite.md
 │   ├── nas.md
-│   ├── raspberry-pi.md
 │   ├── verpixelung-box.md
 │   ├── verpixelung.md
 │   ├── weboberflaeche.md
@@ -231,9 +243,6 @@ timelapse/
 │   ├── nas-extract.py
 │   └── README.md
 ├── scripts/
-│   ├── cameras-sshfs-preflight
-│   ├── pi-crash-logging-setup
-│   ├── stage-frames.py
 │   ├── storage-filter-all
 │   ├── timelapse-nightly-staged
 │   ├── timelapse-web-delete
@@ -262,9 +271,11 @@ timelapse/
 │   │   ├── blur_box.py
 │   │   ├── box_writer.py
 │   │   └── detect.py
+│   ├── camera_list.py
 │   ├── config.py
 │   ├── date_coverage.py
 │   ├── diagnostics.py
+│   ├── frame_source.py
 │   ├── image_worker.py
 │   ├── images.py
 │   ├── interval_window.py
@@ -275,8 +286,6 @@ timelapse/
 │   ├── storage_filter.py
 │   ├── video.py
 │   └── yearly_selection.py
-├── systemd/
-│   └── cameras-sshfs.service
 ├── tests/   (pytest, eine *_test.py-Datei pro Modul)
 ├── web/
 │   ├── public/
@@ -305,12 +314,8 @@ timelapse/
 ├── videos/       (Laufzeitdaten, nicht im Repository)
 ├── backup.env.example
 ├── backup.sh
-├── compose.yaml
-├── Dockerfile
-├── .dockerignore
 ├── .gitignore
 ├── install.sh
-├── migrate.sh
 ├── pyproject.toml
 ├── README.md
 └── requirements.txt
@@ -323,18 +328,17 @@ werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind n
 Was in welcher Datei unter `docs/` steht, listet das README unter
 [Dokumentation](../README.md#dokumentation).
 
-`install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne SSHFS-Mount);
-`backup.sh` holt dafür einmalig, was nicht im Git liegt. Ablauf: [vps.md](vps.md). `migrate.sh`
-stellt nur noch einen Pi mit einem älteren Backup wieder her; siehe
-[Neuinstallation des Raspberry Pi](raspberry-pi.md#neuinstallation-des-raspberry-pi).
-`scripts/stage-frames.py` und `scripts/timelapse-nightly-staged` sind der Weg für einen Host ohne
-SSHFS-Mount; siehe [werkzeuge.md](werkzeuge.md#staging-für-hosts-ohne-mount).
+`install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
+Ordner); `backup.sh` holt dafür einmalig, was nicht im Git liegt. Ablauf: [vps.md](vps.md).
+`scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
+Stillgelegtes (Raspberry Pi, Container-Test, Staging) liegt in [`archive/`](../archive/README.md).
 
 ## Sicherheit und Datenintegrität
 
 Grundregeln des Projekts:
 
-- Originalbilder unter `/mnt/cameras` niemals verändern.
+- Originalbilder auf der Storage Box niemals verändern (Ausnahme: Die Verpixelung auf der Box sichert
+  vorher das Original).
 - Frames nur lokal unter `temp/` vorbereiten.
 - Unbekannte Dateinamensformate niemals erraten.
 - Verpixelung schlägt im Zweifel fehl: lieber kein Video als ein ungeprüftes Bild.
@@ -381,9 +385,10 @@ Die `main.py`-Tests decken unter anderem ab:
 
 Tests deaktivieren das produktive File-Logging über `tests/conftest.py`.
 
-Drei Tests in `tests/images_test.py` lesen echte Bilder unter `/mnt/cameras`. Ist der Mount nicht
-vorhanden (z. B. in GitHub Actions), werden sie mit Begründung übersprungen statt fehlzuschlagen.
-Erscheint lokal auf dem Pi „3 skipped“, ist der SSHFS-Mount nicht erreichbar.
+Drei Tests in `tests/images_test.py` lesen echte Bilder aus einem eingebundenen Kamera-Ordner. Sie
+laufen nur, wenn `TIMELAPSE_CAMERA_ROOT` auf einen echten Mountpunkt zeigt; sonst (z. B. in GitHub
+Actions oder auf dem Server) werden sie mit Begründung übersprungen statt fehlzuschlagen, ein
+„skipped“ ist dort normal.
 
 Die Web-Tests benötigen `php` auf der Kommandozeile, siehe [Webtests](weboberflaeche.md#webtests).
 

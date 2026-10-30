@@ -1,14 +1,14 @@
-# Werkzeuge: Speicherfilter, Yearly-Backfill und Staging
+# Werkzeuge: Speicherfilter, Yearly-Backfill und Nachtlauf-Wrapper
 
-Eigenständige Hilfsprogramme neben dem nächtlichen Lauf, und der Staging-Weg für einen Host ohne
-SSHFS-Mount.
+Eigenständige Hilfsprogramme neben dem nächtlichen Lauf, und der Wrapper, den Cron für den
+Nachtlauf aufruft.
 
 
 ## Speicherfilter
 
 Die Jobs filtern leere und doppelte Bilder nur für das jeweilige Video; auf dem Kamera-Storage bleiben sie liegen. Der Speicherfilter geht deshalb einmal durch den kompletten Ordner einer Kamera und schreibt einen Bericht darüber, welche Dateien gelöscht werden können.
 
-Der Speicherfilter **löscht nichts**. `/mnt/cameras` ist ohnehin read-only eingehängt. Das eigentliche Löschen erfolgt später separat anhand des Berichts.
+Der Speicherfilter **löscht nichts**: Er fragt die Storage Box nur mit `ls` und `sha256sum`. Das eigentliche Löschen erfolgt später separat anhand des Berichts.
 
 ### Aufruf
 
@@ -38,35 +38,37 @@ Fehler einer Kamera (`OSError`, `TimeoutError`) werden protokolliert; die übrig
 
 ### Ablauf
 
-1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Benutzer und Host kommen aus dem laufenden SSHFS-Mount (`/proc/mounts`), Port und Schlüssel aus `~/.ssh/config` (siehe unten). Ohne aktiven Mount bricht der Speicherfilter ab.
+1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Die Storage Box nennt die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (ein Alias aus `~/.ssh/config`, siehe unten). Ohne sie bricht der Speicherfilter ab.
 2. **Leere Dateien:** Alle JPGs mit 0 Byte laut Liste.
 3. **Duplikate pro Tag:** Nur Dateien, die am selben Aufnahmetag (laut Dateiname) dieselbe Größe haben, werden verglichen. Die SHA-256-Hashes berechnet die Storage Box selbst (`sha256sum`, 1.000 Dateien pro Aufruf, 4 Aufrufe parallel); über das Netz kommen nur die Hashes, nicht die Bilder. Behalten wird die erste Datei des Tages in Dateinamen-Reihenfolge; gemeldet werden alle späteren Kopien.
 
-Der Speicherfilter liest keine Bilddateien über `/mnt/cameras`; der Mount wird nur benötigt, um Benutzer und Host der Storage Box zu ermitteln.
+Der Speicherfilter liest keine Bilddateien über das Netz; von der Box kommen nur die Dateiliste und die Hashes.
 
-Port und Schlüssel stehen bewusst nicht im Code, sondern in `~/.ssh/config` des Kontos `<benutzer>` (gleiche Werte wie `REMOTE_PORT` und `REMOTE_SSH_KEY` in `/etc/timelapse/mount.env`). Einmalig anlegen:
+Benutzer, Host, Port und Schlüssel stehen bewusst nicht im Code, sondern in `~/.ssh/config` des Kontos `<benutzer>`; der Name hinter `Host` ist der Alias aus `TIMELAPSE_STORAGE_BOX`. Einmalig anlegen (Anleitung: [vps.md](vps.md)):
 
 ```text
-Host <storage-host>
+Host <ssh-alias>
+	HostName <box-host>
+	User <box-user>
 	Port <port>
 	IdentityFile <schlüsselpfad>
 	IdentitiesOnly yes
 ```
 
-Danach `chmod 600 ~/.ssh/config`. Fehlt der Eintrag, bricht der Speicherfilter mit einem SSH-Fehler ab. Die Datei ist Teil des Backups und wird bei einer Neuinstallation wiederhergestellt. Fehlt beim Hashen eine Datei oder ist sie nicht lesbar, schlägt die Kamera fehl, statt die Datei als eindeutig zu behandeln.
+Danach `chmod 600 ~/.ssh/config`. Fehlt der Eintrag, bricht der Speicherfilter mit einem SSH-Fehler ab. Fehlt beim Hashen eine Datei oder ist sie nicht lesbar, schlägt die Kamera fehl, statt die Datei als eindeutig zu behandeln.
 
 Nicht geprüft werden:
 
 - Bilder vom heutigen Tag – sie können noch im Upload sein und kurzzeitig 0 Byte haben.
 - Dateien, deren Name keinem bekannten Format entspricht (Formate werden nie geraten).
 - Dateien ohne `.jpg`-Endung, Unterordner und Symlinks.
-- Identische Bilder an verschiedenen Tagen: Ein kameraweiter Vergleich müsste bei Uferstrasse rund 92 % aller Dateien über SSHFS lesen und dauert pro Kamera Stunden.
+- Identische Bilder an verschiedenen Tagen: Ein kameraweiter Vergleich müsste bei Uferstrasse rund 92 % aller Dateien über das Netz lesen und dauert pro Kamera Stunden.
 
 ### Laufzeit und Fortschritt
 
 Warum alles auf der Storage Box läuft (gemessen am 2026-09-28):
 
-| Schritt | über SSHFS | auf der Storage Box |
+| Schritt | früher über den SSHFS-Mount | auf der Storage Box |
 |---|---|---|
 | Liste + Größen, Uferstrasse (ca. 189.000 Dateien) | 2 bis ca. 45 Minuten, je nach Cache | ca. 3,5 Sekunden |
 | Hashen pro Datei | ca. 43 ms | ca. 10 ms, mit 4 parallelen Aufrufen ca. 4 ms |
@@ -97,8 +99,8 @@ Format: CSV mit `;` als Trennzeichen und UTF-8 mit BOM, damit ein deutsches Exce
 
 ```text
 camera;path;reason
-Cam;/mnt/cameras/Cam/cam_250101_120000.jpg;empty
-Cam;/mnt/cameras/Cam/cam_250101_121500.jpg;duplicate
+Cam;Cam/cam_250101_120000.jpg;empty
+Cam;Cam/cam_250101_121500.jpg;duplicate
 ```
 
 Der Bericht wird zuerst als temporäre Datei geschrieben und erst danach umbenannt; ein abgebrochener Lauf hinterlässt keine halbe Liste. `reports/` wird mit `770` angelegt und ist für `www-data` nicht lesbar.
@@ -137,69 +139,54 @@ mit `yearly_framerate`; Enddatum ist der 31. Dezember, im laufenden Jahr der ges
 übersprungen), `no-images` (keine Bilder im Fenster) oder `failed` (Fehler, Details im Log).
 Das Skript belegt denselben Lock wie Cron und Weboberfläche und wird nicht von pytest abgedeckt.
 
-## Staging für Hosts ohne Mount
+## Nachtlauf-Wrapper
 
-**Stand:** vorhanden und getestet, derzeit nicht im Einsatz. Gebaut für einen Webserver ohne
-Root-Rechte, auf dem kein SSHFS-Mount möglich ist; der nächtliche Job ließ sich dort nicht
-dauerhaft betreiben. Die Videos entstehen weiterhin auf dem Raspberry Pi. Der Code bleibt für einen
-späteren Host ohne Mount erhalten.
+`scripts/timelapse-nightly-staged` startet den automatischen Lauf für alle Kameras und prüft das
+Ergebnis. Cron ruft ihn auf ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Der Name stammt
+aus der Zeit, als er die Bilder vorher kopierte; das Kopierwerkzeug (`stage-frames.py`) ist
+stillgelegt und liegt im [Archiv](../archive/staging/).
 
-Ablauf pro Kamera:
+Ablauf:
 
-1. Die für den nächtlichen Lauf nötigen Bilder per `rsync` **nur lesend** von der Storage Box nach
-   `temp/camera-staging/` kopieren (`scripts/stage-frames.py`).
-2. `src.main` mit `TIMELAPSE_CAMERA_ROOT` auf diesen Ordner laufen lassen.
-3. Die erzeugten Videos prüfen; der Exit-Code von `src.main` allein verdeckt Fehler einzelner Kameras.
-4. Die kopierten Bilder wieder löschen, auch bei einem Abbruch. Gelöscht wird nur innerhalb von
-   `temp/`.
+1. Die gemeinsame Sperre `state/zeitraffer-run.lock` nehmen, für den ganzen Lauf.
+2. Die Kameraliste der Weboberfläche schreiben (`python3 -m src.camera_list`).
+3. `src.main` einmal für alle Kameras starten; die Bilder liest das Programm selbst per ssh von der
+   Storage Box.
+4. Das Ergebnis prüfen: den Exit-Code, die Zusammenfassungszeilen der Jobs, die im Protokoll
+   genannten fehlgeschlagenen Kameras und jedes neue Video. Der Exit-Code von `src.main` allein
+   verdeckt Fehler einzelner Kameras.
 
-Eine fehlerhafte Kamera hält die übrigen nicht auf.
+Eine fehlerhafte Kamera hält die übrigen nicht auf. Der Bericht steht in
+`logs/nightly/<run-id>/report.txt`; verschickt wird nichts.
 
 ### Voraussetzungen
 
 - SSH-Zugang zur Storage Box über einen Alias in `~/.ssh/config` (Benutzer, Port, Schlüssel stehen
   nur dort, nie im Repository)
 - `TIMELAPSE_STORAGE_BOX="<ssh-alias>[:<basisordner>]"` (siehe
-  [README: Umgebungsvariablen](../README.md#umgebungsvariablen)); `timelapse-nightly-staged` setzt
-  ohne Angabe den Alias `box`
+  [README: Umgebungsvariablen](../README.md#umgebungsvariablen)); der Wrapper setzt ohne Angabe den
+  Alias `storagebox`
 - `rsync`, `ffmpeg` und `ffprobe` im `PATH`
 
 ### Aufruf
 
 ```bash
-scripts/timelapse-nightly-staged                          # kompletter nächtlicher Lauf mit Staging
-python3 scripts/stage-frames.py --list-cameras            # nur anzeigen, welche Kameras ein Lauf abdeckt
-python3 scripts/stage-frames.py --cameras <Kamera> --target-date <Datum>   # nur kopieren
-python3 scripts/stage-frames.py --clean-only              # nur die kopierten Bilder entfernen
+scripts/timelapse-nightly-staged                          # kompletter nächtlicher Lauf mit Bericht
 ```
 
-| Option von `stage-frames.py` | Bedeutung |
-|---|---|
-| `--target-date <Datum>` | Zieltag des Laufs (Standard: gestern) |
-| `--cameras A B` | nur diese Kameras |
-| `--destination <Pfad>` | Zielordner statt `temp/camera-staging/`; muss unter `temp/` liegen |
-| `--clean-only` | nichts kopieren, nur den Zielordner leeren |
-| `--no-lock` | keine eigene Sperre nehmen, weil der Aufrufer sie schon hält (so ruft `timelapse-nightly-staged` es auf) |
-| `--list-cameras` | die Kameras eines nächtlichen Laufs ausgeben, sonst nichts |
-
-`timelapse-nightly-staged` hält die gemeinsame Sperre `state/zeitraffer-run.lock` für den ganzen
-Lauf und schreibt einen Bericht nach `logs/nightly/<run-id>/report.txt`. Es setzt
-`TIMELAPSE_X264_PRESET=ultrafast` als Standard, weil der Webserver große Encoder-Prozesse beendet;
-`TIMELAPSE_NIGHTLY_PYTHON` wählt den Python-Interpreter.
-
-Für Cron die eigene Zeile **anhängen**, bestehende Einträge auf einem fremden Server nie ändern:
-
-```cron
-0 2 * * * <projektpfad>/scripts/timelapse-nightly-staged
-```
+Einstellungen über die Umgebung: `TIMELAPSE_STORAGE_BOX` (Standard `storagebox`),
+`TIMELAPSE_X264_PRESET` (Standard `ultrafast`, noch aus der Zeit auf dem Webserver, der große
+Encoder-Prozesse beendete; die Cron-Zeile setzt `medium`), `TIMELAPSE_NIGHTLY_PYTHON` (der
+Python-Interpreter) und `TIMELAPSE_PROJECT_ROOT`.
 
 ### Exit-Codes
 
-| Code | `stage-frames.py` | `timelapse-nightly-staged` |
-|---|---|---|
-| `0` | alle Kameras kopiert | alle Kameras kopiert, gelaufen und geprüft |
-| `1` | einzelne Kameras fehlgeschlagen | einzelne Kameras fehlgeschlagen |
-| `2` | Abbruch: Box nicht erreichbar, falsche Argumente, unsicherer Zielordner, Sperre belegt | Abbruch: Box nicht erreichbar, keine Kameras, Staging abgebrochen |
-| `64` | – | ungültige Einstellung |
-| `70` | – | Projektordner unbrauchbar |
-| `75` | – | Sperre durch einen anderen Lauf belegt |
+| Code | Bedeutung |
+|---|---|
+| `0` | alle Kameras gelaufen und geprüft |
+| `1` | der Lauf oder einzelne Kameras sind fehlgeschlagen |
+| `2` | Abbruch: die Kameraliste ließ sich nicht schreiben oder ist leer |
+| `64` | ungültige Einstellung (zum Beispiel ein unbekanntes `TIMELAPSE_X264_PRESET`) |
+| `70` | Projektordner unbrauchbar |
+| `75` | Sperre durch einen anderen Lauf belegt |
+| `130` / `143` | durch Strg-C bzw. SIGTERM beendet |
