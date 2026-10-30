@@ -368,7 +368,7 @@ def get_image_hash(
 
 
 # Hash an image and report whether it ends with the JPEG end marker, from the same single read, so
-# the check costs nothing extra on the camera mount.
+# the check costs nothing extra.
 def get_image_digest(
 	image_path: Path,
 	progress_callback: Callable[[], None] | None = None,

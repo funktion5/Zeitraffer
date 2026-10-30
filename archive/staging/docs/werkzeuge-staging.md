@@ -25,7 +25,7 @@ Eine fehlerhafte Kamera hält die übrigen nicht auf.
 - SSH-Zugang zur Storage Box über einen Alias in `~/.ssh/config` (Benutzer, Port, Schlüssel stehen
   nur dort, nie im Repository)
 - `TIMELAPSE_STORAGE_BOX="<ssh-alias>[:<basisordner>]"` (siehe
-  [README: Umgebungsvariablen](../README.md#umgebungsvariablen)); `timelapse-nightly-staged` setzt
+  [README: Umgebungsvariablen](../../../README.md#umgebungsvariablen)); `timelapse-nightly-staged` setzt
   ohne Angabe den Alias `box`
 - `rsync`, `ffmpeg` und `ffprobe` im `PATH`
 

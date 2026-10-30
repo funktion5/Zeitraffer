@@ -1,6 +1,6 @@
 """The only code allowed to write to the storage box.
 
-Everything else reads the camera images through the read-only mount. This module writes over SSH
+Everything else only reads the camera images (through the frame source). This module writes over SSH
 with exactly three operations - back up an image, upload a blurred copy under a temporary name,
 swap it in - and nothing else: no delete, no general "run a command" function.
 

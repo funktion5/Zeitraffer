@@ -29,7 +29,7 @@ TODAY = date(2025, 1, 10)
 BOX = StorageBox(remote="user@box", base_directory="")
 
 
-# A developer shell may export the setting; the mount tests must not see it.
+# A developer shell may export the setting; the box tests must not see it.
 @pytest.fixture(autouse=True)
 def no_storage_box_environment(monkeypatch):
 	monkeypatch.delenv(storage_filter_module.STORAGE_BOX_ENV, raising=False)

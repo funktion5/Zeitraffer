@@ -38,7 +38,7 @@ tail -30 /var/log/pi-health.log      # letzte Messwerte vor dem Reset
 > **Stand 27.10.2026:** `backup.sh` sichert nur noch die Anmeldedaten der Weboberfläche (htpasswd,
 > verschlüsselt) sowie `config.json`, Crontab, `models/`, `state/` und `videos/`. SSH-Schlüssel,
 > `mount.env`, sudoers-Datei und Apache-Site sind nicht mehr im Backup, weil der Umzug auf den VPS
-> sie nicht braucht ([vps.md](vps.md)). Die Tabelle und die Schritte unten beschreiben den Stand
+> sie nicht braucht ([vps.md](../../../docs/vps.md)). Die Tabelle und die Schritte unten beschreiben den Stand
 > davor. `migrate.sh` bricht bei einem neuen Backup im Schritt `restore_backup` ab. Für einen frischen
 > Pi ist `install.sh` der Weg; Pi-spezifisches (WLAN abschalten, Absturzprotokoll) gehört nicht dazu.
 > Bleibt der Pi stillgelegt, kann dieser Abschnitt zusammen mit `migrate.sh` entfallen.
@@ -190,7 +190,7 @@ Das Skript bricht beim ersten Fehler ab (`set -euo pipefail`). Die Schritte lauf
 | `sshfs_mount` | prüft, dass `User=` im systemd-Service der aktuelle Benutzer ist; installiert Preflight-Skript und systemd-Service und mountet `/mnt/cameras` |
 | `apache` | aktiviert `zeitraffer.conf`, deaktiviert die Standardseite, führt `apache2ctl configtest` aus und lädt Apache neu |
 | `web_bridge` | installiert Trigger, beide Lösch-Wrapper, Worker und Status-Skript unter `/usr/local` |
-| `permissions` | setzt die Dateirechte aus [Dateirechte für `www-data`](../README.md#dateirechte-für-www-data) |
+| `permissions` | setzt die Dateirechte aus [Dateirechte für `www-data`](../../../README.md#dateirechte-für-www-data) |
 | `disable_wifi` | schaltet WLAN per `nmcli` ab und trägt `dtoverlay=disable-wifi` in `/boot/firmware/config.txt` ein; wird übersprungen, wenn die SSH-Sitzung selbst über WLAN läuft |
 | `verify` | führt die Testsuite aus und prüft Mount, Crontab, HTTP-Status `401`, Lese- und Sperrrechte von `www-data`, die sudoers-Regeln, den Highlight-Lösch-Wrapper und den WLAN-Status |
 
@@ -338,7 +338,7 @@ Nicht abgedeckt sind der Schritt `packages` und ein Lauf auf einem wirklich leer
 | `Host key not confirmed` | Fingerprints stimmten nicht oder wurden abgelehnt. Mit dem Anbieter klären, dann `~/migrate.sh known_hosts sshfs_mount` |
 | `cameras-sshfs is not running` | `systemctl status cameras-sshfs.service` und `journalctl -u cameras-sshfs.service`; häufig fehlt der Host-Key oder `mount.env` ist leer |
 | `skipping WiFi disable` | Sitzung lief über WLAN. Per Kabel neu verbinden und `~/migrate.sh disable_wifi` |
-| Web-Job startet nicht oder Löschen schlägt fehl | `sudo -l -U www-data` muss beide Wrapper zeigen; sonst sudoers wie unter [Wrapper installieren](../README.md#wrapper-installieren) prüfen |
+| Web-Job startet nicht oder Löschen schlägt fehl | `sudo -l -U www-data` muss beide Wrapper zeigen; sonst sudoers wie unter [Wrapper installieren](../../../README.md#wrapper-installieren) prüfen |
 | `is already a git repo, but its origin ... doesn't match` | unter `~/timelapse` liegt ein anderes Repository; verschieben oder `REPO_URL` korrigieren |
 
 sudoers-Datei im Backup-Archiv reparieren (auf dem Pi). Das Ergebnis ist ein unverschlüsseltes `~/pi-backup.tar.gz`, das `migrate.sh` liest, sobald die `.enc`-Datei entfernt ist; nach der Migration löschen:

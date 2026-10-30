@@ -435,7 +435,7 @@ braucht es nur `TIMELAPSE_STORAGE_BOX`; die Cron-Zeilen setzen sie.
 
 | Variable | Standard | Wirkung |
 |---|---|---|
-| `TIMELAPSE_CAMERA_ROOT` | keiner | Ordner mit den Kamerabildern statt der Storage Box, z. B. ein entpacktes NAS-Archiv ([docs/nas.md](docs/nas.md)). Ist er gesetzt, liest das Programm von dort |
+| `TIMELAPSE_CAMERA_ROOT` | keiner | Ordner mit den Kamerabildern statt der Storage Box, z. B. ein entpacktes NAS-Archiv ([docs/nas.md](docs/nas.md)). Ist er gesetzt, liest das Programm von dort; ein leerer Wert zählt als nicht gesetzt (dann gilt die Storage Box, falls `TIMELAPSE_STORAGE_BOX` gesetzt ist) |
 | `TIMELAPSE_STORAGE_BOX` | keiner | Name des Eintrags der Storage Box in `~/.ssh/config`, optional mit Basisordner: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen unter dem Alias, nie im Repository. Ohne ihn und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Lauf mit einer Fehlermeldung ab |
 | `TIMELAPSE_FRAME_SOURCE` | automatisch | Woher die Jobs die Kamerabilder lesen: `local` (Ordner aus `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Ohne Angabe gilt `local`, wenn `TIMELAPSE_CAMERA_ROOT` gesetzt ist, sonst `ssh`, wenn `TIMELAPSE_STORAGE_BOX` gesetzt ist |
 | `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |

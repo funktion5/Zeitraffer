@@ -28,7 +28,7 @@ STORAGE_BOX_ENV = "TIMELAPSE_STORAGE_BOX"
 LISTING_TIMEOUT_SECONDS = 60
 
 # Measured on the storage box: 1,000 files per sha256sum call take 10-20 s, and
-# 4 parallel calls scale almost linearly. More would compete with the mount.
+# 4 parallel calls scale almost linearly.
 HASH_BATCH_SIZE = 1000
 PARALLEL_HASH_CALLS = 4
 HASH_TIMEOUT_SECONDS = 180
@@ -48,8 +48,8 @@ class StorageBox:
 
 		return f"{self.base_directory.rstrip('/')}/{camera}"
 
-	# Run one read-only command on the storage box's own shell. User and host come from the live
-	# mount; port and key come from the user's ~/.ssh/config, so none of them is in the repository.
+	# Run one read-only command on the storage box's own shell. User, host, port and key come from
+	# the alias in the user's ~/.ssh/config, so none of them is in the repository.
 	def run(self, command: str, timeout_seconds: float) -> subprocess.CompletedProcess:
 		return subprocess.run(
 			[

@@ -80,7 +80,7 @@ def write_report(
 	try:
 		for item in items:
 			# copyfile, not copy2: the copy gets normal umask permissions so the web server can
-			# read it, whatever mode the original on the camera mount has.
+			# read it, whatever mode the original has.
 			shutil.copyfile(item.path, building / copy_name(item.path))
 
 		(building / MANIFEST_NAME).write_text(

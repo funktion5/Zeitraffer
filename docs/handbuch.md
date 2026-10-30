@@ -60,7 +60,8 @@ für die jeweiligen Werte.
   bekommt, bricht ab oder überspringt.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
   Storage Box ist die einzige Ausnahme und sichert vorher das Original.
-- **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Der Exit-Code ist dann trotzdem 0.
+- **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Bei `src.main` ist der Exit-Code
+  dann trotzdem 0; der Nachtlauf-Wrapper prüft das Ergebnis und endet in diesem Fall mit 1.
   Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
 - **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst nach
   `sudo install` (siehe [README: Wrapper installieren](../README.md#wrapper-installieren)).
@@ -397,7 +398,8 @@ gelöscht werden, wenn kein Lauf aktiv ist. Nach dem Aufräumen die betroffenen 
 die Zeilen mit `ERROR` und den Traceback davor lesen.
 
 **Ursache:** Fehler einzelner Kameras (Zugriff auf die Storage Box, FFmpeg, Dateirechte) werden abgefangen, damit die
-übrigen Kameras weiterlaufen; der Exit-Code bleibt 0.
+übrigen Kameras weiterlaufen; der Exit-Code von `src.main` bleibt 0 (der
+Nachtlauf-Wrapper meldet es trotzdem: Exit-Code 1 und der Bericht).
 
 **Lösung:** Ursache aus dem Traceback beheben (siehe die Fälle oben), Kamera nachholen.
 

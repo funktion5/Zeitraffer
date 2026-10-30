@@ -38,7 +38,7 @@ Fehler einer Kamera (`OSError`, `TimeoutError`) werden protokolliert; die übrig
 
 ### Ablauf
 
-1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Die Storage Box nennt die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (ein Alias aus `~/.ssh/config`, siehe unten). Ohne sie bricht der Speicherfilter ab.
+1. **Liste per SSH:** Ein einziges `ls -l` auf der Storage Box liefert alle Dateinamen mit Größe (Uferstrasse, ca. 189.000 Dateien: rund 3,5 Sekunden). Die Storage Box nennt die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (ein Alias aus `~/.ssh/config`, siehe unten). Ohne sie bricht der Speicherfilter ab. Die Kameranamen kommen aus der normalen Bildquelle: `TIMELAPSE_CAMERA_ROOT` darf deshalb nicht gesetzt sein, sonst stammen sie aus diesem Ordner statt von der Box.
 2. **Leere Dateien:** Alle JPGs mit 0 Byte laut Liste.
 3. **Duplikate pro Tag:** Nur Dateien, die am selben Aufnahmetag (laut Dateiname) dieselbe Größe haben, werden verglichen. Die SHA-256-Hashes berechnet die Storage Box selbst (`sha256sum`, 1.000 Dateien pro Aufruf, 4 Aufrufe parallel); über das Netz kommen nur die Hashes, nicht die Bilder. Behalten wird die erste Datei des Tages in Dateinamen-Reihenfolge; gemeldet werden alle späteren Kopien.
 

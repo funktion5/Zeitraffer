@@ -155,7 +155,7 @@ def is_complete_jpeg(path: Path) -> bool:
 
 
 # Copy selected images locally and rename them as sequential FFmpeg frames. The check runs on the
-# local copy, so it costs no extra read on the camera mount. Returns (original, frame) pairs.
+# local copy, so it costs no extra read of the camera storage. Returns (original, frame) pairs.
 def copy_images_to_temp(
 	images: list[Path],
 	temp_directory: Path,
