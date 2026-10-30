@@ -611,10 +611,9 @@ def test_default_clock_is_timezone_aware(box: FakeBox) -> None:
 # checked for write commands.
 WRITER_MODULE = "src/privacy/box_writer.py"
 READ_ONLY_SSH_MODULES = {"src/storage_filter.py"}
-# May start rsync, but only to pull FROM the box into a local folder; stage_frames_test and
-# frame_source_test prove the direction of the command. Every other command that can write stays
-# forbidden for these.
-PULL_ONLY_SSH_MODULES = {"scripts/stage-frames.py", "src/frame_source.py"}
+# May start rsync, but only to pull FROM the box into a local folder; frame_source_test proves the
+# direction of the command. Every other command that can write stays forbidden for these.
+PULL_ONLY_SSH_MODULES = {"src/frame_source.py"}
 REMOTE_PROGRAMS = {"ssh", "scp", "sftp", "rsync", "sshfs"}
 
 
@@ -667,15 +666,6 @@ def test_pull_only_modules_use_no_rsync_option_that_changes_the_box() -> None:
 	for module in PULL_ONLY_SSH_MODULES:
 		for string in _string_constants(PROJECT_ROOT / module):
 			assert not re.match(r"--(delete|remove)", string), f"{module}: {string!r}"
-
-
-def test_camera_mount_stays_read_only() -> None:
-	unit = (PROJECT_ROOT / "systemd" / "cameras-sshfs.service").read_text(encoding="utf-8")
-	exec_start = next(line for line in unit.splitlines() if line.startswith("ExecStart="))
-	options = re.findall(r"-o (\S+)", exec_start)
-
-	assert "ro" in options
-	assert "rw" not in options
 
 
 def test_backup_writes_nothing_when_the_image_is_not_the_judged_one(

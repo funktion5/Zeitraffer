@@ -1,7 +1,12 @@
+[tool.pytest.ini_options]
+# archive/ holds retired code and its tests: kept for reference, neither run nor linted.
+testpaths = ["tests"]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100
 indent-width = 4
+extend-exclude = ["archive"]
 
 [tool.ruff.lint]
 select = [

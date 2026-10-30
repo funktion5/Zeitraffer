@@ -8,9 +8,11 @@ import pytest
 from src.config import PROJECT_ROOT, load_config
 from src.storage_filter import StorageBox, acquire_run_lock
 
-# The script's file name has a hyphen, so it cannot be imported by name.
+# Archived with the script: not collected by pytest (see archive/README.md); run it explicitly
+# with `pytest archive/staging`. The script's file name has a hyphen, so it cannot be imported by
+# name.
 _spec = importlib.util.spec_from_file_location(
-	"stage_frames", PROJECT_ROOT / "scripts" / "stage-frames.py"
+	"stage_frames", PROJECT_ROOT / "archive" / "staging" / "scripts" / "stage-frames.py"
 )
 stage_frames = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(stage_frames)

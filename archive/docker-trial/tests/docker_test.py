@@ -2,9 +2,12 @@ from pathlib import Path
 
 from src.config import PROJECT_ROOT
 
-ENTRYPOINT = (PROJECT_ROOT / "docker" / "entrypoint.sh").read_text()
-COMPOSE = (PROJECT_ROOT / "compose.yaml").read_text()
-DOCKERIGNORE = (PROJECT_ROOT / ".dockerignore").read_text().split()
+# Archived with the container trial: not collected by pytest (see archive/README.md); run it
+# explicitly with `pytest archive/docker-trial`.
+TRIAL = PROJECT_ROOT / "archive" / "docker-trial"
+ENTRYPOINT = (TRIAL / "docker" / "entrypoint.sh").read_text()
+COMPOSE = (TRIAL / "compose.yaml").read_text()
+DOCKERIGNORE = (TRIAL / ".dockerignore").read_text().split()
 
 
 # The camera mount is the original images: read-only in the container as on the Pi.
@@ -31,7 +34,7 @@ def test_image_excludes_data_models_and_secrets() -> None:
 
 
 def test_no_real_storage_box_values_in_the_example() -> None:
-	example = Path(PROJECT_ROOT / "docker" / "storage-box.env.example").read_text()
+	example = Path(TRIAL / "docker" / "storage-box.env.example").read_text()
 
 	assert "REMOTE_USER=<user>" in example
 	assert "REMOTE_HOST=<host>" in example
