@@ -1,5 +1,8 @@
 # Highlights Flagger Implementation Plan
 
+Status: done. The flagger was built by 2026-10-22 and runs nightly from cron (since 2026-10-23; its own
+cron line on the VPS since 2026-10-30). Current behaviour: [flagger.md](../flagger.md). The checkboxes below were not ticked while building; the code and git history are the record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A standalone nightly program that finds animals and flying objects in the Daily images and writes a per-camera, per-day report folder (clean image copies plus `manifest.json`) for the future Highlights page.

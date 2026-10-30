@@ -1,5 +1,9 @@
 # Highlights Page Implementation Plan
 
+Status: done. The page has been live since 2026-10-22; later changes are in
+[2026-10-26-web-ui-finetune.md](2026-10-26-web-ui-finetune.md). Current behaviour:
+[highlights-seite.md](../highlights-seite.md). The checkboxes below were not ticked while building; the code and git history are the record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** A "Highlights" page in the existing PHP web UI that shows the flagged images of the whole retention per camera, with download and delete.

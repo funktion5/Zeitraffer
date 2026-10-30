@@ -2,7 +2,7 @@ from collections import defaultdict
 from datetime import date
 
 import pytest
-from frame_source_fakes import LS_DIRECTORY, LS_FILE, FakeBox
+from frame_source_fakes import LS_DIRECTORY, LS_FILE, FakeListingBox
 
 import src.images as images_module
 from src.frame_source import LocalFrameSource, SshFrameSource
@@ -52,7 +52,7 @@ def names_sources(tmp_path):
 	(camera / "subfolder").mkdir()
 	listing = [LS_FILE.format(name) for name in NAMES] + [LS_DIRECTORY.format("subfolder")]
 
-	ssh = SshFrameSource(FakeBox(listing), tmp_path / "cache")
+	ssh = SshFrameSource(FakeListingBox(listing), tmp_path / "cache")
 
 	return LocalFrameSource(tmp_path / "local"), ssh
 
@@ -109,7 +109,7 @@ def test_local_and_ssh_sources_list_the_same_cameras(monkeypatch, tmp_path):
 		LS_FILE.format("notes.txt"),
 	]
 	local = LocalFrameSource(root)
-	ssh = SshFrameSource(FakeBox(listing), tmp_path / "cache")
+	ssh = SshFrameSource(FakeListingBox(listing), tmp_path / "cache")
 
 	monkeypatch.setattr(images_module, "get_frame_source", lambda: local)
 	expected = images_module.get_cameras()

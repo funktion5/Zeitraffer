@@ -1,6 +1,8 @@
 # Highlights page (web UI): design
 
-Status: draft for review, 2026-10-21. Nothing here is built. Written after reading all of `web/`
+Status: built, the page has been live since 2026-10-22. This is the design as written on 2026-10-21,
+before the work; where it differs from the code, [highlights-seite.md](../../highlights-seite.md) and
+the code win. Written after reading all of `web/`
 (about 59 KB), the delete wrapper, the README web chapter and the web tests. Julius and Claude code on the Pi
 together and Claude runs the test suite there. Julius installs the wrapper and the sudoers
 line himself.

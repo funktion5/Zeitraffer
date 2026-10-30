@@ -1,5 +1,9 @@
 # Blur Catch-up Before the Nightly Run — Implementation Plan
 
+Status: done. The catch-up has been in cron since 2026-10-23 and runs on the VPS since 2026-10-30
+([vps.md](../vps.md)). The Daily gate is a separate, not started part:
+[2026-10-23-blur-daily-gate.md](2026-10-23-blur-daily-gate.md). The checkboxes below were not ticked while building; the code and git history are the record.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Before the 02:00 timelapse run, blur every daytime image of the blur cameras from the

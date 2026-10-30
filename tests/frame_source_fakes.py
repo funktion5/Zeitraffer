@@ -6,8 +6,9 @@ LS_FILE = "-rw-r--r-- 1 user group 1234 Oct 28 09:00 {}"
 LS_SYMLINK = "lrwxrwxrwx 1 user group 9 Oct 28 09:00 {} -> elsewhere"
 
 
-# Stands in for StorageBox: answers every command with a canned `ls -l` listing.
-class FakeBox:
+# Stands in for StorageBox: answers every command with a canned `ls -l` listing. Not the FakeBox of
+# privacy_fakes.py, which emulates the box's whole shell for the blur writer.
+class FakeListingBox:
 	remote = "box"
 	base_directory = "cameras"
 

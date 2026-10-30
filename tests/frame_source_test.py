@@ -12,7 +12,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from frame_source_fakes import LS_DIRECTORY, LS_FILE, LS_SYMLINK, FakeBox
+from frame_source_fakes import LS_DIRECTORY, LS_FILE, LS_SYMLINK, FakeListingBox
 
 import src.frame_source as frame_source_module
 import src.images as images_module
@@ -120,7 +120,7 @@ def test_get_frame_source_follows_a_patched_camera_root(monkeypatch, tmp_path):
 
 
 def test_ssh_list_cameras_returns_directories_only():
-	box = FakeBox(
+	box = FakeListingBox(
 		[
 			LS_DIRECTORY.format("Zebra"),
 			LS_DIRECTORY.format("Alpha"),
@@ -133,7 +133,7 @@ def test_ssh_list_cameras_returns_directories_only():
 
 
 def test_ssh_list_names_returns_regular_files():
-	box = FakeBox(
+	box = FakeListingBox(
 		[
 			LS_FILE.format("a_20260101T1000.jpg"),
 			LS_DIRECTORY.format("subfolder"),
@@ -149,20 +149,20 @@ def test_ssh_list_names_returns_regular_files():
 
 
 def test_ssh_list_names_keeps_names_with_spaces():
-	box = FakeBox([LS_FILE.format("my frame 01.jpg")])
+	box = FakeListingBox([LS_FILE.format("my frame 01.jpg")])
 
 	assert list(SshFrameSource(box, Path("/cache")).list_names("Alpha")) == ["my frame 01.jpg"]
 
 
 def test_ssh_listing_failure_is_an_oserror():
-	box = FakeBox(returncode=2, stderr="Permission denied\n")
+	box = FakeListingBox(returncode=2, stderr="Permission denied\n")
 
 	with pytest.raises(OSError, match="Permission denied"):
 		SshFrameSource(box, Path("/cache")).list_names("Alpha")
 
 
 def test_ssh_listing_timeout_is_a_timeouterror():
-	box = FakeBox(raises=subprocess.TimeoutExpired("ssh", NAME_LISTING_TIMEOUT_SECONDS))
+	box = FakeListingBox(raises=subprocess.TimeoutExpired("ssh", NAME_LISTING_TIMEOUT_SECONDS))
 
 	with pytest.raises(TimeoutError):
 		SshFrameSource(box, Path("/cache")).list_names("Alpha")
@@ -172,7 +172,7 @@ def test_ssh_listing_timeout_is_a_timeouterror():
 
 
 def test_ssh_path_for_points_into_the_cache():
-	source = SshFrameSource(FakeBox(), Path("/cache"))
+	source = SshFrameSource(FakeListingBox(), Path("/cache"))
 
 	assert source.path_for("Alpha", "a.jpg") == Path("/cache/Alpha/a.jpg")
 
@@ -197,14 +197,14 @@ UNSAFE_CAMERAS = [*UNSAFE_NAMES, "a b", "a;b", "$HOME", "a`b`", "a'b", "Caf\u00e
 # down (the local source simply counts such a file), so a listing skips it and reports it.
 @pytest.mark.parametrize("name", UNSAFE_NAMES)
 def test_ssh_listing_skips_unsafe_file_names_and_keeps_the_rest(name):
-	box = FakeBox([LS_FILE.format(name), LS_FILE.format("ok.jpg")])
+	box = FakeListingBox([LS_FILE.format(name), LS_FILE.format("ok.jpg")])
 
 	assert SshFrameSource(box, Path("/cache")).list_names("Alpha") == ["ok.jpg"]
 
 
 @pytest.mark.parametrize("name", UNSAFE_CAMERAS)
 def test_ssh_camera_listing_skips_unsafe_camera_names(name):
-	box = FakeBox([LS_DIRECTORY.format(name), LS_DIRECTORY.format("Alpha")])
+	box = FakeListingBox([LS_DIRECTORY.format(name), LS_DIRECTORY.format("Alpha")])
 
 	assert SshFrameSource(box, Path("/cache")).list_cameras() == ["Alpha"]
 
@@ -213,12 +213,12 @@ def test_ssh_camera_listing_skips_unsafe_camera_names(name):
 @pytest.mark.parametrize("name", UNSAFE_NAMES)
 def test_ssh_path_for_refuses_unsafe_file_names(name):
 	with pytest.raises(FrameFetchError):
-		SshFrameSource(FakeBox(), Path("/cache")).path_for("Alpha", name)
+		SshFrameSource(FakeListingBox(), Path("/cache")).path_for("Alpha", name)
 
 
 @pytest.mark.parametrize("camera", UNSAFE_CAMERAS)
 def test_ssh_refuses_unsafe_camera_names_everywhere(camera):
-	source = SshFrameSource(FakeBox(), Path("/cache"))
+	source = SshFrameSource(FakeListingBox(), Path("/cache"))
 
 	with pytest.raises(FrameFetchError):
 		source.list_names(camera)
@@ -505,7 +505,7 @@ def fetcher(monkeypatch, tmp_path, *exit_codes, stderr=b"", slow_rounds=0, inter
 	monkeypatch.setattr(frame_source_module.time, "sleep", sleeps.append)
 
 	# temp_root is tmp_path, so the cache folder counts as inside it for the guarded cleanup.
-	return SshFrameSource(FakeBox(), tmp_path / "cache", tmp_path), rsync, sleeps
+	return SshFrameSource(FakeListingBox(), tmp_path / "cache", tmp_path), rsync, sleeps
 
 
 def frames(source, *names):
@@ -694,7 +694,7 @@ def source_with_frames(tmp_path, *cameras):
 		(root / camera).mkdir()
 		(root / camera / "a.jpg").write_bytes(b"frame")
 
-	return SshFrameSource(FakeBox(), root, tmp_path / "temp")
+	return SshFrameSource(FakeListingBox(), root, tmp_path / "temp")
 
 
 def test_release_removes_only_the_named_camera_folder(tmp_path):
@@ -730,7 +730,7 @@ def test_release_refuses_a_root_outside_temp(tmp_path):
 	link.symlink_to(outside)
 
 	for root in (outside, temp, link):
-		source = SshFrameSource(FakeBox(), root, temp)
+		source = SshFrameSource(FakeListingBox(), root, temp)
 
 		with pytest.raises(ValueError, match="inside"):
 			source.release("Alpha")
@@ -753,7 +753,7 @@ def test_release_refuses_unsafe_camera_names(tmp_path, camera):
 # A job that failed before it fetched anything, or a second release, must not raise.
 def test_release_ignores_a_missing_folder(tmp_path):
 	temp = tmp_path / "temp"
-	never_created = SshFrameSource(FakeBox(), temp / "frame-cache" / "run-9", temp)
+	never_created = SshFrameSource(FakeListingBox(), temp / "frame-cache" / "run-9", temp)
 
 	never_created.release("Alpha")
 
