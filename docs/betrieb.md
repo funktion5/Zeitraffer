@@ -10,46 +10,62 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 ### Nächtlicher Produktionslauf
 
 Die installierte Crontab verpixelt täglich um 02:00 Uhr zuerst die noch offenen Bilder der
-letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)), startet dann den
-vollständigen Workflow und danach den [Highlights-Flagger](#highlights-flagger):
+letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)) und startet dann den
+Nachtlauf. Den [Highlights-Flagger](#highlights-flagger) startet eine eigene Zeile:
 
 ```cron
-0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; <projektpfad>/.venv/bin/python3 -m src.main'; cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.flagger.run
+0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged
 ```
 
-Schlägt das Nachholen fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`); die Fehler
-stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
+Der Wrapper `scripts/timelapse-nightly-staged` nimmt die Sperre selbst. (Der Name stammt aus der Zeit,
+als er die Bilder vorher herüberkopierte; das tut er nicht mehr.) Er schreibt die Kameraliste der
+Weboberfläche (`state/web-jobs/cameras.json`), startet `src.main` einmal für alle Kameras, das die Bilder
+per ssh von der Storage Box liest, und prüft danach das Ergebnis: die Zusammenfassungszeilen der
+Jobs, fehlgeschlagene Kameras aus dem Protokoll und jedes neue Video. Der Bericht steht in
+`logs/nightly/<Lauf>/report.txt`. Ohne `TIMELAPSE_X264_PRESET` nimmt der Wrapper `ultrafast`; die
+Cron-Zeile setzt `medium` (FFmpeg-Standard).
+
+Schlägt das Nachholen der Verpixelung fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`);
+die Fehler stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
 `privacy.blur_cameras` damit aus verpixelten Bildern.
 
-`flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock, wird kein zweiter Produktionslauf gestartet.
+`flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock,
+wird kein zweiter Produktionslauf gestartet; der Wrapper meldet das und endet mit Status 75.
 
 ### Wiederanlauf nach Neustart
 
-Beim Booten wird der Workflow nur gestartet, wenn `state/run-in-progress` existiert. Da der Kamera-Storage eventuell noch nicht bereit ist, wartet Cron zunächst auf einen echten Mount unter `/mnt/cameras`:
+Auf dem Server gibt es keine automatische Wiederholung nach einem Neustart: `install.sh` richtet
+keine `@reboot`-Zeile ein. Der Marker `state/run-in-progress` (siehe
+[Run-State und Wiederanlauf](#run-state-und-wiederanlauf)) bleibt bei einem Abbruch bestehen und
+zeigt, dass ein Lauf unterbrochen wurde. Den Lauf startet man dann von Hand wie in der Cron-Zeile,
+nachdem man mit `pgrep -af src.main` geprüft hat, dass nicht schon einer läuft.
 
-```cron
-@reboot if [ -f <projektpfad>/state/run-in-progress ]; then until mountpoint -q /mnt/cameras; do sleep 5; done; flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; <projektpfad>/.venv/bin/python3 -m src.main'; fi
-```
-
-Der nächtliche Lauf und die Reboot-Wiederherstellung verwenden beide:
+Nachtlauf, Flagger, Weboberfläche und Speicherfilter verwenden dieselbe Sperre:
 
 ```text
 <projektpfad>/state/zeitraffer-run.lock
 ```
 
-Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen Job-Logs.
+Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die
+Anwendung schreibt ihre eigenen Job-Logs.
 
 ### Highlights-Flagger
 
-Eingerichtet am 2026-10-23. Der [Highlights-Flagger](flagger.md) startet in derselben Cron-Zeile
-direkt nach dem nächtlichen Lauf (siehe oben), aber außerhalb von `flock -c`: Er nimmt die Sperre
-selbst und würde sonst an der von Cron scheitern. Er prüft den Vortag und braucht für fünf
-Kameras ca. 40 Minuten.
+Der [Highlights-Flagger](flagger.md) hat eine eigene Cron-Zeile, damit ein Fehler im einen Lauf den
+anderen nicht aufhält:
 
-- Wurde der nächtliche Lauf übersprungen, weil die Sperre belegt war, findet auch der Flagger sie
-  belegt und schreibt nur `Skipped:` in `logs/flagger/`.
-- Die Wiederholung nach einem Neustart (`@reboot`) startet nur den Videolauf, nicht den Flagger.
-  Fehlende Tage lassen sich mit `--target-date` nachholen.
+```cron
+0 4 * * * cd <projektpfad> && TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX=<ssh-alias> <projektpfad>/.venv/bin/python3 -m src.flagger.run
+```
+
+Die Uhrzeit muss nach dem Ende des Nachtlaufs liegen: 04:00 ist ein erster Vorschlag, die
+tatsächliche Laufzeit steht in `logs/nightly/<Lauf>/report.txt`. Er nimmt die Sperre selbst, gehört
+also nicht in `flock -c`. Er prüft den Vortag und braucht für fünf Kameras ca. 40 Minuten
+(gemessen auf dem früheren Host).
+
+- Hält der Nachtlauf die Sperre noch, wenn der Flagger startet, überspringt dieser die Nacht und
+  schreibt nur `Skipped:` in `logs/flagger/`.
+- Fehlende Tage lassen sich mit `--target-date` nachholen.
 
 Installierte Einträge prüfen:
 
@@ -117,18 +133,13 @@ crontab -l
 
 ### Dynamische Kameraerkennung
 
-Kameras werden dynamisch anhand ihrer Verzeichnisse unter
-
-```text
-/mnt/cameras
-```
-
-erkannt.
+Kameras werden dynamisch anhand der Ordner auf der Storage Box erkannt (bei einem Basisordner in
+`TIMELAPSE_STORAGE_BOX` darunter).
 
 Beispiel:
 
 ```text
-/mnt/cameras/
+<Storage Box>/
 ├── Alter-Winkel-Promenade/
 ├── BSV-Steinhude/
 ├── Nordufer_tele/
@@ -143,17 +154,15 @@ Ist der globale Kamera-Storage nicht erreichbar, wird der Lauf abgebrochen. Oper
 
 ### Alternative Bildquelle (NAS-Archiv)
 
-Die Umgebungsvariable `TIMELAPSE_CAMERA_ROOT` ersetzt `/mnt/cameras` als Kamera-Wurzel. Ohne
-die Variable (oder mit leerem Wert) gilt weiterhin `/mnt/cameras`; Cron und Weboberfläche
-setzen sie nicht.
+Die Umgebungsvariable `TIMELAPSE_CAMERA_ROOT` ersetzt die Storage Box als Bildquelle: Ist sie
+gesetzt, liest das Programm die Kameraordner von dort. Cron und Weboberfläche setzen sie nicht; ohne
+sie und ohne `TIMELAPSE_STORAGE_BOX` bricht ein Lauf mit einer Fehlermeldung ab.
 
 Damit lassen sich Kalenderjahr-Videos aus dem alten Webcam-Archiv auf dem NAS erstellen. Die
 Werkzeuge dafür liegen im Ordner `nas/` und gehören nicht zum Produktionslauf. Anleitung:
 [docs/nas.md](nas.md).
 
-Das Programm lässt sich auch in einem Docker-Container ausführen (auf einem Mac getestet; der
-geplante Betrieb auf dem Synology-NAS ist eingestellt). Der Pi bleibt produktiv. Anleitung:
-[docs/docker.md](docker.md).
+Der frühere Container-Test mit Docker liegt im Archiv ([archive/README.md](../archive/README.md)).
 
 ## Bildvalidierung und Duplikate
 
@@ -294,11 +303,11 @@ Prozessabbruch, Stromausfall oder Neustart vor Abschluss
 
 Explizite `--jobs`-, `--target-date`- und `--date`-Aufrufe erzeugen keinen Marker und gelten nicht als wiederaufzunehmender Produktionslauf.
 
-Der Status ist absichtlich einfach: Es gibt keinen Resume-Punkt pro Kamera oder Job. Bei einer Wiederherstellung startet der komplette automatische Workflow erneut. Bereits vorhandene Videos werden durch atomaren Austausch geschützt, und Retention erfolgt erst nach erfolgreicher Neuerstellung.
+Der Status ist absichtlich einfach: Es gibt keinen Resume-Punkt pro Kamera oder Job. Wird der Lauf von Hand wiederholt, startet der komplette automatische Workflow erneut. Bereits vorhandene Videos werden durch atomaren Austausch geschützt, und Retention erfolgt erst nach erfolgreicher Neuerstellung.
 
 Der Marker liegt unter `state/` und nicht unter `/tmp`, damit er einen Neustart überlebt.
 
-Kameralokale operative Fehler werden innerhalb des jeweiligen Jobs behandelt und lassen spätere Kameras weiterlaufen. Ein nicht behandelter Prozessabbruch oder globaler Fehler nach dem Anlegen des Markers lässt ihn für die Reboot-Wiederherstellung bestehen.
+Kameralokale operative Fehler werden innerhalb des jeweiligen Jobs behandelt und lassen spätere Kameras weiterlaufen. Ein nicht behandelter Prozessabbruch oder globaler Fehler nach dem Anlegen des Markers lässt ihn bestehen, ein unterbrochener Lauf bleibt so erkennbar.
 
 ## Logging
 

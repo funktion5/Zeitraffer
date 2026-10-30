@@ -18,7 +18,7 @@ für die jeweiligen Werte.
 - [Fehler: Erkennung, Highlights und Verpixelung](#fehler-erkennung-highlights-und-verpixelung)
 - [Fehler: Sicherung und Wiederherstellung](#fehler-sicherung-und-wiederherstellung)
 - [Fehler: Entwicklung und CI](#fehler-entwicklung-und-ci)
-- [Raspberry Pi: Stabilität](#raspberry-pi-stabilität)
+- [Arbeitsspeicher](#arbeitsspeicher)
 
 ---
 
@@ -29,9 +29,8 @@ für die jeweiligen Werte.
 | Was | Wann | Gestartet von |
 |---|---|---|
 | Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
-| Wiederholung des nächtlichen Laufs | nach einem Neustart, wenn der Lauf unterbrochen war | Cron (`@reboot`) |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Highlights-Flagger | direkt nach dem nächtlichen Lauf (ca. 03:30–04:10) | Cron |
+| Highlights-Flagger | eigene Cron-Zeile nach dem Nachtlauf (Vorschlag 04:00 Uhr) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
@@ -39,7 +38,7 @@ für die jeweiligen Werte.
 
 | Was | Wo |
 |---|---|
-| Kamerabilder (Original, **nur lesen**) | `/mnt/cameras/<Kamera>/` (SSHFS-Mount der Storage Box) |
+| Kamerabilder (Original, **nur lesen**) | Storage Box; die Jobs holen die nötigen Bilder per rsync nach `temp/frame-cache/` |
 | Einstellungen | `config/config.json` |
 | Nächtliche Videos | `videos/<Kamera>/{daily,weekly,monthly,yearly}/` |
 | Videos aus Weboberfläche und Befehl | `videos/<Kamera>/manual-runs/<job>/` |
@@ -49,8 +48,9 @@ für die jeweiligen Werte.
 | Marker „nächtlicher Lauf unterbrochen“ | `state/run-in-progress` |
 | Status der Web-Aufträge | `state/web-jobs/` |
 | Zwischendateien | `temp/` |
+| Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
+| Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
 | Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-status.sh` |
-| Weitere installierte Skripte | `/usr/local/sbin/cameras-sshfs-preflight` (räumt vor dem Mount auf), `/usr/local/sbin/pi-health-logger` (nur wenn das Absturz-Logging eingerichtet ist) |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
@@ -58,8 +58,8 @@ für die jeweiligen Werte.
 - **Immer nur ein Lauf auf einmal.** Nächtlicher Lauf, Web-Aufträge, Flagger, Speicherfilter,
   Backfill und Verpixelung teilen sich die Sperre `state/zeitraffer-run.lock`. Wer sie nicht
   bekommt, bricht ab oder überspringt.
-- **Nie auf `/mnt/cameras` schreiben.** Der Mount ist schreibgeschützt; die Originale bleiben
-  unverändert.
+- **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
+  Storage Box ist die einzige Ausnahme und sichert vorher das Original.
 - **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Der Exit-Code ist dann trotzdem 0.
   Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
 - **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst nach
@@ -72,7 +72,7 @@ für die jeweiligen Werte.
 ```bash
 cd ~/timelapse
 flock -n state/zeitraffer-run.lock -c true && echo "Sperre frei" || echo "Sperre belegt"
-pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|stage-frames"
+pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box"
 ```
 
 ### Zusammenfassung eines Laufs lesen
@@ -96,19 +96,18 @@ grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
 
 Kurzfassung als Checkliste. Die vollständigen Schritte stehen im
 [README unter Installation](../README.md#installation); auf einem frischen Debian- oder
-Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte, ohne SSHFS-Mount
-([vps.md](vps.md)). Ein Pi mit einem Backup von vor dem 27.10.2026 geht noch mit `migrate.sh`
-([raspberry-pi.md](raspberry-pi.md)).
+Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte; den Zugang zur Storage
+Box (Schritt 5) und Cron (Schritt 6) richtet man nach [vps.md](vps.md) von Hand ein.
 
 | # | Schritt | Funktioniert, wenn |
 |---|---|---|
-| 1 | Systempakete installieren ([README](../README.md#systempakete-installieren)) | `ffmpeg -version`, `sshfs -V`, `php -v`, `rsync --version` antworten |
+| 1 | Systempakete installieren ([README](../README.md#systempakete-installieren)) | `ffmpeg -version`, `php -v`, `rsync --version` antworten |
 | 2 | Python 3.13 und virtuelle Umgebung ([README](../README.md#python-umgebung-einrichten)) | `.venv/bin/python3 --version` zeigt 3.13 |
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([README](../README.md#konfiguration)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
-| 5 | SSHFS-Mount einrichten ([README](../README.md#sshfs-mount-installieren)) | `mountpoint /mnt/cameras` meldet „is a mountpoint“ und `ls /mnt/cameras` zeigt die Kameras |
-| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die 02:00-Zeile und die `@reboot`-Zeile |
-| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([README](../README.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost/` ergibt `401`; `./migrate.sh verify` (prüft nur, repariert nichts) zeigt kein `WARNING` |
+| 5 | Zugriff auf die Storage Box einrichten ([README](../README.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
+| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die 02:00-Zeile und die Flagger-Zeile (`./install.sh cron_hint` druckt beide) |
+| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([README](../README.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
 | 8 | Tests | `.venv/bin/python3 -m pytest` grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |
 
@@ -127,13 +126,20 @@ kill -TERM -- -<PID>      # abgekoppelten Lauf beenden (PID aus pgrep)
 
 ### Nächtlicher Lauf
 
-Startet automatisch um 02:00 Uhr über Cron mit Sperre:
+Auf dem Server liest jeder Befehl die Bilder per ssh; dafür muss `TIMELAPSE_STORAGE_BOX` gesetzt
+sein. Die Cron-Zeilen setzen sie selbst, in der Shell einmal `export TIMELAPSE_STORAGE_BOX=<ssh-alias>`.
+Ohne sie bricht ein Befehl mit einer Fehlermeldung ab.
 
-```text
-0 2 * * * flock -n <projektpfad>/state/zeitraffer-run.lock -c 'cd <projektpfad> && <projektpfad>/.venv/bin/python3 -m src.main'
+Der Lauf startet automatisch um 02:00 Uhr über Cron (Zeilen:
+[betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Von Hand (alle Kameras, alle vier Jobs, Zieltag
+gestern) über denselben Wrapper wie Cron, der die Sperre selbst nimmt und das Ergebnis prüft:
+
+```bash
+setsid -f env TIMELAPSE_X264_PRESET=medium scripts/timelapse-nightly-staged > ~/nightly-console.log 2>&1 < /dev/null
+cat logs/nightly/$(ls -t logs/nightly | head -1)/report.txt   # Bericht; die letzte Zeile nennt Kameras und Fehler
 ```
 
-Von Hand (alle Kameras, alle vier Jobs, Zieltag gestern):
+Nur `src.main` ohne die Prüfung des Wrappers:
 
 ```bash
 flock -n state/zeitraffer-run.lock -c '.venv/bin/python3 -m src.main'
@@ -230,28 +236,24 @@ Crontab fehlt oder der Rechner war aus.
 ### Kamera-Speicher nicht erreichbar
 
 **Symptom:** Im Protokoll steht direkt am Anfang `Failed to access camera storage.` mit einem
-`OSError`, und es entstehen gar keine Videos.
+`OSError` (zum Beispiel `Storage box listing failed ...` oder `TIMELAPSE_STORAGE_BOX is not set`),
+und es entstehen gar keine Videos.
 
 **Prüfen:**
 
 ```bash
-mountpoint /mnt/cameras
-timeout 10 ls /mnt/cameras > /dev/null && echo "Mount antwortet" || echo "Mount hängt oder fehlt"
-systemctl status cameras-sshfs.service
-journalctl -u cameras-sshfs.service --since today
+ssh <ssh-alias> ls | head -3                                                      # antwortet die Box?
+TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list           # listet die Kameras
 ```
 
-**Ursache:** Der SSHFS-Mount ist weg oder hängt: Netzwerk, Storage Box nicht erreichbar, Host-Key
-oder Schlüssel passt nicht mehr.
+**Ursache:** Netzwerk oder Storage Box nicht erreichbar, Schlüssel oder Host-Key passt nicht mehr
+(`Permission denied`, `Host key verification failed`), der Eintrag in `~/.ssh/config` fehlt, oder
+`TIMELAPSE_STORAGE_BOX` ist nicht gesetzt (in der Cron-Zeile oder in der Shell).
 
-**Lösung:** `sudo systemctl restart cameras-sshfs.service`; das Preflight-Skript räumt dabei einen
-hängenden Mount auf. Danach den Lauf von Hand starten. Bleibt der Dienst rot, die Meldung im Journal
-lesen (häufig: `Host key verification failed` oder leere `mount.env`).
-
-Zeigt `systemctl status` nicht rot, sondern `inactive (dead)` mit einer Zeile `condition failed`, fehlt
-der Ordner `/mnt/cameras` selbst. Der Dienst startet dann gar nicht erst (Bedingung
-`ConditionPathIsDirectory` in der Unit). Ordner anlegen (`sudo mkdir /mnt/cameras`) und den Dienst
-neu starten.
+**Lösung:** Die ssh-Verbindung von Hand prüfen und den Eintrag samt Schlüssel in `~/.ssh/config`
+richten ([README](../README.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh einen
+geänderten Host-Key, den Fingerabdruck mit der Hetzner-Oberfläche vergleichen, bevor man ihn neu
+bestätigt. Danach den Lauf von Hand starten.
 
 ### Bildsuche bricht ab („stalled“)
 
@@ -259,15 +261,15 @@ neu starten.
 anderen laufen weiter.
 
 **Prüfen:** wie bei [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar), dazu
-`timeout 20 ls /mnt/cameras/<Kamera> | wc -l`.
+`time ssh <ssh-alias> ls <Kamera> | wc -l` (ein Ordner mit rund 190.000 Dateien braucht einige Sekunden).
 
-**Ursache:** Der Mount antwortet für diesen Ordner nicht mehr rechtzeitig (Netzwerk, überlastete
-Storage Box, sehr viele Dateien). Der Lauf bricht die Suche nach `image_scan_stall_timeout_seconds`
-ohne Fortschritt ab, statt ewig zu hängen.
+**Ursache:** Die Storage Box antwortet für diesen Ordner nicht mehr rechtzeitig (Netzwerk,
+überlastete Box, sehr viele Dateien). Der Lauf bricht die Suche nach `image_scan_stall_timeout_seconds`
+ohne Fortschritt ab, statt ewig zu hängen. Beim Holen der Bilder wiederholt das Programm einen
+fehlgeschlagenen rsync nach Pausen von 30 und 120 Sekunden.
 
-**Lösung:** Mount prüfen und neu starten, die Kamera mit `--target-date` nachholen. Tritt es bei
-einer Kamera dauerhaft auf, mit dem [Speicherfilter](werkzeuge.md) prüfen, ob ihr Ordner
-ungewöhnlich voll ist.
+**Lösung:** Verbindung prüfen, die Kamera mit `--target-date` nachholen. Tritt es bei einer Kamera
+dauerhaft auf, mit dem [Speicherfilter](werkzeuge.md) prüfen, ob ihr Ordner ungewöhnlich voll ist.
 
 ### Eine Kamera hat keine Bilder
 
@@ -282,7 +284,7 @@ WARNING | Available image range: 2026-09-14 - 2026-10-02
 **Prüfen:**
 
 ```bash
-ls -t /mnt/cameras/<Kamera> | head -5        # neueste Dateien
+ssh <ssh-alias> ls -t <Kamera> | head -5     # neueste Dateien auf der Storage Box
 ```
 
 **Ursache:** Die Kamera lädt nichts hoch (offline, Strom, Netz, Speicherkarte) oder liefert ein
@@ -331,7 +333,7 @@ historisches Weekly erstellen (`--jobs weekly --target-date <letzter Tag> --came
 
 ```text
 WARNING | Camera SKM-Mardorf: excluded 6 empty image files
-WARNING | Skipping truncated image (no JPEG end marker): /mnt/cameras/Uferstrasse/uferstrasse_….jpg
+WARNING | Skipping truncated image (no JPEG end marker): temp/frame-cache/<Lauf>/Uferstrasse/uferstrasse_….jpg
 ```
 
 **Ursache:** Ein Upload der Kamera brach ab (0 Byte oder ohne JPEG-Ende). Das Programm lässt solche
@@ -363,7 +365,7 @@ ls -ld ~/timelapse/videos ~/timelapse/videos/<Kamera> ~/timelapse/videos/<Kamera
 
 ```bash
 sudo chown -R "$(id -un):$(id -gn)" ~/timelapse/videos   # Eigentümer zurück auf den Projektbenutzer
-~/timelapse/migrate.sh permissions verify                  # Leserechte für www-data, dann prüfen
+~/timelapse/install.sh permissions verify                  # Leserechte für www-data, dann prüfen
 ```
 
 `permissions` allein reicht hier nicht: es ändert nur Rechte, nicht den Eigentümer.
@@ -394,20 +396,22 @@ gelöscht werden, wenn kein Lauf aktiv ist. Nach dem Aufräumen die betroffenen 
 **Prüfen:** die Zusammenfassungen (`grep -h "job finished" logs/*/<Datum>.log`); bei `failed=` > 0
 die Zeilen mit `ERROR` und den Traceback davor lesen.
 
-**Ursache:** Fehler einzelner Kameras (Mount, FFmpeg, Dateirechte) werden abgefangen, damit die
+**Ursache:** Fehler einzelner Kameras (Zugriff auf die Storage Box, FFmpeg, Dateirechte) werden abgefangen, damit die
 übrigen Kameras weiterlaufen; der Exit-Code bleibt 0.
 
 **Lösung:** Ursache aus dem Traceback beheben (siehe die Fälle oben), Kamera nachholen.
 
-### Lauf wurde nach einem Neustart wiederholt
+### Lauf wurde nach einem Neustart nicht wiederholt
 
-**Symptom:** Im Protokoll beginnt nach einer Unterbrechung ein zweiter Lauf mit neuer `run_id`.
+**Symptom:** Der Server wurde mitten im Lauf neu gestartet; die Videos dieser Nacht fehlen und es
+beginnt kein zweiter Lauf.
 
-**Ursache:** Gewollt. Der nächtliche Lauf legt `state/run-in-progress` an; fehlt am Ende das
-„fertig“, wiederholt Cron (`@reboot`) den Lauf nach dem nächsten Start.
+**Ursache:** So eingerichtet: `install.sh` legt keine `@reboot`-Zeile an. Der Marker
+`state/run-in-progress` bleibt bestehen und zeigt, dass ein Lauf unterbrochen wurde.
 
-**Lösung:** Nichts. Startet der Rechner bei jedem Lauf neu, siehe
-[Raspberry Pi: Stabilität](#raspberry-pi-stabilität).
+**Lösung:** Den Lauf von Hand wiederholen ([Nächtlicher Lauf](#nächtlicher-lauf)); vorher mit
+`pgrep -af src.main` prüfen, dass keiner läuft. Startet der Rechner immer wieder neu, den
+Arbeitsspeicher prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
 
 ---
 
@@ -429,21 +433,26 @@ bcrypt, ohne `-c`, sonst wird die Datei mit allen anderen Logins überschrieben)
 **Ursache:** `www-data` kommt nicht mehr ins Projekt, z. B. nach einer Neuinstallation oder nachdem
 Dateien von Hand kopiert wurden.
 
-**Lösung:** `~/timelapse/migrate.sh permissions verify`. `permissions` setzt die Leserechte für
+**Lösung:** `~/timelapse/install.sh permissions verify`. `permissions` setzt die Leserechte für
 `www-data` neu (nur Rechte, nicht den Eigentümer); `verify` repariert nichts, sondern prüft danach
 alles und meldet jedes Problem als `WARNING` (führt dabei die Tests aus und fragt nach dem
 `sudo`-Passwort).
 
 ### Kameraliste leer
 
-**Prüfen:** `ls /mnt/cameras` als Projektbenutzer und `sudo -u www-data ls /mnt/cameras`.
+**Prüfen:** `cat state/web-jobs/cameras.json` als Projektbenutzer. Fehlt die Datei oder steht `[]`
+darin, kennt die Weboberfläche keine Kamera.
 
-**Ursache:** Mount weg (siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)),
-alle Kameras in `ignored_cameras`, oder `www-data` darf den Mount nicht lesen (`allow_other` bzw.
-`user_allow_other` in `/etc/fuse.conf` fehlt).
+**Ursache:** Die Liste schreibt der Nachtlauf und `python3 -m src.camera_list`; sie war noch nie
+geschrieben, die Storage Box war beim letzten Versuch nicht erreichbar (die alte Liste bleibt dann
+bestehen), oder alle Kameras stehen in `ignored_cameras`.
 
-**Lösung:** Mount bzw. Konfiguration richten; für `allow_other` siehe
-[README](../README.md#sshfs-mount-installieren).
+**Lösung:** Die Storage Box prüfen (siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar))
+und die Liste einmal von Hand schreiben:
+
+```bash
+TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list
+```
 
 ### „Es läuft bereits ein anderer Zeitraffer-Auftrag.“
 
@@ -463,7 +472,7 @@ Auftrag, dessen Worker nie gestartet ist, gilt nach einer Minute als fehlgeschla
 ### „Das Löschen hat nicht geklappt. Bitte die Seite neu laden.“
 
 **Ursache:** Die Löschanfrage im Hintergrund kam nicht an oder die Antwort war unbrauchbar
-(Netz weg, Sitzung abgelaufen, Fehler auf dem Pi). Andere Gründe (z. B. „Die Anfrage ist ungültig
+(Netz weg, Sitzung abgelaufen, Fehler auf dem Server). Andere Gründe (z. B. „Die Anfrage ist ungültig
 (Sicherheitstoken).“) stehen ebenfalls im Bestätigungsdialog.
 
 **Lösung:** Seite neu laden und erneut löschen; wenn es wieder scheitert,
@@ -492,11 +501,11 @@ gehört `root` (dann verweigert die Seite den Start bewusst).
 
 | Code | Bedeutung |
 |---|---|
-| 66 | Kameraordner fehlt unter `/mnt/cameras`, meist weil der Mount weg ist |
+| 66 | Die Kamera steht nicht in der Kameraliste `state/web-jobs/cameras.json` |
 | 64 | Ungültige Eingabe (Datum, Job, Zeitpuffer oder Zeitfenster) |
 | 69 | Worker oder Status-Hilfsskript unter `/usr/local/libexec/` fehlt |
 
-**Lösung:** Bei 66 [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar); bei 69
+**Lösung:** Bei 66 [Kameraliste leer](#kameraliste-leer); bei 69
 die Wrapper neu installieren; bei 64 prüfen, ob installierter Wrapper und Weboberfläche zueinander
 passen (`cmp` wie oben).
 
@@ -662,9 +671,9 @@ die Verpixelung ab und schreibt nichts; ein Abbruch ist also kein Datenverlust.
 
 ### Speicherfilter
 
-`Storage filter needs the SSHFS camera mount to be up.` heißt: Mount fehlt (siehe
-[Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)). Auf einem Host ohne Mount
-die Storage Box über `TIMELAPSE_STORAGE_BOX` angeben ([README](../README.md#umgebungsvariablen)).
+`TIMELAPSE_STORAGE_BOX is not set` heißt: Die Storage Box ist nicht angegeben; die Variable setzen
+([README](../README.md#umgebungsvariablen)). Kommt trotz gesetzter Variable `Storage box listing
+failed`, siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar).
 
 ### WordPress
 
@@ -681,9 +690,9 @@ Siehe [wordpress.md](wordpress.md#fehlerbehebung-wordpress-frontend).
 | `No project folder at ... on the host (set PROJECT_DIR)` | Projekt liegt woanders | `PROJECT_DIR` in `backup.env` setzen |
 | `skipped (missing or not readable): ...` | Datei fehlt auf dem Host oder ist ohne `sudo` nicht lesbar | auf einem Host ohne diese Datei normal; sonst `sudo`-Zugang prüfen |
 | `REMOTE HOST IDENTIFICATION HAS CHANGED` | Host neu installiert | `ssh-keygen -R <host>` |
-| `Could not decrypt ... (wrong passphrase?)` bei `migrate.sh` | falsche Passphrase | erneut starten; die Passphrase gilt pro Sicherung |
+| `Could not decrypt ... (wrong passphrase?)` bei `install.sh` | falsche Passphrase | erneut starten; die Passphrase gilt pro Sicherung |
 
-Weitere Fälle der Neuinstallation: [raspberry-pi.md](raspberry-pi.md#fehlerbehebung).
+Einrichtung des Servers: [vps.md](vps.md).
 
 ---
 
@@ -693,7 +702,7 @@ Weitere Fälle der Neuinstallation: [raspberry-pi.md](raspberry-pi.md#fehlerbehe
 
 **Prüfen:** den fehlschlagenden Test im Log der GitHub Action.
 
-**Ursache:** Die CI-Umgebung unterscheidet sich vom Pi:
+**Ursache:** Die CI-Umgebung unterscheidet sich vom Server:
 
 - **kein FFmpeg/ffprobe:** Ein Test, der ohne es nicht läuft, braucht die Markierung
   `requires_ffmpeg` oder muss den FFmpeg-Aufruf ersetzen.
@@ -716,28 +725,7 @@ dasselbe ohnehin.
 
 ---
 
-## Raspberry Pi: Stabilität
-
-Gilt nur für den Raspberry Pi als Host.
-
-### Der Pi ist unbemerkt neu gestartet
-
-**Prüfen:**
-
-```bash
-uptime                                              # seit wann läuft er?
-journalctl --list-boots | tail -3                   # Neustarts
-journalctl -b -1 -p warning --no-pager | tail -50   # Warnungen vor dem letzten Neustart
-grep "<Uhrzeit vor dem Neustart>" /var/log/pi-health.log   # Speicher und Last
-```
-
-**Ursache:** Meist ist der Arbeitsspeicher voll gelaufen: großes Video plus weitere Last (VS Code
-Remote, ein zweiter Job). Der Pi friert ein, der Hardware-Watchdog startet ihn neu, ohne Meldung.
-Danach wiederholt Cron einen unterbrochenen nächtlichen Lauf.
-
-**Lösung:** Gleichzeitige schwere Arbeiten vermeiden (siehe nächster Fall). Fehlen
-`/var/log/pi-health.log` oder ein dauerhaftes Journal, die Absturzprotokollierung einrichten
-([raspberry-pi.md](raspberry-pi.md)).
+## Arbeitsspeicher
 
 ### Arbeitsspeicher knapp
 

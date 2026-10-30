@@ -8,8 +8,9 @@ der Ordner `DEST` aus `backup.env` (Standard `~/timelapse-backup`). Er sollte ni
 `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die unverschlüsselten
 Videos hochgeladen.
 
-Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Bilder werden pro Lauf per rsync von der
-Storage Box geholt (`scripts/timelapse-nightly-staged`, Plan: [web-server-nightly-run.md](plans/web-server-nightly-run.md)).
+Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Jobs lesen die Bilder per ssh von der
+Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-staged`; der frühere
+Plan liegt im [Archiv](../archive/staging/docs/plans/web-server-nightly-run.md)).
 Das Projekt muss in `~/timelapse` liegen, weil die installierten Web-Wrapper dort suchen.
 
 ## 1. Auf dem Mac: Backup (einmalig)
@@ -124,21 +125,40 @@ offen sein.
 
 ## 7. Von Hand prüfen, dann Cron
 
-Ein Tag, eine Kamera, vom Menschen ausgeführt. Auf dem VPS im Projektordner (die Variablen setzt
-sonst `scripts/timelapse-nightly-staged`):
+Ein Tag, eine Kamera, vom Menschen ausgeführt. Auf dem VPS im Projektordner:
 
 ```bash
-export TIMELAPSE_STORAGE_BOX=storagebox TIMELAPSE_CAMERA_ROOT=$PWD/temp/camera-staging
-.venv/bin/python3 scripts/stage-frames.py --list-cameras
-.venv/bin/python3 scripts/stage-frames.py --cameras <kamera> --target-date <JJJJ-MM-TT>
+export TIMELAPSE_STORAGE_BOX=storagebox
+.venv/bin/python3 -m src.camera_list
 .venv/bin/python3 -m src.main --jobs daily --target-date <JJJJ-MM-TT> --cameras <kamera>
-.venv/bin/python3 scripts/stage-frames.py --clean-only
 ```
+
+`src.camera_list` listet die Kameras und schreibt die Kameraliste der Weboberfläche. `src.main` holt
+die Bilder des Tages per rsync nach `temp/frame-cache/` und räumt sie nach der Kamera wieder weg.
+Danach als Gesamtprobe den ganzen Nachtlauf einmal von Hand starten
+([Handbuch](handbuch.md#nächtlicher-lauf)). Der Lauf vom 29.10.2026 ging mit 16 Kameras ohne Fehler
+durch und dauerte rund 41 Minuten (Preset `medium`, zwei Kerne).
 
 Einen Tag wählen, zu dem der Pi schon ein Video hat, und beide vergleichen. Historische Läufe mit
 `--target-date` landen getrennt von den automatischen Videos (siehe [betrieb.md](betrieb.md)).
-Erst wenn das passt: Pi-Cron entfernen, dann die Zeile aus `./install.sh cron_hint` in
+Erst wenn das passt: Pi-Cron entfernen, dann die Zeilen aus `./install.sh cron_hint` in
 `crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts laufen.
+
+## Code auf den VPS bringen (solange er nicht pullen kann)
+
+Das Repository ist privat und der VPS hat keinen Deploy-Schlüssel, ein `git pull` geht also noch
+nicht. Bis das gelöst ist, kopiert man geänderte Dateien vom Mac aus, im Projektordner dort:
+
+```bash
+git diff --name-only --diff-filter=d <stand> | rsync -avn --no-perms --files-from=- ./ <vps>:timelapse/
+```
+
+`<stand>` ist der Commit, dessen Dateien schon auf dem VPS liegen. Erst die Probe mit `-n`, dann
+dieselbe Zeile ohne `n`. Die Option `--no-perms` ist wichtig: Ohne sie setzt rsync die Rechte der
+Mac-Ordner auf die Ordner des VPS und macht `./install.sh permissions` rückgängig, `www-data` könnte
+dann `src/` lesen. Neue Ordner entstehen mit den Standardrechten des VPS; danach einmal
+`./install.sh permissions`. Wurden Dateien verschoben, die Verschiebung zuerst auf dem VPS mit `mv`
+nachvollziehen, sonst bleiben veraltete Kopien liegen.
 
 ## Bekannte Lücken (nach dem Umzug klären)
 
@@ -147,8 +167,9 @@ Erst wenn das passt: Pi-Cron entfernen, dann die Zeile aus `./install.sh cron_hi
 - **Port 80:** Bei `WEB_PORT` ungleich 80 lauscht Apache weiter auf 80 (Debian-Standard in
   `ports.conf`) und zeigt dort die Debian-Standardseite. Auf dem VPS sperrt das die Hetzner-Firewall.
   Auf einem Host ohne Firewall `Listen 80` in `/etc/apache2/ports.conf` auskommentieren.
-- **Web-Oberfläche startet Jobs:** `timelapse-web-trigger` liest Bilder aus `/mnt/cameras`. Das gibt es
-  auf dem VPS nicht, ein per Weboberfläche gestarteter Lauf findet also keine Bilder.
-- **Flagger und 5-Minuten-Verpixelung** sind nicht in der Cron-Zeile; für einen Host ohne Mount nicht geprüft.
-- **x264-Preset:** Die Cron-Zeile setzt `medium` (FFmpeg-Standard, wie auf dem Pi). Der VPS hat 2 Kerne;
-  Dauer und Dateigröße messen.
+- **Flagger und 5-Minuten-Verpixelung:** Der Flagger hat eine eigene Cron-Zeile (`./install.sh cron_hint`),
+  die Uhrzeit (Vorschlag 04:00) ist nach der gemessenen Dauer des Nachtlaufs zu prüfen. Die
+  5-Minuten-Verpixelung ist nicht in Cron.
+- **x264-Preset und Dateigröße:** Die Cron-Zeile setzt `medium` (FFmpeg-Standard, wie auf dem Pi); der
+  Nachtlauf dauerte damit rund 41 Minuten. Die Dateigröße ist noch zu messen; ein höherer CRF-Wert ist
+  geplant ([Plan](plans/2026-10-30-video-crf.md)).
