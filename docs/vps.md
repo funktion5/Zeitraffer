@@ -170,6 +170,7 @@ nachvollziehen, sonst bleiben veraltete Kopien liegen.
 - **Flagger und 5-Minuten-Verpixelung:** Der Flagger hat eine eigene Cron-Zeile (`./install.sh cron_hint`),
   die Uhrzeit (Vorschlag 04:00) ist nach der gemessenen Dauer des Nachtlaufs zu prüfen. Die
   5-Minuten-Verpixelung ist nicht in Cron.
-- **x264-Preset und Dateigröße:** Die Cron-Zeile setzt `medium` (FFmpeg-Standard, wie auf dem Pi); der
-  Nachtlauf dauerte damit rund 41 Minuten. Die Dateigröße ist noch zu messen; ein höherer CRF-Wert ist
-  geplant ([Plan](plans/2026-10-30-video-crf.md)).
+- **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard, wie auf
+  dem Pi); der Nachtlauf dauerte damit rund 41 Minuten. Die Qualität steht seit dem 30.10.2026 auf CRF 28
+  (`timelapse.crf` in `config/config.json`); Dateigröße und Laufzeit damit sind auf dem VPS noch zu
+  messen ([Plan](plans/2026-10-30-video-crf.md)).

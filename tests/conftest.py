@@ -6,6 +6,7 @@ import pytest
 os.environ["TIMELAPSE_DISABLE_FILE_LOGGING"] = "1"
 # A preset set on the machine running the tests (the web server) must not change expected commands.
 os.environ.pop("TIMELAPSE_X264_PRESET", None)
+os.environ.pop("TIMELAPSE_X264_CRF", None)
 # Without TIMELAPSE_CAMERA_ROOT the box variable now selects the ssh source, so a box exported in
 # the shell must never turn a test that forgot to patch the source into a run against the real box.
 os.environ.pop("TIMELAPSE_STORAGE_BOX", None)

@@ -61,6 +61,7 @@ EXPECTED_TIMELAPSE_KEYS = {
 	"monthly_framerate",
 	"yearly_framerate",
 	"ffmpeg_threads",
+	"crf",
 }
 
 
@@ -165,6 +166,11 @@ def assert_valid_config_structure(config: dict) -> None:
 		timelapse["ffmpeg_threads"],
 		int,
 	)
+
+	# x264 quality: a whole number from 0 (lossless) to 51; lower is better and larger.
+	assert isinstance(timelapse["crf"], int)
+	assert not isinstance(timelapse["crf"], bool)
+	assert 0 <= timelapse["crf"] <= 51
 
 	privacy = config["privacy"]
 

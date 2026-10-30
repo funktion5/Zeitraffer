@@ -353,7 +353,8 @@ Beispiel:
     "daily_framerate": 10,
     "monthly_framerate": 20,
     "yearly_framerate": 20,
-    "ffmpeg_threads": 2
+    "ffmpeg_threads": 2,
+    "crf": 28
   },
   "privacy": {
     "blur_cameras": ["…"],
@@ -404,8 +405,10 @@ bis zur Fensterlänge (30 bzw. 365, mit 29. Februar im Zeitraum 366).
 `image_scan_stall_timeout_seconds` (Sekunden): Meldet der Bildscan einer Kamera so lange keinen
 Fortschritt, wird er abgebrochen und die Kamera übersprungen. Gemessen wird Stillstand, nicht
 die Gesamtdauer. `log_retention_days` (Tage): ältere Logdateien werden beim Start gelöscht.
-`timelapse.*_framerate` (Bilder pro Sekunde im Video; Weekly nutzt den Daily-Wert) und
-`timelapse.ffmpeg_threads` (Threads pro FFmpeg-Aufruf) steuern die Videoerstellung.
+`timelapse.*_framerate` (Bilder pro Sekunde im Video; Weekly nutzt den Daily-Wert),
+`timelapse.ffmpeg_threads` (Threads pro FFmpeg-Aufruf) und `timelapse.crf` (x264-Qualität,
+ganze Zahl von 0 bis 51; niedriger ist besser und größer, höher ist kleiner; Standard 28)
+steuern die Videoerstellung.
 
 `privacy` steuert die Verpixelung von Personen und Kennzeichen: `detector_command` ist die
 Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
@@ -439,6 +442,7 @@ braucht es nur `TIMELAPSE_STORAGE_BOX`; die Cron-Zeilen setzen sie.
 | `TIMELAPSE_STORAGE_BOX` | keiner | Name des Eintrags der Storage Box in `~/.ssh/config`, optional mit Basisordner: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen unter dem Alias, nie im Repository. Ohne ihn und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Lauf mit einer Fehlermeldung ab |
 | `TIMELAPSE_FRAME_SOURCE` | automatisch | Woher die Jobs die Kamerabilder lesen: `local` (Ordner aus `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Ohne Angabe gilt `local`, wenn `TIMELAPSE_CAMERA_ROOT` gesetzt ist, sonst `ssh`, wenn `TIMELAPSE_STORAGE_BOX` gesetzt ist |
 | `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
+| `TIMELAPSE_X264_CRF` | `timelapse.crf` aus `config/config.json` (28) | x264-Qualität für einen Lauf (ganze Zahl 0 bis 51; niedriger = besser und größer). Ein ungültiger Wert bricht das Encodieren mit einer Fehlermeldung ab |
 | `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
 | `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |
 

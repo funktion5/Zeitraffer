@@ -17,6 +17,7 @@ from src.video import (
 	create_timelapse,
 	cleanup_automatic_video_retention,
 	get_video_path,
+	x264_crf_arguments,
 	x264_preset_arguments,
 )
 
@@ -215,6 +216,9 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 
 	temp_directory.mkdir()
 
+	# The command carries the configured quality; pin it so the test does not follow config.json.
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+
 	monkeypatch.setattr(
 		video_module,
 		"VIDEO_ROOT",
@@ -321,6 +325,8 @@ def test_create_image_timelapse_uses_prefixed_output_path(
 			str(temp_directory / "frame_%06d.jpg"),
 			"-c:v",
 			"libx264",
+			"-crf",
+			"28",
 			"-threads",
 			"2",
 			"-pix_fmt",
@@ -357,16 +363,73 @@ def test_unknown_x264_preset_is_refused(monkeypatch):
 		x264_preset_arguments()
 
 
-# The preset goes right after the codec, and without it the command stays exactly as before.
+# The quality (CRF) comes from config.json; an environment variable overrides it for one run.
+def test_x264_crf_comes_from_the_config_by_default(monkeypatch):
+	monkeypatch.delenv("TIMELAPSE_X264_CRF", raising=False)
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+
+	assert x264_crf_arguments() == ["-crf", "28"]
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_blank_x264_crf_counts_as_unset(monkeypatch, value):
+	monkeypatch.setenv("TIMELAPSE_X264_CRF", value)
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+
+	assert x264_crf_arguments() == ["-crf", "28"]
+
+
 @pytest.mark.parametrize(
-	("preset", "expected"),
-	[(None, []), ("ultrafast", ["-preset", "ultrafast"])],
+	("value", "expected"),
+	[("26", "26"), (" 23 ", "23"), ("0", "0"), ("51", "51")],
 )
-def test_image_timelapse_command_carries_the_preset(tmp_path: Path, monkeypatch, preset, expected):
+def test_x264_crf_from_the_environment_wins_over_the_config(monkeypatch, value, expected):
+	monkeypatch.setenv("TIMELAPSE_X264_CRF", value)
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+
+	assert x264_crf_arguments() == ["-crf", expected]
+
+
+# A typo must stop the encode instead of silently producing a different video.
+@pytest.mark.parametrize("value", ["abc", "-1", "52", "23.5", "028", "2 8", "1e1"])
+def test_invalid_x264_crf_in_the_environment_is_refused(monkeypatch, value):
+	monkeypatch.setenv("TIMELAPSE_X264_CRF", value)
+
+	with pytest.raises(ValueError, match="TIMELAPSE_X264_CRF"):
+		x264_crf_arguments()
+
+
+@pytest.mark.parametrize("value", [99, -1, 23.5, "28", True, None])
+def test_invalid_crf_in_the_config_is_refused(monkeypatch, value):
+	monkeypatch.delenv("TIMELAPSE_X264_CRF", raising=False)
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", value)
+
+	with pytest.raises(ValueError, match="timelapse.crf"):
+		x264_crf_arguments()
+
+
+# The command is: codec, then the preset (only when one is set), then the quality, then the threads.
+@pytest.mark.parametrize(
+	("preset", "expected", "crf_environment", "crf"),
+	[
+		(None, [], None, "28"),
+		("ultrafast", ["-preset", "ultrafast"], "26", "26"),
+	],
+)
+def test_image_timelapse_command_carries_the_preset_and_the_crf(
+	tmp_path: Path, monkeypatch, preset, expected, crf_environment, crf
+):
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+
 	if preset is None:
 		monkeypatch.delenv("TIMELAPSE_X264_PRESET", raising=False)
 	else:
 		monkeypatch.setenv("TIMELAPSE_X264_PRESET", preset)
+
+	if crf_environment is None:
+		monkeypatch.delenv("TIMELAPSE_X264_CRF", raising=False)
+	else:
+		monkeypatch.setenv("TIMELAPSE_X264_CRF", crf_environment)
 
 	captured = {}
 
@@ -388,9 +451,11 @@ def test_image_timelapse_command_carries_the_preset(tmp_path: Path, monkeypatch,
 
 	arguments = captured["arguments"]
 	codec_index = arguments.index("libx264")
+	after_preset = codec_index + 1 + len(expected)
 
-	assert arguments[codec_index + 1 : codec_index + 1 + len(expected)] == expected
-	assert arguments[codec_index + 1 + len(expected)] == "-threads"
+	assert arguments[codec_index + 1 : after_preset] == expected
+	assert arguments[after_preset : after_preset + 2] == ["-crf", crf]
+	assert arguments[after_preset + 2] == "-threads"
 
 
 # A failed image timelapse must preserve the existing working output.

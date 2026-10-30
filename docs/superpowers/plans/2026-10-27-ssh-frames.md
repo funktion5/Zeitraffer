@@ -1,5 +1,11 @@
 # Frames over ssh: dropping the mount, Implementation Plan
 
+> **Status 2026-10-30: finished.** Tasks 1 to 31 are done. Deviations: in Task 28 an explicitly set
+> `TIMELAPSE_CAMERA_ROOT` wins over a set `TIMELAPSE_STORAGE_BOX` (the NAS tools set only the folder);
+> Tasks 29 and 31 moved the retired files into `archive/` instead of deleting them; Task 30 (docs) was
+> done in four steps. A fresh review of Tasks 28 to 30 led to two small fix tasks. What is left is the
+> cron switchover and the open items in `docs/vps.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Every job and tool reads camera frames over ssh and rsync instead of the `/mnt/cameras` mount, one small feature at a time.

@@ -40,7 +40,8 @@
     "daily_framerate": 10,
     "monthly_framerate": 20,
     "yearly_framerate": 20,
-    "ffmpeg_threads": 2
+    "ffmpeg_threads": 2,
+    "crf": 28
   },
   "privacy": {
     "blur_cameras": [

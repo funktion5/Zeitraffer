@@ -1,4 +1,5 @@
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -56,6 +57,37 @@ def x264_preset_arguments() -> list[str]:
 		raise ValueError(f"{X264_PRESET_ENV} must be one of {', '.join(X264_PRESETS)}: {preset!r}")
 
 	return ["-preset", preset]
+
+
+# The x264 quality (CRF): a whole number from 0 to 51; lower is better and larger. config.json
+# holds the default, TIMELAPSE_X264_CRF overrides it for one run. Read at call time, like the
+# preset.
+X264_CRF_ENV = "TIMELAPSE_X264_CRF"
+X264_CRF_MAX = 51
+
+
+def x264_crf_arguments() -> list[str]:
+	configured = os.environ.get(X264_CRF_ENV, "").strip()
+
+	if configured:
+		# No sign, no decimals, no leading zero: anything else is a typo, not a quality.
+		if not re.fullmatch(r"0|[1-9][0-9]?", configured):
+			raise ValueError(
+				f"{X264_CRF_ENV} must be a whole number from 0 to {X264_CRF_MAX}: {configured!r}"
+			)
+
+		crf = int(configured)
+		source = X264_CRF_ENV
+
+	else:
+		crf = CONFIG["timelapse"]["crf"]
+		source = "timelapse.crf"
+
+	# A JSON true is an int in Python and must not pass as 1.
+	if not isinstance(crf, int) or isinstance(crf, bool) or not 0 <= crf <= X264_CRF_MAX:
+		raise ValueError(f"{source} must be a whole number from 0 to {X264_CRF_MAX}: {crf!r}")
+
+	return ["-crf", str(crf)]
 
 
 # Run FFmpeg, record peak resource use, and retain failure diagnostics.
@@ -360,6 +392,7 @@ def create_image_timelapse(
 			"-c:v",
 			"libx264",
 			*x264_preset_arguments(),
+			*x264_crf_arguments(),
 			"-threads",
 			str(FFMPEG_THREADS),
 			"-pix_fmt",
