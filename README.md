@@ -5,9 +5,8 @@ den ganzen Tag Bilder auf einen Online-Speicher (die „Storage Box“). Jede Na
 Programm diese Bilder, wählt die passenden aus und setzt sie zu Videos zusammen: ein Video pro
 Kamera für den Vortag, die letzte Woche, die letzten 30 Tage und das letzte Jahr.
 
-Das Programm läuft derzeit auf einem Raspberry Pi im Büro. Über eine Weboberfläche im
-Büronetz lassen sich zusätzlich Videos für beliebige vergangene Tage erstellen, ansehen und
-herunterladen.
+Das Programm läuft auf einem Linux-Server. Über eine Weboberfläche lassen sich zusätzlich Videos
+für beliebige vergangene Tage erstellen, ansehen und herunterladen.
 
 **Die Originalbilder der Kameras werden dabei niemals verändert.**
 
@@ -22,7 +21,7 @@ verlinkt ist.
 - [Installation](#installation)
   - [Systempakete installieren](#systempakete-installieren)
   - [Python-Umgebung einrichten](#python-umgebung-einrichten)
-  - [SSHFS-Mount installieren](#sshfs-mount-installieren)
+  - [Zugriff auf die Storage Box](#zugriff-auf-die-storage-box)
   - [Cron installieren oder prüfen](#cron-installieren-oder-prüfen)
   - [Weboberfläche einrichten](#weboberfläche-einrichten)
 - [Konfiguration](#konfiguration)
@@ -34,7 +33,7 @@ verlinkt ist.
 - [WordPress-Seite](#wordpress-seite)
 - [Kommandozeile](#kommandozeile)
 - [Werkzeuge](#werkzeuge)
-- [Raspberry Pi](#raspberry-pi)
+- [Archiv](#archiv)
 - [Technik für Entwickler](#technik-für-entwickler)
 - [Aktueller Stand](#aktueller-stand)
 - [Noch offen](#noch-offen)
@@ -54,24 +53,18 @@ Platzhalter in den folgenden Beispielen:
 | `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
 | `<login>` | Benutzername der Apache-Basisauthentifizierung |
 
-Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host (VPS, Pi oder anderer Rechner) übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte, ohne SSHFS-Mount (die Bilder werden pro Lauf von der Storage Box geholt). Ablauf und Vorbereitung: [Umzug auf den VPS](docs/vps.md). `migrate.sh` richtet nur noch einen Pi mit einem Backup aus der Zeit vor dem 27.10.2026 ein; siehe [Neuinstallation des Raspberry Pi](docs/raspberry-pi.md#neuinstallation-des-raspberry-pi).
+Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Umzug auf den VPS](docs/vps.md).
 
 ### Systempakete installieren
 
-Dieselbe Paketliste installiert auch `migrate.sh` (Schritt `packages`):
+`install.sh` installiert dieselbe Paketliste (Schritt `packages`):
 
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
   git python3 python3-venv python3-pip \
-  ffmpeg sshfs openssl rsync \
+  ffmpeg openssl rsync curl cron \
   apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
-```
-
-Weil der SSHFS-Mount `allow_other` verwendet, muss in `/etc/fuse.conf` die Zeile `user_allow_other` aktiv sein:
-
-```bash
-grep -qx user_allow_other /etc/fuse.conf || echo user_allow_other | sudo tee -a /etc/fuse.conf
 ```
 
 ### Python-Umgebung einrichten
@@ -103,60 +96,39 @@ benötigt. Es ist zu groß für das Repository und wird einmal heruntergeladen; 
 [Verpixelung – Installation](docs/verpixelung.md#installation). Ohne Modell laufen alle anderen
 Funktionen normal.
 
-### SSHFS-Mount installieren
+### Zugriff auf die Storage Box
 
-Die Originalbilder werden unter `/mnt/cameras` bereitgestellt. Der systemd-Service mountet den entfernten Storage mit SSHFS ausschließlich lesend (`-o ro`). Die Option `allow_other` erlaubt dem Apache-Benutzer `www-data`, den Mount im Rahmen der normalen Dateirechte zu lesen. Sie erteilt keine Schreibrechte. Vor dem Mount prüft das Preflight-Skript, ob bereits ein erreichbarer Mount existiert oder ein nicht erreichbarer FUSE-Mount bereinigt werden muss.
-
-Das Repository enthält dafür:
-
-- `systemd/cameras-sshfs.service`
-- `scripts/cameras-sshfs-preflight`
-- `config/mount.env.example`
+Die Originalbilder liegen auf der Storage Box. Die Zeitraffer-Jobs lesen sie nur: Sie holen die für
+einen Lauf nötigen Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`, der nach
+jeder Kamera wieder geleert wird. Es gibt keinen eingebundenen Ordner.
 
 Voraussetzungen:
 
-- `sshfs` und `fusermount3` (Paket `fuse3`, wird als Abhängigkeit von `sshfs` installiert)
-- Mountpoint `/mnt/cameras` existiert
-- SSH-Schlüssel für die Storage Box im Konto `<benutzer>`; der Pfad steht in
-  `/etc/timelapse/mount.env` (`REMOTE_SSH_KEY`)
-- passender `known_hosts`-Eintrag für den Storage-Host, weil der Service `StrictHostKeyChecking=yes` verwendet
-- `user_allow_other` in `/etc/fuse.conf` (siehe [Systempakete installieren](#systempakete-installieren))
-
-Repository-Dateien installieren:
-
-```bash
-sudo install -m 755 scripts/cameras-sshfs-preflight /usr/local/sbin/cameras-sshfs-preflight
-sed -e "s/@RUN_USER@/$(id -un)/g" -e "s/@RUN_GROUP@/$(id -gn)/g" systemd/cameras-sshfs.service \
-  | sudo tee /etc/systemd/system/cameras-sshfs.service >/dev/null
-sudo install -d -m 755 /etc/timelapse
-sudo install -m 600 config/mount.env.example /etc/timelapse/mount.env
-```
-
-Die Unit enthält statt des Kontonamens die Platzhalter `@RUN_USER@` und `@RUN_GROUP@`; der
-`sed`-Befehl setzt das eigene Konto ein (als `<benutzer>` ausführen, nicht als root). Ohne diesen
-Schritt startet systemd den Service nicht. `migrate.sh` erledigt das automatisch.
-
-Danach `/etc/timelapse/mount.env` mit den produktiven Verbindungswerten befüllen. Die Datei liegt außerhalb des Repositories und wird nicht versioniert. Erwartete Variablen:
+- ein SSH-Schlüssel nur für die Storage Box im Konto `<benutzer>`, ohne Passphrase (Cron braucht
+  ihn ohne Eingabe)
+- ein Eintrag in `~/.ssh/config` mit Benutzer, Host, Port und Schlüssel; `install.sh` erwartet den
+  Namen `storagebox`:
 
 ```text
-REMOTE_USER=
-REMOTE_HOST=
-REMOTE_PORT=
-REMOTE_SSH_KEY=
+Host storagebox
+    HostName <box-host>
+    User <box-user>
+    Port <box-port>
+    IdentityFile ~/.ssh/<schluessel>
+    IdentitiesOnly yes
 ```
 
-Service aktivieren:
+- der öffentliche Schlüssel auf der Box und der Host-Fingerabdruck einmal bestätigt (Anleitung:
+  [Umzug auf den VPS](docs/vps.md))
+
+Benutzer, Host, Port und Schlüssel stehen nur in `~/.ssh/config`, nie im Repository. Das Programm
+kennt nur den Namen des Eintrags, über die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (siehe
+[Umgebungsvariablen](#umgebungsvariablen)).
+
+Verbindung prüfen (listet die Kameras und schreibt die Kameraliste der Weboberfläche):
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now cameras-sshfs.service
-```
-
-Status und Mount prüfen:
-
-```bash
-systemctl status cameras-sshfs.service
-mountpoint /mnt/cameras
+TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list
 ```
 
 ### Cron installieren oder prüfen
@@ -231,9 +203,9 @@ sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
 
-Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Raspberry Pi geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
+Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Servers geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
 
-Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Der SSHFS-Mount nutzt `allow_other`, und die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
+Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
 Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
 
@@ -324,10 +296,10 @@ Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut
 
 `logs/`, `temp/` und `reports/` werden mit Modus `770` vorab angelegt, damit die Python-Jobs sie später nicht weltlesbar erzeugen.
 
-Die Rechte setzt der Schritt `permissions` von `migrate.sh`. Er ist wiederholbar und kann jederzeit einzeln ausgeführt werden, etwa nachdem Videos von Hand kopiert wurden:
+Die Rechte setzt der Schritt `permissions` von `install.sh`. Er ist wiederholbar und kann jederzeit einzeln ausgeführt werden, etwa nachdem Videos von Hand kopiert wurden:
 
 ```bash
-~/timelapse/migrate.sh permissions verify
+~/timelapse/install.sh permissions verify
 ```
 
 Warum das nötig ist: Debian 13 legt Home-Verzeichnisse mit Modus `0700` an (`HOME_MODE` in `/etc/login.defs`), und `git clone` erzeugt alle Dateien weltlesbar. Ohne diesen Schritt antwortet Apache mit `403 Forbidden`, und im Fehlerlog steht `AH00035: ... search permissions are missing on a component of the path`.
@@ -458,14 +430,14 @@ Die Tests prüfen unter anderem:
 
 ### Umgebungsvariablen
 
-Für besondere Hosts lassen sich einige Pfade und Einstellungen über Umgebungsvariablen setzen. Im
-normalen Betrieb auf dem Pi ist keine davon nötig.
+Pfade und Einstellungen lassen sich über Umgebungsvariablen setzen. Für den normalen Betrieb
+braucht es nur `TIMELAPSE_STORAGE_BOX`; die Cron-Zeilen setzen sie.
 
 | Variable | Standard | Wirkung |
 |---|---|---|
-| `TIMELAPSE_CAMERA_ROOT` | `/mnt/cameras` | Ordner mit den Kamerabildern, z. B. ein Staging-Ordner statt des SSHFS-Mounts |
-| `TIMELAPSE_STORAGE_BOX` | aus dem SSHFS-Mount | Storage Box für Speicherfilter, Verpixelung und Staging auf Hosts ohne Mount: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen in `~/.ssh/config` unter dem Alias, nie im Repository |
-| `TIMELAPSE_FRAME_SOURCE` | `local` | Woher die Jobs die Kamerabilder lesen: `local` (Ordner, siehe `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box aus `TIMELAPSE_STORAGE_BOX`, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Im Aufbau: `ssh` kann bisher nur listen, das Holen der Bilder folgt |
+| `TIMELAPSE_CAMERA_ROOT` | keiner | Ordner mit den Kamerabildern statt der Storage Box, z. B. ein entpacktes NAS-Archiv ([docs/nas.md](docs/nas.md)). Ist er gesetzt, liest das Programm von dort |
+| `TIMELAPSE_STORAGE_BOX` | keiner | Name des Eintrags der Storage Box in `~/.ssh/config`, optional mit Basisordner: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen unter dem Alias, nie im Repository. Ohne ihn und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Lauf mit einer Fehlermeldung ab |
+| `TIMELAPSE_FRAME_SOURCE` | automatisch | Woher die Jobs die Kamerabilder lesen: `local` (Ordner aus `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Ohne Angabe gilt `local`, wenn `TIMELAPSE_CAMERA_ROOT` gesetzt ist, sonst `ssh`, wenn `TIMELAPSE_STORAGE_BOX` gesetzt ist |
 | `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
 | `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
 | `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |
@@ -478,7 +450,7 @@ Tests die Web-Wrapper umleiten; `sudo` setzt die Umgebung im Betrieb ohnehin zur
 
 ## Betrieb im Alltag
 
-Im Alltag muss niemand etwas tun. Jede Nacht um 2 Uhr startet der Raspberry Pi den Lauf von
+Im Alltag muss niemand etwas tun. Jede Nacht um 2 Uhr startet der Server den Lauf von
 selbst und erstellt für jede Kamera neu:
 
 - ein **Tagesvideo** vom Vortag, nur mit den Bildern zwischen Sonnenaufgang und Sonnenuntergang,
@@ -490,7 +462,8 @@ Aufbewahrt werden die Tagesvideos der letzten 7 Tage und jeweils das neueste Woc
 Jahresvideo; ältere werden automatisch gelöscht. Fehlen einer Kamera zu viele Tage, etwa weil sie
 ausgefallen war, wird ihr Monats- oder Jahresvideo in dieser Nacht übersprungen.
 
-Fällt der Strom während eines Laufs aus, wiederholt der Pi den Lauf nach dem Neustart von selbst.
+Eine automatische Wiederholung nach einem Neustart des Servers gibt es nicht; ein abgebrochener Lauf
+lässt sich von Hand wiederholen.
 Jeder Lauf schreibt ein Protokoll, in dem sich Fehler nachlesen lassen.
 
 Details zu Zeitplan, Videotypen, Ablage, Aufbewahrung und Protokollen: [docs/betrieb.md](docs/betrieb.md).
@@ -499,7 +472,7 @@ Details zu Zeitplan, Videotypen, Ablage, Aufbewahrung und Protokollen: [docs/bet
 
 ## Weboberfläche
 
-Die Weboberfläche ist im Büronetz im Browser erreichbar (Adresse des Raspberry Pi, mit
+Die Weboberfläche ist im Browser erreichbar (Adresse des Servers, mit
 Benutzername und Passwort). Dort lässt sich:
 
 - für eine Kamera ein **Video für einen vergangenen Zeitraum** erstellen: Tag, Woche, Monat oder
@@ -575,7 +548,7 @@ Details zu Einrichtung, Entwicklung und Fehlerbehebung: [docs/wordpress.md](docs
 
 ## Kommandozeile
 
-Alles, was die Weboberfläche kann, und noch etwas mehr, lässt sich auch direkt auf dem Pi per
+Alles, was die Weboberfläche kann, und noch etwas mehr, lässt sich auch direkt auf dem Server per
 Befehl starten. Das ist für Technikerinnen und Techniker gedacht, etwa um einen Lauf zu wiederholen:
 
 ```bash
@@ -600,34 +573,17 @@ Neben dem nächtlichen Lauf gibt es Hilfsprogramme, die bei Bedarf von Hand gest
   fehlen.
 - **NAS-Archiv:** holt Bilder vergangener Jahre aus dem Archiv auf dem NAS, um damit Videos zu
   erstellen.
-- **Staging:** ein Weg für einen Server, der den Online-Speicher nicht einbinden kann. Er kopiert
-  die nötigen Bilder vorher herüber. Vorhanden, derzeit nicht im Einsatz.
 
-Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill, Staging) und
+Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill) und
 [docs/nas.md](docs/nas.md) (NAS-Archiv).
 
 ---
 
-## Raspberry Pi
+## Archiv
 
-Das Programm läuft derzeit auf einem Raspberry Pi im Büro. Damit er nach einem Defekt, etwa einer
-kaputten Speicherkarte, schnell wieder läuft:
-
-- **Sicherung:** Von einem eigenen Rechner (Mac, Linux oder Windows) aus holt ein Skript alles, was
-  nicht im Code steckt: Zugangsdaten (verschlüsselt mit einer Passphrase), Einstellungen,
-  Erkennungsmodelle und Videos.
-- **Wiederherstellung:** Ein zweites Skript richtet einen frisch installierten Pi mit dieser
-  Sicherung wieder vollständig ein.
-- **Absturzprotokoll:** Der Pi schreibt laufend auf, wie viel Speicher und Rechenleistung er
-  braucht, damit sich unerwartete Neustarts im Nachhinein erklären lassen.
-
-Der Umzug auf einen VPS ist vorbereitet (Stand 27.10.2026: installiert und geprüft, der Handtest
-und die Cron-Umstellung stehen aus); danach wird der Pi stillgelegt. Dafür gibt es `install.sh` und
-ein einmaliges Backup, siehe [docs/vps.md](docs/vps.md). `backup.sh` sichert seitdem nur noch die
-Anmeldedaten der Weboberfläche (verschlüsselt) sowie Einstellungen, Modelle, Zustand und Videos; SSH-Schlüssel
-sind nicht mehr dabei.
-
-Details zu Neuinstallation und Absturzprotokoll des Pi: [docs/raspberry-pi.md](docs/raspberry-pi.md).
+Der frühere Betrieb auf dem Raspberry Pi (SSHFS-Mount, Neuinstallation, Absturzprotokoll), der
+Container-Test mit Docker und das frühere Kopieren der Bilder vor dem Lauf sind stillgelegt und
+liegen im Ordner [`archive/`](archive/). Übersicht: [archive/README.md](archive/README.md).
 
 ---
 
@@ -652,7 +608,7 @@ Fertig und im täglichen Einsatz:
   nächtlichen Videos ansehen und herunterladen
 - Highlights-Flagger jede Nacht nach den Videos, Highlights-Seite mit Großansicht, Download und
   Löschen
-- automatische Wiederholung nach Stromausfall, Protokolle, Aufräumen alter Videos
+- Protokolle, Aufräumen alter Videos
 - Erkennung leerer, abgeschnittener und doppelter Bilder
 - Installationsskript `install.sh` für einen frischen Debian- oder Ubuntu-Host
 - Speicherfilter, Yearly-Backfill und Werkzeuge für das NAS-Archiv
@@ -662,7 +618,7 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
 - WordPress-Plugin (auf dem Testsystem)
-- Betrieb auf dem VPS: installiert und mit `install.sh verify` geprüft, Handtest und Cron stehen aus
+- Betrieb auf dem VPS: installiert, alle Job-Arten und ein voller Nachtlauf von Hand geprüft; Cron steht aus
 
 ---
 
@@ -670,8 +626,8 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 - die fertigen Videos automatisch auf die echte Website bringen
 - Verpixelung neuer Bilder laufend (alle paar Minuten) starten
-- VPS: Handtest mit einer Kamera, Cron umstellen, HTTPS (Zertifikat per DNS-Prüfung bei Hetzner),
-  per Weboberfläche gestartete Jobs (sie lesen noch aus `/mnt/cameras`); Liste in [docs/vps.md](docs/vps.md)
+- VPS: Cron einrichten (die Cron-Zeilen des Pi vorher entfernen), HTTPS (Zertifikat per DNS-Prüfung
+  bei Hetzner); Liste in [docs/vps.md](docs/vps.md)
 
 ---
 
@@ -690,12 +646,11 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [verpixelung-box.md](docs/verpixelung-box.md) | Verpixelung direkt auf dem Online-Speicher |
 | [wordpress.md](docs/wordpress.md) | das WordPress-Plugin |
 | [cli.md](docs/cli.md) | alle Befehle und Optionen |
-| [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill, Staging für Hosts ohne Mount |
+| [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill |
 | [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
 | [vps.md](docs/vps.md) | Umzug auf einen VPS: Backup, `install.sh`, Handtest, bekannte Lücken |
-| [raspberry-pi.md](docs/raspberry-pi.md) | Neuinstallation des Pi, Absturzprotokoll |
-| [docker.md](docs/docker.md) | Versuch mit Docker (derzeit nicht im Einsatz) |
 | [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
+| [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
 | [youtube-description-prompt.md](docs/youtube-description-prompt.md), [youtube-texts.md](docs/youtube-texts.md) | Texte für YouTube-Beschreibungen |
 
 Pläne und Entwürfe für neue Funktionen liegen in `docs/plans/` und `docs/superpowers/`.

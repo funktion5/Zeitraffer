@@ -9,8 +9,8 @@
 #        config.json            optional; a local edit made on the old host
 # The repo must live in ~/timelapse: the installed web wrappers look there.
 #
-# Frames are staged by rsync from the Storage Box (scripts/timelapse-nightly-staged), so there is
-# no SSHFS mount, no /mnt/cameras and no @reboot recovery here.
+# The jobs read the frames over ssh from the Storage Box (a FrameSource in src/images.py), so there
+# is no SSHFS mount, no /mnt/cameras and no @reboot recovery here.
 #
 # Usage:
 #   ./install.sh                  run every step in order
@@ -368,13 +368,17 @@ step_cron_hint() {
 Paste these into 'crontab -e' yourself, and only after the old host's cron lines are gone: the same
 job must never run on both hosts. Run each command once by hand first (docs/vps.md).
 
-# Blur the last 48 h on the Storage Box, then the staged nightly run (takes the run lock itself).
-# TIMELAPSE_X264_PRESET=medium is FFmpeg's default, i.e. what the old Pi produced; the wrapper would
-# otherwise fall back to ultrafast.
+# Blur the last 48 h on the Storage Box, then the nightly run. The run reads the frames over ssh
+# (no copy step) and takes the run lock itself. TIMELAPSE_X264_PRESET=medium is FFmpeg's default,
+# i.e. what the old Pi produced; the wrapper would otherwise fall back to ultrafast.
 0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged
 
-Not included: the highlights flagger (src.flagger.run) and the 5-minute live blur job; neither is
-checked for a host without /mnt/cameras yet.
+# The highlights flagger, on its own line so one job never blocks the other. It takes the same run
+# lock and skips the night when the nightly run still holds it, so the time has to be late enough.
+# 04:00 is a first guess: look at when the nightly run ends (logs/nightly/<run>/report.txt) and adjust.
+0 4 * * * cd ${PROJECT_ROOT} && TIMELAPSE_FRAME_SOURCE=ssh TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
+
+Not included: the 5-minute live blur job (docs/verpixelung-box.md).
 EOF
 }
 
