@@ -16,7 +16,9 @@ from src.video import (
 	create_temp_directory,
 	create_timelapse,
 	cleanup_automatic_video_retention,
+	frame_fit_arguments,
 	get_video_path,
+	jpeg_size,
 	x264_crf_arguments,
 	x264_preset_arguments,
 )
@@ -456,6 +458,135 @@ def test_image_timelapse_command_carries_the_preset_and_the_crf(
 	assert arguments[codec_index + 1 : after_preset] == expected
 	assert arguments[after_preset : after_preset + 2] == ["-crf", crf]
 	assert arguments[after_preset + 2] == "-threads"
+
+
+# A JPEG with only a header: start of image, one start-of-frame segment (baseline, three
+# components) and the end marker. That is all the size reader looks at.
+def jpeg_header(width: int, height: int) -> bytes:
+	components = b"\x01\x11\x00\x02\x11\x01\x03\x11\x01"
+
+	return (
+		b"\xff\xd8\xff\xc0"
+		+ (8 + len(components)).to_bytes(2, "big")
+		+ b"\x08"
+		+ height.to_bytes(2, "big")
+		+ width.to_bytes(2, "big")
+		+ b"\x03"
+		+ components
+		+ b"\xff\xd9"
+	)
+
+
+def write_frames(directory: Path, sizes: list[tuple[int, int]]) -> None:
+	directory.mkdir(parents=True, exist_ok=True)
+
+	for number, (width, height) in enumerate(sizes, start=1):
+		(directory / f"frame_{number:06d}.jpg").write_bytes(jpeg_header(width, height))
+
+
+@pytest.mark.parametrize("size", [(640, 480), (1920, 1080), (1280, 720)])
+def test_jpeg_size_reads_the_start_of_frame(tmp_path: Path, size):
+	image = tmp_path / "a.jpg"
+	image.write_bytes(jpeg_header(*size))
+
+	assert jpeg_size(image) == size
+
+
+# Many cameras embed a thumbnail (with its own start-of-frame) in an EXIF segment before the
+# real image: the reader must skip the segment by its length, not stop at the first marker pair.
+def test_jpeg_size_skips_an_embedded_thumbnail(tmp_path: Path):
+	thumbnail = jpeg_header(160, 120)
+	exif = b"Exif\x00\x00" + thumbnail
+	image = tmp_path / "a.jpg"
+	exif_segment = b"\xff\xe1" + (2 + len(exif)).to_bytes(2, "big") + exif
+	image.write_bytes(b"\xff\xd8" + exif_segment + jpeg_header(1920, 1080)[2:])
+
+	assert jpeg_size(image) == (1920, 1080)
+
+
+@pytest.mark.parametrize(
+	"content",
+	[b"", b"\xff\xd8", COMPLETE_JPEG, b"not a jpeg", jpeg_header(640, 480)[:6]],
+)
+def test_jpeg_size_is_none_without_a_readable_frame_header(tmp_path: Path, content: bytes):
+	image = tmp_path / "a.jpg"
+	image.write_bytes(content)
+
+	assert jpeg_size(image) is None
+
+
+def test_jpeg_size_is_none_for_a_missing_file(tmp_path: Path):
+	assert jpeg_size(tmp_path / "missing.jpg") is None
+
+
+# One format (every other camera): the command stays exactly as it was.
+@pytest.mark.parametrize("sizes", [[], [(640, 480)], [(640, 480)] * 3, [(1920, 1080)] * 2])
+def test_frames_of_one_size_get_no_fit_filter(tmp_path: Path, sizes):
+	write_frames(tmp_path / "temp", sizes)
+
+	assert frame_fit_arguments(tmp_path / "temp") == []
+
+
+# A camera that was exchanged: the old 4:3 and the new 16:9 frames are fitted into the largest
+# size with black bars instead of one being stretched to the other.
+def test_mixed_frame_sizes_are_fitted_into_the_largest(tmp_path: Path):
+	write_frames(tmp_path / "temp", [(640, 480), (640, 480), (1920, 1080), (1920, 1080)])
+
+	assert frame_fit_arguments(tmp_path / "temp") == [
+		"-vf",
+		"scale=1920:1080:force_original_aspect_ratio=decrease,"
+		"pad=1920:1080:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1",
+	]
+
+
+# yuv420p needs even sizes, so an odd largest size is rounded up.
+def test_the_fit_size_is_even(tmp_path: Path):
+	write_frames(tmp_path / "temp", [(641, 481), (321, 241)])
+
+	assert frame_fit_arguments(tmp_path / "temp")[1].startswith("scale=642:482:")
+
+
+# A frame whose size cannot be read must not decide anything.
+def test_unreadable_frames_are_ignored_when_choosing_the_size(tmp_path: Path):
+	write_frames(tmp_path / "temp", [(640, 480), (640, 480)])
+	(tmp_path / "temp" / "frame_000003.jpg").write_bytes(COMPLETE_JPEG)
+
+	assert frame_fit_arguments(tmp_path / "temp") == []
+
+
+@pytest.mark.parametrize(
+	("sizes", "has_filter"),
+	[([(640, 480)] * 2, False), ([(640, 480), (1920, 1080)], True)],
+)
+def test_image_timelapse_command_fits_mixed_frames(tmp_path: Path, monkeypatch, sizes, has_filter):
+	temp_directory = tmp_path / "temp"
+	write_frames(temp_directory, sizes)
+	monkeypatch.setitem(video_module.CONFIG["timelapse"], "crf", 28)
+	captured = {}
+
+	def fake_encode_video(ffmpeg_arguments, output_path, description):
+		captured["arguments"] = ffmpeg_arguments
+
+		return output_path
+
+	monkeypatch.setattr(video_module, "encode_video", fake_encode_video)
+	monkeypatch.setattr(video_module, "VIDEO_ROOT", tmp_path / "videos")
+
+	create_image_timelapse(
+		camera="Uferstrasse",
+		target_date=date(2026, 10, 29),
+		temp_directory=temp_directory,
+		timelapse_type="yearly",
+		framerate=20,
+	)
+
+	arguments = captured["arguments"]
+
+	assert ("-vf" in arguments) is has_filter
+
+	if has_filter:
+		# An output option: after the input, and before the pixel format.
+		assert arguments.index("-i") < arguments.index("-vf") < arguments.index("-pix_fmt")
 
 
 # A failed image timelapse must preserve the existing working output.

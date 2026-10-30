@@ -128,6 +128,11 @@ crontab -l
   historisch; darunter wird die Kamera übersprungen, bevor die Frame-Auswahl läuft. Fehlende
   Tage fehlen im Video und werden als Bereiche geloggt.
 - Framerate: `yearly_framerate`
+- Wechselnde Bildgrößen: Wurde eine Kamera getauscht (Uferstrasse: 640×480, ab August 2026
+  1920×1080), liegen Bilder zweier Größen in einem Video. Dann werden alle Bilder in die größte
+  vorkommende Größe eingepasst, mit schwarzen Balken und ohne Verzerrung; das gilt für alle
+  Videos aus Einzelbildern (Daily, Monthly, Yearly). Haben alle Bilder dieselbe Größe, ändert sich
+  nichts. Weekly fügt fertige Tagesvideos zusammen und passt nichts an.
 
 ## Kameraerkennung
 

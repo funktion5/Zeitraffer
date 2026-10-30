@@ -93,7 +93,7 @@ Helfer lokal tun, ist verschieden:
 | `seqzip_extract.py` | dasselbe für Zips ohne zentrales Verzeichnis, die sich nicht normal öffnen lassen | `seqzip_extract.py <Zip-Name> <Kamera> <erstes Jahr> <letztes Jahr>` |
 | `storagebox_fill.py` | Fensterbilder eines Jahres von der Storage Box ergänzen (NAS-Bilder haben Vorrang) | `storagebox_fill.py <Kamera> <Jahr>` |
 | `delete_dark.py` | dunkle Bilder in Zeiträumen löschen, in denen die Kamerauhr falsch ging | `delete_dark.py <Kamera> <von> <bis> [weitere Zeiträume]` |
-| `render_letterbox.py` | Jahresvideo mit wechselnder Auflösung ohne Verzerrung erstellen (alles in 1280x720 eingepasst) | `TIMELAPSE_CAMERA_ROOT=~/nas-cameras render_letterbox.py <Kamera> <Jahr>` |
+| `render_letterbox.py` | Jahresvideo mit wechselnder Auflösung ohne Verzerrung erstellen (alles in 1280x720 eingepasst; die normalen Jobs passen gemischte Bildgrößen inzwischen selbst an, siehe [betrieb.md](betrieb.md#yearly), dieser Helfer erzwingt eine feste Größe) | `TIMELAPSE_CAMERA_ROOT=~/nas-cameras render_letterbox.py <Kamera> <Jahr>` |
 | `count_images.py` | Bilder einer Kamera auf den NAS-Tars und der Storage Box zählen und vergleichen (pro Jahr, fehlende Tage, Überschneidungen); `tars` lässt sich abbrechen und fortsetzen | `count_images.py tars <Ausgabe> <Bezeichnung> <rclone-Ordner> <Regex>`, `count_images.py box <Ausgabe> <Kamera>`, `count_images.py report <Ausgabe>` |
 
 Aufruf jeweils mit `.venv/bin/python3 nas/helpers/<Helfer>`. Beispiel:

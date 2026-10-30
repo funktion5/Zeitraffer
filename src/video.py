@@ -90,6 +90,94 @@ def x264_crf_arguments() -> list[str]:
 	return ["-crf", str(crf)]
 
 
+# JPEG start-of-frame markers: the segments that carry the image size (baseline, extended,
+# progressive, lossless and the arithmetic-coded variants).
+JPEG_FRAME_MARKERS = {0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF}
+
+
+# Width and height from the JPEG header, read segment by segment so an EXIF thumbnail with its own
+# size is skipped by its length. None when there is no frame header (not a JPEG, cut off, missing).
+def jpeg_size(path: Path) -> tuple[int, int] | None:
+	try:
+		with path.open("rb") as file:
+			if file.read(2) != b"\xff\xd8":
+				return None
+
+			while byte := file.read(1):
+				if byte != b"\xff":
+					continue
+
+				marker = file.read(1)
+
+				while marker == b"\xff":
+					marker = file.read(1)
+
+				if not marker:
+					return None
+
+				code = marker[0]
+
+				# Markers without a length: padding, TEM, restart markers and the start of image.
+				if code == 0x00 or code == 0x01 or 0xD0 <= code <= 0xD8:
+					continue
+
+				# The end of the image, or the start of the scan data: no frame header came before.
+				if code in (0xD9, 0xDA):
+					return None
+
+				length = file.read(2)
+
+				if len(length) < 2:
+					return None
+
+				if code in JPEG_FRAME_MARKERS:
+					size = file.read(5)
+
+					if len(size) < 5:
+						return None
+
+					return int.from_bytes(size[3:5], "big"), int.from_bytes(size[1:3], "big")
+
+				file.seek(int.from_bytes(length, "big") - 2, os.SEEK_CUR)
+
+	except OSError:
+		return None
+
+	return None
+
+
+# A camera that was exchanged leaves frames of two sizes in one video (Uferstrasse: 640x480, then
+# 1920x1080). ffmpeg would take the size of the first frame and stretch every other one to it, so
+# the new 16:9 footage came out narrow. With mixed sizes every frame is fitted into the largest
+# size instead, aspect ratio kept, black bars where it does not fill. One size (every other
+# camera) adds nothing, so those commands stay exactly as they were.
+def frame_fit_arguments(temp_directory: Path) -> list[str]:
+	frame_sizes = (jpeg_size(frame) for frame in temp_directory.glob("frame_*.jpg"))
+	sizes = {size for size in frame_sizes if size is not None}
+
+	if len(sizes) < 2:
+		return []
+
+	width, height = max(sizes, key=lambda size: (size[0] * size[1], size[0]))
+
+	# yuv420p needs even sizes.
+	width += width % 2
+	height += height % 2
+
+	found = ", ".join(f"{w}x{h}" for w, h in sorted(sizes))
+
+	logger.info(
+		f"Frames of {len(sizes)} different sizes ({found}): "
+		f"fitting every frame into {width}x{height}"
+	)
+
+	return [
+		"-vf",
+		f"scale={width}:{height}:force_original_aspect_ratio=decrease,"
+		f"pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1",
+	]
+
+
 # Run FFmpeg, record peak resource use, and retain failure diagnostics.
 def run_ffmpeg(command: list[str]) -> None:
 	with tempfile.TemporaryFile() as error_output:
@@ -395,6 +483,7 @@ def create_image_timelapse(
 			*x264_crf_arguments(),
 			"-threads",
 			str(FFMPEG_THREADS),
+			*frame_fit_arguments(temp_directory),
 			"-pix_fmt",
 			"yuv420p",
 		],
