@@ -68,6 +68,14 @@
 				outline: 0.2em solid currentColor;
 				outline-offset: -0.2em;
 			}
+
+			/* Only where a pointer can hover: a touch screen would keep the last tapped tab lit. The
+			   colour is the site's light blue from the Avada palette. */
+			@media (hover: hover) {
+				&:hover:not([aria-current]) {
+					background: var(--awb-color3, #e3eaf7);
+				}
+			}
 		}
 
 		/* Phones: a 2x2 block of the same joined parts. */
@@ -106,6 +114,11 @@
 			box-shadow: inset 0 0 0 0.25em var(--timelapse-halo);
 		}
 
+		/* A click on the picture plays and pauses (script.js), so it shows a pointer. */
+		&:has(.timelapse-bar) video {
+			cursor: pointer;
+		}
+
 		& video {
 			display: block;
 			inline-size: 100%;
@@ -113,10 +126,55 @@
 			aspect-ratio: 16 / 9;
 		}
 
+		/* Shown over the picture when the video cannot be loaded. It has its own dark panel, because
+		   a video that failed shows nothing to read white text on. */
+		.timelapse-error {
+			position: absolute;
+			inset-inline: 0;
+			inset-block-start: 0;
+			display: grid;
+			place-items: center;
+			aspect-ratio: 16 / 9;
+			margin: 0;
+			padding: 1em;
+			background: var(--timelapse-halo);
+			color: var(--timelapse-control);
+			text-align: center;
+
+			&[hidden] {
+				display: none;
+			}
+		}
+
+		/* Fullscreen is the viewport, so the bar comes along. The picture fits the screen, and the
+		   bar, docked or not, stays readable on the dark backdrop. */
+		&:fullscreen {
+			display: flex;
+			flex-direction: column;
+			background: var(--timelapse-halo);
+			color: var(--timelapse-control);
+
+			& video {
+				flex: 1;
+				min-block-size: 0;
+				block-size: auto;
+				aspect-ratio: auto;
+				object-fit: contain;
+			}
+
+			/* Docked, the bar would touch the screen edges. */
+			.timelapse-bar {
+				padding-inline: 1em;
+			}
+		}
+
 		/* The bar has no background of its own: white controls with a dark halo. It is built by
 		   script.js, which also removes the native controls. */
 		.timelapse-bar {
 			--timelapse-glow: 0 0 0 0.07em var(--timelapse-halo), 0 0 0.4em var(--timelapse-halo);
+
+			/* A button under the mouse gets a soft backing in the halo colour. */
+			--timelapse-hover: color-mix(in srgb, var(--timelapse-halo) 60%, transparent);
 
 			position: absolute;
 			inset-inline: 0;
@@ -201,6 +259,17 @@
 					background: var(--timelapse-control);
 					box-shadow: var(--timelapse-glow);
 				}
+
+				/* The thumb grows a little under the mouse, as a sign that it can be dragged. */
+				@media (hover: hover) {
+					&:hover::-webkit-slider-thumb {
+						scale: 1.3;
+					}
+
+					&:hover::-moz-range-thumb {
+						scale: 1.3;
+					}
+				}
 			}
 
 			/* Play on the left; the frame step (middle) and the options (right) follow in later steps. */
@@ -211,6 +280,7 @@
 			}
 
 			& button {
+				position: relative;
 				display: inline-grid;
 				place-items: center;
 				min-inline-size: var(--timelapse-target-size);
@@ -245,6 +315,12 @@
 					outline-offset: 0.15em;
 					box-shadow: 0 0 0 0.15em var(--timelapse-halo);
 				}
+
+				@media (hover: hover) {
+					&:hover {
+						background: var(--timelapse-hover);
+					}
+				}
 			}
 
 			.timelapse-play {
@@ -264,6 +340,38 @@
 
 				&[hidden] {
 					display: none;
+				}
+			}
+
+			/* Speed, loop and fullscreen sit on the right of the row. */
+			.timelapse-options {
+				display: flex;
+				flex-wrap: wrap;
+				align-items: center;
+				justify-content: flex-end;
+				justify-self: end;
+			}
+
+			.timelapse-speeds {
+				display: flex;
+				align-items: center;
+			}
+
+			/* The speeds and the loop are text, with the same crisp outline as the time. What is on (the
+			   chosen speed, the loop) is underlined: the state does not rely on colour. */
+			.timelapse-speed,
+			.timelapse-loop {
+				padding-inline: 0.5em;
+				border-radius: 0.5em;
+				font-size: 1em;
+				font-weight: 700;
+				paint-order: stroke fill;
+				-webkit-text-stroke: 0.2em var(--timelapse-halo);
+
+				&[aria-pressed="true"] {
+					text-decoration: underline;
+					text-decoration-thickness: 0.15em;
+					text-underline-offset: 0.3em;
 				}
 			}
 
@@ -289,6 +397,15 @@
 				text-shadow: none;
 				--timelapse-control: currentColor;
 				--timelapse-halo: transparent;
+				--timelapse-hover: color-mix(in srgb, currentColor 15%, transparent);
+			}
+
+			/* A phone is too narrow for all controls in one row: the options take a row of their own below
+			   play and the frame step, which stay in their columns. */
+			@container (max-width: 25rem) {
+				.timelapse-options {
+					grid-column: 1 / -1;
+				}
 			}
 		}
 	}

@@ -14,6 +14,12 @@
 		stepBack: "Ein Bild zurück",
 		stepForward: "Ein Bild vor",
 		player: "Zeitraffer-Video",
+		speeds: "Wiedergabegeschwindigkeit",
+		loop: "Schleife",
+		loopHint: "Video in Schleife abspielen",
+		fullscreen: "Vollbild",
+		exitFullscreen: "Vollbild verlassen",
+		error: "Das Video konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es später noch einmal.",
 	};
 
 	// Pure helpers, free of the DOM so tests/frontend/player.test.js can run them in Node.
@@ -58,7 +64,16 @@
 		pause: "M6 5h4v14H6zM14 5h4v14h-4z",
 		stepBack: "M6 6h2v12H6zm3.5 6l8.5 6V6z",
 		stepForward: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z",
+		fullscreen: "M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z",
+		exitFullscreen: "M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z",
 	};
+
+	// The speeds a visitor can pick; the German text uses a decimal comma.
+	const SPEEDS = [
+		{ rate: 0.5, text: "0,5×" },
+		{ rate: 1, text: "1×" },
+		{ rate: 2, text: "2×" },
+	];
 
 	// A 24x24 icon from path data. It is decorative: the button carries the text label.
 	const icon = (pathData) => {
@@ -80,7 +95,20 @@
 		element.type = "button";
 		element.className = className;
 		element.setAttribute("aria-label", label);
+		// The tooltip a mouse user gets for an icon, the same words as the label.
+		element.title = label;
 		element.append(icon(pathData));
+
+		return element;
+	};
+
+	// A button whose visible text is its name, for the speeds and the loop.
+	const textButton = (className, text) => {
+		const element = document.createElement("button");
+
+		element.type = "button";
+		element.className = className;
+		element.textContent = text;
 
 		return element;
 	};
@@ -94,6 +122,13 @@
 		if (!viewport || !video || !CSS.supports("selector(&)")) {
 			return;
 		}
+
+		// A second copy of this script (the other plugin's) must not build a second bar.
+		if (root.dataset.timelapseReady) {
+			return;
+		}
+
+		root.dataset.timelapseReady = "true";
 
 		const seek = document.createElement("input");
 
@@ -126,6 +161,40 @@
 		controls.className = "timelapse-controls";
 		controls.append(play, steps);
 
+		const speedGroup = document.createElement("div");
+
+		speedGroup.className = "timelapse-speeds";
+		speedGroup.setAttribute("role", "group");
+		speedGroup.setAttribute("aria-label", LABELS.speeds);
+
+		const speedButtons = SPEEDS.map(({ rate, text }) => {
+			const element = textButton("timelapse-speed", text);
+
+			element.dataset.speed = String(rate);
+			element.title = `${LABELS.speeds}: ${text}`;
+
+			return element;
+		});
+
+		speedGroup.append(...speedButtons);
+
+		const loop = textButton("timelapse-loop", LABELS.loop);
+
+		loop.title = LABELS.loopHint;
+		const fullscreen = iconButton("timelapse-fullscreen", LABELS.fullscreen, ICONS.fullscreen);
+		const options = document.createElement("div");
+
+		options.className = "timelapse-options";
+		options.append(speedGroup, loop, fullscreen);
+		controls.append(options);
+
+		// Shown over the picture when the video cannot be loaded.
+		const error = document.createElement("p");
+
+		error.className = "timelapse-error";
+		error.setAttribute("role", "alert");
+		error.hidden = true;
+
 		const bar = document.createElement("div");
 
 		bar.className = "timelapse-bar";
@@ -157,7 +226,10 @@
 		const showPlayState = () => {
 			const playing = !video.paused && !video.ended;
 
-			play.setAttribute("aria-label", playing ? LABELS.pause : LABELS.play);
+			const label = playing ? LABELS.pause : LABELS.play;
+
+			play.setAttribute("aria-label", label);
+			play.title = label;
 			play.firstElementChild.replaceWith(icon(playing ? ICONS.pause : ICONS.play));
 		};
 
@@ -215,6 +287,60 @@
 		stepBack.addEventListener("click", () => step(-1));
 		stepForward.addEventListener("click", () => step(1));
 
+		const setSpeed = (rate) => {
+			// defaultPlaybackRate survives video.load(), so a tab switch keeps the chosen speed.
+			video.defaultPlaybackRate = rate;
+			video.playbackRate = rate;
+			speedButtons.forEach((element) => {
+				element.setAttribute("aria-pressed", String(Number(element.dataset.speed) === rate));
+			});
+		};
+
+		speedButtons.forEach((element) => {
+			element.addEventListener("click", () => setSpeed(Number(element.dataset.speed)));
+		});
+		setSpeed(1);
+
+		loop.setAttribute("aria-pressed", "false");
+		loop.addEventListener("click", () => {
+			video.loop = !video.loop;
+			loop.setAttribute("aria-pressed", String(video.loop));
+		});
+
+		// The viewport goes fullscreen, not the bare video, so the bar comes along. Where that is not
+		// supported (iPhone), the button is hidden.
+		fullscreen.hidden = !viewport.requestFullscreen;
+
+		const showFullscreenState = () => {
+			const on = document.fullscreenElement === viewport;
+
+			const label = on ? LABELS.exitFullscreen : LABELS.fullscreen;
+
+			fullscreen.setAttribute("aria-label", label);
+			fullscreen.title = label;
+			fullscreen.firstElementChild.replaceWith(icon(on ? ICONS.exitFullscreen : ICONS.fullscreen));
+		};
+
+		fullscreen.addEventListener("click", () => {
+			if (document.fullscreenElement === viewport) {
+				document.exitFullscreen();
+			} else {
+				// A refused request (no user gesture, a policy) leaves the page as it is.
+				viewport.requestFullscreen().catch(() => {});
+			}
+		});
+		document.addEventListener("fullscreenchange", showFullscreenState);
+
+		video.addEventListener("error", () => {
+			error.textContent = LABELS.error;
+			error.hidden = false;
+		});
+		["emptied", "loadedmetadata"].forEach((name) => {
+			video.addEventListener(name, () => {
+				error.hidden = true;
+			});
+		});
+
 		seek.addEventListener("pointerdown", () => {
 			scrubbing = true;
 		});
@@ -238,11 +364,17 @@
 		// A tab switch loads another video, maybe with another frame rate.
 		video.addEventListener("emptied", showSteps);
 
-		viewport.append(bar);
+		viewport.append(bar, error);
 		video.removeAttribute("controls");
 		refresh();
 		showPlayState();
 		showSteps();
+
+		// The video may have failed before this script got to it.
+		if (video.error) {
+			error.textContent = LABELS.error;
+			error.hidden = false;
+		}
 	};
 
 	const start = () => {
@@ -256,6 +388,13 @@
 	}
 
 	document.querySelectorAll(".timelapse-tabs a").forEach((link) => {
+		// The identical script of the other plugin may be loaded too: one handler per link is enough.
+		if (link.dataset.timelapseTab) {
+			return;
+		}
+
+		link.dataset.timelapseTab = "true";
+
 		link.addEventListener("click", (event) => {
 			// Each player is looked up inside its own root, so several players on one page stay apart.
 			const root = link.closest(".timelapse");
@@ -283,8 +422,11 @@
 			});
 			link.setAttribute("aria-current", "true");
 
-			// Keep the address in sync, so reloading or sharing shows the same period.
-			history.replaceState(null, "", link.href);
+			// Keep the address in sync, so reloading or sharing shows the same period. Only the first
+			// player on a page does it: several players would overwrite each other's period.
+			if (root === document.querySelector(".timelapse")) {
+				history.replaceState(null, "", link.href);
+			}
 		});
 	});
 })();
