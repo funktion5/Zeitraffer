@@ -40,10 +40,12 @@
 		return;
 	}
 
-	const video = document.getElementById("zeitraffer_video");
-
-	document.querySelectorAll(".zeitraffer_nav a").forEach((link) => {
+	document.querySelectorAll(".timelapse-tabs a").forEach((link) => {
 		link.addEventListener("click", (event) => {
+			// Each player is looked up inside its own root, so several players on one page stay apart.
+			const root = link.closest(".timelapse");
+			const video = root && root.querySelector(".timelapse-video");
+
 			// No player or no data: let the link work as a normal page load.
 			if (!video || !link.dataset.src) {
 				return;
@@ -56,12 +58,12 @@
 			video.load();
 
 			// The heading shows the time span of the video that is playing.
-			const dateEl = document.getElementById("zeitraffer_date");
+			const dateEl = root.querySelector(".timelapse-date");
 			if (dateEl && link.dataset.date) {
 				dateEl.textContent = link.dataset.date;
 			}
 
-			document.querySelectorAll(".zeitraffer_nav a").forEach((other) => {
+			root.querySelectorAll(".timelapse-tabs a").forEach((other) => {
 				other.removeAttribute("aria-current");
 			});
 			link.setAttribute("aria-current", "true");

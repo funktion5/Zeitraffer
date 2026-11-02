@@ -10,6 +10,18 @@ declare(strict_types=1);
 
 defined( 'ABSPATH' ) || exit;
 
+// Frame rate of the videos per period; the player uses it to step one frame at a time.
+// These MUST match the pipeline: timelapse.daily_framerate, monthly_framerate and yearly_framerate in
+// config/config.json. The weekly video is built with the daily rate (src/jobs/weekly.py). If a rate
+// changes there, change it here and in the f5-webcams copy (Timelapse::FRAME_RATES), and update
+// docs/wordpress.md. Videos built before the current config may have a different rate.
+const TL_TIMELAPSE_FRAME_RATES = [
+  "daily" => 10,
+  "weekly" => 10,
+  "monthly" => 20,
+  "yearly" => 20,
+];
+
 // Videos live in <uploads>/zeitraffer. Asking WordPress for the uploads location keeps
 // this correct if a host relocates uploads or serves them from another URL.
 // $create_dir = false: do not create month folders just by looking.
@@ -141,7 +153,7 @@ function tl_timelapse_camera_shortcode(array|string $atts = []): string {
 
 
 wp_enqueue_style(
-  "zeitraffer",
+  "timelapse",
   plugins_url("assets/style.css", __FILE__),
   [],
   filemtime(__DIR__ . "/assets/style.css")
@@ -149,7 +161,7 @@ wp_enqueue_style(
 
 // Last argument true: load in the footer, after the markup exists.
 wp_enqueue_script(
-  "zeitraffer",
+  "timelapse",
   plugins_url("assets/script.js", __FILE__),
   [],
   filemtime(__DIR__ . "/assets/script.js"),
@@ -170,7 +182,7 @@ if (!isset($cameras[$slug])) {
   // Visitors see nothing. Editors get a hint, because a typo in the shortcode is the likely cause;
   // it lists folder names, so it must not be shown publicly.
   if ($slug !== "" && current_user_can("edit_pages")) {
-    return "<p class='zeitraffer_notice'>" . esc_html("Zeitraffer: Kamera „" . $slug . "“ nicht gefunden. Verfügbar: " . implode(", ", array_keys($cameras)) . ".") . "</p>";
+    return "<p class='timelapse-notice'>" . esc_html("Zeitraffer: Kamera „" . $slug . "“ nicht gefunden. Verfügbar: " . implode(", ", array_keys($cameras)) . ".") . "</p>";
   }
 
   return "";
@@ -192,10 +204,15 @@ $name = $atts["title"] !== "" ? $atts["title"] : ($entry && $entry->post_title !
 $description = $atts["description"] !== "" ? $atts["description"] : ($entry ? trim($entry->post_excerpt) : "");
 
 
-$html = "<div class='zeitraffer'>";
+// Unique per player on the page: the video refers to its caption by id.
+static $render_count = 0;
+$render_count++;
+$caption_id = "timelapse-caption-" . $render_count;
+
+$html = "<div class='timelapse'>";
 
 if (!$is_published) {
-  $html .= "<p class='zeitraffer_notice'>" . esc_html("Diese Kamera ist nicht veröffentlicht und nur für Redakteure sichtbar (Zeitraffer → Alle Kameras).") . "</p>";
+  $html .= "<p class='timelapse-notice'>" . esc_html("Diese Kamera ist nicht veröffentlicht und nur für Redakteure sichtbar (Zeitraffer → Alle Kameras).") . "</p>";
 }
 
 $periods = [
@@ -230,13 +247,13 @@ $heading = "Zeitraffer";
 if ($video) {
   // aria-live: assets/script.js rewrites this text when a tab is clicked, without a reload, so
   // screen readers announce the new time span.
-  $heading .= ' &ndash; <span id="zeitraffer_date" aria-live="polite">' . esc_html(tl_timelapse_video_span($video, $period)) . '</span>';
+  $heading .= ' &ndash; <span class="timelapse-date" aria-live="polite">' . esc_html(tl_timelapse_video_span($video, $period)) . '</span>';
 }
 
-$html .= "<h" . $level . ">" . $heading . "</h" . $level . ">";
+$html .= "<h" . $level . " class='timelapse-heading'>" . $heading . "</h" . $level . ">";
 
 // The tabs sit above the player, so they are in view when the video is not yet loaded.
-$html .= "<nav class='zeitraffer_nav' aria-label='Zeitraum'>";
+$html .= "<nav class='timelapse-tabs' aria-label='Zeitraum'>";
 
 foreach ($periods as $key => $label) {
   $item = tl_timelapse_latest_video($cameras[$slug], $key);
@@ -250,7 +267,7 @@ foreach ($periods as $key => $label) {
   $current = ($key === $period) ? " aria-current='true'" : "";
 
   // href keeps the tab working without JavaScript; data-* is read by assets/script.js.
-  $html .= "<a href='" . esc_url($link_url) . "' data-src='" . esc_url($item_url) . "' data-label='" . esc_attr($name . " " . $label) . "' data-date='" . esc_attr($item_span) . "'" . $current . ">" . esc_html($label) . "</a>";
+  $html .= "<a href='" . esc_url($link_url) . "' data-src='" . esc_url($item_url) . "' data-label='" . esc_attr($name . " " . $label) . "' data-date='" . esc_attr($item_span) . "' data-fps='" . esc_attr((string) (TL_TIMELAPSE_FRAME_RATES[$key] ?? "")) . "'" . $current . ">" . esc_html($label) . "</a>";
 }
 
 $html .= "</nav>";
@@ -259,8 +276,11 @@ if ($video) {
   $url =tl_timelapse_videos_url($cameras[$slug] . "/" . $period . "/" . basename($video));
   // Video-only content needs a text alternative (WCAG 1.2.1); aria-label is just a name.
   // playsinline keeps iOS from forcing the video fullscreen.
-  $html .= '<video id="zeitraffer_video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="zeitraffer_caption"></video>';
-  $html .= '<div id="zeitraffer_caption" class="zeitraffer_caption">' . tl_timelapse_caption_html($description) . '</div>';
+  // The viewport is the box the control bar will sit in once assets/script.js builds it.
+  $html .= '<div class="timelapse-viewport">';
+  $html .= '<video class="timelapse-video" controls playsinline preload="metadata" src="' . esc_url($url) . '" aria-label="' . esc_attr($name . " " . $periods[$period]) . '" aria-describedby="' . esc_attr($caption_id) . '"></video>';
+  $html .= '</div>';
+  $html .= '<div id="' . esc_attr($caption_id) . '" class="timelapse-caption">' . tl_timelapse_caption_html($description) . '</div>';
 }
 
 $html .= "</div>";
@@ -326,7 +346,7 @@ function tl_timelapse_camera_entry(string $slug, string $status = "publish"): ?W
 }
 
 function tl_timelapse_add_meta_box(): void {
-  add_meta_box("zeitraffer_folder", "Zeitraffer", "tl_timelapse_render_meta_box", TL_TIMELAPSE_POST_TYPE, "side");
+  add_meta_box("timelapse_folder", "Zeitraffer", "tl_timelapse_render_meta_box", TL_TIMELAPSE_POST_TYPE, "side");
 }
 add_action("add_meta_boxes", "tl_timelapse_add_meta_box");
 
@@ -346,13 +366,13 @@ function tl_timelapse_render_meta_box(WP_Post $post): void {
 }
 
 function tl_timelapse_list_columns(array $columns): array {
-  $columns["zeitraffer_folder"] = "Ordner";
+  $columns["timelapse_folder"] = "Ordner";
   return $columns;
 }
 add_filter("manage_" . TL_TIMELAPSE_POST_TYPE . "_posts_columns", "tl_timelapse_list_columns");
 
 function tl_timelapse_list_column_content(string $column, int $post_id): void {
-  if ($column !== "zeitraffer_folder") {
+  if ($column !== "timelapse_folder") {
     return;
   }
 
@@ -373,8 +393,8 @@ function tl_timelapse_sync_form(): void {
     return;
   }
 
-  if (isset($_GET["zeitraffer_synced"])) {
-    $count = absint($_GET["zeitraffer_synced"]);
+  if (isset($_GET["timelapse_synced"])) {
+    $count = absint($_GET["timelapse_synced"]);
     echo '<div class="notice notice-success is-dismissible"><p>' . esc_html($count . " Kamera(s) als Entwurf angelegt. Sie werden erst mit „Veröffentlichen“ sichtbar.") . '</p></div>';
   }
 
@@ -416,7 +436,7 @@ function tl_timelapse_handle_sync(): void {
 
   wp_safe_redirect(add_query_arg([
     "post_type" => TL_TIMELAPSE_POST_TYPE,
-    "zeitraffer_synced" => $created,
+    "timelapse_synced" => $created,
   ], admin_url("edit.php")));
   exit;
 }

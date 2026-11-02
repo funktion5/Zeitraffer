@@ -2,26 +2,26 @@
 
 /* The fixed 16:9 ratio (all renders are 16:9) reserves the space before the video
  * loads, so the page does not jump. */
-.zeitraffer video {
+.timelapse video {
 	display: block;
 	width: 100%;
 	height: auto;
 	aspect-ratio: 16 / 9;
 }
 
-.zeitraffer_nav {
+.timelapse-tabs {
 	display: flex;
 	flex-wrap: wrap;
 	gap: 1rem;
 }
 
 /* The active period differs by weight, not by colour alone. */
-.zeitraffer_nav a[aria-current] {
+.timelapse-tabs a[aria-current] {
 	font-weight: 700;
 }
 
 /* Avada resets :focus-visible to outline: none, so the plugin sets its own. */
-.zeitraffer_nav a:focus-visible {
+.timelapse-tabs a:focus-visible {
 	outline: 3px solid currentColor;
 	outline-offset: 2px;
 }
