@@ -17,7 +17,8 @@
 - Shared JS and CSS use the master's style: tabs, double quotes, no spaces inside parentheses.
 - f5 PHP must run on PHP 8.0+: no 8.4-only syntax (for example no `new Foo()->bar()`).
 - Frame rates: daily 10, weekly 10, monthly 20, yearly 20 fps (config `timelapse.daily_framerate`, `monthly_framerate`, `yearly_framerate`; weekly uses the daily rate, see `src/jobs/weekly.py`). Constants are commented as depending on the pipeline config.
-- Speeds: 0.5x, 1x, 2x only. Touch targets at least 44 px. Accent: `--timelapse-accent` default `#1f2937` with white text, to be pointed at an Avada variable later.
+- No hard-coded pixel sizes in CSS: sizes follow the font (`rem`, `em`), layout comes from flex, grid and margins, hairlines are `thin`, and any size shared by several controls is one custom property (`--timelapse-target-size: 2.75rem`, which is 44 px at the default font size). Media query breakpoints are in `rem`.
+- Speeds: 0.5x, 1x, 2x only. Touch targets at least `--timelapse-target-size`. Accent: `--timelapse-accent` default `#1f2937` with white text, to be pointed at an Avada variable later.
 - Visitor text is German with formal "Sie"; error text: "Das Video konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es später noch einmal."
 - English identifiers; "zeitraffer" as a name becomes "timelapse". Stay as they are: shortcode tag `[zeitraffer]`, post type slug, meta key `_zeitraffer_folder`, admin action and nonce `zeitraffer_sync`, the folders `uploads/zeitraffer/` and the plugin folders.
 - Keep it small (YAGNI): no test scaffolding beyond `tests/frontend/player.test.js`; the PHP markup is checked with a throwaway offline replay script (scratchpad, not committed). CI does not run Node, so `node --test` runs locally unless Julius adds a CI step.

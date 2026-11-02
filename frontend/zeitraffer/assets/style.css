@@ -1,27 +1,109 @@
-/* Bare minimum: colours, fonts and spacing come from the theme. */
+/*
+ * Zeitraffer player: tabs, picture and caption. Fonts, sizes and colours come from the theme:
+ * everything inherits, borders use currentColor, and the accent of the active tab is the only
+ * colour the player chooses itself.
+ *
+ * Native CSS nesting: a nested rule starts with a class or "&", which every browser with nesting
+ * support understands. Where nesting is missing, script.js leaves the native video controls alone.
+ */
 
-/* The fixed 16:9 ratio (all renders are 16:9) reserves the space before the video
- * loads, so the page does not jump. */
-.timelapse video {
-	display: block;
-	width: 100%;
-	height: auto;
-	aspect-ratio: 16 / 9;
-}
+.timelapse {
+	/* Point --timelapse-accent at a theme colour later; keep enough contrast between the pair. */
+	--timelapse-accent: #1f2937;
+	--timelapse-on-accent: #fff;
 
-.timelapse-tabs {
-	display: flex;
-	flex-wrap: wrap;
-	gap: 1rem;
-}
+	/* Smallest size of anything clickable: 2.75rem is 44 px at the default font size and grows with
+	   the visitor's font setting. Every control uses this, so it is changed in one place. */
+	--timelapse-target-size: 2.75rem;
 
-/* The active period differs by weight, not by colour alone. */
-.timelapse-tabs a[aria-current] {
-	font-weight: 700;
-}
+	.timelapse-notice {
+		margin-block: 0 1rem;
+		padding: 0.5rem 0.75rem;
+		border: thin solid currentColor;
+		border-radius: 0.25rem;
+	}
 
-/* Avada resets :focus-visible to outline: none, so the plugin sets its own. */
-.timelapse-tabs a:focus-visible {
-	outline: 3px solid currentColor;
-	outline-offset: 2px;
+	/* The joined strip of period tabs: one rounded border, the parts divided by lines. */
+	.timelapse-tabs {
+		display: flex;
+		inline-size: fit-content;
+		max-inline-size: 100%;
+		margin-block: 0 1rem;
+		border: thin solid currentColor;
+		border-radius: 0.5rem;
+		overflow: hidden;
+
+		& a {
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			min-block-size: var(--timelapse-target-size);
+			padding-inline: 1rem;
+			color: inherit;
+			text-align: center;
+			text-decoration: none;
+
+			& + a {
+				border-inline-start: thin solid currentColor;
+			}
+
+			/* The active period differs by weight, not by colour alone. */
+			&[aria-current] {
+				background: var(--timelapse-accent);
+				color: var(--timelapse-on-accent);
+				font-weight: 700;
+			}
+
+			/* Avada resets :focus-visible to outline: none, so the plugin sets its own. It is
+			   drawn inside, because the strip clips everything outside its border. */
+			&:focus-visible {
+				outline: 0.2em solid currentColor;
+				outline-offset: -0.2em;
+			}
+		}
+
+		/* Phones: a 2x2 block of the same joined parts. */
+		@media (max-width: 30rem) {
+			display: grid;
+			grid-template-columns: 1fr 1fr;
+			inline-size: auto;
+
+			& a {
+				&:nth-child(odd) {
+					border-inline-start: 0;
+				}
+
+				&:nth-child(n + 3) {
+					border-block-start: thin solid currentColor;
+				}
+
+				/* A lone last part spans the row instead of leaving a hole. */
+				&:last-child:nth-child(odd) {
+					grid-column: 1 / -1;
+				}
+			}
+		}
+	}
+
+	/* The box the control bar will sit in. The fixed 16:9 ratio (all renders are 16:9) reserves
+	   the space before the video loads, so the page does not jump. */
+	.timelapse-viewport {
+		position: relative;
+
+		& video {
+			display: block;
+			inline-size: 100%;
+			block-size: auto;
+			aspect-ratio: 16 / 9;
+		}
+	}
+
+	.timelapse-caption {
+		margin-block-start: 0.75rem;
+		font-size: 0.9em;
+
+		& p {
+			margin-block: 0 0.5em;
+		}
+	}
 }
