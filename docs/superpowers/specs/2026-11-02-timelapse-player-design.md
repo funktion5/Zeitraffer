@@ -160,8 +160,10 @@ files), `assets/js/timelapse.js` and `assets/css/timelapse.css` (identical copie
 
 ## Open, not blocking
 
-- Avada's variable names for the accent colour: read them on the live page (browser developer tools, the
-  `<html>` element, variables starting with `--`). Until then the accent keeps its neutral default.
+- Resolved on 2026-11-02: Avada's primary colour is the CSS variable `--primary_color` (`#202b65` on the
+  live site), read from the live page. The accent is `var(--primary_color, #202b65)` (the fallback is the same blue, for sites without the variable); the global palette
+  `--awb-color1` to `--awb-color8` and the child theme's `--primary-dark-blue`, `--primary-medium-blue`,
+  `--primary-light-blue` and `--yellow-button` exist too and were not used.
 - The f5 colleague has not seen this yet; the change notes need updating once it is built.
 
 ## Left to the builder

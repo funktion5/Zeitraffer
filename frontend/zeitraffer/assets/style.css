@@ -8,9 +8,12 @@
  */
 
 .timelapse {
-	/* Point --timelapse-accent at a theme colour later; keep enough contrast between the pair. */
-	--timelapse-accent: #1f2937;
-	--timelapse-on-accent: #fff;
+	/* The accent follows Avada's primary colour (Theme Options > Colours, --primary_color) and falls
+	   back to the same blue as on the live site (#202b65) where the theme does not provide it, for
+	   example in the local test site. The text on it is a separate setting: keep enough contrast
+	   between the pair if the primary colour is ever made light. */
+	--timelapse-accent: var(--primary_color, #202b65);
+	--timelapse-on-accent: var(--awb-color7, #ffffff);
 
 	/* Smallest size of anything clickable: 2.75rem is 44 px at the default font size and grows with
 	   the visitor's font setting. Every control uses this, so it is changed in one place. */
