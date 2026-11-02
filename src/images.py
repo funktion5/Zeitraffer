@@ -112,6 +112,14 @@ def find_images_for_dates(
 			if not any(date_pattern in name for date_pattern in target_patterns):
 				continue
 
+			# The pattern can match inside a time (bsv_steinhude_202403261030.jpg contains 261030,
+			# the 2026-10-30 string), so the date the name really carries decides. An unreadable
+			# date stays, as in storage_filter.list_images_for_dates.
+			name_date = extract_date(name)
+
+			if name_date is not None and name_date != target_date:
+				continue
+
 			images_by_date[target_date].append(source.path_for(camera, name))
 			break
 

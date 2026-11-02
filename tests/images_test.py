@@ -453,6 +453,35 @@ def test_find_images_for_dates_uses_names_and_paths_from_the_source(monkeypatch)
 	assert len(progress_calls) == 4
 
 
+# A date pattern can match inside a time: the BSV legacy name bsv_steinhude_202403261030.jpg
+# (2024-03-26 10:30) contains 261030, the %y%m%d string of 2026-10-30. The date the filename
+# really carries decides, so the old frames never join the Daily or the flagger of that day.
+def test_find_images_for_dates_ignores_a_pattern_that_only_matches_inside_a_time(monkeypatch):
+	current = "BSV-Steinhude-26-10-30_16-29-47-76_00001.jpg"
+	names = ["bsv_steinhude_202403261030.jpg", "bsv_steinhude_202502261030.jpg", current]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+
+	result = find_images_for_dates(camera="BSV-Steinhude", target_dates=[date(2026, 10, 30)])
+
+	assert result == {date(2026, 10, 30): [Path("/cache/BSV-Steinhude") / current]}
+
+
+# The wrongly matched legacy frame still belongs to its own day when that day is requested too.
+def test_find_images_for_dates_gives_a_false_match_to_its_real_day(monkeypatch):
+	names = ["bsv_steinhude_202403261030.jpg"]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+
+	result = find_images_for_dates(
+		camera="BSV-Steinhude",
+		target_dates=[date(2026, 10, 30), date(2024, 3, 26)],
+	)
+
+	assert result == {
+		date(2026, 10, 30): [],
+		date(2024, 3, 26): [Path("/cache/BSV-Steinhude/bsv_steinhude_202403261030.jpg")],
+	}
+
+
 # Frames must exist locally before a filter reads their bytes: all of the previous day (the
 # duplicate reference) and only the daylight frames of the target day.
 def test_daily_worker_localizes_previous_day_and_selected_frames_before_filtering(monkeypatch):
