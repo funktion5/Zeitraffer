@@ -11,6 +11,9 @@
 		play: "Abspielen",
 		pause: "Pause",
 		seek: "Position im Video",
+		stepBack: "Ein Bild zurück",
+		stepForward: "Ein Bild vor",
+		player: "Zeitraffer-Video",
 	};
 
 	// Pure helpers, free of the DOM so tests/frontend/player.test.js can run them in Node.
@@ -53,6 +56,8 @@
 	const ICONS = {
 		play: "M8 5v14l11-7z",
 		pause: "M6 5h4v14H6zM14 5h4v14h-4z",
+		stepBack: "M6 6h2v12H6zm3.5 6l8.5 6V6z",
+		stepForward: "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z",
 	};
 
 	// A 24x24 icon from path data. It is decorative: the button carries the text label.
@@ -109,10 +114,17 @@
 		seekRow.append(seek, time);
 
 		const play = iconButton("timelapse-play", LABELS.play, ICONS.play);
+		const stepBack = iconButton("timelapse-step-back", LABELS.stepBack, ICONS.stepBack);
+		const stepForward = iconButton("timelapse-step-forward", LABELS.stepForward, ICONS.stepForward);
+		const steps = document.createElement("div");
+
+		steps.className = "timelapse-steps";
+		steps.append(stepBack, stepForward);
+
 		const controls = document.createElement("div");
 
 		controls.className = "timelapse-controls";
-		controls.append(play);
+		controls.append(play, steps);
 
 		const bar = document.createElement("div");
 
@@ -158,6 +170,51 @@
 			}
 		};
 
+		// The frame rate of the video on show: it comes with the active tab, so a tab switch changes it.
+		const currentFps = () => {
+			const active = root.querySelector(".timelapse-tabs a[aria-current]");
+
+			return Number(active && active.dataset.fps);
+		};
+
+		// Without a usable frame rate a step would be a guess, so the buttons are hidden instead.
+		const showSteps = () => {
+			steps.hidden = !(currentFps() > 0);
+		};
+
+		const step = (direction) => {
+			const fps = currentFps();
+
+			if (!(fps > 0)) {
+				return;
+			}
+
+			video.pause();
+			video.currentTime = stepTime(video.currentTime, direction, fps, video.duration);
+		};
+
+		// Keys act only while the picture area itself has focus: the scrubber and the buttons keep their
+		// own keys (arrows move the slider, Space presses a button).
+		viewport.tabIndex = 0;
+		viewport.setAttribute("role", "group");
+		viewport.setAttribute("aria-label", LABELS.player);
+		viewport.addEventListener("keydown", (event) => {
+			if (event.target !== viewport) {
+				return;
+			}
+
+			if (event.key === " ") {
+				event.preventDefault();
+				togglePlay();
+			} else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+				event.preventDefault();
+				step(event.key === "ArrowLeft" ? -1 : 1);
+			}
+		});
+
+		stepBack.addEventListener("click", () => step(-1));
+		stepForward.addEventListener("click", () => step(1));
+
 		seek.addEventListener("pointerdown", () => {
 			scrubbing = true;
 		});
@@ -178,11 +235,14 @@
 		["play", "pause", "ended", "emptied"].forEach((name) => {
 			video.addEventListener(name, showPlayState);
 		});
+		// A tab switch loads another video, maybe with another frame rate.
+		video.addEventListener("emptied", showSteps);
 
 		viewport.append(bar);
 		video.removeAttribute("controls");
 		refresh();
 		showPlayState();
+		showSteps();
 	};
 
 	const start = () => {

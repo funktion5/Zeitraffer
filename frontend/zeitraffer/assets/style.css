@@ -97,6 +97,14 @@
 	   space before the video loads, so the page does not jump. */
 	.timelapse-viewport {
 		position: relative;
+		container-type: inline-size;
+
+		/* Space and the arrow keys work while the picture area has focus: a white ring inside a dark one. */
+		&:focus-visible {
+			outline: 0.25em solid var(--timelapse-control);
+			outline-offset: -0.5em;
+			box-shadow: inset 0 0 0 0.25em var(--timelapse-halo);
+		}
 
 		& video {
 			display: block;
@@ -218,12 +226,17 @@
 				appearance: none;
 
 				& svg {
-					inline-size: 1.75em;
-					block-size: 1.75em;
+					inline-size: 2em;
+					block-size: 2em;
 					fill: currentColor;
-					filter:
-						drop-shadow(0 0 0.1em var(--timelapse-halo))
-						drop-shadow(0 0 0.25em var(--timelapse-halo));
+
+					/* A crisp dark outline behind the white shape (in the icon's own units), plus a
+					   soft glow: readable on a near-white frame as well as on a dark one. */
+					stroke: var(--timelapse-halo);
+					stroke-width: 1.5;
+					stroke-linejoin: round;
+					paint-order: stroke fill;
+					filter: drop-shadow(0 0 0.2em var(--timelapse-halo));
 				}
 
 				/* A white ring inside a dark one: visible on a bright and on a dark picture. */
@@ -245,6 +258,15 @@
 				}
 			}
 
+			/* The frame step sits in the middle column of the row. Hidden means gone, whatever display says. */
+			.timelapse-steps {
+				display: flex;
+
+				&[hidden] {
+					display: none;
+				}
+			}
+
 			/* Windows high contrast removes shadows and gradients: give the controls a plain border. */
 			@media (forced-colors: active) {
 				& button {
@@ -256,6 +278,17 @@
 				.timelapse-seek {
 					forced-color-adjust: auto;
 				}
+			}
+
+			/* Where the picture is small the bar would cover most of it, so it sits below the picture
+			   instead, in the page's own text colour and without a halo (nothing is behind it). */
+			@container (max-width: 45rem) {
+				position: static;
+				padding-inline: 0;
+				padding-block: 0.5em 0;
+				text-shadow: none;
+				--timelapse-control: currentColor;
+				--timelapse-halo: transparent;
 			}
 		}
 	}
