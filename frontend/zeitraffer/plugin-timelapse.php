@@ -426,3 +426,29 @@ add_shortcode(
   "zeitraffer",
   "tl_timelapse_camera_shortcode"
 );
+
+// ---- f5-webcams bridge -----------------------------------------------------------------------------
+// The webcam pages of the f5-webcams plugin ask two filters before they show the player, so the
+// publish rule is the same as for the shortcode: only a published camera entry makes a camera public;
+// editors still see the rest, with a note. Without this plugin nobody answers and f5-webcams shows
+// the player without a note.
+function tl_timelapse_folder_is_published(string $foldername): bool {
+  $entry = tl_timelapse_camera_entry(sanitize_key($foldername), "any");
+
+  return $entry && $entry->post_status === "publish";
+}
+
+function tl_timelapse_filter_webcam_player(bool $show, string $foldername): bool {
+  return $show && (tl_timelapse_folder_is_published($foldername) || current_user_can("edit_others_posts"));
+}
+add_filter("f5_webcams_show_timelapse", "tl_timelapse_filter_webcam_player", 10, 2);
+
+// Only an editor gets as far as the note: the filter above hides an unpublished camera from everyone else.
+function tl_timelapse_webcam_player_notice(string $notice, string $foldername): string {
+  if (tl_timelapse_folder_is_published($foldername)) {
+    return $notice;
+  }
+
+  return "Diese Kamera ist nicht veröffentlicht und nur für Redakteure sichtbar (Zeitraffer → Alle Kameras).";
+}
+add_filter("f5_webcams_timelapse_notice", "tl_timelapse_webcam_player_notice", 10, 2);
