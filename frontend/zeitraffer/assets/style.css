@@ -156,6 +156,11 @@
 			cursor: pointer;
 		}
 
+		/* Hidden together with the bar (fullscreen), so nothing is left over the picture. */
+		&:has(.timelapse-idle) video {
+			cursor: none;
+		}
+
 		& video {
 			display: block;
 			inline-size: 100%;
@@ -221,6 +226,18 @@
 				0 0 0.2em var(--timelapse-halo),
 				0 0 0.5em var(--timelapse-halo);
 
+			/* Only in fullscreen (script.js sets the class): the bar fades away while the video plays and
+			   nobody touches anything. It stays in the accessibility tree, and a tap goes through to the
+			   picture, where the first one only brings the bar back. */
+			&.timelapse-idle {
+				opacity: 0;
+				pointer-events: none;
+			}
+
+			@media (prefers-reduced-motion: no-preference) {
+				transition: opacity 0.3s;
+			}
+
 			.timelapse-seekrow {
 				display: flex;
 				align-items: center;
@@ -247,6 +264,8 @@
 			   filled part of the track comes from --timelapse-progress, which script.js sets. */
 			.timelapse-seek {
 				--timelapse-progress: 0%;
+				--timelapse-track-size: 0.3em;
+				--timelapse-thumb-size: 1.25em;
 				--timelapse-track: linear-gradient(
 					to right,
 					var(--timelapse-control) var(--timelapse-progress),
@@ -267,7 +286,7 @@
 				appearance: none;
 
 				&::-webkit-slider-runnable-track {
-					block-size: 0.3em;
+					block-size: var(--timelapse-track-size);
 					border: var(--timelapse-track-edge);
 					border-radius: 1em;
 					background: var(--timelapse-track);
@@ -275,7 +294,7 @@
 				}
 
 				&::-moz-range-track {
-					block-size: 0.3em;
+					block-size: var(--timelapse-track-size);
 					border: var(--timelapse-track-edge);
 					border-radius: 1em;
 					background: var(--timelapse-track);
@@ -283,9 +302,9 @@
 				}
 
 				&::-webkit-slider-thumb {
-					inline-size: 1em;
-					block-size: 1em;
-					margin-block-start: -0.35em;
+					inline-size: var(--timelapse-thumb-size);
+					block-size: var(--timelapse-thumb-size);
+					margin-block-start: calc((var(--timelapse-track-size) - var(--timelapse-thumb-size)) / 2);
 					box-sizing: border-box;
 					border: var(--timelapse-thumb-edge);
 					border-radius: 50%;
@@ -295,8 +314,8 @@
 				}
 
 				&::-moz-range-thumb {
-					inline-size: 1em;
-					block-size: 1em;
+					inline-size: var(--timelapse-thumb-size);
+					block-size: var(--timelapse-thumb-size);
 					box-sizing: border-box;
 					border: var(--timelapse-thumb-edge);
 					border-radius: 50%;

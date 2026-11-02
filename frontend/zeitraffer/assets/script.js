@@ -387,7 +387,52 @@
 		});
 		play.addEventListener("click", togglePlay);
 
-		video.addEventListener("click", togglePlay);
+
+		// In fullscreen the bar fades away while the video plays and nobody touches anything for a few
+		// seconds, so it does not cover the picture. The first tap on the picture then only brings it
+		// back; a tap while it is visible plays or pauses, as everywhere else.
+		const IDLE_MS = 3000;
+		let idleTimer;
+		let revealOnly = false;
+
+		const wake = () => {
+			bar.classList.remove("timelapse-idle");
+			clearTimeout(idleTimer);
+
+			if (!video.paused && document.fullscreenElement === viewport) {
+				idleTimer = setTimeout(() => {
+					// Only a keyboard focus keeps the bar: a clicked or tapped button keeps focus too.
+					if (!bar.querySelector(":focus-visible")) {
+						bar.classList.add("timelapse-idle");
+					}
+				}, IDLE_MS);
+			}
+		};
+
+		["pointerdown", "pointermove", "keydown", "focusin"].forEach((name) => {
+			viewport.addEventListener(name, wake);
+		});
+		["play", "pause", "ended", "emptied"].forEach((name) => {
+			video.addEventListener(name, wake);
+		});
+		document.addEventListener("fullscreenchange", wake);
+		// Captured, so it still sees the bar as hidden before wake() shows it again.
+		viewport.addEventListener(
+			"pointerdown",
+			() => {
+				revealOnly = bar.classList.contains("timelapse-idle");
+			},
+			true,
+		);
+		video.addEventListener("click", () => {
+			if (revealOnly) {
+				revealOnly = false;
+
+				return;
+			}
+
+			togglePlay();
+		});
 
 		["loadedmetadata", "durationchange", "timeupdate", "seeked", "emptied"].forEach((name) => {
 			video.addEventListener(name, refresh);

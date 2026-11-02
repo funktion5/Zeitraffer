@@ -226,6 +226,7 @@ Der Player ersetzt die Bedienleiste des Browsers durch eine eigene. Sie liegt oh
 | Vollbild | zeigt den ganzen Player samt Leiste im Vollbild. Auf dem iPhone ist das nicht möglich, dort fehlt der Knopf. |
 
 - **Tastatur:** Der Bildbereich ist mit Tab erreichbar. Hat er den Fokus, startet und pausiert die Leertaste, und die Pfeiltasten links und rechts springen ein Bild. Auf der Fortschrittsleiste behalten die Pfeiltasten ihre normale Wirkung (die Leiste rastet auf ganze Bilder ein, eine Taste ist ein Bild), auf einem Knopf die Leertaste.
+- **Ausblenden im Vollbild:** Nur im Vollbild (Handy und Desktop) blendet sich die Leiste samt Mauszeiger aus, wenn das Video läuft und 3 Sekunden lang nichts berührt wurde (Maus, Finger, Tastatur). Mausbewegung oder ein Tippen aufs Bild blendet sie wieder ein; das erste Tippen auf die ausgeblendete Leiste pausiert nicht, erst ein Tippen bei sichtbarer Leiste startet oder pausiert wie gewohnt. Pausiert, am Ende, bei einem Fehler und außerhalb des Vollbilds bleibt die Leiste immer sichtbar, ebenso solange ein Bedienelement den Tastaturfokus hat (ein mit Maus oder Finger angeklickter Knopf zählt nicht, sonst würde sich die Leiste nach dem ersten Klick nie ausblenden). Wer „Bewegung reduzieren“ eingestellt hat, sieht das Ein- und Ausblenden ohne Animation.
 - **Beschriftungen:** Jeder Knopf hat eine deutsche Beschriftung für Screenreader und einen Tooltip. Der Tooltip ist der des Browsers; er erscheint nach etwa einer Sekunde Ruhe.
 - **Fehler:** Lässt sich ein Video nicht laden, erscheint auf dem Bild die Meldung „Das Video konnte nicht geladen werden …“ auf dunklem Grund; lädt es später, verschwindet sie.
 - **Ohne JavaScript oder in alten Browsern:** Es bleiben die Bedienleiste des Browsers und die Tabs als normale Links. Das Stylesheet braucht CSS-Verschachtelung und Container-Abfragen, die Browser ab Ende 2023 kennen.
@@ -257,6 +258,7 @@ Beide Plugins drucken dazu dasselbe Markup (`.timelapse`, `.timelapse-tabs`, `.t
 - [ ] Die Bedienelemente sind auf einem echten hellen und einem echten dunklen Bild gut lesbar.
 - [ ] Mit der Tastatur allein lässt sich alles bedienen (Tab durch alle Elemente, Fokusrahmen sichtbar, Leertaste und Pfeile im Bildbereich); bei 320 px Breite passt alles ohne seitliches Scrollen.
 - [ ] Unter Windows mit Hochkontrast-Design (oder in den Entwicklerwerkzeugen unter „Rendering“ „forced-colors“ einschalten) sind Fortschrittsleiste, Beschriftungen und Knöpfe auf hellem und dunklem Bild lesbar.
+- [ ] Im Vollbild (Handy und Desktop): Video starten, 3 Sekunden nichts tun: Leiste blendet aus. Mausbewegung oder ein Tippen blendet sie wieder ein, das Video läuft weiter; ein zweites Tippen pausiert. Nach dem Verlassen des Vollbilds bleibt die Leiste sichtbar.
 - [ ] Stehen versehentlich zwei Player auf einer Seite, stören sie sich nicht; nur der erste ändert die Adresse.
 - [ ] Springen um ein Bild bewegt das Video bei einem Tages- und bei einem Monats- oder Jahresvideo um genau ein Bild.
 - [ ] Bildrate-Konstanten tragen den Kommentar und passen zur Pipeline-Konfiguration.
