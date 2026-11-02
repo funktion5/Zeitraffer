@@ -3,7 +3,7 @@
 const { test } = require("node:test");
 const assert = require("node:assert");
 
-const { formatTime, valueText, stepTime } = require("../../frontend/zeitraffer/assets/script.js");
+const { formatTime, valueText, stepTime, frameStart } = require("../../frontend/zeitraffer/assets/script.js");
 
 const approx = (actual, expected) => {
 	assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
@@ -42,4 +42,16 @@ test("stepTime stays inside the video", () => {
 test("stepTime leaves the position alone for an unusable frame rate", () => {
 	assert.strictEqual(stepTime(1.5, 1, 0, 12), 1.5);
 	assert.strictEqual(stepTime(1.5, 1, NaN, 12), 1.5);
+});
+
+test("frameStart gives the start of the frame that is on show", () => {
+	approx(frameStart(0.15, 10), 0.1);
+	approx(frameStart(0.1, 10), 0.1);
+	approx(frameStart(0.3, 10), 0.3);
+	approx(frameStart(0.37, 20), 0.35);
+});
+
+test("frameStart leaves the position alone for an unusable frame rate", () => {
+	assert.strictEqual(frameStart(1.5, 0), 1.5);
+	assert.strictEqual(frameStart(1.5, NaN), 1.5);
 });

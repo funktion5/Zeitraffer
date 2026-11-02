@@ -20,8 +20,6 @@
 		stepForward: "Ein Bild vor",
 		player: "Zeitraffer-Video",
 		speeds: "Wiedergabegeschwindigkeit",
-		loop: "Schleife",
-		loopHint: "Video in Schleife abspielen",
 		fullscreen: "Vollbild",
 		exitFullscreen: "Vollbild verlassen",
 		error: "Das Video konnte nicht geladen werden. Bitte laden Sie die Seite neu oder versuchen Sie es später noch einmal.",
@@ -54,8 +52,18 @@
 		return Math.min(Math.max(target, 0.5 / fps), last);
 	};
 
+	// The start of the frame that is on show: the scrubber moves in whole frames, so its value is
+	// this, not the exact (mid-frame) position the video reports.
+	const frameStart = (current, fps) => {
+		if (!(fps > 0)) {
+			return current;
+		}
+
+		return Math.floor(current * fps + 1e-6) / fps;
+	};
+
 	if (typeof module !== "undefined" && module.exports) {
-		module.exports = { formatTime, valueText, stepTime };
+		module.exports = { formatTime, valueText, stepTime, frameStart };
 	}
 
 	// Loaded by the tests in Node: there is no page to wire up.
@@ -107,7 +115,7 @@
 		return element;
 	};
 
-	// A button whose visible text is its name, for the speeds and the loop.
+	// A button whose visible text is its name, for the speeds.
 	const textButton = (className, text) => {
 		const element = document.createElement("button");
 
@@ -183,15 +191,31 @@
 
 		speedGroup.append(...speedButtons);
 
-		const loop = textButton("timelapse-loop", LABELS.loop);
+		// Narrow players show a dropdown instead of the three buttons (the stylesheet picks which one is
+		// visible); both are kept in step by setSpeed.
+		const speedSelect = document.createElement("select");
 
-		loop.title = LABELS.loopHint;
+		speedSelect.className = "timelapse-speed-select";
+		speedSelect.setAttribute("aria-label", LABELS.speeds);
+		speedSelect.title = LABELS.speeds;
+		SPEEDS.forEach(({ rate, text }) => {
+			const choice = document.createElement("option");
+
+			choice.value = String(rate);
+			choice.textContent = text;
+			speedSelect.append(choice);
+		});
+
+		const speedField = document.createElement("span");
+
+		speedField.className = "timelapse-speed-field";
+		speedField.append(speedSelect);
 
 		const fullscreen = iconButton("timelapse-fullscreen", LABELS.fullscreen, ICONS.fullscreen);
 		const options = document.createElement("div");
 
 		options.className = "timelapse-options";
-		options.append(speedGroup, loop, fullscreen);
+		options.append(speedGroup, speedField, fullscreen);
 		controls.append(options);
 
 		// Shown over the picture when the video cannot be loaded.
@@ -218,7 +242,7 @@
 			seek.max = String(duration);
 
 			if (!scrubbing) {
-				seek.value = String(current);
+				seek.value = String(frameStart(current, currentFps()));
 			}
 
 			// The stylesheet draws the filled part of the track from this value.
@@ -255,15 +279,20 @@
 			return Number(active && active.dataset.fps);
 		};
 
-		// Without a usable frame rate a step would be a guess, so the buttons are hidden instead.
-		const showSteps = () => {
-			steps.hidden = !(currentFps() > 0);
+		// Without a usable frame rate a step would be a guess, so the buttons are hidden instead. The
+		// scrubber then moves in whole frames as well, so one arrow key press is one frame.
+		const applyFrameRate = () => {
+			const fps = currentFps();
+
+			steps.hidden = !(fps > 0);
+			seek.step = fps > 0 ? String(1 / fps) : "any";
 		};
 
 		const step = (direction) => {
 			const fps = currentFps();
 
-			if (!(fps > 0)) {
+			// A video that failed or has not loaded has no position to step from.
+			if (!(fps > 0) || video.readyState < 1) {
 				return;
 			}
 
@@ -300,18 +329,15 @@
 			speedButtons.forEach((element) => {
 				element.setAttribute("aria-pressed", String(Number(element.dataset.speed) === rate));
 			});
+			speedSelect.value = String(rate);
 		};
+
+		speedSelect.addEventListener("change", () => setSpeed(Number(speedSelect.value)));
 
 		speedButtons.forEach((element) => {
 			element.addEventListener("click", () => setSpeed(Number(element.dataset.speed)));
 		});
 		setSpeed(1);
-
-		loop.setAttribute("aria-pressed", "false");
-		loop.addEventListener("click", () => {
-			video.loop = !video.loop;
-			loop.setAttribute("aria-pressed", String(video.loop));
-		});
 
 		// The viewport goes fullscreen, not the bare video, so the bar comes along. Where that is not
 		// supported (iPhone), the button is hidden.
@@ -356,9 +382,11 @@
 			});
 		});
 		seek.addEventListener("input", () => {
-			video.currentTime = Number(seek.value);
+			// Into the middle of the chosen frame, as the frame step does (see stepTime).
+			video.currentTime = stepTime(Number(seek.value), 0, currentFps(), video.duration);
 		});
 		play.addEventListener("click", togglePlay);
+
 		video.addEventListener("click", togglePlay);
 
 		["loadedmetadata", "durationchange", "timeupdate", "seeked", "emptied"].forEach((name) => {
@@ -368,13 +396,13 @@
 			video.addEventListener(name, showPlayState);
 		});
 		// A tab switch loads another video, maybe with another frame rate.
-		video.addEventListener("emptied", showSteps);
+		video.addEventListener("emptied", applyFrameRate);
 
 		viewport.append(bar, error);
 		video.removeAttribute("controls");
 		refresh();
 		showPlayState();
-		showSteps();
+		applyFrameRate();
 
 		// The video may have failed before this script got to it.
 		if (video.error) {

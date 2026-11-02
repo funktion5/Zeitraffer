@@ -32,7 +32,9 @@ function tl_timelapse_videos_dir(): string {
 
 function tl_timelapse_videos_url(string $path): string {
   $uploads = wp_upload_dir(null, false);
-  return $uploads["baseurl"] . "/zeitraffer/" . $path;
+  // Encoded part by part: a folder named "Cam #1" would otherwise cut the URL off at the "#".
+  $encoded = implode("/", array_map("rawurlencode", explode("/", $path)));
+  return $uploads["baseurl"] . "/zeitraffer/" . $encoded;
 }
 
 
@@ -216,10 +218,19 @@ if (!$is_published) {
 }
 
 $periods = [
-  "daily" => "Die letzten 24 Stunden",
+  "daily" => "Gestern",
   "weekly" => "Die letzten 7 Tage",
   "monthly" => "Die letzten 30 Tage",
-  "yearly" => "Jahr",
+  "yearly" => "Die letzten 365 Tage",
+];
+
+// The short forms narrow players show instead (assets/style.css). The long text stays in the link, only
+// hidden visually there, so the accessible name still contains what is on screen.
+$short_labels = [
+  "daily" => "1T",
+  "weekly" => "7T",
+  "monthly" => "30T",
+  "yearly" => "365T",
 ];
 
 $period = isset($_GET["period"]) ? sanitize_key(wp_unslash($_GET["period"])) : "daily";
@@ -267,7 +278,7 @@ foreach ($periods as $key => $label) {
   $current = ($key === $period) ? " aria-current='true'" : "";
 
   // href keeps the tab working without JavaScript; data-* is read by assets/script.js.
-  $html .= "<a href='" . esc_url($link_url) . "' data-src='" . esc_url($item_url) . "' data-label='" . esc_attr($name . " " . $label) . "' data-date='" . esc_attr($item_span) . "' data-fps='" . esc_attr((string) (TL_TIMELAPSE_FRAME_RATES[$key] ?? "")) . "'" . $current . ">" . esc_html($label) . "</a>";
+  $html .= "<a href='" . esc_url($link_url) . "' data-src='" . esc_url($item_url) . "' data-label='" . esc_attr($name . " " . $label) . "' data-date='" . esc_attr($item_span) . "' data-fps='" . esc_attr((string) (TL_TIMELAPSE_FRAME_RATES[$key] ?? "")) . "'" . $current . "><span class='timelapse-tab-short'>" . esc_html($short_labels[$key]) . "</span> <span class='timelapse-tab-long'>" . esc_html($label) . "</span></a>";
 }
 
 $html .= "</nav>";

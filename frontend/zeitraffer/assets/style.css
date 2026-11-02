@@ -14,7 +14,19 @@
  * support understands. Where nesting is missing, script.js leaves the native video controls alone.
  */
 
+/*
+ * Three sizes, by the width of the player itself (not of the screen: the column it sits in may be
+ * narrow on a wide screen):
+ *   mobile  up to 30rem (480 px)   smallest controls, 2x2 tabs, speed as a dropdown
+ *   tablet  up to 48rem (768 px)   somewhat smaller controls
+ *   desktop above 48rem            the full size, the base rules
+ * Every size-dependent rule below is one of these two container queries, so they can be found by
+ * searching for "@container".
+ */
+
 .timelapse {
+	container-type: inline-size;
+
 	/* The accent follows Avada's primary colour (Theme Options > Colours, --primary_color) and falls
 	   back to the same blue as on the live site (#202b65) where the theme does not provide it, for
 	   example in the local test site. The text on it is a separate setting: keep enough contrast
@@ -31,6 +43,12 @@
 	--timelapse-control: var(--awb-color7, #ffffff);
 	--timelapse-halo: var(--awb-custom_color_5, #1f1f1f);
 
+	/* Hidden means gone, whatever the display rules below say (the fullscreen button where it is
+	   unsupported, the error message while the video works). */
+	& [hidden] {
+		display: none !important;
+	}
+
 	.timelapse-notice {
 		margin-block: 0 1rem;
 		padding: 0.5rem 0.75rem;
@@ -38,9 +56,12 @@
 		border-radius: 0.25rem;
 	}
 
-	/* The joined strip of period tabs: one rounded border, the parts divided by lines. */
+	/* The joined strip of period tabs: one rounded border, the parts divided by lines, all of the
+	   same width (however many there are). */
 	.timelapse-tabs {
-		display: flex;
+		display: grid;
+		grid-auto-flow: column;
+		grid-auto-columns: 1fr;
 		inline-size: fit-content;
 		max-inline-size: 100%;
 		margin-block: 0 1rem;
@@ -49,6 +70,7 @@
 		overflow: hidden;
 
 		& a {
+			position: relative;
 			display: flex;
 			align-items: center;
 			justify-content: center;
@@ -83,27 +105,35 @@
 					background: var(--awb-color3, #e3eaf7);
 				}
 			}
+
+			/* Tablet and mobile: less padding. The four columns share the width of the widest label, so the
+			   long labels fit on one line from about 55rem (880 px) up; below that they wrap evenly. */
+			@container (max-width: 48rem) {
+				padding-inline: 0.5rem;
+			}
 		}
 
-		/* Phones: a 2x2 block of the same joined parts. */
-		@media (max-width: 30rem) {
-			display: grid;
-			grid-template-columns: 1fr 1fr;
+		/* The short forms (1T, 7T, ...) are for mobile only. */
+		.timelapse-tab-short {
+			display: none;
+		}
+
+		/* Mobile: the strip spans the row, and the short forms replace the long text, which is only
+		   hidden visually: screen readers still get it, so the name contains what is on screen. */
+		@container (max-width: 30rem) {
 			inline-size: auto;
 
-			& a {
-				&:nth-child(odd) {
-					border-inline-start: 0;
-				}
+			.timelapse-tab-short {
+				display: inline;
+			}
 
-				&:nth-child(n + 3) {
-					border-block-start: thin solid currentColor;
-				}
-
-				/* A lone last part spans the row instead of leaving a hole. */
-				&:last-child:nth-child(odd) {
-					grid-column: 1 / -1;
-				}
+			.timelapse-tab-long {
+				position: absolute;
+				inline-size: 1em;
+				block-size: 1em;
+				overflow: hidden;
+				clip-path: inset(50%);
+				white-space: nowrap;
 			}
 		}
 	}
@@ -147,14 +177,10 @@
 			background: var(--timelapse-halo);
 			color: var(--timelapse-control);
 			text-align: center;
-
-			&[hidden] {
-				display: none;
-			}
 		}
 
 		/* Fullscreen is the viewport, so the bar comes along. The picture fits the screen, and the
-		   bar, docked or not, stays readable on the dark backdrop. */
+		   bar lies over it as always. */
 		&:fullscreen {
 			display: flex;
 			flex-direction: column;
@@ -168,11 +194,6 @@
 				aspect-ratio: auto;
 				object-fit: contain;
 			}
-
-			/* Docked, the bar would touch the screen edges. */
-			.timelapse-bar {
-				padding-inline: 1em;
-			}
 		}
 
 		/* The bar has no background of its own: white controls with a dark halo. It is built by
@@ -182,6 +203,11 @@
 
 			/* A button under the mouse gets a soft backing in the halo colour. */
 			--timelapse-hover: color-mix(in srgb, var(--timelapse-halo) 60%, transparent);
+
+			/* The icons follow the size of the targets, so shrinking the targets shrinks them too. Play is
+			   a little larger than the rest. */
+			--timelapse-icon-size: calc(var(--timelapse-target-size) * 0.75);
+			--timelapse-play-size: calc(var(--timelapse-target-size) * 1.25);
 
 			position: absolute;
 			inset-inline: 0;
@@ -202,19 +228,34 @@
 			}
 
 			/* Small text needs a crisp edge, not only a blur: a dark outline drawn behind the fill. */
+			.timelapse-time,
+			.timelapse-speed,
+			.timelapse-speed-select {
+				paint-order: stroke fill;
+				-webkit-text-stroke: 0.2em var(--timelapse-halo);
+			}
+
 			.timelapse-time {
 				font-size: 0.9em;
 				font-weight: 600;
 				font-variant-numeric: tabular-nums;
 				white-space: nowrap;
-				paint-order: stroke fill;
-				-webkit-text-stroke: 0.2em var(--timelapse-halo);
 			}
 
-			/* The slider is restyled for both engines; the filled part of the track comes from
-			   --timelapse-progress, which script.js sets. The two engines need separate rules. */
+			/* The two engines need separate rules for the slider, so what they share lives in the custom
+			   properties: each look is written once, and the forced-colors block only changes these. The
+			   filled part of the track comes from --timelapse-progress, which script.js sets. */
 			.timelapse-seek {
 				--timelapse-progress: 0%;
+				--timelapse-track: linear-gradient(
+					to right,
+					var(--timelapse-control) var(--timelapse-progress),
+					color-mix(in srgb, var(--timelapse-control) 40%, transparent) var(--timelapse-progress)
+				);
+				--timelapse-track-edge: 0;
+				/* The thumb is the site's accent blue with a light ring, so it shows on a dark picture too. */
+				--timelapse-thumb: var(--timelapse-accent);
+				--timelapse-thumb-edge: 0.15em solid var(--timelapse-control);
 
 				flex: 1;
 				min-inline-size: 0;
@@ -227,23 +268,17 @@
 
 				&::-webkit-slider-runnable-track {
 					block-size: 0.3em;
+					border: var(--timelapse-track-edge);
 					border-radius: 1em;
-					background: linear-gradient(
-						to right,
-						var(--timelapse-control) var(--timelapse-progress),
-						color-mix(in srgb, var(--timelapse-control) 40%, transparent) var(--timelapse-progress)
-					);
+					background: var(--timelapse-track);
 					box-shadow: var(--timelapse-glow);
 				}
 
 				&::-moz-range-track {
 					block-size: 0.3em;
+					border: var(--timelapse-track-edge);
 					border-radius: 1em;
-					background: linear-gradient(
-						to right,
-						var(--timelapse-control) var(--timelapse-progress),
-						color-mix(in srgb, var(--timelapse-control) 40%, transparent) var(--timelapse-progress)
-					);
+					background: var(--timelapse-track);
 					box-shadow: var(--timelapse-glow);
 				}
 
@@ -251,9 +286,10 @@
 					inline-size: 1em;
 					block-size: 1em;
 					margin-block-start: -0.35em;
-					border: 0;
+					box-sizing: border-box;
+					border: var(--timelapse-thumb-edge);
 					border-radius: 50%;
-					background: var(--timelapse-control);
+					background: var(--timelapse-thumb);
 					box-shadow: var(--timelapse-glow);
 					appearance: none;
 				}
@@ -261,9 +297,10 @@
 				&::-moz-range-thumb {
 					inline-size: 1em;
 					block-size: 1em;
-					border: 0;
+					box-sizing: border-box;
+					border: var(--timelapse-thumb-edge);
 					border-radius: 50%;
-					background: var(--timelapse-control);
+					background: var(--timelapse-thumb);
 					box-shadow: var(--timelapse-glow);
 				}
 
@@ -279,42 +316,25 @@
 				}
 			}
 
-			/* Play on the left; the frame step (middle) and the options (right) follow in later steps. */
+			/* Play on the left, the frame step exactly in the middle, the options on the right. The two side
+			   columns are equal and cannot grow (minmax 0), so the middle stays the middle at every size. */
 			.timelapse-controls {
 				display: grid;
-				grid-template-columns: 1fr auto 1fr;
+				grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
 				align-items: center;
 			}
 
-			& button {
-				position: relative;
-				display: inline-grid;
-				place-items: center;
-				min-inline-size: var(--timelapse-target-size);
+			/* What the buttons and the speed dropdown share: none of the browser's looks, the bar's colour,
+			   and a ring for the keyboard. */
+			& :is(button, select) {
 				min-block-size: var(--timelapse-target-size);
 				margin: 0;
-				padding: 0;
 				border: 0;
-				border-radius: 50%;
 				background: transparent;
 				color: inherit;
 				font: inherit;
 				cursor: pointer;
 				appearance: none;
-
-				& svg {
-					inline-size: 2em;
-					block-size: 2em;
-					fill: currentColor;
-
-					/* A crisp dark outline behind the white shape (in the icon's own units), plus a
-					   soft glow: readable on a near-white frame as well as on a dark one. */
-					stroke: var(--timelapse-halo);
-					stroke-width: 1.5;
-					stroke-linejoin: round;
-					paint-order: stroke fill;
-					filter: drop-shadow(0 0 0.2em var(--timelapse-halo));
-				}
 
 				/* A white ring inside a dark one: visible on a bright and on a dark picture. */
 				&:focus-visible {
@@ -330,28 +350,48 @@
 				}
 			}
 
-			.timelapse-play {
-				justify-self: start;
-				min-inline-size: calc(var(--timelapse-target-size) * 1.25);
-				min-block-size: calc(var(--timelapse-target-size) * 1.25);
+			& button {
+				position: relative;
+				display: inline-grid;
+				place-items: center;
+				min-inline-size: var(--timelapse-target-size);
+				padding: 0;
+				border-radius: 50%;
 
 				& svg {
-					inline-size: 2.75em;
-					block-size: 2.75em;
+					inline-size: var(--timelapse-icon-size);
+					block-size: var(--timelapse-icon-size);
+					fill: currentColor;
+
+					/* A crisp dark outline behind the white shape (in the icon's own units), plus a
+					   soft glow: readable on a near-white frame as well as on a dark one. */
+					stroke: var(--timelapse-halo);
+					stroke-width: 1.5;
+					stroke-linejoin: round;
+					paint-order: stroke fill;
+					filter: drop-shadow(0 0 0.2em var(--timelapse-halo));
 				}
 			}
 
-			/* The frame step sits in the middle column of the row. Hidden means gone, whatever display says. */
+			.timelapse-play {
+				justify-self: start;
+				min-inline-size: var(--timelapse-play-size);
+				min-block-size: var(--timelapse-play-size);
+
+				& svg {
+					inline-size: calc(var(--timelapse-play-size) * 0.8);
+					block-size: calc(var(--timelapse-play-size) * 0.8);
+				}
+			}
+
+			/* The frame step sits in the middle column of the row. */
 			.timelapse-steps {
 				display: flex;
-
-				&[hidden] {
-					display: none;
-				}
 			}
 
-			/* Speed, loop and fullscreen sit on the right of the row. */
+			/* Speed and fullscreen sit on the right of the row, also when the frame step is hidden. */
 			.timelapse-options {
+				grid-column: 3;
 				display: flex;
 				flex-wrap: wrap;
 				align-items: center;
@@ -364,54 +404,117 @@
 				align-items: center;
 			}
 
-			/* The speeds and the loop are text, with the same crisp outline as the time. What is on (the
-			   chosen speed, the loop) is underlined: the state does not rely on colour. */
+			/* The speeds are text. The chosen one is underlined: the state does not rely on colour. */
 			.timelapse-speed,
-			.timelapse-loop {
+			.timelapse-speed-select {
 				padding-inline: 0.5em;
 				border-radius: 0.5em;
-				font-size: 1em;
 				font-weight: 700;
-				paint-order: stroke fill;
-				-webkit-text-stroke: 0.2em var(--timelapse-halo);
+			}
 
-				&[aria-pressed="true"] {
-					text-decoration: underline;
-					text-decoration-thickness: 0.15em;
-					text-underline-offset: 0.3em;
+			.timelapse-speed[aria-pressed="true"] {
+				text-decoration: underline;
+				text-decoration-thickness: 0.15em;
+				text-underline-offset: 0.3em;
+			}
+
+			/* The dropdown replaces the three speed buttons on narrow players (see the container query below). */
+			.timelapse-speed-field {
+				position: relative;
+				display: none;
+				align-items: center;
+
+				/* The arrow is drawn here, because the select's own is switched off with the rest of its looks.
+				   It is a text glyph: in forced-colors mode a drawn border shape would turn into a solid box. */
+				&::after {
+					content: "\25BE";
+					position: absolute;
+					inset-inline-end: 0.25em;
+					inset-block-start: 50%;
+					translate: 0 -50%;
+					line-height: 1;
+					pointer-events: none;
+				}
+			}
+
+			/* As wide as the chosen value, not the widest option (where the browser can: field-sizing), and
+			   with only as much room on the right as the arrow needs. */
+			.timelapse-speed-select {
+				field-sizing: content;
+				padding-block: 0;
+				padding-inline: 0.4em 1.15em;
+
+				/* The list that opens is the system's own, on its own background: the bar's white text and
+				   outline would be invisible there. */
+				& option {
+					background: Canvas;
+					color: CanvasText;
+					text-shadow: none;
+					-webkit-text-stroke: 0;
 				}
 			}
 
 			/* Windows high contrast removes shadows and gradients: give the controls a plain border. */
 			@media (forced-colors: active) {
-				& button {
+				& :is(button, select) {
 					border: thin solid ButtonText;
 					background: ButtonFace;
 					color: ButtonText;
+
+					& svg {
+						stroke: none;
+						filter: none;
+					}
 				}
 
+				/* The outline is a decoration for a picture behind the text; here it only smears the letters. */
+				.timelapse-time,
+				.timelapse-speed,
+				.timelapse-speed-select {
+					-webkit-text-stroke: 0;
+				}
+
+				/* The track's gradient and the thumb's colour are dropped, which leaves nothing to see on a
+				   bright picture: draw both in the user's own system colours. */
 				.timelapse-seek {
-					forced-color-adjust: auto;
+					forced-color-adjust: none;
+					--timelapse-track: linear-gradient(
+						to right,
+						Highlight var(--timelapse-progress),
+						Canvas var(--timelapse-progress)
+					);
+					--timelapse-track-edge: thin solid CanvasText;
+					--timelapse-thumb: CanvasText;
+					--timelapse-thumb-edge: thin solid Canvas;
 				}
 			}
 
-			/* Where the picture is small the bar would cover most of it, so it sits below the picture
-			   instead, in the page's own text colour and without a halo (nothing is behind it). */
-			@container (max-width: 45rem) {
-				position: static;
-				padding-inline: 0;
-				padding-block: 0.5em 0;
-				text-shadow: none;
-				--timelapse-control: currentColor;
-				--timelapse-halo: transparent;
-				--timelapse-hover: color-mix(in srgb, currentColor 15%, transparent);
+			/* The bar never leaves the picture. Where the picture is smaller, the controls shrink instead. */
+			@container (max-width: 48rem) {
+				--timelapse-target-size: 2.5rem;
+
+				padding: 0.75em;
 			}
 
-			/* A phone is too narrow for all controls in one row: the options take a row of their own below
-			   play and the frame step, which stay in their columns. */
-			@container (max-width: 25rem) {
-				.timelapse-options {
-					grid-column: 1 / -1;
+			/* Mobile: smaller still (2rem is 32 px at the default font size, above the 24 px that WCAG 2.2
+			   AA asks for), play is as large as the others, and the speed is a dropdown instead of three
+			   buttons, so the options stay on one row. */
+			@container (max-width: 30rem) {
+				--timelapse-target-size: 2rem;
+				--timelapse-play-size: var(--timelapse-target-size);
+
+				padding: 0.5em;
+
+				.timelapse-time {
+					font-size: 0.8em;
+				}
+
+				.timelapse-speeds {
+					display: none;
+				}
+
+				.timelapse-speed-field {
+					display: inline-grid;
 				}
 			}
 		}
