@@ -1,4 +1,11 @@
 /*
+ * MASTER COPY. This file lives in the Zeitraffer plugin (frontend/zeitraffer/assets/style.css) and is
+ * copied word for word to the f5-webcams plugin as assets/css/timelapse.css. Change it here first,
+ * copy it, and check the copy with:
+ *   diff frontend/zeitraffer/assets/style.css frontend/f5-webcams/assets/css/timelapse.css
+ */
+
+/*
  * Zeitraffer player: tabs, picture and caption. Fonts, sizes and colours come from the theme:
  * everything inherits, borders use currentColor, and the accent of the active tab is the only
  * colour the player chooses itself.

@@ -1,3 +1,8 @@
+// MASTER COPY. This file lives in the Zeitraffer plugin (frontend/zeitraffer/assets/script.js) and is
+// copied word for word to the f5-webcams plugin as assets/js/timelapse.js. Change it here first, copy
+// it, and check the copy with:
+//   diff frontend/zeitraffer/assets/script.js frontend/f5-webcams/assets/js/timelapse.js
+//
 // Switches the timelapse period without a page reload and replaces the browser's video controls with
 // the player's own bar. Without JavaScript, or in a browser without CSS nesting, the tabs stay plain
 // links and the video keeps its native controls, so the page still works.
@@ -181,6 +186,7 @@
 		const loop = textButton("timelapse-loop", LABELS.loop);
 
 		loop.title = LABELS.loopHint;
+
 		const fullscreen = iconButton("timelapse-fullscreen", LABELS.fullscreen, ICONS.fullscreen);
 		const options = document.createElement("div");
 

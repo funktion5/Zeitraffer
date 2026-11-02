@@ -134,6 +134,8 @@ Root `div.timelapse` containing, in order: optional `p.timelapse-notice`; `h2.ti
 
 ### Task 8: f5 assets, cache-busting, change notes
 
+> Tasks 7 and 8 were done together (Julius's choice, 2026-11-02), because after Task 7 alone the f5 page would have printed the new names while loading the old assets. Verified by an offline f5 replay (18 checks, and the same class set as the plugin's renderer), by running the f5 page with the f5 asset copies through the browser checks (bar 19, step 24, options 28), and by calling the f5 class inside the local WordPress with cron off.
+
 **Files:**
 - Modify: `frontend/zeitraffer/assets/script.js`, `frontend/zeitraffer/assets/style.css` (header comment), `frontend/f5-webcams/assets/js/timelapse.js`, `frontend/f5-webcams/assets/css/timelapse.css`, `frontend/f5-webcams/includes/class-assets.php`, `frontend/f5-webcams/TIMELAPSE-PLAYER-CHANGES.md`
 
