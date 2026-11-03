@@ -309,3 +309,29 @@ Sie laufen nicht in der GitHub-Action, die nur die Python-Pipeline und die PHP-W
 ## Wichtig für den Live-Betrieb
 
 Diese Anleitung beschreibt nur die lokale Entwicklungsumgebung. Auf der Live-Seite werden Plugin und Videos nicht von Docker bereitgestellt. Das Plugin erwartet die Videos unter `wp-content/uploads/zeitraffer/` in genau der Ordnerstruktur oben. Deployment auf die Live-Seite oder den Pi gehört nicht zu diesem Ablauf und passiert nie automatisch.
+
+## Videos auf die Live-Seite bringen: welche Dateien dürfen raus
+
+Der Schritt, der die fertigen Videos vom VPS auf die Live-Seite bringt, ist noch nicht gebaut (README, „Noch offen“). Damit er nicht mehr überträgt als nötig, gibt es auf dem VPS eine Liste der erlaubten Dateien. Sie wird nur gelesen und schreibt nichts:
+
+```bash
+.venv/bin/python3 scripts/list-deliverable-videos.py > deliverable.txt
+rsync -a --files-from=deliverable.txt videos/ <Ziel>
+```
+
+**Was auf der Liste steht**
+
+- Je Kamera und Zeitraum (`daily`, `weekly`, `monthly`, `yearly`) nur das neueste Video, nach Dateinamen wie im Plugin (siehe „So funktioniert das Plugin“).
+- Nur reguläre, nicht leere `.mp4`-Dateien direkt in diesen vier Ordnern. Versteckte Dateien (der Encoder schreibt `.<Name>.tmp.mp4`, bis das Video fertig ist) und Symlinks zählen nicht. Eine neuere, leere Datei verdrängt das ältere gültige Video nicht.
+- Nichts von Kameras in `ignored_cameras`.
+- Alles andere in `videos/` nie: `manual-runs/`, `highlights/`, unbekannte Ordner, lose Dateien. Fehlt `videos/` ganz, endet das Skript mit Fehler (Rückgabewert 1) statt mit einer leeren Liste.
+
+**Neue Kamera.** Den Namen in `ignored_cameras` (`config/config.json`) eintragen, wenn die Kamera eingerichtet wird, vor dem ersten Lauf um 02:00, sonst baut die Nacht schon ein Video. Erst wenn die Kamera live gehen darf, den Namen entfernen. Der Entwurf des Kameraeintrags im WordPress-Plugin ist nur die zweite Sicherung. Wird eine Kamera wegen ihres Inhalts zurückgezogen (Datenschutz, nicht verpixelt), reicht der Entwurf nicht: Die Dateien auf der Live-Seite müssen gelöscht werden.
+
+**Regeln für den Übertragungsjob.** Der Job ist nicht Teil dieses Repositorys, und die Liste schützt nur, wenn er sie benutzt.
+
+1. Eine neue Datei zuerst unter einem versteckten Temporärnamen im selben Ordner hochladen (`rsync` macht das ohne `--inplace` von selbst).
+2. Die Größe mit der Quelle vergleichen.
+3. Erst dann auf den endgültigen Namen umbenennen.
+4. Erst danach, je Kamera und Zeitraum, das neueste und das vorherige Video behalten und ältere löschen. Das vorherige ist die Sicherung und deckt eine zwischengespeicherte Seite ab, die noch den alten Dateinamen enthält.
+5. Bei jedem Fehler, bei einer leeren Liste und wenn nichts Neues da ist, wird nichts gelöscht. Nie `rsync --delete` verwenden.
