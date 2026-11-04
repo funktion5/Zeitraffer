@@ -508,7 +508,8 @@ Beispiel um gute Motive für YouTube oder die Website auszuwählen.
 - Geprüft werden derzeit Strandallee, SLSV, BSV-Steinhude, SKM-Mardorf und Kitestrand.
 - Dinge, die den ganzen Tag an derselben Stelle stehen, etwa ein Boot am Ufer oder eine Boje,
   werden erkannt und nicht angezeigt.
-- Das Programm rät, was es sieht („Flugzeug?“) und irrt sich dabei auch; ein Mensch entscheidet.
+- Das Programm kann sich irren (ein Vogel im Flug wird oft als Flugzeug erkannt); darum zeigt die
+  Seite nur die Markierung, und ein Mensch entscheidet.
 - Treffer bleiben 30 Tage erhalten.
 - **Stand:** läuft seit dem 23.10.2026 jede Nacht automatisch nach den Videos.
 

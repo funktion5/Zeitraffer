@@ -8,15 +8,20 @@ lassen. Aufruf über den Link **Highlights** im Header oder direkt `/highlights.
 
 - Pro Kamera ein Abschnitt, darin die Tage (neuester zuerst) und pro Tag die Bilder (sicherster
   Treffer zuerst).
-- Pro Bild: Uhrzeit, Vermutung des Modells mit Fragezeichen (z. B. „Flugzeug?“, das Modell
-  irrt sich oft) und Sicherheit in Prozent, dazu **Herunterladen** und **Löschen**.
+- Pro Bild: Uhrzeit, dazu **Herunterladen** und **Löschen**. Was das Modell zu erkennen glaubt
+  (z. B. „Flugzeug“ oder „Drachen“) und mit welcher Sicherheit, steht bewusst nicht auf der
+  Seite: das Modell irrt sich oft, und die Angabe verwirrt mehr, als sie hilft. Sie steht weiter
+  im Bericht des Flaggers (`manifest.json`), und die Reihenfolge der Bilder folgt ihr.
 - Ein Klick auf ein Bild zeigt es groß. **← Vorheriges** / **Nächstes →** oder die
   Pfeiltasten blättern durch alle Bilder der Seite; **Schließen**, Esc oder ein Klick
   neben das Bild schließt die Großansicht. Ohne JavaScript öffnet der Klick das Bild direkt.
-- In der Großansicht gibt es auch **Löschen** (mit Bestätigung; danach erscheint das nächste
-  Bild, nach dem letzten der Seite wieder das erste wie bei **Nächstes →**; ist kein Bild mehr
-  übrig, schließt sie sich) und **Markierung zeigen** (dieselbe Einstellung wie auf der Seite:
-  ein Haken an einer Stelle gilt für beide).
+- Die Leiste unter dem großen Bild: links **Markierung zeigen** (dieselbe Einstellung wie auf der
+  Seite: ein Haken an einer Stelle gilt für beide), in der Mitte **← Vorheriges**, **Nächstes →**,
+  dann das Symbol zum **Herunterladen** und rechts daneben das Papierkorb-Symbol zum **Löschen**,
+  ganz rechts **Schließen**. Herunterladen und Löschen sind nur Symbole (mit Beschriftung für
+  Screenreader und als Tooltip). Löschen fragt nach; danach erscheint das nächste Bild, nach dem
+  letzten der Seite wieder das erste wie bei **Nächstes →**; ist kein Bild mehr übrig, schließt
+  sich die Großansicht. Auf einem schmalen Bildschirm stehen die drei Gruppen untereinander.
 - **Markierung zeigen** blendet den Rahmen ein, in dem das Modell etwas erkannt hat, auch in
   der Großansicht. Das Bild selbst bleibt unverändert, auch beim Download.
 - Kameras ohne Treffer bleiben sichtbar:

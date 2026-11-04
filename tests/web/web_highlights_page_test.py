@@ -43,16 +43,38 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	assert german in out
 	assert "143 Bilder geprüft" in out
 	assert "verpixelt" not in out
-	assert 'alt="Strandallee, 08:14 Uhr, Flugzeug?"' in out
-	assert "86 %" in out
+	assert 'alt="Strandallee, 08:14 Uhr"' in out
+	# The model's guess and its confidence are not shown anywhere (they only confused the viewers).
+	assert "Flugzeug" not in out
+	assert "86 %" not in out
 	assert f'href="/videos/Strandallee/highlights/{date}/a.jpg"' in out
 	# The image itself links to the full size, which the viewer dialog shows.
 	assert 'class="highlights-open"' in out
-	assert f'data-caption="Strandallee · {german} · 08:14 Uhr · Flugzeug? · 86 %"' in out
+	assert f'data-caption="Strandallee · {german} · 08:14 Uhr"' in out
 	assert 'id="highlights-viewer"' in out
 	# The viewer has its own delete button and marker toggle.
 	assert 'id="highlights-viewer-delete"' in out
 	assert 'id="highlights-viewer-show-boxes"' in out
+	# The viewer's delete and download are symbol-only buttons with an accessible name, in this order:
+	# marker toggle (left), previous, next, download, delete, close (right).
+	viewer = out[out.index('id="highlights-viewer"') :]
+	order = [
+		'id="highlights-viewer-show-boxes"',
+		'id="highlights-viewer-prev"',
+		'id="highlights-viewer-next"',
+		'id="highlights-viewer-download"',
+		'id="highlights-viewer-delete"',
+		'id="highlights-viewer-close"',
+	]
+	positions = [viewer.index(marker) for marker in order]
+	assert positions == sorted(positions)
+	delete_button = viewer[viewer.index('id="highlights-viewer-delete"') : viewer.index("</button>", viewer.index('id="highlights-viewer-delete"'))]
+	assert 'aria-label="Bild löschen"' in delete_button and "<span>" not in delete_button
+	download_link = viewer[viewer.index('id="highlights-viewer-download"') : viewer.index("</a>", viewer.index('id="highlights-viewer-download"'))]
+	assert 'aria-label="Bild herunterladen"' in download_link and "<span>" not in download_link
+	assert any(line.strip() == "download" for line in download_link.splitlines())
+	# The script points the download at the image that is on show.
+	assert "viewerDownload.href = link.href" in out
 	# The shared confirm dialog from components/confirm-delete.php.
 	assert '<h2 id="confirm-delete-title">Bild löschen</h2>' in out
 	assert 'data-delete-name="a.jpg"' in out

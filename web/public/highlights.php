@@ -208,14 +208,11 @@ function highlightBoxStyle(array $item): string
 							<ul class="highlights-grid">
 								<?php foreach ($day["items"] as $item): ?>
 									<?php
-									$guess = translateHighlightLabel($item["label"]) . "?";
-									$percent = (int) round($item["score"] * 100);
+									// The model's guess and its confidence are deliberately not shown: a wrong "Drachen?" only confuses.
 									$viewerCaption = implode(" · ", [
 										$section["camera"],
 										formatGermanDate($day["date"]),
 										"{$item["time"]} Uhr",
-										$guess,
-										"{$percent} %",
 									]);
 									?>
 									<li>
@@ -232,7 +229,7 @@ function highlightBoxStyle(array $item): string
 														loading="lazy"
 														width="<?= $item["imageSize"][0] ?>"
 														height="<?= $item["imageSize"][1] ?>"
-														alt="<?= escapeHtml("{$section["camera"]}, {$item["time"]} Uhr, {$guess}") ?>"
+														alt="<?= escapeHtml("{$section["camera"]}, {$item["time"]} Uhr") ?>"
 													>
 												</a>
 												<span
@@ -244,8 +241,6 @@ function highlightBoxStyle(array $item): string
 
 											<figcaption>
 												<?= escapeHtml($item["time"]) ?> Uhr
-												· <?= escapeHtml($guess) ?>
-												· <?= $percent ?> %
 											</figcaption>
 
 											<div class="highlights-actions">
@@ -310,18 +305,39 @@ function highlightBoxStyle(array $item): string
 		</figure>
 
 		<div class="highlights-viewer-nav">
-			<button type="button" id="highlights-viewer-prev">← Vorheriges</button>
-			<button type="button" id="highlights-viewer-next">Nächstes →</button>
-			<button type="button" id="highlights-viewer-delete" class="delete-video-button">
-				<svg viewBox="0 0 24 24" aria-hidden="true">
-					<path d="M9 3h6l1 1h4v2H4V4h4l1-1zm-3 5h12l-1 13H7L6 8z" />
-				</svg>
-				<span>Löschen</span>
-			</button>
 			<label class="highlights-viewer-toggle">
 				<input type="checkbox" id="highlights-viewer-show-boxes">
 				Markierung zeigen
 			</label>
+
+			<div class="highlights-viewer-center">
+				<button type="button" id="highlights-viewer-prev">← Vorheriges</button>
+				<button type="button" id="highlights-viewer-next">Nächstes →</button>
+				<a
+					id="highlights-viewer-download"
+					class="highlights-viewer-icon highlights-viewer-download"
+					href=""
+					download
+					title="Bild herunterladen"
+					aria-label="Bild herunterladen"
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M12 16l-5-5h3V4h4v7h3l-5 5zm-7 2h14v2H5v-2z" />
+					</svg>
+				</a>
+				<button
+					type="button"
+					id="highlights-viewer-delete"
+					class="highlights-viewer-icon highlights-viewer-delete"
+					title="Bild löschen"
+					aria-label="Bild löschen"
+				>
+					<svg viewBox="0 0 24 24" aria-hidden="true">
+						<path d="M9 3h6l1 2h4v2H4V5h4l1-2Zm-2 6h10l-1 12H8L7 9Zm3 2v7h2v-7h-2Zm4 0v7h2v-7h-2Z" />
+					</svg>
+				</button>
+			</div>
+
 			<button type="button" id="highlights-viewer-close">Schließen</button>
 		</div>
 	</dialog>
@@ -354,6 +370,7 @@ function highlightBoxStyle(array $item): string
 		const viewerPrevious = document.querySelector("#highlights-viewer-prev");
 		const viewerNext = document.querySelector("#highlights-viewer-next");
 		const viewerDelete = document.querySelector("#highlights-viewer-delete");
+		const viewerDownload = document.querySelector("#highlights-viewer-download");
 		const boxToggles = document.querySelectorAll(
 			"#highlights-show-boxes, #highlights-viewer-show-boxes",
 		);
@@ -377,6 +394,7 @@ function highlightBoxStyle(array $item): string
 			const box = link.parentElement.querySelector(".highlights-box");
 
 			viewerImage.src = link.href;
+			viewerDownload.href = link.href;
 			viewerImage.alt = thumbnail.alt;
 			viewerImage.width = thumbnail.width;
 			viewerImage.height = thumbnail.height;
