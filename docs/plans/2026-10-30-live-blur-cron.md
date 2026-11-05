@@ -97,7 +97,9 @@ sends any request himself; Claude can draft the text (German, short bullets).
 - What the pick-up job takes and from where: unknown to Julius; a colleague knows. Open question
   for the colleague (below).
 - How strict: rare misses are acceptable, but Julius wants to know when they happen.
-- Watchdog: yes, as an ERROR line in the log. No push message for now.
+- Watchdog: yes, as a WARNING line in the log (changed 2026-11-04, was ERROR: it is a hint, not a failure). It
+  never stops or delays the nightly videos; it runs on its own cron line, read-only, and the 02:00
+  catch-up covers any image that was missed. No push message for now.
 
 ## Recommended scope (draft)
 
@@ -105,7 +107,7 @@ sends any request himself; Claude can draft the text (German, short bullets).
 2. **Watchdog (new, small, with tests):** a read-only mode, for example
    `blur_box --check-stale`, run from its own cron line every 5 minutes during the day. It lists
    each blur camera over ssh (the listing already carries the upload time of every image), compares
-   it with the state files, and logs an ERROR line per camera when a daytime image is older than
+   it with the state files, and logs a WARNING line per camera when a daytime image is older than
    5 minutes and neither blurred, clean nor recorded as a night image: `[SLSV] 2 images unblurred
    for more than 5 minutes: <names>`. It needs no lock, so it also works while a round is stuck, and
    it covers both a stuck job and images that keep failing. It writes nothing to the box. The

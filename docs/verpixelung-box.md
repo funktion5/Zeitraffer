@@ -285,6 +285,22 @@ verpixelten Bildern zusätzlich `backup`, `boxes` (je `[x0, y0, x1, y1, Sicherhe
 Bilder ohne Eintrag (fehlgeschlagen, Upload noch nicht fertig, auf später verschoben) werden in
 der nächsten Runde erneut versucht.
 
+## Sperre im automatischen Tagesvideo
+
+Ein automatisches Tagesvideo einer Blur-Kamera (`privacy.blur_cameras`) wird nur aus Bildern gebaut,
+die dieser Job bestätigt hat: letzte Zeile in der [Statusdatei](#statusdatei) mit `blurred`, `clean`
+oder `night`. Alles andere (`refused`, `replacing`, kein Eintrag) bleibt draußen, weil es noch eine
+Person zeigen kann.
+
+- Das Video entsteht trotzdem, aus den bestätigten Bildern. Im Log steht je Kamera eine Warnung:
+  `[Kamera] Blur gate: left out N of M unconfirmed images: ...` (höchstens 10 Namen).
+- Ist kein einziges Bild bestätigt (das Nachholen ist ausgefallen, die Kamera hat keine Statusdatei),
+  wird die Kamera übersprungen (`skipped`, kein Fehler); das Video des Vortags bleibt.
+- Ausgenommen sind historische Läufe (sie landen in `manual-runs/`) und Kameras ohne Blur.
+- Das Wochenvideo wird aus den Tagesvideos zusammengesetzt und erbt die Sperre.
+- **Nicht abgedeckt:** Monats- und Jahresvideo. Sie bestehen aus älteren Bildern; für Bilder aus der
+  Zeit vor dem Box-Job gibt es noch kein Nachholen für ganze Monate. Siehe [Grenzen](#grenzen).
+
 ## Stromausfall und Nachholen
 
 - **Ausfall bis zwei Tage:** Die Liste reicht bis vorgestern zurück. Verpasste Tagbilder der
@@ -332,6 +348,8 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 - Bilder, die älter als 48 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
   `refused` im Log.
 - Keine Erkennung findet 100 % aller Personen (siehe [verpixelung.md](verpixelung.md#grenzen)).
+- Monats- und Jahresvideo einer Blur-Kamera sind von der [Sperre im Tagesvideo](#sperre-im-automatischen-tagesvideo)
+  nicht erfasst; ältere Bilder aus der Zeit vor dem Box-Job können unverpixelt darin stehen.
 
 ## Fehlersuche
 

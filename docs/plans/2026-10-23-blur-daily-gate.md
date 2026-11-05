@@ -1,9 +1,12 @@
 # PLAN — Blur catch-up before the nightly run + Daily blur gate
 
 Status: Part 1 (catch-up) built and in cron since 2026-10-23, see
-[2026-10-23-blur-catch-up.md](2026-10-23-blur-catch-up.md). Part 2 (gate) planned, **not started**. Blocked on where the live infrastructure runs
-(boss decision: Pi, Hetzner web server or a VPS). Build only once the box blur job
-(`src/privacy/blur_box.py`, docs/verpixelung-box.md) is scheduled for real on that host.
+[2026-10-23-blur-catch-up.md](2026-10-23-blur-catch-up.md). **Part 2 (gate) built 2026-11-04** (`src/jobs/daily.py`,
+`split_confirmed_images`, tests in `tests/jobs/daily_test.py`); Julius runs the tests on the VPS. Decisions of
+2026-11-04: an unconfirmed image is LEFT OUT and the Daily is built from the confirmed ones (not skipped);
+if no image is confirmed the camera is skipped; no checksum comparison (open decision 2 = no, maybe later);
+no hold-back of Monthly/Yearly (Julius does not want something he would have to remove again; they stay a
+known gap, see docs/verpixelung-box.md, Grenzen). Where the infrastructure runs: the VPS.
 
 ## Goal
 
