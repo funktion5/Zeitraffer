@@ -865,3 +865,197 @@ def test_state_from_the_old_single_file_is_honoured(setup: Setup) -> None:
 
 	assert setup.run() == blur_box.BoxRoundSummary()
 	assert setup.detected() == []
+
+
+# Step 1 of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: blur the frames a job hands over
+# (any age, any month), not "the last LISTED_DAYS days". Interface proposed before the code:
+#   blur_box.split_confirmed_names(state_root, camera, names, timezone) -> (confirmed, open)
+#   blur_box.blur_frames(writer, camera, names, detector_command, settings, state_root, now,
+#                        rules=None) -> BoxRoundSummary
+OLD_PERSON = "20260310T123000.jpg"
+OLD_CLEAN = "20260310T120000.jpg"
+OLD_AGE = 97 * 24 * 3600
+# The caller (the job) sizes the writer for its frames; the nightly and live defaults stay.
+OLD_LIMITS = {"max_image_age": timedelta(days=200), "max_backups_per_camera": 50}
+
+
+def blur_listed(setup: Setup, names: list[str], writer: BoxWriter | None = None, **options):
+	return blur_box.blur_frames(
+		writer or setup.writer(**OLD_LIMITS),
+		CAMERA,
+		names,
+		setup.detector,
+		SETTINGS,
+		setup.state_root,
+		NOW,
+		**options,
+	)
+
+
+# State lines of earlier rounds sit on the page of the image's own month.
+def record_in_own_month(setup: Setup, name: str, status: str, **extra) -> None:
+	moment = blur_box.image_moment(name, TIMEZONE)
+	entry = {"image": name, "status": status, **extra}
+
+	blur_box.record_processed(setup.state_root, CAMERA, entry, moment)
+
+
+def test_listed_old_frame_is_blurred_and_recorded_in_its_own_month(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, [OLD_PERSON])
+
+	assert summary.blurred == 1
+	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert setup.states()[OLD_PERSON]["status"] == "blurred"
+	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
+	assert not (setup.state_root / CAMERA / "2026-06.jsonl").exists()
+	backup = setup.camera_dir / "original" / setup.states()[OLD_PERSON]["backup"]
+	assert backup.read_bytes() == original_bytes(OLD_PERSON)
+	assert setup.leftovers() == []
+
+
+# Only the caller's writer lifts the 48 h limit; a writer with the defaults still refuses.
+def test_default_writer_limits_still_refuse_an_old_frame(setup: Setup, monkeypatch) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, [OLD_PERSON], writer=setup.writer())
+
+	assert summary.refused == 1
+	assert image.read_bytes() == original_bytes(OLD_PERSON)
+	assert setup.states()[OLD_PERSON]["status"] == "refused"
+	assert setup.writes() == []
+
+
+def test_frame_without_people_is_recorded_clean_without_writes(setup: Setup) -> None:
+	image = setup.upload(OLD_CLEAN, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, [OLD_CLEAN])
+
+	assert summary.clean == 1
+	assert image.read_bytes() == original_bytes(OLD_CLEAN)
+	assert setup.states()[OLD_CLEAN]["status"] == "clean"
+	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
+	assert setup.writes() == []
+
+
+# A frame of a job's list is judged as it is: no night rule, the job already chose it.
+def test_frame_at_night_time_is_still_checked(setup: Setup, monkeypatch) -> None:
+	name = "20260310T020000.jpg"
+	monkeypatch.setenv("FAKE_PEOPLE", name)
+	setup.upload(name, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, [name])
+
+	assert (summary.blurred, summary.night) == (1, 0)
+	assert setup.detected() == [name]
+
+
+def test_confirmed_frames_are_skipped_without_detection_or_writes(setup: Setup) -> None:
+	names = ["20260310T120000.jpg", "20260310T123000.jpg", "20260405T120000.jpg"]
+
+	for name, status in zip(names, ("blurred", "clean", "night"), strict=True):
+		setup.upload(name, age_seconds=OLD_AGE)
+		record_in_own_month(setup, name, status)
+
+	summary = blur_listed(setup, names)
+
+	assert summary == blur_box.BoxRoundSummary()
+	assert setup.detected() == []
+	assert setup.writes() == []
+
+
+# The nightly round treats a "refused" line as final; the backfill has to try such a frame again.
+def test_frame_refused_earlier_is_tried_again_with_the_larger_limit(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	record_in_own_month(setup, OLD_PERSON, "refused", reason="older than 2 days, 0:00:00")
+
+	summary = blur_listed(setup, [OLD_PERSON])
+
+	assert summary.blurred == 1
+	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert setup.states()[OLD_PERSON]["status"] == "blurred"
+
+
+def test_frames_are_done_newest_first_one_at_a_time(setup: Setup, monkeypatch) -> None:
+	names = ["20260310T120000.jpg", "20260311T120000.jpg", "20260309T120000.jpg"]
+	monkeypatch.setenv("FAKE_PEOPLE", ",".join(names))
+
+	for name in names:
+		setup.upload(name, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, names)
+
+	assert summary.blurred == 3
+	assert setup.swaps() == sorted(names, reverse=True)
+	assert setup.detector_calls == [1, 1, 1]
+	assert setup.leftovers() == []
+
+
+# A cut-off frame (the video step skips it anyway) fails alone and is not recorded.
+def test_cut_off_frame_fails_alone_and_is_not_recorded(setup: Setup, monkeypatch) -> None:
+	broken = "20260310T130000.jpg"
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	setup.upload(broken, age_seconds=OLD_AGE).write_bytes(b"\xff\xd8half")
+
+	summary = blur_listed(setup, [OLD_PERSON, broken])
+
+	assert (summary.blurred, summary.failed) == (1, 1)
+	assert broken not in setup.states()
+	assert setup.swaps() == [OLD_PERSON]
+
+
+def test_drop_rules_carry_over_to_listed_frames(setup: Setup, monkeypatch) -> None:
+	# The signpost box (see _run_with_sign): ignored, the frame counts as clean.
+	monkeypatch.setenv("FAKE_BOXES", json.dumps([[706, 557, 741, 640]]))
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+
+	summary = blur_listed(setup, [OLD_PERSON], rules=DropRules(ignore_boxes={CAMERA: [SIGN]}))
+
+	assert summary.clean == 1
+	assert image.read_bytes() == original_bytes(OLD_PERSON)
+	assert setup.states()[OLD_PERSON]["ignored_boxes"] == [[706, 557, 741, 640, 0.9]]
+
+
+# For the dry run and for the job's check "may I build the video": which listed frames are done?
+def test_split_reads_each_names_own_month_and_counts_only_confirmed(setup: Setup) -> None:
+	blurred_in_march = "20260310T120000.jpg"
+	clean_in_march = "20260310T123000.jpg"
+	refused_in_march = "20260310T130000.jpg"
+	night_in_april = "20260405T120000.jpg"
+	replacing_in_april = "20260402T120000.jpg"
+	never_seen = "20260403T120000.jpg"
+	in_legacy_file = "20260201T120000.jpg"
+
+	record_in_own_month(setup, blurred_in_march, "blurred")
+	record_in_own_month(setup, clean_in_march, "clean")
+	record_in_own_month(setup, refused_in_march, "refused", reason="too old")
+	record_in_own_month(setup, night_in_april, "night")
+	record_in_own_month(setup, replacing_in_april, "replacing", blurred_sha256="0" * 64)
+	legacy = setup.state_root / f"{CAMERA}.jsonl"
+	legacy.write_text(json.dumps({"image": in_legacy_file, "status": "blurred"}) + "\n")
+	names = [
+		never_seen,
+		blurred_in_march,
+		refused_in_march,
+		in_legacy_file,
+		replacing_in_april,
+		clean_in_march,
+		night_in_april,
+	]
+
+	confirmed, still_open = blur_box.split_confirmed_names(
+		setup.state_root, CAMERA, names, TIMEZONE
+	)
+
+	assert confirmed == [blurred_in_march, in_legacy_file, clean_in_march, night_in_april]
+	assert still_open == [never_seen, refused_in_march, replacing_in_april]
