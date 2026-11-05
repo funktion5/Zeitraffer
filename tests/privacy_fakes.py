@@ -84,6 +84,19 @@ class FakeBox:
 				2, stderr=f"/usr/bin/ls: cannot access '{path}': No such file or directory\n"
 			)
 
+		# The contents of a folder, one name per line; like the real ls it hides dot files.
+		if tokens[:2] == ["ls", "-1"]:
+			folder = self.path(tokens[2])
+
+			if folder.is_dir():
+				names = sorted(p.name for p in folder.iterdir() if not p.name.startswith("."))
+
+				return self.result(0, "".join(f"{name}\n" for name in names))
+
+			return self.result(
+				2, stderr=f"/usr/bin/ls: cannot access '{tokens[2]}': No such file or directory\n"
+			)
+
 		if verb == "sha256sum":
 			lines, errors = [], []
 

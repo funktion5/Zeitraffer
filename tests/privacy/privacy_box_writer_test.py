@@ -743,3 +743,59 @@ def test_camera_exists_asks_the_box(writer, box) -> None:
 	shutil.rmtree(box.root / CAMERA)
 
 	assert writer.camera_exists(CAMERA) is False
+
+
+# The box job can ask which frames already have a backup. A frame whose backup exists but no longer
+# matches it was changed since, so it is already blurred (by another host, say) and must not be
+# blurred, and backed up, a second time.
+STEM = "20261015T120000"
+
+
+def test_list_backups_returns_each_frames_original_hash(writer: BoxWriter) -> None:
+	writer.backup(CAMERA, NAME, _sha(ORIGINAL))
+
+	assert writer.list_backups(CAMERA) == {STEM: {_sha(ORIGINAL)[:16]}}
+
+
+def test_list_backups_keeps_every_hash_of_a_frame_with_two_backups(
+	writer: BoxWriter, box: FakeBox
+) -> None:
+	writer.backup(CAMERA, NAME, _sha(ORIGINAL))
+	# What a repeated blur leaves: the already blurred version as a second "original".
+	(box.path(f"{CAMERA}/original") / f"{STEM}.{'a' * 16}.jpg").write_bytes(BLURRED)
+
+	assert writer.list_backups(CAMERA) == {STEM: {_sha(ORIGINAL)[:16], "a" * 16}}
+
+
+def test_list_backups_of_a_camera_without_backups_is_empty(writer: BoxWriter) -> None:
+	assert writer.list_backups(CAMERA) == {}
+
+
+def test_list_backups_ignores_what_is_not_a_backup(writer: BoxWriter, box: FakeBox) -> None:
+	folder = box.path(f"{CAMERA}/original")
+	folder.mkdir()
+	(folder / f".{STEM}.{'b' * 16}.jpg.tmp").write_bytes(b"x")
+	(folder / "notes.txt").write_bytes(b"x")
+	(folder / f"{STEM}.not-a-hash.jpg").write_bytes(b"x")
+
+	assert writer.list_backups(CAMERA) == {}
+
+
+def test_list_backups_sends_only_read_commands(writer: BoxWriter, box: FakeBox) -> None:
+	writer.backup(CAMERA, NAME, _sha(ORIGINAL))
+	box.calls.clear()
+
+	writer.list_backups(CAMERA)
+
+	assert box.remote_commands()
+	assert not any(command.split(" ")[0] in WRITE_VERBS for command in box.remote_commands())
+	assert ("ls", "-1") in ALLOWED_REMOTE_COMMANDS
+
+
+def test_list_backups_refuses_a_camera_that_is_not_selected(
+	writer: BoxWriter, box: FakeBox
+) -> None:
+	with pytest.raises(BoxWriteRefused):
+		writer.list_backups(OTHER_CAMERA)
+
+	assert box.calls == []

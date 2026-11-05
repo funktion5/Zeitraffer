@@ -1113,3 +1113,110 @@ def test_a_finished_frame_stays_finished_when_a_later_page_says_refused(setup: S
 	states = blur_box.load_processed_for_names(setup.state_root, CAMERA, [LAST_OF_MONTH], TIMEZONE)
 
 	assert states[LAST_OF_MONTH]["status"] == "blurred"
+
+
+# The guard against a second backup. The state is not the only evidence of what was done: the Pi
+# blurred frames before the VPS state existed, and a backfill then took them for new, detected them
+# again and backed up the already blurred version as a second "original". A frame that has a backup
+# on the box but no longer matches it was changed since, so it is already blurred: record it and
+# touch nothing.
+def make_backup(setup: Setup, name: str, original: bytes) -> Path:
+	folder = setup.camera_dir / "original"
+	folder.mkdir(exist_ok=True)
+	backup = folder / f"{Path(name).stem}.{sha(original)[:16]}.jpg"
+	backup.write_bytes(original)
+
+	return backup
+
+
+# Listings of the backup folder (ls -1d only asks whether it exists, that is not a listing).
+def backup_listings(setup: Setup) -> list[str]:
+	return [
+		command
+		for command in setup.box.remote_commands()
+		if command.startswith("ls -1 ") and command.endswith("/original")
+	]
+
+
+def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blurred(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	image.write_bytes(blurred_bytes(OLD_PERSON))
+	make_backup(setup, OLD_PERSON, original_bytes(OLD_PERSON))
+
+	summary = blur_listed(setup, [OLD_PERSON])
+
+	assert (summary.already_blurred, summary.blurred) == (1, 0)
+	assert setup.detected() == []
+	assert setup.writes() == []
+	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
+	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert setup.states()[OLD_PERSON]["status"] == "blurred"
+	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
+
+
+# A frame that still IS its backup is an original: an earlier run was cut off after the backup and
+# before the swap. It is processed as usual and the existing backup is reused, not duplicated.
+def test_a_frame_that_still_matches_its_backup_is_processed_normally(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	make_backup(setup, OLD_PERSON, original_bytes(OLD_PERSON))
+
+	summary = blur_listed(setup, [OLD_PERSON])
+
+	assert (summary.blurred, summary.already_blurred) == (1, 0)
+	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
+
+
+def test_the_backups_are_listed_once_per_run_not_once_per_frame(setup: Setup, monkeypatch) -> None:
+	names = [OLD_PERSON, "20260311T120000.jpg", "20260312T120000.jpg"]
+	monkeypatch.setenv("FAKE_PEOPLE", ",".join(names))
+
+	for name in names:
+		setup.upload(name, age_seconds=OLD_AGE)
+
+	make_backup(setup, "20260101T120000.jpg", b"\xff\xd8older\xff\xd9")
+
+	blur_listed(setup, names)
+
+	assert backup_listings(setup) == [f"ls -1 {CAMERA}/original"]
+
+
+def test_nothing_is_listed_when_every_frame_is_confirmed(setup: Setup) -> None:
+	setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	record_in_own_month(setup, OLD_PERSON, "blurred")
+	make_backup(setup, "20260101T120000.jpg", b"\xff\xd8older\xff\xd9")
+
+	blur_listed(setup, [OLD_PERSON])
+
+	assert backup_listings(setup) == []
+
+
+# The nightly and live rounds keep their cost and behaviour: no listing, no guard.
+def test_the_nightly_round_does_not_list_the_backups(setup: Setup) -> None:
+	setup.upload(DAY_WITH_PERSON)
+	make_backup(setup, "20260101T120000.jpg", b"\xff\xd8older\xff\xd9")
+
+	assert setup.run().blurred == 1
+	assert backup_listings(setup) == []
+
+
+# Without the listing there is no guard, so nothing is blurred: the run stops, it does not guess.
+def test_a_failing_backup_listing_stops_the_run_before_anything_is_written(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
+	setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
+	make_backup(setup, "20260101T120000.jpg", b"\xff\xd8older\xff\xd9")
+	setup.box.fail_next["ls"] = FakeBox.result(255, stderr="Connection closed")
+
+	with pytest.raises(OSError):
+		blur_listed(setup, [OLD_PERSON])
+
+	assert setup.detected() == []
+	assert setup.writes() == []

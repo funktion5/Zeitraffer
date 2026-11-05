@@ -41,6 +41,7 @@ from src.privacy.anonymize import (
 	run_detector,
 )
 from src.privacy.box_writer import (
+	BACKUP_HASH_LENGTH,
 	BoxWriteDeferred,
 	BoxWriter,
 	BoxWriteRefused,
@@ -78,6 +79,8 @@ CATCH_UP_BUDGET_SECONDS = 45 * 60
 DETECTOR_TIMEOUT_SECONDS = 120
 
 REPLACING = "replacing"
+# Not a state: what _process_image returns for a frame that was found blurred already.
+ALREADY_BLURRED = "already blurred"
 # An image whose last state line is one of these is finished for every reader (the Daily gate, a
 # backfill): pixelated, found clean, or a night image the videos never use. Anything else, "refused"
 # and "replacing" included, may still show a person.
@@ -112,6 +115,7 @@ class BoxRoundSummary:
 	refused: int = 0
 	failed: int = 0
 	postponed: int = 0
+	already_blurred: int = 0
 
 
 def sha256_file(path: Path) -> str:
@@ -261,6 +265,7 @@ def _process_image(
 	rules: DropRules,
 	state_root: Path,
 	now: datetime,
+	backups: dict[str, set[str]] | None = None,
 ) -> str:
 	# Refuse before spending a download and a detection on an image that may never be written.
 	writer.check(camera, name)
@@ -280,6 +285,20 @@ def _process_image(
 		return "settling"
 
 	judged_hash = sha256_file(work_copy)
+
+	# A backup of this frame exists, but the file on the box is not that original: it was changed
+	# since, so it is already blurred (the Pi did it, before this state existed). Detecting it again
+	# would blur it a second time and back up the blurred version as another "original".
+	originals = (backups or {}).get(Path(name).stem)
+
+	if originals and judged_hash[:BACKUP_HASH_LENGTH] not in originals:
+		note = "a backup exists and the frame no longer matches it"
+		entry = {"image": name, "status": "blurred", "blurred_sha256": judged_hash, "note": note}
+		record_processed(state_root, camera, entry, now)
+		logger.info(f"[{camera}] {name} was blurred before, recorded and not blurred again")
+
+		return ALREADY_BLURRED
+
 	detector, boxes_by_frame = run_detector(detector_command, [work_copy], DETECTOR_TIMEOUT_SECONDS)
 	boxes = boxes_by_frame[work_copy]
 	size = _probe_dimensions(work_copy) if boxes else None
@@ -344,6 +363,7 @@ def _handle_image(
 	state_root: Path,
 	recorded_at: datetime,
 	summary: BoxRoundSummary,
+	backups: dict[str, set[str]] | None = None,
 ) -> None:
 	# One image at a time; a failure of any kind affects only that image.
 	try:
@@ -372,6 +392,7 @@ def _handle_image(
 			rules,
 			state_root,
 			recorded_at,
+			backups,
 		)
 
 	except BoxWriteDeferred as error:
@@ -402,6 +423,8 @@ def _handle_image(
 		summary.clean += 1
 	elif status == "settling":
 		summary.settling += 1
+	elif status == ALREADY_BLURRED:
+		summary.already_blurred += 1
 	else:
 		summary.blurred += 1
 
@@ -511,6 +534,9 @@ def blur_frames(
 		key=lambda name: moments[name],
 		reverse=True,
 	)
+	# One listing of the backups per run, and only when there is something to blur. Without it there
+	# is no guard, so a failing listing stops the run instead of blurring on a guess.
+	backups = writer.list_backups(camera) if open_names else {}
 	work_dir = WORK_ROOT / camera
 	work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -530,6 +556,7 @@ def blur_frames(
 				state_root,
 				moments[name],
 				summary,
+				backups,
 			)
 
 	finally:

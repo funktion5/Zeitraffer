@@ -57,11 +57,15 @@ IMAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,127}\.jpg")
 # a shell treats specially gets through.
 REMOTE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*(@[A-Za-z0-9][A-Za-z0-9.-]*)?")
 SHA256 = re.compile(r"[0-9a-f]{64}")
+# A backup's name, see _backup_name: <image stem>.<first 16 hex of the original's sha256>.jpg
+BACKUP_FILE = re.compile(r"(?P<stem>[A-Za-z0-9][A-Za-z0-9_-]*)\.(?P<hash>[0-9a-f]{16})\.jpg")
 
 # Last line of defence: every path of a remote command must look like this.
 SAFE_PATH = re.compile(r"/?[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)*")
 ALLOWED_REMOTE_COMMANDS = {
 	("ls", "-1d"),
+	# The contents of one folder (the backups), read-only.
+	("ls", "-1"),
 	("sha256sum",),
 	("mkdir",),
 	# Overwrites, so only ever onto our own hidden ".tmp" names (checked in _remote).
@@ -334,6 +338,28 @@ class BoxWriter:
 
 		if moment > now + self.max_image_ahead:
 			raise BoxWriteDeferred(f"{name} lies in the future ({moment:%Y-%m-%d %H:%M})")
+
+	# Read-only: the backups of one camera as {image stem: {first 16 hex of the originals' sha256}}.
+	# A frame that has a backup but is not that backup was changed since: it is already blurred, and
+	# blurring it again would back up the blurred version as a second "original". No backup folder
+	# yet is an empty answer; any other failure is an error, never a guess.
+	def list_backups(self, camera: str) -> dict[str, set[str]]:
+		directory = self._backup_directory(camera)
+
+		if not self._exists(directory):
+			return {}
+
+		result = self._remote(("ls", "-1"), [directory])
+		self._check_command(result, "Listing the backups")
+		backups: dict[str, set[str]] = {}
+
+		for line in result.stdout.splitlines():
+			match = BACKUP_FILE.fullmatch(line.strip())
+
+			if match:
+				backups.setdefault(match["stem"], set()).add(match["hash"])
+
+		return backups
 
 	# Read-only: does the camera folder exist on the box? A missing folder would otherwise just
 	# list as "no images".
