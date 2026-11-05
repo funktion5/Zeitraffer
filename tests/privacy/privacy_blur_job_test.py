@@ -10,7 +10,6 @@ from privacy_blur_box_test import (
 	blurred_bytes,
 	original_bytes,
 	record_in_own_month,
-	setup,  # noqa: F401  (a fixture, used through the "job" fixture below)
 )
 
 import src.privacy.blur_box as blur_box
@@ -96,8 +95,8 @@ class JobSetup:
 
 
 @pytest.fixture
-def job(setup: Setup, tmp_path: Path, monkeypatch) -> JobSetup:  # noqa: F811
-	return JobSetup(setup, tmp_path, monkeypatch)
+def job(tmp_path: Path, monkeypatch) -> JobSetup:
+	return JobSetup(Setup(tmp_path, monkeypatch), tmp_path, monkeypatch)
 
 
 def test_job_frames_are_blurred_and_only_those_copies_are_fetched_again(job, monkeypatch) -> None:
