@@ -1056,6 +1056,120 @@ def test_manual_weekly_release_error_is_logged_and_later_cameras_still_run(
 	assert "| failed=1 |" in caplog.text
 
 
+# A manual Weekly of a camera in privacy.blur_cameras blurs the frames it collected on the box
+# before the video is built (blur_job_frames, tested in privacy_blur_job_test.py). The automatic
+# Weekly joins Dailies that are already confirmed and writes nothing to the box. The blur comes
+# before the 7-of-7 check, so a week with a missing day builds no video but its frames get blurred.
+BLUR_CONFIG = {
+	**TEST_CONFIG,
+	"privacy": {"blur_cameras": ["Test-Camera", "Stuck-Camera", "Working-Camera"]},
+}
+
+
+def patch_weekly_blur(monkeypatch, events, not_ready=()):
+	calls = []
+
+	def fake_blur_job_frames(camera, images, config):
+		events.append(f"blur:{camera}")
+		calls.append({"camera": camera, "images": list(images), "config": config})
+
+		return camera not in not_ready
+
+	monkeypatch.setattr(weekly_module, "blur_job_frames", fake_blur_job_frames)
+
+	return calls
+
+
+def run_weekly_with_config(cameras, manual_run=True):
+	weekly_module.run_weekly_job(
+		config=BLUR_CONFIG,
+		cameras=cameras,
+		target_date=date(2026, 9, 16),
+		manual_run=manual_run,
+	)
+
+
+def test_a_manual_weekly_blurs_the_collected_frames_of_a_blur_camera_before_the_video(monkeypatch):
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([Path("image.jpg")], []))
+	calls = patch_weekly_blur(monkeypatch, events)
+
+	run_weekly_with_config(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "create:Test-Camera", "release:Test-Camera"]
+	assert calls[0]["images"] == [Path("image.jpg")]
+	assert calls[0]["config"] is BLUR_CONFIG
+
+
+def test_an_automatic_weekly_never_blurs_even_a_blur_camera(monkeypatch):
+	events = []
+	calls = patch_weekly_blur(monkeypatch, events)
+	monkeypatch.setattr(
+		weekly_module,
+		"create_automatic_weekly_video",
+		lambda **kwargs: Path("videos/Test-Camera/weekly/video.mp4"),
+	)
+	monkeypatch.setattr(weekly_module, "cleanup_automatic_video_retention", lambda **kwargs: None)
+
+	run_weekly_with_config(["Test-Camera"], manual_run=False)
+
+	assert calls == []
+	assert events == []
+
+
+def test_a_manual_weekly_of_a_camera_outside_the_blur_list_is_not_blurred(monkeypatch):
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([Path("image.jpg")], []))
+	calls = patch_weekly_blur(monkeypatch, events)
+
+	run_weekly_with_config(["Plain-Camera"])
+
+	assert calls == []
+	assert events == ["create:Plain-Camera", "release:Plain-Camera"]
+
+
+# No video from an incomplete blur: the camera counts as failed, not skipped. The reason is logged
+# by the helper.
+def test_a_weekly_blur_that_is_not_ready_builds_no_video_and_counts_as_failed(monkeypatch, caplog):
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([Path("image.jpg")], []))
+	patch_weekly_blur(monkeypatch, events, not_ready={"Test-Camera"})
+
+	run_weekly_with_config(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "release:Test-Camera"]
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+def test_the_other_cameras_still_run_when_one_weekly_blur_is_not_ready(monkeypatch, caplog):
+	events = patch_manual_weekly(monkeypatch, lambda **kwargs: ([Path("image.jpg")], []))
+	patch_weekly_blur(monkeypatch, events, not_ready={"Stuck-Camera"})
+
+	run_weekly_with_config(["Stuck-Camera", "Working-Camera"])
+
+	assert events == [
+		"blur:Stuck-Camera",
+		"release:Stuck-Camera",
+		"blur:Working-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=0 | failed=1" in caplog.text
+
+
+# The blur comes before the 7-of-7 check: a week with a missing day builds no video, but the frames
+# it did find get blurred.
+def test_a_week_with_a_missing_day_is_still_blurred_but_builds_no_video(monkeypatch, caplog):
+	events = patch_manual_weekly(
+		monkeypatch,
+		lambda **kwargs: ([Path("image.jpg")], [date(2026, 9, 10)]),
+	)
+	calls = patch_weekly_blur(monkeypatch, events)
+
+	run_weekly_with_config(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "release:Test-Camera"]
+	assert calls[0]["images"] == [Path("image.jpg")]
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
 # The automatic Weekly joins existing Dailies and reads no frames, so it must not need a frame
 # source at all.
 def test_automatic_weekly_does_not_touch_the_frame_source(
