@@ -907,3 +907,101 @@ def test_a_cache_root_from_the_environment_must_be_a_run_folder(ssh_env, monkeyp
 	monkeypatch.setenv(FRAME_CACHE_ENV, str(parent / "12-aaaaaaaa"))
 
 	assert images_module.get_frame_source().cache_root == parent / "12-aaaaaaaa"
+
+
+# Step 2a of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: once a frame is blurred on
+# the box, the copy the job fetched earlier is stale. Drop only those copies, so the next
+# localize() fetches just them, not the whole camera again.
+def test_local_release_frames_changes_nothing(tmp_path):
+	camera = tmp_path / "Alpha"
+	camera.mkdir()
+	frame = camera / "a.jpg"
+	frame.write_bytes(b"x")
+
+	LocalFrameSource(tmp_path).release_frames("Alpha", ["a.jpg"])
+
+	assert frame.read_bytes() == b"x"
+
+
+def test_release_frames_removes_only_the_named_frames(tmp_path):
+	source = source_with_frames(tmp_path, "Alpha", "Beta")
+	(source.cache_root / "Alpha" / "b.jpg").write_bytes(b"frame")
+
+	source.release_frames("Alpha", ["a.jpg"])
+
+	assert not (source.cache_root / "Alpha" / "a.jpg").exists()
+	assert (source.cache_root / "Alpha" / "b.jpg").is_file()
+	assert (source.cache_root / "Beta" / "a.jpg").is_file()
+	assert (source.cache_root / FRAME_CACHE_MARKER).is_file()
+
+
+# One bad name stops the whole call before anything is removed.
+@pytest.mark.parametrize("bad", ["../a.jpg", "sub/a.jpg", ".", "..", ""])
+def test_release_frames_refuses_unsafe_frame_names(tmp_path, bad):
+	source = source_with_frames(tmp_path, "Alpha")
+
+	with pytest.raises(ValueError, match="frame name"):
+		source.release_frames("Alpha", ["a.jpg", bad])
+
+	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
+
+
+@pytest.mark.parametrize("camera", ["../Beta", "a/b", ".", "..", ""])
+def test_release_frames_refuses_unsafe_camera_names(tmp_path, camera):
+	source = source_with_frames(tmp_path, "Alpha", "Beta")
+
+	with pytest.raises(ValueError, match="camera name"):
+		source.release_frames(camera, ["a.jpg"])
+
+	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
+	assert (source.cache_root / "Beta" / "a.jpg").is_file()
+
+
+def test_release_frames_refuses_a_cache_root_without_the_marker(tmp_path):
+	source = source_with_frames(tmp_path, "Alpha")
+	(source.cache_root / FRAME_CACHE_MARKER).unlink()
+
+	with pytest.raises(ValueError, match="marker"):
+		source.release_frames("Alpha", ["a.jpg"])
+
+	assert (source.cache_root / "Alpha" / "a.jpg").is_file()
+
+
+def test_release_frames_refuses_a_root_outside_temp(tmp_path):
+	outside = tmp_path / "elsewhere" / "run-1"
+	create_frame_cache(outside)
+	(outside / "Alpha").mkdir()
+	(outside / "Alpha" / "a.jpg").write_bytes(b"frame")
+	source = SshFrameSource(FakeListingBox(), outside, tmp_path / "temp")
+
+	with pytest.raises(ValueError, match="inside"):
+		source.release_frames("Alpha", ["a.jpg"])
+
+	assert (outside / "Alpha" / "a.jpg").is_file()
+
+
+# A frame that is not there, a camera without a folder and a cache that was never created are fine.
+def test_release_frames_ignores_what_is_not_there(tmp_path):
+	temp = tmp_path / "temp"
+	never_created = SshFrameSource(FakeListingBox(), temp / "frame-cache" / "run-9", temp)
+	never_created.release_frames("Alpha", ["a.jpg"])
+	source = source_with_frames(tmp_path, "Alpha")
+
+	source.release_frames("Alpha", ["gone.jpg", "a.jpg"])
+	source.release_frames("Gamma", ["a.jpg"])
+	source.release_frames("Alpha", ["a.jpg"])
+
+	assert not (source.cache_root / "Alpha" / "a.jpg").exists()
+
+
+def test_localize_after_release_frames_fetches_only_the_released_names(monkeypatch, tmp_path):
+	source, rsync, _ = fetcher(monkeypatch, tmp_path)
+	everything = frames(source, "a.jpg", "b.jpg", "c.jpg")
+	source.localize("Alpha", everything)
+
+	source.release_frames("Alpha", ["c.jpg", "a.jpg"])
+	source.localize("Alpha", everything)
+
+	assert rsync.names(0) == ["a.jpg", "b.jpg", "c.jpg"]
+	assert rsync.names(1) == ["a.jpg", "c.jpg"]
+	assert all(path.is_file() for path in everything)
