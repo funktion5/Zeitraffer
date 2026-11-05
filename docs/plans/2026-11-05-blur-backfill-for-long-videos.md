@@ -1,8 +1,30 @@
 # Plan: blur the old frames that Monthly and Yearly videos use (SLSV, Scheunenviertel)
 
-Status: DRAFT 2026-11-05, **nothing in here is decided yet**. It records Julius's idea and Claude's
-reading of the code. Nothing is built. Each step below is one feature: failing tests first, then stop
-for Julius's check and commit (see CLAUDE.md, Conventions).
+Status: **BUILT on 2026-11-05 and green on the VPS.** This file keeps the reasoning of the day; the
+sections below are the draft as it was written, so everything about the `--blur-box` flag, a dry run, a
+deadline, the steps "2d" and "3" and a web checkbox is HISTORY.
+
+## Outcome (end of 2026-11-05)
+
+- **The rule that was built:** a MANUAL Daily, Monthly or Yearly run of a camera listed in
+  `privacy.blur_cameras` blurs the frames it selected on the Storage Box first (in place, backups in
+  `<camera>/original/`), with any window (noon, sunset, a future sunrise). Automatic runs never do. No flag,
+  no opt-out, no dry run, no deadline, no video suffix (Julius's decisions). No video unless every frame is
+  confirmed (cut-off JPEGs excepted). The manual Weekly comes later.
+- **Code:** `src/privacy/blur_box.py` (`blur_frames`, `load_processed_for_names`, the guard), `blur_job.py`
+  (`blur_job_frames`), `box_writer.py` (`list_backups`), `src/frame_source.py` (`release_frames`), the three jobs,
+  and in the web UI the note in `camera.php`, `getBlurCameras()` and German failure reasons in `job-status.php`.
+- **Found during the first real runs and fixed:** (1) the nightly records frames on the page of the round's
+  time, so the last day of a month sits on the next month's page: the lookup now reads the next two days'
+  pages; (2) frames the Pi blurred before the VPS state existed would be blurred and backed up a second time:
+  a frame with a backup whose hash no longer matches it counts as already blurred.
+- **Done on the box:** Scheunenviertel and SLSV for 2026-10-06..11-04. Remaining windows, the open list (docs,
+  Weekly, `--blur-people`, gate for automatic Monthly/Yearly, live round) and the check routine are in memory
+  `project-timelapse-blur-backfill`.
+
+---
+
+Draft as written on 2026-11-05 (history):
 
 ## Problem
 
