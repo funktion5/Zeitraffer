@@ -20,6 +20,10 @@ Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner 
 - bei Monthly/Yearly eine Radiogruppe „Zeitfenster“: „Mittag (Standard)“ übergibt nichts (es gilt `interval_window` aus der Config), „Sonnenuntergang“ übergibt `sunset` plus eine Fensterbreite von ±30/60/90 Minuten (eigene Radiogruppe, nur bei Sonnenuntergang sichtbar); serverseitig sind nur diese Werte erlaubt
 - kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums; Monthly braucht mindestens 25 der 30 Tage, Yearly mindestens 300 Tage mit Bildern im gewählten Zeitfenster (`min_coverage_days`), fehlende Tage werden im Video übersprungen
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
+- bei Kameras aus `privacy.blur_cameras` ein Hinweis unter dem Formular: Die Bilder werden vorher
+  automatisch verpixelt, die Erstellung dauert deshalb deutlich länger. Er gilt für jeden Job-Typ und
+  nennt deshalb keinen; Kameras ohne Verpixelung zeigen ihn nicht. Was dahinter passiert:
+  [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)
 - Live-Status per Polling im Abstand von fünf Sekunden, auf jeder Kameraseite (bei einer anderen Kamera mit deren Namen) samt Hinweis, dass ein neues Video erst danach starten kann; der Abschlussdialog übersteht auch einen Seitenwechsel weg von der auslösenden Seite (Fortsetzung des Pollings über `sessionStorage`) und bietet einen direkten Link zum fertigen Video an
 - Löschen eines historischen Videos über denselben eingeschränkten Wrapper-Mechanismus wie die Job-Erstellung. Das Löschen läuft im Hintergrund: der Eintrag verschwindet, die Liste bleibt offen und die Seite lädt nicht neu; wird das gerade laufende Video gelöscht, lädt die Seite ohne es neu (gleiche Liste offen). Ein erfolgreiches Löschen zeigt die grüne Meldung „Video erfolgreich gelöscht.“ unter der Überschrift, über dem Videoplayer; sie bleibt, bis die Seite neu geladen oder verlassen wird oder ein anderes Video geöffnet wird (ein Zeitgeber ist nicht nötig). Zusätzlich meldet ein unsichtbarer Statusbereich es an Screenreader. Schlägt das Löschen fehl, steht der Grund im Bestätigungsdialog. Ohne JavaScript läuft es wie bisher als Formular mit Weiterleitung
 
@@ -27,7 +31,7 @@ Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [High
 
 Beide Listen lesen nur die vier Job-Ordner (`daily`, `weekly`, `monthly`, `yearly`); `highlights/` und `manual-runs/` erscheinen also nie als Job. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Gelöscht werden können nur manuelle Videos: das Löschen prüft gegen die Liste der manuellen Videos, der Lösch-Wrapper lehnt automatische ab. Eine Status-Datei-Bereinigung ist nicht implementiert.
 
-Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`.
+Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`; dieselbe Datei liefert über `getBlurCameras()` die Kameras aus `privacy.blur_cameras` für den Verpixelungs-Hinweis.
 
 ## Webdateien
 
@@ -98,7 +102,7 @@ Endet ein Auftrag ohne Video, schreibt der Worker vor `failed` die Ursache nach
 er dafür während des Laufs in einer temporären Datei auf). Spätere Hinweise wie der Bildzeitraum
 nach einem übersprungenen Daily zählen nicht als Ursache. `job-status.php` übersetzt bekannte
 Ursachen ins Deutsche und gibt sie als `reason` mit (zu wenige Tage mit Bildern im Zeitfenster,
-Woche nicht vollständig, keine Bilder am Tag, keine verwendbaren Bilder); unbekannter Text wird nie an den
+Woche nicht vollständig, keine Bilder am Tag, keine verwendbaren Bilder, Verpixelung nicht fertig oder von einer anderen Verpixelung belegt); unbekannter Text wird nie an den
 Browser weitergegeben, der Dialog zeigt dann den allgemeinen Hinweis. Die Änderung am Worker
 wirkt erst nach dem erneuten `sudo install` (README „Wrapper installieren“).
 
@@ -112,7 +116,7 @@ Der Trigger verwendet denselben Lock wie Cron:
 <projektpfad>/state/zeitraffer-run.lock
 ```
 
-Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft.
+Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft. Ein Auftrag einer Blur-Kamera dauert wegen der Verpixelung lange (gemessen: ein Monatsvideo mit 360 Bildern 55 Minuten) und hält den Lock die ganze Zeit; läuft er über 02:00 hinaus, fällt der Nachtlauf aus.
 
 ## Webtests
 
@@ -126,7 +130,7 @@ python3 -m pytest tests/web
 - `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`, inklusive Übersetzung bekannter Fehlergründe und `failed` für einen Auftrag ohne `.pid` nach einer Minute
 - `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
-- `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter, Markierung des laufenden Videos, Löschen per `response=json`, Weiterleitung nach dem Start (Post/Redirect/Get). Die gemeinsame Hilfsfunktion `render_page()` dafür liegt in `web_php_test.py`
+- `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter, Markierung des laufenden Videos, Löschen per `response=json`, Weiterleitung nach dem Start (Post/Redirect/Get), Verpixelungs-Hinweis nur bei Blur-Kameras. Die gemeinsame Hilfsfunktion `render_page()` dafür liegt in `web_php_test.py`
 
 Die Tests der Highlights-Seite stehen in [highlights-seite.md](highlights-seite.md#dateien-und-tests).
 

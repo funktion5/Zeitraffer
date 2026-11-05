@@ -264,6 +264,28 @@ historisches Weekly gemeinsam mit einem weiteren Job
 --blur-people außerhalb eines historischen Daily
 ```
 
+## Verpixelung bei historischen Läufen (Standard)
+
+Ein historischer Lauf (`--date` oder `--jobs daily|weekly|monthly|yearly --target-date`) einer
+Kamera aus `privacy.blur_cameras` verpixelt die Bilder seines Videos zuerst **auf der Storage Box**
+und baut das Video danach aus den verpixelten Bildern. Es gibt keinen Schalter und keine Ausnahme;
+jedes Zeitfenster ist erfasst. Automatische Läufe verpixeln nie.
+
+```bash
+python3 -m src.main --jobs monthly --target-date 2026-10-05 --cameras SLSV
+```
+
+- Ohne Verpixelung in der Kamera-Liste ändert sich nichts.
+- Die Bilder werden auf der Box ersetzt, die Originale liegen vorher gesichert in `<Kamera>/original/`.
+  Bereits verpixelte Bilder bleiben unberührt; ein abgebrochener Lauf macht beim nächsten Mal dort weiter.
+- Es entsteht nur dann ein Video, wenn alle Bilder bestätigt sind. Sonst steht im Log
+  `Blur not finished: … - skipping camera: <Kamera>` und die Kamera zählt als `failed`.
+- Der Lauf dauert deutlich länger und hält die ganze Zeit die Laufsperre: er muss vor 02:00 fertig
+  sein, sonst fällt der Nachtlauf aus.
+
+Ablauf, Schutz vor doppelten Sicherungen, Grenzen und Fehlersuche:
+[docs/verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos).
+
 ## Personen verpixeln (Test)
 
 `--blur-people` erkennt Personen in den Bildern eines historischen Daily und verpixelt sie vor
@@ -287,7 +309,8 @@ python3 -m src.main \
   erneuter Lauf prüft nur neue oder geänderte Bilder.
 - Die Erkennung dauerte auf dem früheren Raspberry Pi 4 ca. 7,5–10 Sekunden pro Bild (der VPS ist unvermessen).
 
-Noch nicht abgedeckt: automatische Läufe, Weekly, Monthly, Yearly und die Weboberfläche.
+Von `--blur-people` noch nicht abgedeckt: automatische Läufe, Weekly, Monthly, Yearly und die
+Weboberfläche. Die Verpixelung auf der Box (siehe oben) gilt dagegen für alle historischen Läufe.
 
 Installation des Modells, alle Einstellungen, Cache, Detektor-Protokoll und Fehlersuche:
 [docs/verpixelung.md](verpixelung.md).

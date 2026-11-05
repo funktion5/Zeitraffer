@@ -580,9 +580,8 @@ unset($_SESSION["started_job"]);
 
 	              <?php if ($cameraIsBlurred): ?>
 	                <p id="blur-note">
-	                  Hinweis: Bei dieser Kamera werden die Bilder vorher automatisch verpixelt (tägliche,
-	                  wöchentliche, monatliche und jährliche Videos). Die Erstellung dauert deshalb
-	                  deutlich länger.
+	                  Hinweis: Bei dieser Kamera werden die Bilder vorher automatisch verpixelt. Die
+	                  Erstellung dauert deshalb deutlich länger.
 	                </p>
 	              <?php endif; ?>
 

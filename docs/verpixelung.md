@@ -9,6 +9,11 @@ vor dem Encoding unkenntlich. Der Code liegt in `src/privacy/`.
 „Yearly-Backfill"). Automatische Läufe, Weekly, Monthly und die Weboberfläche verpixeln noch
 nicht.
 
+Seit dem 05.11.2026 gilt zusätzlich der Standard für von Hand gestartete Läufe: Bei Kameras aus
+`privacy.blur_cameras` werden die Bilder vorher auf der Storage Box verpixelt, ohne Schalter. Das
+beschreibt [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos);
+diese Seite gilt für `--blur-people`.
+
 Neue Kamerabilder direkt auf der Storage Box zu verpixeln, bevor die Webseite sie abholt,
 beschreibt [verpixelung-box.md](verpixelung-box.md) (in Entwicklung).
 

@@ -11,6 +11,10 @@ jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`-
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
 Die laufende Runde ist noch nicht eingerichtet.
 
+Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
+Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
+Schalter): [Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos).
+
 Alle Pfade sind relativ zum Projektordner.
 
 ## Ablauf
@@ -298,8 +302,76 @@ Person zeigen kann.
   wird die Kamera übersprungen (`skipped`, kein Fehler); das Video des Vortags bleibt.
 - Ausgenommen sind historische Läufe (sie landen in `manual-runs/`) und Kameras ohne Blur.
 - Das Wochenvideo wird aus den Tagesvideos zusammengesetzt und erbt die Sperre.
-- **Nicht abgedeckt:** Monats- und Jahresvideo. Sie bestehen aus älteren Bildern; für Bilder aus der
-  Zeit vor dem Box-Job gibt es noch kein Nachholen für ganze Monate. Siehe [Grenzen](#grenzen).
+- **Nicht abgedeckt:** das automatische Monats- und Jahresvideo. Es besteht aus älteren Bildern, die
+  der Box-Job nicht immer erreicht hat. Von Hand gestartete Läufe verpixeln ihre Bilder dagegen
+  vorher (nächster Abschnitt); mit einem von Hand gestarteten Monthly lassen sich ältere Zeiträume
+  nachholen. Siehe [Grenzen](#grenzen).
+
+## Verpixelung bei von Hand gestarteten Videos
+
+Ein von Hand gestarteter Lauf (Weboberfläche, `--date` oder `--target-date`) von Daily, Weekly,
+Monthly oder Yearly verpixelt für eine Kamera aus `privacy.blur_cameras` zuerst die Bilder, die sein
+Video braucht, **auf der Box** (`src/privacy/blur_job.py`, dieselbe Engine wie die nächtliche
+Runde). Es gibt keinen Schalter und keine Ausnahme. Jedes Zeitfenster (Mittag, Sonnenuntergang, ein
+späteres neues) ist erfasst, weil der Schritt nach der Bildauswahl sitzt. Automatische Läufe
+verpixeln nie, sie schreiben nichts auf die Box.
+
+Ablauf pro Kamera:
+
+1. Der Job wählt seine Bilder wie bisher: Daily die Tageslichtbilder, Weekly alle Tageslichtbilder
+   der 7 Tage, Monthly alle Bilder im Zeitfenster (`interval_window`, Mittag ±90 Minuten) der 30
+   Tage, Yearly bis zu fünf Bilder pro Tag, die dem Zeitfenster am nächsten liegen.
+2. Bilder mit `blurred`, `clean` oder `night` in der [Statusdatei](#statusdatei) bleiben unberührt.
+   Für den Rest läuft derselbe Ablauf wie in der Runde (erkennen, Original nach `original/`
+   sichern, verpixeln, hochladen, tauschen), neueste zuerst. Ein abgebrochener Lauf macht deshalb
+   beim nächsten Start beim Rest weiter. Im Log steht zu Beginn
+   `[Kamera] Blur: N frames, X already confirmed, Y to blur`.
+3. Danach holt der Job die Bilder, die sich auf der Box geändert haben, neu und baut das Video aus
+   den verpixelten Kopien.
+4. Ein Video entsteht nur, wenn alle Bilder bestätigt sind; abgeschnittene JPEGs sind ausgenommen,
+   das Videoprogramm überspringt sie ohnehin. Sonst entsteht kein Video, die Kamera zählt als
+   `failed` und das Log nennt den Grund in einer Zeile
+   `Blur not finished: <Grund> - skipping camera: <Kamera>`. Die Weboberfläche zeigt ihn auf Deutsch.
+   Der Auftrag lässt sich einfach noch einmal starten.
+5. Weekly und Monthly verpixeln vor der Abdeckungsprüfung: Eine zu dünne Woche oder ein zu dünner
+   Monat bekommt kein Video, seine Bilder sind aber verpixelt. Yearly verpixelt nach der Auswahl der
+   fünf Bilder pro Tag.
+
+**Sperren:** Der Lauf nimmt `state/privacy-blur.lock` nur, solange er verpixelt; dieselbe Sperre
+hält das nächtliche Nachholen. Ist sie belegt, entsteht kein Video
+(`Blur not finished: another blur run holds the lock`). Dazu hält der Auftrag wie jeder Auftrag die
+Laufsperre `state/zeitraffer-run.lock`. **Läuft er über 02:00 hinaus, fällt der Nachtlauf aus.**
+
+**Grenzen des Schreibers:** Der Schreiber lässt nur Bilder bis zu einem Höchstalter und höchstens
+eine Anzahl Sicherungen pro Lauf zu. Für diesen Lauf werden beide auf seine Bilder zugeschnitten
+(Alter des ältesten Bildes plus ein Tag, Anzahl der zu verpixelnden Bilder); sie bleiben harte
+Grenzen.
+
+**Schutz vor doppelten Sicherungen:**
+
+- Das Nachschlagen im Status liest zusätzlich die Seiten der folgenden zwei Tage. Die nächtliche
+  Runde trägt ein Bild auf der Seite des Monats ihrer Rundenzeit ein, der letzte Tag eines Monats
+  steht deshalb auf der Seite des nächsten. Eine Zeile von einer anderen Seite kann einen
+  bestätigten Eintrag nicht zurücknehmen.
+- Ein Bild, zu dem es schon eine Sicherung in `original/` gibt und dessen Prüfsumme nicht mehr zu
+  ihr passt, wurde schon verpixelt (z. B. vom Pi, bevor der VPS den Status hatte). Es wird als
+  `blurred` mit einer Notiz eingetragen und nicht noch einmal verpixelt. Dafür liest der Lauf einmal
+  `ls -1 original/` (unter einer Sekunde); schlägt das fehl, bricht er ab.
+
+**Dauer (gemessen auf dem VPS):** Scheunenviertel etwa 9 Sekunden pro verpixeltem Bild (354 Bilder
+eines Monthly in 55 Minuten, mit Abholen und Video), SLSV etwa 4 Sekunden pro Bild, weil die meisten
+Bilder keine Person zeigen (313 offene Bilder in 28 Minuten). Das Weekly (alle Tageslichtbilder von
+7 Tagen) ist nicht gemessen.
+
+**Nicht erfasst:**
+
+- automatische Läufe (verpixeln nie),
+- Videos, die es schon gibt: sie werden nicht nachträglich verpixelt,
+- `scripts/yearly-backfill.py`: eigener Weg, nur mit `--blur-people` ([werkzeuge.md](werkzeuge.md)),
+- der Videomodus `--blur-people`: ein eigener Weg ([verpixelung.md](verpixelung.md)).
+
+In der Weboberfläche steht bei Blur-Kameras ein Hinweis unter dem Formular, dass die Erstellung
+wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).
 
 ## Stromausfall und Nachholen
 
@@ -348,8 +420,13 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 - Bilder, die älter als 48 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
   `refused` im Log.
 - Keine Erkennung findet 100 % aller Personen (siehe [verpixelung.md](verpixelung.md#grenzen)).
-- Monats- und Jahresvideo einer Blur-Kamera sind von der [Sperre im Tagesvideo](#sperre-im-automatischen-tagesvideo)
-  nicht erfasst; ältere Bilder aus der Zeit vor dem Box-Job können unverpixelt darin stehen.
+- Das automatische Monats- und Jahresvideo einer Blur-Kamera ist von der [Sperre im Tagesvideo](#sperre-im-automatischen-tagesvideo)
+  nicht erfasst; ältere Bilder aus der Zeit vor dem Box-Job können unverpixelt darin stehen. Von Hand
+  gestartete Läufe verpixeln ihre Bilder dagegen vorher
+  ([Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos)).
+- Einzelne Bilder (Scheunenviertel, erste von Hand gestartete Läufe am 05.11.2026, vor dem Schutz
+  vor doppelten Sicherungen) haben zwei Sicherungen in `original/`. Das ist harmlos: das Mosaik ist
+  nur etwas gröber, gelöscht wurde nichts.
 
 ## Fehlersuche
 
@@ -361,6 +438,9 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | `Unsafe storage box remote: '…'` | Der Alias enthält ein unzulässiges Zeichen | erlaubt: Buchstaben, Ziffern, `.`, `_`, `-` (am Anfang Buchstabe oder Ziffer), optional `benutzer@host`; Eintrag in `~/.ssh/config` und Cron-Zeile angleichen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |
 | `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | vorige Runde läuft noch | nichts; die nächste Runde holt nach |
+| `Blur not finished: another blur run holds the lock - skipping camera: …` | Das nächtliche Nachholen oder ein anderer Auftrag verpixelt gerade | **kein Video**; später noch einmal starten |
+| `Blur not finished: N of M not blurred yet: …` | Bilder des von Hand gestarteten Videos sind nicht bestätigt (Fehler, unvollständiger Upload, abgelehnt) | **kein Video**; Auftrag noch einmal starten, er macht beim Rest weiter; die Ursache steht im Log davor |
+| `… was blurred before, recorded and not blurred again` | Schutz vor doppelter Sicherung: das Bild war schon verpixelt | nichts |
 | `Refused, stays unblurred: …` | Bild zu alt oder Namensformat unbekannt | **Bild bleibt unverpixelt**; bei Bedarf von Hand bearbeiten |
 | `Deferred …: … lies in the future` | Uhrzeit im Dateinamen mehr als 2 h voraus | Kamerauhr prüfen; wird jede Runde neu versucht |
 | `Deferred …: Limit of 300 backups per run reached` | sehr großer Rückstand | nichts; die nächste Runde macht weiter |

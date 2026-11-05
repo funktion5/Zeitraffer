@@ -35,6 +35,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
 | Highlights-Flagger | direkt nach dem Nachtlauf, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
+| Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
 ### Wo was liegt
@@ -66,8 +67,12 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
   eine eigene Sperre (`state/privacy-blur.lock`), damit sich zwei Runden nie überschneiden; ohne
   `flock` gestartet läuft sie auch parallel zum Zeitraffer-Lauf. Wer eine Sperre nicht bekommt,
   bricht ab oder überspringt.
+- **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln zuerst ihre Bilder auf
+  der Storage Box (gemessen: ein Monatsvideo mit 360 Bildern 55 Minuten) und halten die Laufsperre
+  die ganze Zeit. Ein Auftrag, der über 02:00 hinausläuft, lässt den Nachtlauf ausfallen.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
-  Storage Box ist die einzige Ausnahme und sichert vorher das Original.
+  Storage Box ist die einzige Ausnahme und sichert vorher das Original (auch bei von Hand
+  gestarteten Videos von Blur-Kameras).
 - **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Bei `src.main` ist der Exit-Code
   dann trotzdem 0; der Nachtlauf-Wrapper prüft das Ergebnis und endet in diesem Fall mit 1.
   Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
@@ -191,6 +196,11 @@ Details: [flagger.md](flagger.md).
 
 ### Verpixelung
 
+- Bei einem von Hand gestarteten Video (Weboberfläche oder `--target-date`) einer Blur-Kamera: nichts
+  tun, es verpixelt seine Bilder selbst (Standard, kein Schalter,
+  [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Fortschritt:
+  `tail -f logs/<job>/$(date +%F).log` (die Zeile `Blur:` nennt die Zahl der Bilder, jede
+  `Replaced`-Zeile ist ein fertiges Bild).
 - In einem Tagesvideo: `--blur-people` an einen historischen Daily-Lauf anhängen
   ([verpixelung.md](verpixelung.md)).
 - Direkt auf der Storage Box: `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`

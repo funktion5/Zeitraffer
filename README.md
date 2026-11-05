@@ -526,6 +526,11 @@ erkennen und verpixeln:
 
 - **In Videos:** Beim Erstellen eines Tagesvideos per Befehl (nicht über die Weboberfläche) lassen
   sich Personen und Kennzeichen verpixeln. Das dauert deutlich länger und ist bisher ein Test.
+- **Bei von Hand gestarteten Videos:** Ein Tages-, Wochen-, Monats- oder Jahresvideo, das in der
+  Weboberfläche oder per Befehl für ein Datum erstellt wird, verpixelt bei Kameras mit Verpixelung
+  (derzeit Scheunenviertel und SLSV) vorher die Bilder auf dem Online-Speicher. Das ist der Standard,
+  es gibt keinen Schalter. Die Erstellung dauert dadurch deutlich länger (gemessen: ein Monatsvideo
+  mit 360 Bildern brauchte 55 Minuten). Die automatischen Videos der Nacht verpixeln nicht selbst.
 - **Direkt auf dem Online-Speicher:** Ein eigener Ablauf verpixelt die Bilder auf dem
   Online-Speicher. Er läuft seit dem 23.10.2026 jede Nacht vor den Videos (derzeit für
   Scheunenviertel und SLSV), damit die Tagesvideos verpixelt sind. Neue Bilder laufend zu
