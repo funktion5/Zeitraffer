@@ -230,6 +230,10 @@ class FrameSource(Protocol):
 	# Drop fetched copies of one camera.
 	def release(self, camera: str) -> None: ...
 
+	# Drop the fetched copies of only these frames, e.g. after they were changed on the box, so the
+	# next localize() fetches just them again.
+	def release_frames(self, camera: str, names: list[str]) -> None: ...
+
 
 # Frames in an ordinary folder tree: today's behaviour. Nothing to fetch, nothing to clean up.
 @dataclass(frozen=True)
@@ -257,6 +261,9 @@ class LocalFrameSource:
 		pass
 
 	def release(self, camera: str) -> None:
+		pass
+
+	def release_frames(self, camera: str, names: list[str]) -> None:
 		pass
 
 
@@ -413,6 +420,28 @@ class SshFrameSource:
 
 		if root is not None:
 			_remove(root / camera)
+
+	# Drops the cached copies of some frames of one camera, so the next localize() fetches just
+	# them. The camera and every name are checked before anything is removed, and the same guard as
+	# release() decides where deleting is allowed. A frame that is not cached is fine.
+	def release_frames(self, camera: str, names: list[str]) -> None:
+		try:
+			checked_camera(camera)
+
+		except FrameFetchError as error:
+			raise ValueError(f"Unsafe camera name: {camera!r}") from error
+
+		for name in names:
+			if not is_safe_name(name):
+				raise ValueError(f"Unsafe frame name: {name!r}")
+
+		root = self._guarded_root()
+
+		if root is None:
+			return
+
+		for name in names:
+			(root / camera / name).unlink(missing_ok=True)
 
 	# Deleting is only ever allowed strictly inside temp/, after resolving symlinks and "..", and
 	# only in a folder that carries the marker, so a wrong cache_root can never wipe anything else.
