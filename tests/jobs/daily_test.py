@@ -1,3 +1,4 @@
+import json
 import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -924,3 +925,180 @@ def test_release_error_is_logged_and_later_cameras_still_run(
 	]
 	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
 	assert "| failed=1 |" in caplog.text
+
+
+# ---- Blur gate: an automatic Daily of a blur camera is built from confirmed images only ----
+
+BLUR_CAMERA = "Blur-Camera"
+BLUR_CONFIG = {**TEST_CONFIG, "privacy": {"blur_cameras": [BLUR_CAMERA]}}
+
+
+# One state file per camera and month, one JSON line per event, like blur_box.record_processed.
+def write_blur_state(state_root: Path, camera: str, entries: list[dict]) -> None:
+	path = state_root / camera / "2026-09.jsonl"
+	path.parent.mkdir(parents=True, exist_ok=True)
+	path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+
+
+# Run one Daily for 2026-09-16 over the given images; return the event log and the images that
+# reached the video build. entries None means the camera has no state at all.
+def run_blur_daily(
+	monkeypatch,
+	tmp_path,
+	images,
+	entries,
+	camera=BLUR_CAMERA,
+	manual_run=False,
+):
+	state_root = tmp_path / "state"
+
+	monkeypatch.setattr(daily_module, "BLUR_STATE_ROOT", state_root)
+
+	if entries is not None:
+		write_blur_state(state_root, camera, entries)
+
+	events = patch_daily_job(monkeypatch, lambda **kwargs: images)
+	built = []
+
+	def fake_create_timelapse(camera, images, **kwargs):
+		events.append(f"create:{camera}")
+		built.append(images)
+
+		return Path(f"videos/{camera}/daily/video.mp4")
+
+	monkeypatch.setattr(daily_module, "create_timelapse", fake_create_timelapse)
+
+	daily_module.run_daily_job(
+		config=BLUR_CONFIG,
+		cameras=[camera],
+		framerate=DAILY_FRAMERATE,
+		target_date=date(2026, 9, 16),
+		manual_run=manual_run,
+	)
+
+	return events, built
+
+
+# blurred, clean and night are confirmed; refused, replacing and no entry at all are not. The
+# Daily is still built, from the confirmed images, and the left-out ones are named in the log.
+def test_blur_camera_daily_is_built_from_confirmed_images_only(
+	monkeypatch,
+	tmp_path,
+	caplog,
+):
+	images = [Path(f"{name}.jpg") for name in "abcdef"]
+	entries = [
+		{"image": "a.jpg", "status": "blurred"},
+		{"image": "b.jpg", "status": "clean"},
+		{"image": "c.jpg", "status": "night"},
+		{"image": "d.jpg", "status": "refused", "reason": "detector failed"},
+		{"image": "e.jpg", "status": "replacing"},
+	]
+
+	events, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert built == [images[:3]]
+	assert events == [f"create:{BLUR_CAMERA}", f"release:{BLUR_CAMERA}"]
+	assert "left out 3 of 6" in caplog.text
+	assert all(name in caplog.text for name in ("d.jpg", "e.jpg", "f.jpg"))
+	assert "created=1 | skipped=0 | failed=0" in caplog.text
+
+
+# The last line of an image is the one that counts, like everywhere else in the blur state.
+def test_blur_gate_last_state_line_wins(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+	entries = [
+		{"image": "a.jpg", "status": "refused"},
+		{"image": "a.jpg", "status": "blurred"},
+		{"image": "b.jpg", "status": "blurred"},
+		{"image": "b.jpg", "status": "replacing"},
+	]
+
+	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert built == [[images[0]]]
+
+
+# The state is keyed by file name; the fetched frames live in a folder of their own.
+def test_blur_gate_matches_the_file_name_not_the_path(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("temp/Blur-Camera/a.jpg")]
+
+	entries = [{"image": "a.jpg", "status": "clean"}]
+
+	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert built == [images]
+
+
+# Nothing to report when every image is confirmed.
+def test_blur_gate_is_silent_when_everything_is_confirmed(
+	monkeypatch,
+	tmp_path,
+	caplog,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+	entries = [{"image": image.name, "status": "blurred"} for image in images]
+
+	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert built == [images]
+	assert "left out" not in caplog.text
+
+
+# No confirmed image at all (the catch-up failed, or the camera has no state) is a skip, not a
+# failure and not a video of unchecked frames; the fetched frames are still released.
+@pytest.mark.parametrize(
+	"entries",
+	[
+		None,
+		[],
+		[{"image": "a.jpg", "status": "refused"}, {"image": "b.jpg", "status": "replacing"}],
+	],
+)
+def test_blur_gate_skips_the_camera_when_nothing_is_confirmed(
+	monkeypatch,
+	tmp_path,
+	caplog,
+	entries,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+
+	events, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert built == []
+	assert events == [f"release:{BLUR_CAMERA}"]
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+	assert "left out 2 of 2" in caplog.text
+	# This is not the "camera delivered no images" case.
+	assert "Found 0 images" not in caplog.text
+
+
+# Cameras without people are not gated and need no state.
+def test_blur_gate_does_not_touch_other_cameras(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+
+	events, built = run_blur_daily(monkeypatch, tmp_path, images, None, camera="Plain-Camera")
+
+	assert built == [images]
+	assert events == ["create:Plain-Camera", "release:Plain-Camera"]
+
+
+# A historical run goes to manual-runs, not public, and is exempt from the gate.
+def test_blur_gate_does_not_apply_to_historical_runs(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+
+	_, built = run_blur_daily(monkeypatch, tmp_path, images, None, manual_run=True)
+
+	assert built == [images]

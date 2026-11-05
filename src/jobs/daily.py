@@ -1,5 +1,7 @@
 import subprocess
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.config import automatic_daylight_buffer_for
 from src.date_coverage import get_latest_completed_date
@@ -7,8 +9,47 @@ from src.diagnostics import log_missing_images_diagnostic
 from src.image_worker import WorkerExitedError
 from src.images import find_daily_images_isolated, release_camera_frames
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_box import DEFAULT_STATE_ROOT, load_processed
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
+
+
+# The box blur job's state; tests point it at a temporary folder.
+BLUR_STATE_ROOT = DEFAULT_STATE_ROOT
+
+# An image with one of these as its last state line has been checked: pixelated, found clean, or
+# recorded as a night image the videos never use. Anything else (refused, replacing, no entry at
+# all) may still show a person.
+CONFIRMED_STATUSES = frozenset({"blurred", "clean", "night"})
+
+# At most this many left-out image names go into the log line; the state file has the rest.
+LEFT_OUT_NAMES_LOGGED = 10
+
+
+# Split the images of an automatic Daily into those the box blur job has confirmed and the rest.
+def split_confirmed_images(
+	camera: str,
+	images: list[Path],
+	target_date: date,
+	timezone: str,
+) -> tuple[list[Path], list[Path]]:
+	# load_processed reads the state months of the last days before "now". Noon on the day after
+	# the target date reaches back over the target date and the evening before it, whenever the
+	# job runs.
+	now = datetime.combine(target_date + timedelta(days=1), time(12, 0), tzinfo=ZoneInfo(timezone))
+	processed = load_processed(BLUR_STATE_ROOT, camera, now)
+	confirmed = []
+	left_out = []
+
+	for image in images:
+		entry = processed.get(image.name)
+
+		if entry is not None and entry.get("status") in CONFIRMED_STATUSES:
+			confirmed.append(image)
+		else:
+			left_out.append(image)
+
+	return confirmed, left_out
 
 
 # Keep only daily videos belonging to the rolling seven-day window.
@@ -125,6 +166,32 @@ def run_daily_job(
 			logger.debug(f"First image: {images[0].name}")
 
 			logger.debug(f"Last image: {images[-1].name}")
+
+			# An automatic Daily is public, so a blur camera's video is built from confirmed images
+			# only. Historical runs go to manual-runs and are exempt.
+			if not manual_run and camera in config.get("privacy", {}).get("blur_cameras", []):
+				images, left_out = split_confirmed_images(
+					camera=camera,
+					images=images,
+					target_date=target_date,
+					timezone=location["timezone"],
+				)
+
+				if left_out:
+					names = ", ".join(image.name for image in left_out[:LEFT_OUT_NAMES_LOGGED])
+					more = " ..." if len(left_out) > LEFT_OUT_NAMES_LOGGED else ""
+
+					logger.warning(
+						f"[{camera}] Blur gate: left out {len(left_out)} of "
+						f"{len(images) + len(left_out)} unconfirmed images: {names}{more}"
+					)
+
+				if not images:
+					logger.warning(f"[{camera}] Blur gate: no confirmed image - skipping camera.")
+
+					skipped_count += 1
+
+					continue
 
 			video_path = create_timelapse(
 				camera=camera,
