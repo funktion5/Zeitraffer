@@ -92,6 +92,15 @@ def test_status_endpoint_rejects_unknown_stored_status(tmp_path):
 			"No valid Yearly images available - skipping camera: SLSV",
 			"Im gewählten Zeitraum gibt es keine verwendbaren Bilder.",
 		),
+		(
+			"Blur not finished: 3 of 30 not blurred yet: a.jpg, b.jpg - skipping camera: SLSV",
+			"Von 30 Bildern sind 3 noch nicht verpixelt, deshalb wurde kein Video erstellt. "
+			"Bitte den Auftrag noch einmal starten.",
+		),
+		(
+			"Blur not finished: another blur run holds the lock - skipping camera: SLSV",
+			"Gerade läuft eine andere Verpixelung. Bitte später noch einmal versuchen.",
+		),
 		("/home/someone/secret path exploded", None),
 	],
 )

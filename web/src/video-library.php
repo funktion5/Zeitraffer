@@ -21,7 +21,8 @@ function projectRoot(): string
 	return dirname(__DIR__, 2);
 }
 
-function getIgnoredCameras(): array
+// The decoded config/config.json. A missing, unreadable or broken file gives an empty array.
+function readProjectConfig(): array
 {
 	$configPath = projectRoot() . "/config/config.json";
 
@@ -37,22 +38,36 @@ function getIgnoredCameras(): array
 
 	$config = json_decode($configContent, true);
 
-	if (!is_array($config)) {
-		return [];
-	}
+	return is_array($config) ? $config : [];
+}
 
-	$ignoredCameras = $config["ignored_cameras"] ?? [];
-
-	if (!is_array($ignoredCameras)) {
+// Only string names count; anything else in a camera list of the config is dropped.
+function cameraNames(mixed $names): array
+{
+	if (!is_array($names)) {
 		return [];
 	}
 
 	return array_values(
 		array_filter(
-			$ignoredCameras,
+			$names,
 			fn($camera): bool => is_string($camera),
 		),
 	);
+}
+
+function getIgnoredCameras(): array
+{
+	return cameraNames(readProjectConfig()["ignored_cameras"] ?? []);
+}
+
+// The cameras whose frames a manual Daily, Monthly or Yearly blurs on the box before the video is
+// built (privacy.blur_cameras), which makes the creation take longer.
+function getBlurCameras(): array
+{
+	$privacy = readProjectConfig()["privacy"] ?? [];
+
+	return cameraNames(is_array($privacy) ? ($privacy["blur_cameras"] ?? []) : []);
 }
 
 // The camera names come from state/web-jobs/cameras.json, which the nightly run writes

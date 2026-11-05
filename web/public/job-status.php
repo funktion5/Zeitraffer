@@ -41,6 +41,16 @@ function describeFailureReason(string $warning): ?string
 		return "Im gewählten Zeitraum gibt es keine verwendbaren Bilder.";
 	}
 
+	// The blur of a blur camera's frames on the box did not finish, so no video was built.
+	if (preg_match('/Blur not finished: (\d+) of (\d+) not blurred yet/', $warning, $match) === 1) {
+		return "Von {$match[2]} Bildern sind {$match[1]} noch nicht verpixelt, deshalb wurde kein Video erstellt. "
+			. "Bitte den Auftrag noch einmal starten.";
+	}
+
+	if (str_contains($warning, "Blur not finished: another blur run holds the lock")) {
+		return "Gerade läuft eine andere Verpixelung. Bitte später noch einmal versuchen.";
+	}
+
 	return null;
 }
 

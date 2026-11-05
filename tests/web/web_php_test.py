@@ -232,6 +232,33 @@ def test_get_ignored_cameras(tmp_path, config, expected):
 	assert result == expected
 
 
+# privacy.blur_cameras: only string names count; a broken or missing config must never raise.
+@pytest.mark.parametrize(
+	("config", "expected"),
+	[
+		('{"privacy": {"blur_cameras": ["A", 3, null, "B"]}}', ["A", "B"]),
+		('{"privacy": {"blur_cameras": "A"}}', []),
+		('{"privacy": "A"}', []),
+		('{"ignored_cameras": ["A"]}', []),
+		("{not json", []),
+		(None, []),
+	],
+)
+def test_get_blur_cameras(tmp_path, config, expected):
+	config_path = tmp_path / "config" / "config.json"
+	config_path.parent.mkdir()
+	if config is not None:
+		config_path.write_text(config)
+
+	result = library(
+		tmp_path,
+		"echo json_encode(getBlurCameras());",
+		**{PROJECT_ROOT_CALL: json.dumps(str(tmp_path))},
+	)
+
+	assert result == expected
+
+
 # The camera names come from state/web-jobs/cameras.json (python3 -m src.camera_list), because the
 # web server user has no ssh key and the storage is not mounted on this host.
 def available_cameras(tmp_path: Path, list_content: str | None):

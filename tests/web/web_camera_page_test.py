@@ -224,3 +224,30 @@ def test_busy_lock_keeps_the_form_page_with_its_message(tmp_path):
 	out, _ = render(tmp_path)
 
 	assert '"jobId"' not in out
+
+
+# A manual Daily, Monthly or Yearly of a camera in privacy.blur_cameras blurs its frames on the box
+# before the video is built, which takes longer: the form says so, only for those cameras.
+def write_blur_config(tmp_path: Path, cameras: list[str]) -> None:
+	config_path = tmp_path / "config" / "config.json"
+	config_path.parent.mkdir(parents=True, exist_ok=True)
+	config_path.write_text(json.dumps({"privacy": {"blur_cameras": cameras}}))
+
+
+def test_a_blur_camera_says_that_creating_a_video_takes_longer(tmp_path):
+	write_blur_config(tmp_path, [CAMERA])
+
+	out, _ = render(tmp_path)
+
+	assert '<p id="blur-note">' in out
+	assert "vorher automatisch verpixelt" in out
+	assert "dauert deshalb deutlich länger" in out
+
+
+def test_a_camera_outside_the_blur_list_has_no_note(tmp_path):
+	write_blur_config(tmp_path, ["Another-Camera"])
+
+	out, _ = render(tmp_path)
+
+	assert "blur-note" not in out
+	assert "verpixelt" not in out

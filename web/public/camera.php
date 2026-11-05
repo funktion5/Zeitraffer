@@ -18,6 +18,9 @@ if (!in_array($camera, $availableCameras, true)) {
   $camera = "";
 }
 
+// A manual Daily, Monthly or Yearly of these cameras blurs its frames first and takes longer.
+$cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
+
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
 $automaticVideos = $camera === "" ? [] : findVideos($camera, "");
 
@@ -574,6 +577,13 @@ unset($_SESSION["started_job"]);
 	                  required
 	                >
 	              </div>
+
+	              <?php if ($cameraIsBlurred): ?>
+	                <p id="blur-note">
+	                  Hinweis: Bei dieser Kamera werden die Bilder vorher automatisch verpixelt (tägliche,
+	                  monatliche und jährliche Videos). Die Erstellung dauert deshalb deutlich länger.
+	                </p>
+	              <?php endif; ?>
 
 	              <button type="submit">
 	                Video erstellen
