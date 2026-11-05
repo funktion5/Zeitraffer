@@ -11,12 +11,13 @@ SCRIPT = (
 	Path(__file__).resolve().parent.parent / "scripts" / "copy_zeitraffer_videos_vps2siteground.sh"
 )
 
-# The script holds the FTP login in plain text and is kept out of git, so a checkout without it
-# (CI) skips these tests. The login in the script is never used here: the tests set their own
-# values in the environment, and every curl call goes to the fake below.
+# The FTP login is not in the script: it comes from the environment or from a file that git
+# ignores (siteground.env). The tests set their own values in the environment, point
+# SITEGROUND_CONFIG at a file that does not exist unless a test needs one, and send every curl call
+# to the fake below, so a real login file on the machine is never read.
 pytestmark = pytest.mark.skipif(
 	not SCRIPT.exists(),
-	reason="the delivery script holds a login and is not in git",
+	reason="the delivery script is not in this checkout",
 )
 
 # A fake FTP server in a folder: it understands exactly the curl calls the script makes.
@@ -155,6 +156,7 @@ def run_delivery(
 		"PATH": f"{bin_dir}:{os.environ['PATH']}",
 		"VIDEO_ROOT": str(tmp_path / "videos"),
 		"LOCK_FILE": str(tmp_path / "delivery.lock"),
+		"SITEGROUND_CONFIG": str(tmp_path / "no-login-file.env"),
 		"SITEGROUND_HOST": "ftp.example.test",
 		"SITEGROUND_USER": "fake-user",
 		"SITEGROUND_PASS": PASSWORD,
@@ -411,3 +413,104 @@ def test_a_second_run_is_refused_while_another_holds_the_lock(tmp_path):
 	assert result.returncode != 0
 	assert "läuft bereits" in result.stderr
 	assert ftp_files(ftp_root) == {}
+
+
+# The login lives in a file that git ignores, so the script itself can be pushed. Every test above
+# gives the login through the environment, which has priority; the tests below use the file.
+NO_LOGIN_IN_ENV = {"SITEGROUND_HOST": "", "SITEGROUND_USER": "", "SITEGROUND_PASS": ""}
+
+
+def login_text(password: str = PASSWORD, user: str = "fake-user") -> str:
+	return "\n".join(
+		[
+			"# SiteGround FTP",
+			"",
+			"UNRELATED=ignored",
+			"SITEGROUND_HOST=ftp.example.test",
+			f"SITEGROUND_USER={user}",
+			f"SITEGROUND_PASS={password}",
+			"",
+		]
+	)
+
+
+def write_login_file(tmp_path: Path, text: str) -> dict[str, str]:
+	login_file = tmp_path / "siteground.env"
+	login_file.write_text(text)
+
+	return {"SITEGROUND_CONFIG": str(login_file)}
+
+
+def test_the_login_is_read_from_the_config_file_when_the_environment_has_none(tmp_path):
+	video = "Cam/daily/Cam_2026-11-03.mp4"
+	env = {**NO_LOGIN_IN_ENV, **write_login_file(tmp_path, login_text())}
+
+	result, ftp_root, _ = run_delivery(tmp_path, {video: 12}, env=env)
+
+	assert result.returncode == 0
+	assert ftp_files(ftp_root) == {video: 12}
+	assert "SITEGROUND_HOST: ftp.example.test" in result.stdout
+	assert PASSWORD not in result.stdout + result.stderr
+
+
+# The environment has priority, as the script says: a test or a one-off run can override the file.
+def test_the_environment_beats_the_config_file(tmp_path):
+	video = "Cam/daily/Cam_2026-11-03.mp4"
+	wrong_file = write_login_file(tmp_path, login_text("wrong-password", "wrong-user"))
+
+	result, ftp_root, _ = run_delivery(tmp_path, {video: 12}, env=wrong_file)
+
+	assert result.returncode == 0
+	assert ftp_files(ftp_root) == {video: 12}
+
+
+# The file fills in only what the environment leaves empty.
+def test_the_config_file_fills_only_the_values_the_environment_leaves_empty(tmp_path):
+	video = "Cam/daily/Cam_2026-11-03.mp4"
+	file_login = write_login_file(tmp_path, login_text("wrong-password"))
+	env = {**file_login, "SITEGROUND_HOST": "", "SITEGROUND_USER": ""}
+
+	result, ftp_root, _ = run_delivery(tmp_path, {video: 12}, env=env)
+
+	assert result.returncode == 0
+	assert ftp_files(ftp_root) == {video: 12}
+
+
+# Everything after the first "=" is the value: no quotes and no escaping, so "$", quotes, "#" and
+# "=" inside a password need no care.
+def test_the_password_in_the_config_file_is_taken_literally(tmp_path):
+	video = "Cam/daily/Cam_2026-11-03.mp4"
+	password = "p$HOME \"q\" 'r' a=b #c"
+	env = {
+		**NO_LOGIN_IN_ENV,
+		**write_login_file(tmp_path, login_text(password)),
+		"FAKE_LOGIN": f"fake-user:{password}",
+	}
+
+	result, ftp_root, _ = run_delivery(tmp_path, {video: 12}, env=env)
+
+	assert result.returncode == 0
+	assert ftp_files(ftp_root) == {video: 12}
+
+
+# Without a camera the script calls itself once per camera; every call reads the file again.
+def test_every_camera_run_reads_the_config_file(tmp_path):
+	videos = {"Cam/daily/Cam_2026-11-03.mp4": 12, "Other/daily/Other_2026-11-03.mp4": 7}
+	env = {**NO_LOGIN_IN_ENV, **write_login_file(tmp_path, login_text())}
+
+	result, ftp_root, _ = run_delivery(tmp_path, videos, args=("--run",), env=env)
+
+	assert result.returncode == 0
+	assert ftp_files(ftp_root) == videos
+	assert "Alle Kameras erfolgreich abgeschlossen." in result.stdout
+
+
+def test_a_real_run_without_any_login_stops_before_a_connection(tmp_path):
+	result, ftp_root, log = run_delivery(
+		tmp_path, {"Cam/daily/Cam_2026-11-03.mp4": 12}, env=NO_LOGIN_IN_ENV
+	)
+
+	assert result.returncode == 2
+	assert "müssen ausgefüllt sein" in result.stderr
+	assert ftp_files(ftp_root) == {}
+	assert curl_calls(log) == []
