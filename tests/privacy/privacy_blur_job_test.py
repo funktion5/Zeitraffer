@@ -1,3 +1,4 @@
+from functools import partial
 from pathlib import Path
 
 import pytest
@@ -15,12 +16,14 @@ from privacy_blur_box_test import (
 import src.privacy.blur_box as blur_box
 import src.privacy.blur_job as blur_job
 from src.privacy.anonymize import PrivacyCheckError
+from src.privacy.box_writer import BoxWriter
 from src.storage_filter import acquire_run_lock
 
 # Step 2b of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: what a manual Monthly or Yearly
-# with --blur-box does between choosing its frames and building the video. Proposed interface:
-#   blur_job.blur_job_frames(camera, images, config, now, writer_options=None) -> BlurJobResult
-#   BlurJobResult(ready, reason, summary): ready = every frame is confirmed, cut-off ones excepted.
+# with --blur-box does between choosing its frames and building the video:
+#   blur_job.blur_job_frames(camera, images, config, now=None) -> bool
+# True means the video may be built: every frame is confirmed, cut-off ones excepted. When it is
+# False the reason is in a log line ending in " - skipping camera: <name>".
 
 PERSON_A = "20260310T120000.jpg"
 PERSON_B = "20260311T120000.jpg"
@@ -57,6 +60,10 @@ class JobSetup:
 		monkeypatch.setattr(blur_job, "get_storage_box", lambda: setup.storage_box)
 		monkeypatch.setattr(blur_job, "BLUR_STATE_ROOT", setup.state_root)
 		monkeypatch.setattr(blur_box, "BLUR_LOCK_PATH", tmp_path / "blur.lock")
+		# The writer talks to the fake box, and its clock stands still.
+		monkeypatch.setattr(
+			blur_job, "BoxWriter", partial(BoxWriter, runner=setup.box, clock=lambda: NOW)
+		)
 
 	# The frame on the box (months old) and the job's own copy of it, from before any blur.
 	def frame(self, name: str, cut_off: bool = False) -> Path:
@@ -70,28 +77,17 @@ class JobSetup:
 
 		return local
 
-	def config(self, **privacy_changes) -> dict:
-		privacy = {
-			"blur_cameras": [CAMERA],
-			"detector_command": self.setup.detector,
-			"blur": {"strength": 0.1, "padding_ratio": 0.25, "feather": 0.5},
-			**privacy_changes,
+	def run(self, images: list[Path]) -> bool:
+		config = {
+			"location": LOCATION,
+			"privacy": {
+				"blur_cameras": [CAMERA],
+				"detector_command": self.setup.detector,
+				"blur": {"strength": 0.1, "padding_ratio": 0.25, "feather": 0.5},
+			},
 		}
 
-		return {"location": LOCATION, "privacy": privacy}
-
-	def run(self, images: list[Path], **privacy_changes):
-		return blur_job.blur_job_frames(
-			CAMERA,
-			images,
-			self.config(**privacy_changes),
-			NOW,
-			writer_options={
-				"runner": self.setup.box,
-				"clock": lambda: NOW,
-				"upload_root": self.setup.work_root,
-			},
-		)
+		return blur_job.blur_job_frames(CAMERA, images, config, NOW)
 
 
 @pytest.fixture
@@ -103,11 +99,14 @@ def test_job_frames_are_blurred_and_only_those_copies_are_fetched_again(job, mon
 	monkeypatch.setenv("FAKE_PEOPLE", f"{PERSON_A},{PERSON_B}")
 	images = [job.frame(name) for name in (PERSON_A, PERSON_B, NOBODY)]
 
-	result = job.run(images)
+	assert job.run(images) is True
 
-	assert result.ready is True
-	assert result.reason == ""
-	assert (result.summary.blurred, result.summary.clean) == (2, 1)
+	states = job.setup.states()
+	assert [states[name]["status"] for name in (PERSON_A, PERSON_B, NOBODY)] == [
+		"blurred",
+		"blurred",
+		"clean",
+	]
 	assert (job.setup.camera_dir / PERSON_A).read_bytes() == blurred_bytes(PERSON_A)
 	assert (job.setup.camera_dir / NOBODY).read_bytes() == original_bytes(NOBODY)
 	# The job's copies are from before the blur: only the blurred ones are dropped, then fetched
@@ -123,10 +122,8 @@ def test_confirmed_frames_cause_no_work_and_no_refetch(job) -> None:
 	for name in (PERSON_A, NOBODY):
 		record_in_own_month(job.setup, name, "blurred")
 
-	result = job.run(images)
+	assert job.run(images) is True
 
-	assert result.ready is True
-	assert result.summary == blur_box.BoxRoundSummary()
 	assert job.setup.detected() == []
 	assert job.setup.writes() == []
 	assert (job.source.released, job.source.localized) == ([], [])
@@ -143,7 +140,9 @@ def test_the_log_names_the_numbers_before_anything_is_blurred(job, monkeypatch, 
 	assert f"[{CAMERA}] Blur: 3 frames, 1 already confirmed, 2 to blur" in caplog.text
 
 
-def test_a_frame_that_stays_unblurred_makes_the_job_not_ready(job, monkeypatch) -> None:
+# No video from an incomplete blur. The warning ends in " - skipping camera: <name>", which is the
+# wording the web UI shows as the reason.
+def test_a_frame_that_stays_unblurred_makes_the_job_not_ready(job, monkeypatch, caplog) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", f"{PERSON_A},{PERSON_B}")
 	images = [job.frame(name) for name in (PERSON_A, PERSON_B, NOBODY)]
 
@@ -155,11 +154,9 @@ def test_a_frame_that_stays_unblurred_makes_the_job_not_ready(job, monkeypatch) 
 
 	monkeypatch.setattr(blur_box, "_probe_dimensions", probe)
 
-	result = job.run(images)
+	assert job.run(images) is False
 
-	assert result.ready is False
-	assert "1 of 3" in result.reason
-	assert PERSON_B in result.reason
+	assert f"1 of 3 not blurred yet: {PERSON_B} - skipping camera: {CAMERA}" in caplog.text
 	# What was blurred is still dropped from the cache, so nothing stale is left behind.
 	assert job.source.released == [(CAMERA, [PERSON_A])]
 
@@ -169,24 +166,22 @@ def test_a_cut_off_frame_does_not_stop_the_job(job, monkeypatch) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", PERSON_A)
 	images = [job.frame(PERSON_A), job.frame(PERSON_B, cut_off=True)]
 
-	result = job.run(images)
+	assert job.run(images) is True
 
-	assert result.ready is True
-	assert result.summary.failed == 1
+	assert PERSON_B not in job.setup.states()
 	assert job.source.released == [(CAMERA, [PERSON_A])]
 
 
 def test_a_busy_blur_lock_stops_the_job_before_anything_is_written(
-	job, monkeypatch, tmp_path
+	job, monkeypatch, tmp_path, caplog
 ) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", PERSON_A)
 	images = [job.frame(PERSON_A)]
 
 	with acquire_run_lock(tmp_path / "blur.lock"):
-		result = job.run(images)
+		assert job.run(images) is False
 
-	assert result.ready is False
-	assert "another blur run" in result.reason
+	assert f"another blur run holds the lock - skipping camera: {CAMERA}" in caplog.text
 	assert job.setup.detected() == []
 	assert job.setup.writes() == []
 	assert job.source.released == []
@@ -200,12 +195,3 @@ def test_the_blur_lock_is_free_again_after_the_blur_step(job, monkeypatch, tmp_p
 
 	with acquire_run_lock(tmp_path / "blur.lock"):
 		pass
-
-
-def test_a_camera_outside_the_blur_list_is_refused_before_any_contact(job) -> None:
-	images = [job.frame(PERSON_A)]
-
-	with pytest.raises(ValueError, match="blur_cameras"):
-		job.run(images, blur_cameras=["Other"])
-
-	assert job.setup.box.calls == []

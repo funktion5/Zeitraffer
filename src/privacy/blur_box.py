@@ -195,10 +195,6 @@ def record_processed(state_root: Path, camera: str, entry: dict, now: datetime) 
 		os.fsync(file.fileno())
 
 
-def _is_confirmed(entry: dict | None) -> bool:
-	return entry is not None and entry.get("status") in CONFIRMED_STATUSES
-
-
 # The state of the given images wherever it was written: a backfilled image sits on the page of its
 # own month, which load_processed (the last few days only) would never look at.
 def load_processed_for_names(
@@ -211,21 +207,6 @@ def load_processed_for_names(
 	)
 
 	return _read_state([state_root / f"{camera}.jsonl", *sorted(months)])
-
-
-# Which of these images are finished and which are still open, in the order given. For a dry run
-# and for a job that must know whether all its frames are blurred before it builds a video.
-def split_confirmed_names(
-	state_root: Path, camera: str, names: list[str], timezone: str
-) -> tuple[list[str], list[str]]:
-	processed = load_processed_for_names(state_root, camera, names, timezone)
-	confirmed = []
-	still_open = []
-
-	for name in names:
-		(confirmed if _is_confirmed(processed.get(name)) else still_open).append(name)
-
-	return confirmed, still_open
 
 
 # Night only if both the filename clock and the upload time say so: a drifted camera clock or a
@@ -505,7 +486,11 @@ def blur_frames(
 	# A name without a readable time is refused by the writer; "now" only picks its state page.
 	moments = {name: image_moment(name, writer.timezone) or now for name in dict.fromkeys(names)}
 	open_names = sorted(
-		(name for name in moments if not _is_confirmed(processed.get(name))),
+		(
+			name
+			for name in moments
+			if processed.get(name, {}).get("status") not in CONFIRMED_STATUSES
+		),
 		key=lambda name: moments[name],
 		reverse=True,
 	)

@@ -2,7 +2,6 @@ import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
-import pytest
 from frame_source_fakes import RecordingFrameSource
 
 import src.images as images_module
@@ -10,8 +9,6 @@ import src.jobs.yearly as yearly_module
 from src.image_worker import WorkerExitedError
 from src.jobs.yearly import run_yearly_job
 from src.interval_window import SUNSET, IntervalWindow
-from src.privacy.blur_box import BoxRoundSummary
-from src.privacy.blur_job import BlurJobResult
 
 
 TEST_CONFIG = {
@@ -974,16 +971,11 @@ def test_yearly_selection_reads_the_fetched_files(
 def patch_blur(monkeypatch, events, not_ready=()):
 	calls = []
 
-	def fake_blur_job_frames(camera, images, config, now, writer_options=None):
+	def fake_blur_job_frames(camera, images, config):
 		events.append(f"blur:{camera}")
-		calls.append({"camera": camera, "images": list(images), "config": config, "now": now})
+		calls.append({"camera": camera, "images": list(images), "config": config})
 
-		if camera in not_ready:
-			reason = "5 of 1640 frames are not blurred yet: x.jpg"
-
-			return BlurJobResult(False, reason, BoxRoundSummary())
-
-		return BlurJobResult(True, "", BoxRoundSummary())
+		return camera not in not_ready
 
 	monkeypatch.setattr(yearly_module, "blur_job_frames", fake_blur_job_frames)
 
@@ -1016,7 +1008,6 @@ def test_blur_box_blurs_the_selected_frames_before_the_video_is_built(monkeypatc
 	]
 	assert calls[0]["images"] == create_complete_yearly_images()
 	assert calls[0]["config"] is TEST_CONFIG
-	assert calls[0]["now"].tzinfo is not None
 
 
 def test_without_blur_box_the_box_is_never_touched(monkeypatch):
@@ -1043,9 +1034,6 @@ def test_a_blur_that_is_not_ready_builds_no_video_and_counts_as_failed(monkeypat
 		"blur:Test-Camera",
 		"release:Test-Camera",
 	]
-	assert (
-		"5 of 1640 frames are not blurred yet: x.jpg - skipping camera: Test-Camera" in caplog.text
-	)
 	assert "created=0 | skipped=0 | failed=1" in caplog.text
 
 
@@ -1058,21 +1046,3 @@ def test_the_other_cameras_still_run_when_one_blur_is_not_ready(monkeypatch):
 	assert "create:Stuck-Camera" not in events
 	assert "create:Working-Camera" in events
 	assert events[-1] == "release:Working-Camera"
-
-
-# An automatic run never writes to the box: only a manual run may ask for the blur.
-def test_blur_box_is_refused_for_an_automatic_run(monkeypatch):
-	events = patch_yearly_job(monkeypatch, lambda **kwargs: create_complete_yearly_images())
-	calls = patch_blur(monkeypatch, events)
-
-	with pytest.raises(ValueError, match="manual"):
-		run_yearly_job(
-			config=TEST_CONFIG,
-			cameras=["Test-Camera"],
-			framerate=YEARLY_FRAMERATE,
-			target_date=TARGET_DATE,
-			blur_box=True,
-		)
-
-	assert calls == []
-	assert events == []

@@ -869,9 +869,9 @@ def test_state_from_the_old_single_file_is_honoured(setup: Setup) -> None:
 
 # Step 1 of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: blur the frames a job hands over
 # (any age, any month), not "the last LISTED_DAYS days". Interface proposed before the code:
-#   blur_box.split_confirmed_names(state_root, camera, names, timezone) -> (confirmed, open)
 #   blur_box.blur_frames(writer, camera, names, detector_command, settings, state_root, now,
 #                        rules=None) -> BoxRoundSummary
+#   blur_box.load_processed_for_names(state_root, camera, names, timezone) -> {name: entry}
 OLD_PERSON = "20260310T123000.jpg"
 OLD_CLEAN = "20260310T120000.jpg"
 OLD_AGE = 97 * 24 * 3600
@@ -1026,8 +1026,9 @@ def test_drop_rules_carry_over_to_listed_frames(setup: Setup, monkeypatch) -> No
 	assert setup.states()[OLD_PERSON]["ignored_boxes"] == [[706, 557, 741, 640, 0.9]]
 
 
-# For the dry run and for the job's check "may I build the video": which listed frames are done?
-def test_split_reads_each_names_own_month_and_counts_only_confirmed(setup: Setup) -> None:
+# For a job's check "which of my frames are done?": the state of each listed name, wherever it was
+# written (its own month, or the old single file). A name that was never seen is simply not there.
+def test_state_of_listed_names_is_read_from_each_names_own_month(setup: Setup) -> None:
 	blurred_in_march = "20260310T120000.jpg"
 	clean_in_march = "20260310T123000.jpg"
 	refused_in_march = "20260310T130000.jpg"
@@ -1043,19 +1044,16 @@ def test_split_reads_each_names_own_month_and_counts_only_confirmed(setup: Setup
 	record_in_own_month(setup, replacing_in_april, "replacing", blurred_sha256="0" * 64)
 	legacy = setup.state_root / f"{CAMERA}.jsonl"
 	legacy.write_text(json.dumps({"image": in_legacy_file, "status": "blurred"}) + "\n")
-	names = [
-		never_seen,
-		blurred_in_march,
-		refused_in_march,
-		in_legacy_file,
-		replacing_in_april,
-		clean_in_march,
-		night_in_april,
-	]
+	names = [never_seen, blurred_in_march, refused_in_march, in_legacy_file, replacing_in_april]
+	names += [clean_in_march, night_in_april]
 
-	confirmed, still_open = blur_box.split_confirmed_names(
-		setup.state_root, CAMERA, names, TIMEZONE
-	)
+	states = blur_box.load_processed_for_names(setup.state_root, CAMERA, names, TIMEZONE)
 
-	assert confirmed == [blurred_in_march, in_legacy_file, clean_in_march, night_in_april]
-	assert still_open == [never_seen, refused_in_march, replacing_in_april]
+	assert {name: entry["status"] for name, entry in states.items()} == {
+		blurred_in_march: "blurred",
+		clean_in_march: "clean",
+		refused_in_march: "refused",
+		night_in_april: "night",
+		replacing_in_april: "replacing",
+		in_legacy_file: "blurred",
+	}
