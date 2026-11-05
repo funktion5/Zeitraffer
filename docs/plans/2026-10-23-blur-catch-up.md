@@ -338,7 +338,7 @@ Julius checks one blurred image per camera before Step 3.
 Dry-run on 2026-10-23 against the live crontab: exactly the `0 2` and `@reboot` lines change.
 
 ```bash
-B=~/crontab-backup-$(date +%F_%H%M).txt; crontab -l > "$B" && crontab -l | sed 's#\(-c '"'"'cd /home/zruser/timelapse \)&& \(/home/zruser/timelapse/.venv/bin/python3 -m src\.main'"'"'\)#\1\&\& /home/zruser/timelapse/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; \2#' > ~/crontab-new.txt && diff "$B" ~/crontab-new.txt
+B=~/crontab-backup-$(date +%F_%H%M).txt; crontab -l > "$B" && crontab -l | sed 's#\(-c '"'"'cd <projektpfad> \)&& \(<projektpfad>/.venv/bin/python3 -m src\.main'"'"'\)#\1\&\& <projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up; \2#' > ~/crontab-new.txt && diff "$B" ~/crontab-new.txt
 ```
 
 Expected diff: two lines; inside each `flock -c '...'` the catch-up now comes first, followed by

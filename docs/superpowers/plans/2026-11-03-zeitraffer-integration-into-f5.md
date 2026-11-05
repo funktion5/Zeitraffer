@@ -23,7 +23,7 @@ Tasks 1-4 complete and checked by Julius in Docker (uncommitted). Open: Julius's
 - No new dependency. No third-party request. Delete rules of `VideoActions` do not change (not published, `edit_others_posts`, name must equal a listed regular `.mp4`, realpath in folder, no symlink).
 - Zeitraffer plugin and the new f5 code must not both register the type in Docker: Tasks 1-3 only add and load classes (nothing registers a hook); **Task 4 is the switch**.
 - Deleting `frontend/zeitraffer/` needs Julius's explicit yes (global rule); until then it stays, deactivated.
-- Harness commands (HARNESS = `/Users/praktikant/.claude/projects/-Users-praktikant-Documents-Repositories-Zeitraffer/memory/status-page-artifacts`):
+- Harness commands (HARNESS = `<memory-ordner>/status-page-artifacts`):
   `export PATH="$HOME/.config/herd-lite/bin:$PATH"; cd "$HARNESS" && php harness-zeitraffer.php` (expect `all checks passed`, today 52 checks) and `php harness.php check` (today 32 checks, plus the 10 baseline dumps in `baseline/`, byte-identical).
 - Ledger: `$HARNESS/ledger-integration.md`, first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-03-zeitraffer-integration-into-f5.md`; one completion line per task, rulings as `Ruling: ... — why — cost if wrong`.
 
