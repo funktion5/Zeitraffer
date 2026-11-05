@@ -25,7 +25,6 @@ services:
     volumes:
       - wordpress:/var/www/html
       - ../frontend/f5-webcams/:/var/www/html/wp-content/plugins/f5-webcams:ro
-      - ../frontend/zeitraffer/:/var/www/html/wp-content/plugins/zeitraffer:ro
       - ../videos/:/var/www/html/wp-content/uploads/zeitraffer/:ro
 
 volumes:

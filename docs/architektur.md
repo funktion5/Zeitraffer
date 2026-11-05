@@ -231,9 +231,7 @@ timelapse/
 │   ├── wordpress.md
 │   └── youtube/   (Regeln und Texte für YouTube-Beschreibungen)
 ├── frontend/
-│   └── zeitraffer/
-│       ├── assets/   (CSS und JavaScript des Plugins)
-│       └── plugin-timelapse.php
+│   └── f5-webcams/   (WordPress-Plugin: Player, Shortcode, Kameraeinträge; eigenes Repository)
 ├── .github/
 │   └── workflows/
 │       └── test.yml

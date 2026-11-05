@@ -541,8 +541,10 @@ Details: [docs/verpixelung.md](docs/verpixelung.md) (Videos) und
 
 ## WordPress-Seite
 
-Ein WordPress-Plugin namens „Zeitraffer“ zeigt die fertigen Videos auf einer WordPress-Website an,
-pro Kamera oder als Übersicht. Es wird derzeit auf einem Testsystem auf dem Mac entwickelt.
+Ein WordPress-Plugin zeigt die fertigen Videos auf einer WordPress-Website an: „F5 Webcams“
+(`frontend/f5-webcams/`, ein eigenes Repository). Es enthält den Player, den Shortcode `[zeitraffer]`,
+die Kameraeinträge mit ihrer Sichtbarkeit und die Videoübersicht im Admin.
+Es wird derzeit auf einem Testsystem auf dem Mac entwickelt.
 
 Die Videos gelangen noch nicht automatisch auf die echte Website; dieser Schritt fehlt noch (siehe
 [Noch offen](#noch-offen)).

@@ -1,9 +1,10 @@
-// Tests for the pure helpers of the timelapse player (frontend/zeitraffer/assets/script.js).
+// Tests for the pure helpers of the timelapse player (frontend/f5-webcams/assets/js/timelapse.js, in
+// the f5-webcams plugin, a separate repository that is not tracked here).
 // Run: node --test tests/frontend/player.test.js
 const { test } = require("node:test");
 const assert = require("node:assert");
 
-const { formatTime, valueText, stepTime, frameStart } = require("../../frontend/zeitraffer/assets/script.js");
+const { formatTime, valueText, stepTime, frameStart } = require("../../frontend/f5-webcams/assets/js/timelapse.js");
 
 const approx = (actual, expected) => {
 	assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} is not ${expected}`);
