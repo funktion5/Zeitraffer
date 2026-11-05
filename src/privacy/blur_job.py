@@ -1,4 +1,4 @@
-"""The blur step of a manual Monthly or Yearly run with --blur-box.
+"""The blur step of a manual Daily, Weekly, Monthly or Yearly run of a blur camera.
 
 The job has chosen its frames. Before it builds the video they are blurred on the box, in place
 (blur_frames), so this video and every later one that uses the same frames shows them blurred. The

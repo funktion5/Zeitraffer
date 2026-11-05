@@ -15,6 +15,7 @@ from src.images import (
 	release_camera_frames,
 )
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_job import blur_job_frames
 from src.solar import get_sun_times
 from src.video import (
 	TEMP_ROOT,
@@ -85,6 +86,12 @@ def collect_weekly_images(
 	return weekly_images, missing_dates
 
 
+# The blur of a manual Weekly's frames did not finish. blur_job_frames has logged the reason (the
+# web UI shows it); returning None would count the camera as skipped, so this makes it a failure.
+class BlurNotReadyError(Exception):
+	pass
+
+
 # Create a historical Weekly directly from seven complete days of images.
 def create_manual_weekly_video(
 	config: dict,
@@ -98,6 +105,14 @@ def create_manual_weekly_video(
 		daylight_buffer_minutes=config["daylight_buffer_minutes"],
 		stall_timeout_seconds=config["image_scan_stall_timeout_seconds"],
 	)
+
+	# A manual run blurs a blur camera's frames on the box before its video is built; the automatic
+	# Weekly joins Dailies that are already confirmed and writes nothing to the box. Before the
+	# 7-of-7 check, so a week with a missing day builds no video but its frames still get blurred.
+	blur_cameras = config.get("privacy", {}).get("blur_cameras", [])
+
+	if camera in blur_cameras and not blur_job_frames(camera, weekly_images, config):
+		raise BlurNotReadyError(camera)
 
 	if missing_dates:
 		for missing_date in missing_dates:
@@ -255,6 +270,11 @@ def run_weekly_job(
 					timelapse_type="weekly",
 					current_video=video_path,
 				)
+
+		except BlurNotReadyError:
+			failed_count += 1
+
+			continue
 
 		except (
 			OSError,

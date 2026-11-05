@@ -241,7 +241,8 @@ def test_a_blur_camera_says_that_creating_a_video_takes_longer(tmp_path):
 
 	assert '<p id="blur-note">' in out
 	assert "vorher automatisch verpixelt" in out
-	assert "dauert deshalb deutlich länger" in out
+	assert "wöchentliche" in out
+	assert "dauert deshalb" in out
 
 
 def test_a_camera_outside_the_blur_list_has_no_note(tmp_path):
