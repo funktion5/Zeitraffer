@@ -47,6 +47,7 @@ def make_arguments(
 	window_time=None,
 	window_tolerance_minutes: int | None = None,
 	blur_people: bool = False,
+	blur_box: bool = False,
 ) -> Namespace:
 	return Namespace(
 		date=date_value,
@@ -57,6 +58,7 @@ def make_arguments(
 		window_time=window_time,
 		window_tolerance_minutes=window_tolerance_minutes,
 		blur_people=blur_people,
+		blur_box=blur_box,
 	)
 
 
@@ -408,6 +410,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"target_date": None,
 				"manual_run": False,
 				"interval_window": None,
+				"blur_box": False,
 			},
 		),
 		(
@@ -419,6 +422,7 @@ def test_main_runs_all_automatic_jobs_by_default(
 				"target_date": None,
 				"manual_run": False,
 				"interval_window": None,
+				"blur_box": False,
 			},
 		),
 	]
@@ -587,6 +591,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				"target_date": target_date,
 				"manual_run": True,
 				"interval_window": None,
+				"blur_box": False,
 			},
 		),
 		(
@@ -601,6 +606,7 @@ def test_main_passes_target_date_to_selected_jobs(
 				"target_date": target_date,
 				"manual_run": True,
 				"interval_window": None,
+				"blur_box": False,
 			},
 		),
 	]
@@ -1500,3 +1506,137 @@ def test_parse_arguments_accepts_blur_people(monkeypatch):
 	args = main_module.parse_arguments()
 
 	assert args.blur_people is True
+
+
+# Step 2d of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: --blur-box asks a manual
+# Monthly or Yearly to blur the frames of its video on the box first. Writing to the box is only
+# ever done on request, for named cameras that are in privacy.blur_cameras.
+BLUR_CONFIG = {**TEST_CONFIG, "privacy": {"blur_cameras": ["SLSV", "Scheunenviertel"]}}
+
+
+def test_parse_arguments_accepts_blur_box(monkeypatch):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		[
+			"main.py",
+			"--jobs",
+			"monthly",
+			"--target-date",
+			"2026-06-28",
+			"--cameras",
+			"SLSV",
+			"--blur-box",
+		],
+	)
+
+	assert main_module.parse_arguments().blur_box is True
+
+
+def test_parse_arguments_blur_box_is_off_by_default(monkeypatch):
+	monkeypatch.setattr(
+		sys,
+		"argv",
+		["main.py", "--jobs", "monthly", "--target-date", "2026-06-28", "--cameras", "SLSV"],
+	)
+
+	assert main_module.parse_arguments().blur_box is False
+
+
+@pytest.mark.parametrize("jobs", [["monthly"], ["yearly"], ["monthly", "yearly"]])
+def test_main_passes_blur_box_to_manual_monthly_and_yearly(monkeypatch, jobs):
+	arguments = make_arguments(
+		jobs=jobs,
+		target_date=date(2026, 6, 28),
+		cameras=["SLSV"],
+		blur_box=True,
+	)
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=arguments,
+		config=BLUR_CONFIG,
+		cameras=["SLSV", "Scheunenviertel"],
+	)
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	main_module.main()
+
+	assert [job for job, _ in job_calls] == jobs
+	assert all(kwargs["blur_box"] is True for _job, kwargs in job_calls)
+	assert all(kwargs["manual_run"] is True for _job, kwargs in job_calls)
+	assert all(kwargs["cameras"] == ["SLSV"] for _job, kwargs in job_calls)
+
+
+@pytest.mark.parametrize(
+	"arguments",
+	[
+		make_arguments(cameras=["SLSV"], blur_box=True),
+		make_arguments(date_value=date(2026, 6, 28), cameras=["SLSV"], blur_box=True),
+		make_arguments(jobs=["monthly"], cameras=["SLSV"], blur_box=True),
+		make_arguments(
+			jobs=["daily"], target_date=date(2026, 6, 28), cameras=["SLSV"], blur_box=True
+		),
+		make_arguments(
+			jobs=["weekly"], target_date=date(2026, 6, 28), cameras=["SLSV"], blur_box=True
+		),
+		make_arguments(
+			jobs=["monthly", "daily"],
+			target_date=date(2026, 6, 28),
+			cameras=["SLSV"],
+			blur_box=True,
+		),
+		make_arguments(
+			jobs=["daily"],
+			target_date=date(2026, 6, 28),
+			cameras=["SLSV"],
+			blur_people=True,
+			blur_box=True,
+		),
+	],
+)
+def test_main_rejects_blur_box_outside_manual_monthly_and_yearly(monkeypatch, arguments):
+	monkeypatch.setattr(main_module, "parse_arguments", lambda: arguments)
+
+	with pytest.raises(
+		ValueError, match="--blur-box is only allowed for manual Monthly and Yearly runs"
+	):
+		main_module.main()
+
+
+# Writing in place needs named cameras: "all cameras" is never meant by accident.
+def test_main_rejects_blur_box_without_cameras(monkeypatch):
+	arguments = make_arguments(jobs=["monthly"], target_date=date(2026, 6, 28), blur_box=True)
+	monkeypatch.setattr(main_module, "parse_arguments", lambda: arguments)
+
+	with pytest.raises(ValueError, match="--blur-box needs --cameras"):
+		main_module.main()
+
+
+@pytest.mark.parametrize(
+	("config", "cameras", "named"),
+	[
+		(BLUR_CONFIG, ["SLSV", "Camera-A"], "Camera-A"),
+		(TEST_CONFIG, ["SLSV"], "SLSV"),
+	],
+)
+def test_main_rejects_blur_box_for_a_camera_outside_the_blur_list(
+	monkeypatch, config, cameras, named
+):
+	arguments = make_arguments(
+		jobs=["monthly"],
+		target_date=date(2026, 6, 28),
+		cameras=cameras,
+		blur_box=True,
+	)
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=arguments,
+		config=config,
+		cameras=["SLSV", "Camera-A"],
+	)
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	with pytest.raises(ValueError, match=f"not in privacy.blur_cameras: {named}"):
+		main_module.main()
+
+	assert job_calls == []
