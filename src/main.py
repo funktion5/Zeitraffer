@@ -107,6 +107,16 @@ def parse_arguments():
 		),
 	)
 
+	parser.add_argument(
+		"--blur-box",
+		action="store_true",
+		help=(
+			"Before a manual Monthly or Yearly video is built, blur its frames on the Storage Box, "
+			"in place (the originals are backed up there). Needs --cameras, and every camera "
+			"must be listed in privacy.blur_cameras."
+		),
+	)
+
 	return parser.parse_args()
 
 
@@ -151,6 +161,18 @@ def main():
 			"(--date or --jobs daily --target-date)."
 		)
 
+	# Blurring writes to the Storage Box: only on request, for a manual Monthly or Yearly, and only
+	# for cameras that are named on purpose.
+	if args.blur_box:
+		if not (args.target_date and args.jobs and set(args.jobs) <= {"monthly", "yearly"}):
+			raise ValueError(
+				"--blur-box is only allowed for manual Monthly and Yearly runs "
+				"(--jobs monthly and/or yearly with --target-date)."
+			)
+
+		if not args.cameras:
+			raise ValueError("--blur-box needs --cameras: name every camera that may be written.")
+
 	if args.cameras and not args.date and not args.target_date:
 		raise ValueError("--cameras can only be used with --date or --target-date.")
 
@@ -170,6 +192,13 @@ def main():
 		)
 
 	config = load_config()
+
+	if args.blur_box:
+		blur_cameras = (config.get("privacy") or {}).get("blur_cameras") or []
+		not_listed = [camera for camera in args.cameras if camera not in blur_cameras]
+
+		if not_listed:
+			raise ValueError(f"--blur-box: not in privacy.blur_cameras: {', '.join(not_listed)}")
 
 	if args.daylight_buffer_minutes is not None:
 		# The override wins for automatic runs too, so it replaces the seasonal table.
@@ -271,6 +300,7 @@ def main():
 				target_date=args.target_date,
 				manual_run=args.target_date is not None,
 				interval_window=interval_window,
+				blur_box=args.blur_box,
 			)
 
 		elif job == "yearly":
@@ -281,6 +311,7 @@ def main():
 				target_date=args.target_date,
 				manual_run=args.target_date is not None,
 				interval_window=interval_window,
+				blur_box=args.blur_box,
 			)
 
 	if automatic_production_run:
