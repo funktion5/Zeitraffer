@@ -201,7 +201,7 @@ def _is_confirmed(entry: dict | None) -> bool:
 
 # The state of the given images wherever it was written: a backfilled image sits on the page of its
 # own month, which load_processed (the last few days only) would never look at.
-def _processed_for_names(
+def load_processed_for_names(
 	state_root: Path, camera: str, names: list[str], timezone: str
 ) -> dict[str, dict]:
 	months = dict.fromkeys(
@@ -218,7 +218,7 @@ def _processed_for_names(
 def split_confirmed_names(
 	state_root: Path, camera: str, names: list[str], timezone: str
 ) -> tuple[list[str], list[str]]:
-	processed = _processed_for_names(state_root, camera, names, timezone)
+	processed = load_processed_for_names(state_root, camera, names, timezone)
 	confirmed = []
 	still_open = []
 
@@ -501,7 +501,7 @@ def blur_frames(
 ) -> BoxRoundSummary:
 	summary = BoxRoundSummary()
 	rules = rules or DropRules()
-	processed = _processed_for_names(state_root, camera, names, writer.timezone)
+	processed = load_processed_for_names(state_root, camera, names, writer.timezone)
 	# A name without a readable time is refused by the writer; "now" only picks its state page.
 	moments = {name: image_moment(name, writer.timezone) or now for name in dict.fromkeys(names)}
 	open_names = sorted(

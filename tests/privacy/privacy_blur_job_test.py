@@ -56,6 +56,7 @@ class JobSetup:
 
 		monkeypatch.setattr(blur_job, "get_frame_source", lambda: self.source)
 		monkeypatch.setattr(blur_job, "get_storage_box", lambda: setup.storage_box)
+		monkeypatch.setattr(blur_job, "BLUR_STATE_ROOT", setup.state_root)
 		monkeypatch.setattr(blur_box, "BLUR_LOCK_PATH", tmp_path / "blur.lock")
 
 	# The frame on the box (months old) and the job's own copy of it, from before any blur.
