@@ -18,7 +18,7 @@ if (!in_array($camera, $availableCameras, true)) {
   $camera = "";
 }
 
-// A manual Daily, Monthly or Yearly of these cameras blurs its frames first and takes longer.
+// A manual video of these cameras (any job type) blurs its frames first and takes longer.
 $cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
 
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");

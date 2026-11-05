@@ -210,6 +210,44 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}
 		}
 
+		// A job another colleague (or another tab) started: the camera page says so, so nobody fills
+		// in the form only to be refused. The details stay with the tab that started the job, so the
+		// text is generic. The create button stays enabled: a start during a run is refused anyway,
+		// and the button state belongs to this tab's own job.
+		const OTHER_JOB_TEXT = "Gerade läuft ein Auftrag. Ein neues Video kann erst danach gestartet werden.";
+
+		async function pollForOtherJob() {
+			try {
+				const liveStatus = document.querySelector("#job-live-status");
+
+				// This tab's own job writes its own text there (pollPendingJob).
+				if (liveStatus !== null && sessionStorage.getItem(PENDING_JOB_KEY) === null) {
+					const response = await fetch("/running-job.php", { cache: "no-store" });
+
+					if (response.ok) {
+						const result = await response.json();
+
+						// Look again: this tab may have started a job while the request was out.
+						if (sessionStorage.getItem(PENDING_JOB_KEY) === null) {
+							liveStatus.hidden = result.running !== true;
+
+							// Unchanged text is not rewritten, so screen readers announce it once.
+							if (result.running === true && liveStatus.textContent !== OTHER_JOB_TEXT) {
+								liveStatus.textContent = OTHER_JOB_TEXT;
+							}
+						}
+					}
+				}
+			} catch (error) {
+				// A dropped connection must not end the notice: try again next tick.
+				console.error("Running-job check failed, retrying.", error);
+			}
+
+			window.setTimeout(pollForOtherJob, 5000);
+		}
+
+		pollForOtherJob();
+
 		resumePendingJob();
 
 		// Back/forward cache: a restored page did not run the line above again, but a job may

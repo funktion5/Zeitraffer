@@ -296,6 +296,7 @@ timelapse/
 │   │   ├── highlights.php
 │   │   ├── index.php
 │   │   ├── job-status.php
+│   │   ├── running-job.php
 │   │   └── style.css
 │   └── src/
 │       ├── components/
@@ -305,6 +306,7 @@ timelapse/
 │       ├── highlight-delete.php
 │       ├── highlights-library.php
 │       ├── job-runner.php
+│       ├── job-state.php
 │       ├── json-response.php
 │       ├── process-runner.php
 │       ├── video-delete.php

@@ -3,22 +3,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . "/../src/json-response.php";
-
-
-// Whether /proc/<pid> both exists and still looks like our own worker script,
-// guarding against a stale PID having since been reused by an unrelated process.
-function isWorkerPidAlive(int $pid): bool
-{
-	$cmdlinePath = "/proc/{$pid}/cmdline";
-
-	if (!is_readable($cmdlinePath)) {
-		return false;
-	}
-
-	$cmdline = file_get_contents($cmdlinePath);
-
-	return $cmdline !== false && str_contains($cmdline, "timelapse-web-worker");
-}
+require_once __DIR__ . "/../src/job-state.php";
 
 
 // German text for the known reasons a historical run ends without a video (the worker keeps
@@ -71,8 +56,7 @@ if (!is_string($jobId) || preg_match("/^[a-f0-9]{32}$/", $jobId) !== 1) {
 	);
 }
 
-$statusRoot = getenv("TIMELAPSE_WEB_STATUS_ROOT")
-	?: dirname(__DIR__, 2) . "/state/web-jobs";
+$statusRoot = webStatusRoot();
 $statusFile = $statusRoot . "/" . $jobId . ".status";
 
 if (!is_file($statusFile) || !is_readable($statusFile)) {
@@ -96,28 +80,9 @@ if (!in_array($status, $allowedStatuses, true)) {
 	);
 }
 
-// A "running" status only means the worker hasn't reported a final result
-// yet — it doesn't confirm the worker process is still alive. Cross-check
-// against its recorded PID so a process killed outright (e.g. by a reboot)
-// is reported as failed instead of leaving the client polling forever.
-// job-status.php stays read-only: this is recomputed per request, never
-// written back to the status file.
-if ($status === "running") {
-	$pidFile = $statusRoot . "/" . $jobId . ".pid";
-
-	if (is_file($pidFile) && is_readable($pidFile)) {
-		$pid = trim((string) file_get_contents($pidFile));
-
-		if (ctype_digit($pid) && !isWorkerPidAlive((int) $pid)) {
-			$status = "failed";
-		}
-
-	// The worker writes its PID within a second of the trigger's "running"; none after a minute
-	// means it never got going (and the browser would keep the create button locked).
-	} elseif (time() - (int) filemtime($statusFile) > 60) {
-		$status = "failed";
-	}
-}
+// "running" in the file only means no final result yet: job-state.php checks that the worker is
+// still alive. This endpoint stays read-only; nothing is written back to the status file.
+$status = resolveJobStatus($statusRoot, $jobId, $status);
 
 $payload = ["status" => $status];
 $reasonFile = $statusRoot . "/" . $jobId . ".reason";

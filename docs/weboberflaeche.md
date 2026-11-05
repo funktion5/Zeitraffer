@@ -16,7 +16,7 @@ Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner 
 - Bibliothek der historischen Videos unter `videos/<camera>/manual-runs/`, mit kurzem deutschem Datum statt Dateiname (plus Zeitpuffer in Minuten, sofern der Dateiname einen trägt, z. B. „24.09.2026 (60 Min.)“, bzw. das Zeitfenster bei Monthly/Yearly, z. B. „30.06.2025 (Sonnenuntergang ±60 Min.)“); die Liste bleibt für den Job-Typ des gerade ausgewählten Videos aufgeklappt
 - Das gerade abgespielte Video ist in seiner Liste hervorgehoben (`aria-current`, auch für Screenreader)
 - Wiedergabe des ausgewählten MP4 direkt im Browser, mit Download- und Löschen-Button (Icon + Beschriftung); nur Löschen fragt vorher in einem Bestätigungsdialog nach
-- Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde. Das Zieldatum steht anfangs auf gestern, Tage nach heute sind gesperrt (beides nach der Uhr des Browsers). Nach dem Absenden ist der Button gesperrt, bis der in diesem Browser-Tab gestartete Auftrag fertig ist (Abschlussdialog); die Seite leitet nach dem Start einmal weiter (Post/Redirect/Get), Neuladen oder ein Doppelklick startet den Auftrag also nicht ein zweites Mal. Aufträge aus anderen Tabs, von anderen Geräten oder der nächtliche Lauf sperren den Button nicht; ein Start meldet dann „Es läuft bereits ein anderer Zeitraffer-Auftrag.“
+- Formular für genau eine Kamera, einen Job-Typ und ein Zieldatum; bei Daily/Weekly zusätzlich ein Zeitpuffer (30/60/90 Minuten) als Radiogruppe, die nur für diese beiden Job-Typen eingeblendet wird — Monthly/Yearly nutzen keinen Zeitpuffer und erhalten ihn serverseitig auch dann nicht, wenn einer übermittelt würde. Das Zieldatum steht anfangs auf gestern, Tage nach heute sind gesperrt (beides nach der Uhr des Browsers). Nach dem Absenden ist der Button gesperrt, bis der in diesem Browser-Tab gestartete Auftrag fertig ist (Abschlussdialog); die Seite leitet nach dem Start einmal weiter (Post/Redirect/Get), Neuladen oder ein Doppelklick startet den Auftrag also nicht ein zweites Mal. Aufträge aus anderen Tabs oder von anderen Geräten sperren den Button nicht (ein Start meldet dann „Es läuft bereits ein anderer Zeitraffer-Auftrag.“), aber jede Kameraseite fragt alle fünf Sekunden `running-job.php` und zeigt in der Statuszeile „Gerade läuft ein Auftrag. Ein neues Video kann erst danach gestartet werden.“, solange irgendein Web-Auftrag läuft (ohne Kamera, Job-Typ und Datum: die kennt nur der Tab, der ihn gestartet hat). Der nächtliche Lauf, der Flagger und die Werkzeuge belegen dieselbe Laufsperre, stehen aber in keiner Statusdatei und erscheinen darin nicht
 - bei Monthly/Yearly eine Radiogruppe „Zeitfenster“: „Mittag (Standard)“ übergibt nichts (es gilt `interval_window` aus der Config), „Sonnenuntergang“ übergibt `sunset` plus eine Fensterbreite von ±30/60/90 Minuten (eigene Radiogruppe, nur bei Sonnenuntergang sichtbar); serverseitig sind nur diese Werte erlaubt
 - kurzer Hinweistext über dem Formular: Zieldatum ist immer der letzte Tag des Zeitraums; Monthly braucht mindestens 25 der 30 Tage, Yearly mindestens 300 Tage mit Bildern im gewählten Zeitfenster (`min_coverage_days`), fehlende Tage werden im Video übersprungen
 - historische Daily-, Weekly-, Monthly- und Yearly-Läufe
@@ -40,12 +40,14 @@ web/public/index.php               Kameraübersicht
 web/public/camera.php              Player, Bibliothek, Formular und Status-Polling
 web/public/highlights.php          Highlights-Seite (Bilder des Flaggers, Löschen)
 web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung)
+web/public/running-job.php         read-only JSON: läuft gerade irgendein Web-Auftrag? (Hinweis auf jeder Kameraseite)
 web/public/style.css               Darstellung und responsives Layout
 web/src/components/header.php      gemeinsamer Header und Speicheranzeige
 web/src/components/job-watcher.php gemeinsamer Abschlussdialog, seitenübergreifendes Polling
 web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog, löscht im Hintergrund
 web/src/video-library.php          Kamera-, Video- und Speicherermittlung
 web/src/job-runner.php             Aufruf des fest installierten Triggers
+web/src/job-state.php              Auftragsstatus aus den Statusdateien (Tote-Prozess-Erkennung, läuft ein Auftrag?)
 web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
 web/src/highlights-library.php     Lesen und Prüfen der Flagger-Berichte
 web/src/highlight-delete.php       Aufruf des Lösch-Wrappers für Highlight-Bilder
@@ -127,7 +129,7 @@ python3 -m pytest tests/web
 ```
 
 - `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung, fehlgeschlagene Jobs und die Fehlergrund-Datei `.reason` des Workers
-- `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`, inklusive Übersetzung bekannter Fehlergründe und `failed` für einen Auftrag ohne `.pid` nach einer Minute
+- `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`, inklusive Übersetzung bekannter Fehlergründe und `failed` für einen Auftrag ohne `.pid` nach einer Minute, sowie `running-job.php` (läuft irgendein Web-Auftrag: lebender Worker, tote Prozesse, frischer Start ohne PID, fremde Dateien im Ordner)
 - `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php` und `video-delete.php`; die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
 - `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter, Markierung des laufenden Videos, Löschen per `response=json`, Weiterleitung nach dem Start (Post/Redirect/Get), Verpixelungs-Hinweis nur bei Blur-Kameras. Die gemeinsame Hilfsfunktion `render_page()` dafür liegt in `web_php_test.py`
