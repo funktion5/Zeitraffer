@@ -152,6 +152,7 @@ def _state_path(state_root: Path, camera: str, moment: datetime) -> Path:
 # A later line for the same image replaces an earlier one; a broken line counts as unprocessed.
 def _read_state(paths: list[Path]) -> dict[str, dict]:
 	processed: dict[str, dict] = {}
+	read_from: dict[str, Path] = {}
 
 	for path in paths:
 		if not path.exists():
@@ -160,10 +161,22 @@ def _read_state(paths: list[Path]) -> dict[str, dict]:
 		for line in path.read_text(encoding="utf-8").splitlines():
 			try:
 				entry = json.loads(line)
-				processed[entry["image"]] = entry
+				image = entry["image"]
 
 			except (json.JSONDecodeError, KeyError, TypeError):
 				continue
+
+			# Within one file the last line is the newest. Across files it is not: pages are read in
+			# file order, not in the order the lines were written, and no round ever re-opens a
+			# finished image. So a line from another page cannot undo a confirmed one.
+			finished = processed.get(image, {}).get("status") in CONFIRMED_STATUSES
+			stray = finished and read_from[image] != path
+
+			if stray and entry.get("status") not in CONFIRMED_STATUSES:
+				continue
+
+			processed[image] = entry
+			read_from[image] = path
 
 	return processed
 
@@ -195,15 +208,19 @@ def record_processed(state_root: Path, camera: str, entry: dict, now: datetime) 
 		os.fsync(file.fileno())
 
 
-# The state of the given images wherever it was written: a backfilled image sits on the page of its
-# own month, which load_processed (the last few days only) would never look at.
+# The state of the given images wherever it was written. A backfilled image sits on the page of its
+# own month, which load_processed (the last few days only) would never look at. The nightly and live
+# rounds record an image on the page of the round's time, up to LISTED_DAYS - 1 days after its date:
+# a frame of the last day of a month can sit on the next month's page. So those pages are read too,
+# or the frame would look new and be backed up a second time.
 def load_processed_for_names(
 	state_root: Path, camera: str, names: list[str], timezone: str
 ) -> dict[str, dict]:
 	months = dict.fromkeys(
-		_state_path(state_root, camera, moment)
+		_state_path(state_root, camera, moment + timedelta(days=offset))
 		for name in names
 		if (moment := image_moment(name, timezone)) is not None
+		for offset in range(LISTED_DAYS)
 	)
 
 	return _read_state([state_root / f"{camera}.jsonl", *sorted(months)])

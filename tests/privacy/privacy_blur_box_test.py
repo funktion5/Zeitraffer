@@ -1099,3 +1099,17 @@ def test_a_frame_the_nightly_round_already_blurred_is_not_backed_up_again(
 	assert setup.writes() == []
 	assert not (setup.camera_dir / "original").exists()
 	assert image.read_bytes() == original_bytes(LAST_OF_MONTH)
+
+
+# The pages are read in file order, not in the order the lines were written. A frame that is
+# finished on its own page must stay finished when a later page holds a stray "refused" line.
+def test_a_finished_frame_stays_finished_when_a_later_page_says_refused(setup: Setup) -> None:
+	own_page_time = datetime(2026, 3, 31, 23, 0, tzinfo=ZoneInfo(TIMEZONE))
+	finished = {"image": LAST_OF_MONTH, "status": "blurred"}
+	stray = {"image": LAST_OF_MONTH, "status": "refused", "reason": "older than 2 days"}
+	blur_box.record_processed(setup.state_root, CAMERA, finished, own_page_time)
+	blur_box.record_processed(setup.state_root, CAMERA, stray, RECORDED_TWO_DAYS_LATER)
+
+	states = blur_box.load_processed_for_names(setup.state_root, CAMERA, [LAST_OF_MONTH], TIMEZONE)
+
+	assert states[LAST_OF_MONTH]["status"] == "blurred"
