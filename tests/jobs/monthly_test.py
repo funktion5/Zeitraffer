@@ -758,10 +758,7 @@ def test_a_blur_that_is_not_ready_builds_no_video_and_counts_as_failed(monkeypat
 	run_monthly_with_blur(["Test-Camera"])
 
 	assert events == ["blur:Test-Camera", "release:Test-Camera"]
-	assert (
-		"1 of 30 frames are not blurred yet: x.jpg - skipping camera: Test-Camera"
-		in caplog.text
-	)
+	assert "1 of 30 frames are not blurred yet: x.jpg - skipping camera: Test-Camera" in caplog.text
 	assert "created=0 | skipped=0 | failed=1" in caplog.text
 
 
