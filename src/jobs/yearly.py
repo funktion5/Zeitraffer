@@ -33,7 +33,6 @@ def run_yearly_job(
 	target_date: date | None = None,
 	manual_run: bool = False,
 	interval_window: IntervalWindow | None = None,
-	blur_box: bool = False,
 ) -> None:
 	location = config["location"]
 
@@ -68,6 +67,7 @@ def run_yearly_job(
 	)
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
+	blur_cameras = config.get("privacy", {}).get("blur_cameras", [])
 
 	logger.info("-" * 80)
 
@@ -134,9 +134,15 @@ def run_yearly_job(
 
 			logger.info(f"Selected {len(yearly_images)} Yearly images")
 
-			# The frames the video is built from. Unlike the Monthly this comes after the coverage
-			# check: a year that is too thin is skipped before its frames are known.
-			if blur_box and not blur_job_frames(camera, yearly_images, config):
+			# A manual run blurs a blur camera's frames on the box before its video is built; the
+			# automatic run writes nothing to the box. These are the frames the video is built from.
+			# Unlike the Monthly this comes after the coverage check: a year that is too thin is
+			# skipped before its frames are known.
+			if (
+				manual_run
+				and camera in blur_cameras
+				and not blur_job_frames(camera, yearly_images, config)
+			):
 				failed_count += 1
 
 				continue

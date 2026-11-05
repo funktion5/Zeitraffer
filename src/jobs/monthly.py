@@ -28,7 +28,6 @@ def run_monthly_job(
 	target_date: date | None = None,
 	manual_run: bool = False,
 	interval_window: IntervalWindow | None = None,
-	blur_box: bool = False,
 ) -> None:
 
 	# Default to the latest completed calendar day.
@@ -59,6 +58,7 @@ def run_monthly_job(
 	)
 
 	stall_timeout_seconds = config["image_scan_stall_timeout_seconds"]
+	blur_cameras = config.get("privacy", {}).get("blur_cameras", [])
 
 	logger.info("-" * 80)
 
@@ -98,8 +98,14 @@ def run_monthly_job(
 				skipped_count += 1
 				continue
 
-			# Before the coverage check, so a thin month that builds no video still gets blurred.
-			if blur_box and not blur_job_frames(camera, monthly_images, config):
+			# A manual run blurs a blur camera's frames on the box before its video is built; the
+			# automatic run writes nothing to the box. Before the coverage check, so a thin month
+			# that builds no video still gets blurred.
+			if (
+				manual_run
+				and camera in blur_cameras
+				and not blur_job_frames(camera, monthly_images, config)
+			):
 				failed_count += 1
 				continue
 

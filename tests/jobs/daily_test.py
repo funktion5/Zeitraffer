@@ -1092,13 +1092,75 @@ def test_blur_gate_does_not_touch_other_cameras(
 	assert events == ["create:Plain-Camera", "release:Plain-Camera"]
 
 
-# A historical run goes to manual-runs, not public, and is exempt from the gate.
-def test_blur_gate_does_not_apply_to_historical_runs(
+def patch_blur(monkeypatch, ready=True):
+	calls = []
+
+	def fake_blur_job_frames(camera, images, config):
+		calls.append((camera, list(images)))
+
+		return ready
+
+	monkeypatch.setattr(daily_module, "blur_job_frames", fake_blur_job_frames)
+
+	return calls
+
+
+# A manual run goes to manual-runs, not public, so the gate does not apply. A blur camera gets its
+# frames blurred on the box instead, before the video is built (blur_job_frames, tested in
+# privacy_blur_job_test.py), so the video shows blurred frames. Cameras outside the blur list and
+# the automatic run are unchanged: the automatic run writes nothing to the box.
+def test_a_manual_daily_of_a_blur_camera_blurs_its_frames_before_the_video(
 	monkeypatch,
 	tmp_path,
 ):
 	images = [Path("a.jpg"), Path("b.jpg")]
+	calls = patch_blur(monkeypatch)
 
 	_, built = run_blur_daily(monkeypatch, tmp_path, images, None, manual_run=True)
 
+	assert calls == [(BLUR_CAMERA, images)]
 	assert built == [images]
+
+
+def test_a_manual_daily_whose_blur_is_not_ready_builds_no_video(
+	monkeypatch,
+	tmp_path,
+	caplog,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+	patch_blur(monkeypatch, ready=False)
+
+	events, built = run_blur_daily(monkeypatch, tmp_path, images, None, manual_run=True)
+
+	assert built == []
+	assert events == [f"release:{BLUR_CAMERA}"]
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+def test_a_manual_daily_of_another_camera_is_not_blurred(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+	calls = patch_blur(monkeypatch)
+
+	_, built = run_blur_daily(
+		monkeypatch, tmp_path, images, None, camera="Plain-Camera", manual_run=True
+	)
+
+	assert calls == []
+	assert built == [images]
+
+
+def test_an_automatic_daily_never_blurs_it_uses_the_gate(
+	monkeypatch,
+	tmp_path,
+):
+	images = [Path("a.jpg"), Path("b.jpg")]
+	entries = [{"image": "a.jpg", "status": "blurred"}]
+	calls = patch_blur(monkeypatch)
+
+	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
+
+	assert calls == []
+	assert built == [images[:1]]

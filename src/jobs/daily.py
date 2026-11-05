@@ -10,6 +10,7 @@ from src.image_worker import WorkerExitedError
 from src.images import find_daily_images_isolated, release_camera_frames
 from src.logger import RUN_ID, format_run_context, logger
 from src.privacy.blur_box import CONFIRMED_STATUSES, DEFAULT_STATE_ROOT, load_processed
+from src.privacy.blur_job import blur_job_frames
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
 
@@ -162,9 +163,19 @@ def run_daily_job(
 
 			logger.debug(f"Last image: {images[-1].name}")
 
+			blur_camera = camera in config.get("privacy", {}).get("blur_cameras", [])
+
+			# A manual run goes to manual-runs, not public: it blurs a blur camera's frames on the
+			# box before its video is built, so the video shows blurred frames. The automatic run
+			# writes nothing to the box.
+			if manual_run and blur_camera and not blur_job_frames(camera, images, config):
+				failed_count += 1
+
+				continue
+
 			# An automatic Daily is public, so a blur camera's video is built from confirmed images
-			# only. Historical runs go to manual-runs and are exempt.
-			if not manual_run and camera in config.get("privacy", {}).get("blur_cameras", []):
+			# only.
+			if not manual_run and blur_camera:
 				images, left_out = split_confirmed_images(
 					camera=camera,
 					images=images,
