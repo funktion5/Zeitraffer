@@ -28,7 +28,7 @@ set -euo pipefail
 # KONFIGURATION
 # ============================================================
 
-# SiteGround FTP: Die Zugangsdaten stehen nicht hier, sondern in siteground.env (siehe unten).
+# SiteGround FTP: Die Zugangsdaten stehen nicht hier, sondern in config/siteground.env (siehe unten).
 # Eine Umgebungsvariable mit gleichem Namen hat Vorrang (die Tests nutzen das).
 SITEGROUND_HOST="${SITEGROUND_HOST:-}"
 SITEGROUND_USER="${SITEGROUND_USER:-}"
@@ -110,11 +110,11 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-# Die Zugangsdaten stehen in siteground.env im Projektordner (git ignoriert die Datei); mit
-# SITEGROUND_CONFIG kann eine andere Datei angegeben werden. Je Zeile NAME=Wert: Alles nach dem
-# ersten "=" ist der Wert, ohne Anführungszeichen und ohne Maskierung. Die Datei wird nur gelesen,
-# nie ausgeführt. Eine Umgebungsvariable hat Vorrang: Die Datei füllt nur, was die Umgebung leer lässt.
-CONFIG_FILE="${SITEGROUND_CONFIG:-$PROJECT_ROOT/siteground.env}"
+# Die Zugangsdaten stehen in config/siteground.env (git ignoriert die Datei); mit SITEGROUND_CONFIG
+# kann eine andere Datei angegeben werden. Je Zeile NAME=Wert: Alles nach dem ersten "=" ist der
+# Wert, ohne Anführungszeichen und ohne Maskierung. Die Datei wird nur gelesen, nie ausgeführt.
+# Eine Umgebungsvariable hat Vorrang: Die Datei füllt nur, was die Umgebung leer lässt.
+CONFIG_FILE="${SITEGROUND_CONFIG:-$PROJECT_ROOT/config/siteground.env}"
 
 if [[ -r "$CONFIG_FILE" ]]; then
     while IFS='=' read -r KEY VALUE || [[ -n "$KEY" ]]; do
