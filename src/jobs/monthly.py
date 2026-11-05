@@ -1,5 +1,6 @@
 import subprocess
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from src.image_worker import WorkerExitedError
 from src.images import find_interval_images_isolated, release_camera_frames
@@ -9,6 +10,7 @@ from src.interval_window import (
 	resolve_target_seconds,
 )
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_job import blur_job_frames
 from src.video import create_timelapse
 from src.video import cleanup_automatic_video_retention
 from src.date_coverage import (
@@ -27,7 +29,12 @@ def run_monthly_job(
 	target_date: date | None = None,
 	manual_run: bool = False,
 	interval_window: IntervalWindow | None = None,
+	blur_box: bool = False,
 ) -> None:
+
+	# Blurring writes to the Storage Box, so it is only ever done on request, never by the cron run.
+	if blur_box and not manual_run:
+		raise ValueError("blur_box is only allowed for a manual run.")
 
 	# Default to the latest completed calendar day.
 	if target_date is None:
@@ -95,6 +102,20 @@ def run_monthly_job(
 				logger.warning(f"No valid Monthly images available - skipping camera: {camera}")
 				skipped_count += 1
 				continue
+
+			# Before the coverage check, so a thin month that builds no video still gets blurred.
+			if blur_box:
+				blur = blur_job_frames(
+					camera,
+					monthly_images,
+					config,
+					datetime.now(ZoneInfo(config["location"]["timezone"])),
+				)
+
+				if not blur.ready:
+					logger.warning(f"Blur not finished: {blur.reason} - skipping camera: {camera}")
+					failed_count += 1
+					continue
 
 			if not check_coverage(
 				images=monthly_images,

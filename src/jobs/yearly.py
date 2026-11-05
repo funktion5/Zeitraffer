@@ -1,6 +1,7 @@
 import subprocess
 
-from datetime import date
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 
 from src.date_coverage import (
@@ -20,6 +21,7 @@ from src.interval_window import (
 	resolve_target_seconds,
 )
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_job import blur_job_frames
 from src.video import create_timelapse, cleanup_automatic_video_retention
 from src.yearly_selection import select_yearly_images_isolated
 
@@ -32,7 +34,12 @@ def run_yearly_job(
 	target_date: date | None = None,
 	manual_run: bool = False,
 	interval_window: IntervalWindow | None = None,
+	blur_box: bool = False,
 ) -> None:
+	# Blurring writes to the Storage Box, so it is only ever done on request, never by the cron run.
+	if blur_box and not manual_run:
+		raise ValueError("blur_box is only allowed for a manual run.")
+
 	location = config["location"]
 
 	# Default to the latest completed calendar day.
@@ -131,6 +138,22 @@ def run_yearly_job(
 				continue
 
 			logger.info(f"Selected {len(yearly_images)} Yearly images")
+
+			# The frames the video is built from. Unlike the Monthly this comes after the coverage
+			# check: a year that is too thin is skipped before its frames are known.
+			if blur_box:
+				blur = blur_job_frames(
+					camera,
+					yearly_images,
+					config,
+					datetime.now(ZoneInfo(location["timezone"])),
+				)
+
+				if not blur.ready:
+					logger.warning(f"Blur not finished: {blur.reason} - skipping camera: {camera}")
+					failed_count += 1
+
+					continue
 
 			video_path = create_timelapse(
 				camera=camera,
