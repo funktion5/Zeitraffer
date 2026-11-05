@@ -9,18 +9,13 @@ from src.diagnostics import log_missing_images_diagnostic
 from src.image_worker import WorkerExitedError
 from src.images import find_daily_images_isolated, release_camera_frames
 from src.logger import RUN_ID, format_run_context, logger
-from src.privacy.blur_box import DEFAULT_STATE_ROOT, load_processed
+from src.privacy.blur_box import CONFIRMED_STATUSES, DEFAULT_STATE_ROOT, load_processed
 from src.solar import get_sun_times
 from src.video import VIDEO_ROOT, create_timelapse
 
 
 # The box blur job's state; tests point it at a temporary folder.
 BLUR_STATE_ROOT = DEFAULT_STATE_ROOT
-
-# An image with one of these as its last state line has been checked: pixelated, found clean, or
-# recorded as a night image the videos never use. Anything else (refused, replacing, no entry at
-# all) may still show a person.
-CONFIRMED_STATUSES = frozenset({"blurred", "clean", "night"})
 
 # At most this many left-out image names go into the log line; the state file has the rest.
 LEFT_OUT_NAMES_LOGGED = 10

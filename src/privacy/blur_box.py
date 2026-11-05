@@ -78,6 +78,10 @@ CATCH_UP_BUDGET_SECONDS = 45 * 60
 DETECTOR_TIMEOUT_SECONDS = 120
 
 REPLACING = "replacing"
+# An image whose last state line is one of these is finished for every reader (the Daily gate, a
+# backfill): pixelated, found clean, or a night image the videos never use. Anything else, "refused"
+# and "replacing" included, may still show a person.
+CONFIRMED_STATUSES = frozenset({"blurred", "clean", "night"})
 JPEG_END_MARKER = b"\xff\xd9"
 
 # Today plus two days back: after an outage of up to two days, missed daytime images still reach
@@ -146,13 +150,7 @@ def _state_path(state_root: Path, camera: str, moment: datetime) -> Path:
 
 
 # A later line for the same image replaces an earlier one; a broken line counts as unprocessed.
-def load_processed(state_root: Path, camera: str, now: datetime) -> dict[str, dict]:
-	months = dict.fromkeys(
-		_state_path(state_root, camera, now - timedelta(days=offset))
-		for offset in range(LISTED_DAYS)
-	)
-	# Before monthly files there was one file per camera; still read, so nothing is done twice.
-	paths = [state_root / f"{camera}.jsonl", *sorted(months)]
+def _read_state(paths: list[Path]) -> dict[str, dict]:
 	processed: dict[str, dict] = {}
 
 	for path in paths:
@@ -168,6 +166,15 @@ def load_processed(state_root: Path, camera: str, now: datetime) -> dict[str, di
 				continue
 
 	return processed
+
+
+def load_processed(state_root: Path, camera: str, now: datetime) -> dict[str, dict]:
+	months = dict.fromkeys(
+		_state_path(state_root, camera, now - timedelta(days=offset))
+		for offset in range(LISTED_DAYS)
+	)
+	# Before monthly files there was one file per camera; still read, so nothing is done twice.
+	return _read_state([state_root / f"{camera}.jsonl", *sorted(months)])
 
 
 def record_processed(state_root: Path, camera: str, entry: dict, now: datetime) -> None:
@@ -186,6 +193,39 @@ def record_processed(state_root: Path, camera: str, entry: dict, now: datetime) 
 		file.write(("\n" if torn else "") + json.dumps(entry) + "\n")
 		file.flush()
 		os.fsync(file.fileno())
+
+
+def _is_confirmed(entry: dict | None) -> bool:
+	return entry is not None and entry.get("status") in CONFIRMED_STATUSES
+
+
+# The state of the given images wherever it was written: a backfilled image sits on the page of its
+# own month, which load_processed (the last few days only) would never look at.
+def _processed_for_names(
+	state_root: Path, camera: str, names: list[str], timezone: str
+) -> dict[str, dict]:
+	months = dict.fromkeys(
+		_state_path(state_root, camera, moment)
+		for name in names
+		if (moment := image_moment(name, timezone)) is not None
+	)
+
+	return _read_state([state_root / f"{camera}.jsonl", *sorted(months)])
+
+
+# Which of these images are finished and which are still open, in the order given. For a dry run
+# and for a job that must know whether all its frames are blurred before it builds a video.
+def split_confirmed_names(
+	state_root: Path, camera: str, names: list[str], timezone: str
+) -> tuple[list[str], list[str]]:
+	processed = _processed_for_names(state_root, camera, names, timezone)
+	confirmed = []
+	still_open = []
+
+	for name in names:
+		(confirmed if _is_confirmed(processed.get(name)) else still_open).append(name)
+
+	return confirmed, still_open
 
 
 # Night only if both the filename clock and the upload time say so: a drifted camera clock or a
@@ -288,6 +328,86 @@ def _process_image(
 	return "blurred"
 
 
+# One image of a round: finish an interrupted swap, wait for an upload that is still settling,
+# otherwise judge it and write it. Whatever goes wrong leaves the image as it is, and the outcome
+# goes into the summary. recorded_at picks the state page: the round's time for the nightly and live
+# rounds, the image's own time for a backfill.
+def _handle_image(
+	writer: BoxWriter,
+	camera: str,
+	name: str,
+	entry: dict,
+	age_seconds: float,
+	settle_seconds: float,
+	work_dir: Path,
+	detector_command: list[str],
+	settings: BlurSettings,
+	rules: DropRules,
+	state_root: Path,
+	recorded_at: datetime,
+	summary: BoxRoundSummary,
+) -> None:
+	# One image at a time; a failure of any kind affects only that image.
+	try:
+		# A power cut between swap and record: the box shows whether the swap happened.
+		if entry.get("status") == REPLACING and writer.image_hash(camera, name) == entry.get(
+			"blurred_sha256"
+		):
+			record_processed(state_root, camera, {**entry, "status": "blurred"}, recorded_at)
+			summary.blurred += 1
+
+			return
+
+		if age_seconds < settle_seconds:
+			summary.settling += 1
+
+			return
+
+		status = _process_image(
+			writer,
+			camera,
+			name,
+			age_seconds,
+			work_dir,
+			detector_command,
+			settings,
+			rules,
+			state_root,
+			recorded_at,
+		)
+
+	except BoxWriteDeferred as error:
+		logger.warning(f"[{camera}] Deferred {name}: {error}")
+		summary.failed += 1
+
+		return
+
+	except BoxWriteRefused as error:
+		logger.error(f"[{camera}] Refused, stays unblurred: {name}: {error}")
+		record_processed(
+			state_root,
+			camera,
+			{"image": name, "status": "refused", "reason": str(error)},
+			recorded_at,
+		)
+		summary.refused += 1
+
+		return
+
+	except IMAGE_ERRORS as error:
+		logger.error(f"[{camera}] Not processed, retrying next round: {name}: {error}")
+		summary.failed += 1
+
+		return
+
+	if status == "clean":
+		summary.clean += 1
+	elif status == "settling":
+		summary.settling += 1
+	else:
+		summary.blurred += 1
+
+
 def process_box_camera(
 	writer: BoxWriter,
 	storage_box: StorageBox,
@@ -341,63 +461,74 @@ def process_box_camera(
 				summary.postponed = len(daytime) - index
 				break
 
-			entry = processed.get(name, {})
-			age_seconds = now.timestamp() - uploaded[name]
+			_handle_image(
+				writer,
+				camera,
+				name,
+				processed.get(name, {}),
+				now.timestamp() - uploaded[name],
+				settle_seconds,
+				work_dir,
+				detector_command,
+				settings,
+				rules,
+				state_root,
+				now,
+				summary,
+			)
 
-			# One image at a time; a failure of any kind affects only that image.
-			try:
-				# A power cut between swap and record: the box shows whether the swap happened.
-				if entry.get("status") == REPLACING and writer.image_hash(
-					camera, name
-				) == entry.get("blurred_sha256"):
-					record_processed(state_root, camera, {**entry, "status": "blurred"}, now)
-					summary.blurred += 1
-					continue
+	finally:
+		for path in work_dir.iterdir():
+			path.unlink(missing_ok=True)
 
-				if age_seconds < settle_seconds:
-					summary.settling += 1
-					continue
+	return summary
 
-				status = _process_image(
-					writer,
-					camera,
-					name,
-					age_seconds,
-					work_dir,
-					detector_command,
-					settings,
-					rules,
-					state_root,
-					now,
-				)
 
-			except BoxWriteDeferred as error:
-				logger.warning(f"[{camera}] Deferred {name}: {error}")
-				summary.failed += 1
-				continue
+# The frames a job hands over, instead of the last few days the nightly round lists: any age, any
+# month. There is no night rule, the job chose these frames itself, and no settle wait, they are
+# long finished. The writer's limits are the caller's choice: only a writer built for old frames
+# lets them through. Each state line goes on the page of the image's own month, so a later lookup
+# finds it. Newest first, so an interrupted run has done the latest frames.
+def blur_frames(
+	writer: BoxWriter,
+	camera: str,
+	names: list[str],
+	detector_command: list[str],
+	settings: BlurSettings,
+	state_root: Path,
+	now: datetime,
+	rules: DropRules | None = None,
+) -> BoxRoundSummary:
+	summary = BoxRoundSummary()
+	rules = rules or DropRules()
+	processed = _processed_for_names(state_root, camera, names, writer.timezone)
+	# A name without a readable time is refused by the writer; "now" only picks its state page.
+	moments = {name: image_moment(name, writer.timezone) or now for name in dict.fromkeys(names)}
+	open_names = sorted(
+		(name for name in moments if not _is_confirmed(processed.get(name))),
+		key=lambda name: moments[name],
+		reverse=True,
+	)
+	work_dir = WORK_ROOT / camera
+	work_dir.mkdir(parents=True, exist_ok=True)
 
-			except BoxWriteRefused as error:
-				logger.error(f"[{camera}] Refused, stays unblurred: {name}: {error}")
-				record_processed(
-					state_root,
-					camera,
-					{"image": name, "status": "refused", "reason": str(error)},
-					now,
-				)
-				summary.refused += 1
-				continue
-
-			except IMAGE_ERRORS as error:
-				logger.error(f"[{camera}] Not processed, retrying next round: {name}: {error}")
-				summary.failed += 1
-				continue
-
-			if status == "clean":
-				summary.clean += 1
-			elif status == "settling":
-				summary.settling += 1
-			else:
-				summary.blurred += 1
+	try:
+		for name in open_names:
+			_handle_image(
+				writer,
+				camera,
+				name,
+				processed.get(name, {}),
+				(now - moments[name]).total_seconds(),
+				0,
+				work_dir,
+				detector_command,
+				settings,
+				rules,
+				state_root,
+				moments[name],
+				summary,
+			)
 
 	finally:
 		for path in work_dir.iterdir():
