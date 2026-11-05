@@ -55,7 +55,7 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	# The viewer has its own delete button and marker toggle.
 	assert 'id="highlights-viewer-delete"' in out
 	assert 'id="highlights-viewer-show-boxes"' in out
-	# The viewer's delete and download are symbol-only buttons with an accessible name, in this order:
+	# Download and delete in the viewer are symbol-only buttons with an accessible name. The order:
 	# marker toggle (left), previous, next, download, delete, close (right).
 	viewer = out[out.index('id="highlights-viewer"') :]
 	order = [
@@ -68,9 +68,11 @@ def test_page_shows_cameras_days_and_images(tmp_path):
 	]
 	positions = [viewer.index(marker) for marker in order]
 	assert positions == sorted(positions)
-	delete_button = viewer[viewer.index('id="highlights-viewer-delete"') : viewer.index("</button>", viewer.index('id="highlights-viewer-delete"'))]
+	delete_start = viewer.index('id="highlights-viewer-delete"')
+	delete_button = viewer[delete_start : viewer.index("</button>", delete_start)]
 	assert 'aria-label="Bild löschen"' in delete_button and "<span>" not in delete_button
-	download_link = viewer[viewer.index('id="highlights-viewer-download"') : viewer.index("</a>", viewer.index('id="highlights-viewer-download"'))]
+	download_start = viewer.index('id="highlights-viewer-download"')
+	download_link = viewer[download_start : viewer.index("</a>", download_start)]
 	assert 'aria-label="Bild herunterladen"' in download_link and "<span>" not in download_link
 	assert any(line.strip() == "download" for line in download_link.splitlines())
 	# The script points the download at the image that is on show.
@@ -146,7 +148,7 @@ def test_no_highlights_at_all_shows_the_empty_message(tmp_path):
 	assert "Noch keine Highlights vorhanden." in out
 
 
-def test_hostile_label_and_names_are_escaped_or_dropped(tmp_path):
+def test_hostile_label_is_not_shown_and_names_are_escaped_or_dropped(tmp_path):
 	date = days_ago(1)
 	day = make_day(
 		tmp_path,
@@ -158,8 +160,9 @@ def test_hostile_label_and_names_are_escaped_or_dropped(tmp_path):
 
 	out, _ = render(tmp_path)
 
+	# The page no longer shows the model's label at all, so a hostile one appears in no form.
 	assert "<script>alert(1)</script>" not in out
-	assert "&lt;script&gt;alert(1)&lt;/script&gt;?" in out
+	assert "&lt;script&gt;alert(1)&lt;/script&gt;" not in out
 	assert "A&lt;b&gt;" in out and "A<b>" not in out
 	assert "evil.jpg" not in out
 
