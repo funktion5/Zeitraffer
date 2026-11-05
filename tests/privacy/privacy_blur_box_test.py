@@ -1057,3 +1057,45 @@ def test_state_of_listed_names_is_read_from_each_names_own_month(setup: Setup) -
 		replacing_in_april: "replacing",
 		in_legacy_file: "blurred",
 	}
+
+
+# The nightly and live rounds record an image on the page of the round's time, which can be up to
+# two days after the image's date. A frame of the last day of a month can therefore sit on the
+# NEXT month's page (on the real box: 89 frames of 2026-10-31 on 2026-11.jsonl). The lookup has
+# to find it there, or a backfill takes the frame for a new one, detects it again and backs it up
+# a second time.
+LAST_OF_MONTH = "20260331T120000.jpg"
+RECORDED_TWO_DAYS_LATER = datetime(2026, 4, 2, 2, 0, tzinfo=ZoneInfo(TIMEZONE))
+
+
+def record_on_a_later_page(setup: Setup, name: str, status: str) -> None:
+	entry = {"image": name, "status": status}
+
+	blur_box.record_processed(setup.state_root, CAMERA, entry, RECORDED_TWO_DAYS_LATER)
+
+	assert (setup.state_root / CAMERA / "2026-04.jsonl").exists()
+	assert not (setup.state_root / CAMERA / "2026-03.jsonl").exists()
+
+
+def test_state_recorded_on_a_later_month_page_is_found(setup: Setup) -> None:
+	record_on_a_later_page(setup, LAST_OF_MONTH, "blurred")
+
+	states = blur_box.load_processed_for_names(setup.state_root, CAMERA, [LAST_OF_MONTH], TIMEZONE)
+
+	assert states[LAST_OF_MONTH]["status"] == "blurred"
+
+
+def test_a_frame_the_nightly_round_already_blurred_is_not_backed_up_again(
+	setup: Setup, monkeypatch
+) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", LAST_OF_MONTH)
+	image = setup.upload(LAST_OF_MONTH, age_seconds=OLD_AGE)
+	record_on_a_later_page(setup, LAST_OF_MONTH, "blurred")
+
+	summary = blur_listed(setup, [LAST_OF_MONTH])
+
+	assert summary == blur_box.BoxRoundSummary()
+	assert setup.detected() == []
+	assert setup.writes() == []
+	assert not (setup.camera_dir / "original").exists()
+	assert image.read_bytes() == original_bytes(LAST_OF_MONTH)
