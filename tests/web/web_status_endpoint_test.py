@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import time
 
 import pytest
@@ -136,3 +137,121 @@ def test_status_endpoint_fails_a_running_job_without_pid_after_a_minute(
 	result = run_status_endpoint(status_root, f"id={job_id}")
 
 	assert json.loads(result.stdout) == {"status": expected}
+
+
+# running-job.php tells every camera page whether ANY web job is running, so a colleague sees the
+# notice without having started the job in their own tab. It reads the same status files as
+# job-status.php and applies the same "is the worker still alive" check.
+RUNNING_ENDPOINT = Path(__file__).resolve().parents[2] / "web" / "public" / "running-job.php"
+
+needs_proc = pytest.mark.skipif(
+	not Path("/proc/self/cmdline").exists(), reason="the worker check reads /proc"
+)
+
+
+def run_running_job_endpoint(status_root: Path, method: str = "GET") -> subprocess.CompletedProcess:
+	environment = {
+		**os.environ,
+		"REQUEST_METHOD": method,
+		"TIMELAPSE_WEB_STATUS_ROOT": str(status_root),
+	}
+
+	return subprocess.run(
+		["php", "-r", "include $argv[1];", str(RUNNING_ENDPOINT)],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+
+def write_job(status_root: Path, job_id: str, status: str, pid: int | None = None, age_seconds=0):
+	status_root.mkdir(exist_ok=True)
+	status_file = status_root / f"{job_id}.status"
+	status_file.write_text(f"{status}\n")
+
+	if pid is not None:
+		(status_root / f"{job_id}.pid").write_text(f"{pid}\n")
+
+	if age_seconds:
+		written = time.time() - age_seconds
+		os.utime(status_file, (written, written))
+
+
+# The endpoint only trusts a PID whose command line names the worker script.
+@pytest.fixture
+def live_worker():
+	process = subprocess.Popen(
+		[sys.executable, "-c", "import time; time.sleep(60)", "timelapse-web-worker"]
+	)
+
+	yield process
+
+	process.kill()
+	process.wait()
+
+
+@needs_proc
+def test_running_job_endpoint_reports_a_live_worker(tmp_path, live_worker):
+	status_root = tmp_path / "web-jobs"
+	write_job(status_root, "a" * 32, "completed")
+	write_job(status_root, "b" * 32, "running", pid=live_worker.pid)
+
+	result = run_running_job_endpoint(status_root)
+
+	assert json.loads(result.stdout) == {"running": True}
+
+
+def test_running_job_endpoint_ignores_finished_jobs(tmp_path):
+	status_root = tmp_path / "web-jobs"
+	write_job(status_root, "a" * 32, "completed")
+	write_job(status_root, "b" * 32, "failed")
+
+	result = run_running_job_endpoint(status_root)
+
+	assert json.loads(result.stdout) == {"running": False}
+
+
+# A job killed outright (reboot) leaves "running" behind: it must not show a notice forever.
+def test_running_job_endpoint_ignores_a_worker_that_is_gone(tmp_path):
+	status_root = tmp_path / "web-jobs"
+	write_job(status_root, "c" * 32, "running", pid=99999999)
+
+	result = run_running_job_endpoint(status_root)
+
+	assert json.loads(result.stdout) == {"running": False}
+
+
+# The worker writes its PID within a second of the start; none after a minute means it never ran.
+@pytest.mark.parametrize(("age_seconds", "expected"), [(5, True), (120, False)])
+def test_running_job_endpoint_counts_a_fresh_start_without_pid(tmp_path, age_seconds, expected):
+	status_root = tmp_path / "web-jobs"
+	write_job(status_root, "d" * 32, "running", age_seconds=age_seconds)
+
+	result = run_running_job_endpoint(status_root)
+
+	assert json.loads(result.stdout) == {"running": expected}
+
+
+def test_running_job_endpoint_without_a_status_folder(tmp_path):
+	result = run_running_job_endpoint(tmp_path / "missing")
+
+	assert json.loads(result.stdout) == {"running": False}
+
+
+# Only 32-character job IDs count: the folder also holds cameras.json and other files.
+def test_running_job_endpoint_ignores_other_files(tmp_path):
+	status_root = tmp_path / "web-jobs"
+	status_root.mkdir()
+	(status_root / "cameras.json").write_text("running\n")
+	(status_root / "not-a-job-id.status").write_text("running\n")
+
+	result = run_running_job_endpoint(status_root)
+
+	assert json.loads(result.stdout) == {"running": False}
+
+
+def test_running_job_endpoint_rejects_post(tmp_path):
+	result = run_running_job_endpoint(tmp_path, method="POST")
+
+	assert json.loads(result.stdout) == {"error": "Method not allowed."}

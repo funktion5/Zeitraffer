@@ -253,3 +253,11 @@ def test_a_camera_outside_the_blur_list_has_no_note(tmp_path):
 
 	assert "blur-note" not in out
 	assert "verpixelt" not in out
+
+
+# A job another colleague started is announced on every camera page, not only in the tab that
+# started it: the page asks running-job.php (the JavaScript itself is not tested, as elsewhere).
+def test_the_page_asks_whether_another_job_is_running(tmp_path):
+	out, _ = render(tmp_path)
+
+	assert "/running-job.php" in out
