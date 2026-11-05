@@ -2,6 +2,7 @@ import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
+import pytest
 from frame_source_fakes import RecordingFrameSource
 
 import src.images as images_module
@@ -9,6 +10,8 @@ import src.jobs.monthly as monthly_module
 from src.image_worker import WorkerExitedError
 from src.jobs.monthly import run_monthly_job
 from src.interval_window import SUNSET, IntervalWindow
+from src.privacy.blur_box import BoxRoundSummary
+from src.privacy.blur_job import BlurJobResult
 
 
 TEST_CONFIG = {
@@ -689,3 +692,121 @@ def test_release_error_is_logged_and_later_cameras_still_run(
 	]
 	assert "Could not remove fetched frames for camera: First-Camera" in caplog.text
 	assert "| failed=1 |" in caplog.text
+
+
+# Step 2c of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: a manual Monthly with blur_box
+# blurs the frames it selected on the box before it builds the video (blur_job_frames, tested in
+# privacy_blur_job_test.py). Proposed: run_monthly_job(..., blur_box=True).
+def patch_blur(monkeypatch, events, not_ready=()):
+	calls = []
+
+	def fake_blur_job_frames(camera, images, config, now, writer_options=None):
+		events.append(f"blur:{camera}")
+		calls.append({"camera": camera, "images": list(images), "config": config, "now": now})
+
+		if camera in not_ready:
+			reason = "1 of 30 frames are not blurred yet: x.jpg"
+
+			return BlurJobResult(False, reason, BoxRoundSummary())
+
+		return BlurJobResult(True, "", BoxRoundSummary())
+
+	monkeypatch.setattr(monthly_module, "blur_job_frames", fake_blur_job_frames)
+
+	return calls
+
+
+def run_monthly_with_blur(cameras):
+	run_monthly_job(
+		config=TEST_CONFIG,
+		cameras=cameras,
+		framerate=MONTHLY_FRAMERATE,
+		target_date=TARGET_DATE,
+		manual_run=True,
+		blur_box=True,
+	)
+
+
+def test_blur_box_blurs_the_selected_frames_before_the_video_is_built(monkeypatch):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+	calls = patch_blur(monkeypatch, events)
+
+	run_monthly_with_blur(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "create:Test-Camera", "release:Test-Camera"]
+	assert calls[0]["images"] == create_complete_monthly_images()
+	assert calls[0]["config"] is TEST_CONFIG
+	assert calls[0]["now"].tzinfo is not None
+
+
+def test_without_blur_box_the_box_is_never_touched(monkeypatch):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+	calls = patch_blur(monkeypatch, events)
+
+	run_monthly(["Test-Camera"])
+
+	assert calls == []
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+
+
+# No video from an incomplete blur. The log line ends in " - skipping camera: <name>", which is the
+# wording the web UI shows as the reason.
+def test_a_blur_that_is_not_ready_builds_no_video_and_counts_as_failed(monkeypatch, caplog):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+	patch_blur(monkeypatch, events, not_ready={"Test-Camera"})
+
+	run_monthly_with_blur(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "release:Test-Camera"]
+	assert (
+		"1 of 30 frames are not blurred yet: x.jpg - skipping camera: Test-Camera"
+		in caplog.text
+	)
+	assert "created=0 | skipped=0 | failed=1" in caplog.text
+
+
+# The blur comes before the coverage check: a thin month builds no video, but its frames get
+# blurred.
+def test_a_thin_month_is_still_blurred_but_builds_no_video(monkeypatch, caplog):
+	thin_month = create_complete_monthly_images()[6:]
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: thin_month)
+	calls = patch_blur(monkeypatch, events)
+
+	run_monthly_with_blur(["Test-Camera"])
+
+	assert events == ["blur:Test-Camera", "release:Test-Camera"]
+	assert calls[0]["images"] == thin_month
+	assert "Monthly coverage too low" in caplog.text
+
+
+def test_the_other_cameras_still_run_when_one_blur_is_not_ready(monkeypatch):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+	patch_blur(monkeypatch, events, not_ready={"Stuck-Camera"})
+
+	run_monthly_with_blur(["Stuck-Camera", "Working-Camera"])
+
+	assert events == [
+		"blur:Stuck-Camera",
+		"release:Stuck-Camera",
+		"blur:Working-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+
+
+# An automatic run never writes to the box: only a manual run may ask for the blur.
+def test_blur_box_is_refused_for_an_automatic_run(monkeypatch):
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
+	calls = patch_blur(monkeypatch, events)
+
+	with pytest.raises(ValueError, match="manual"):
+		run_monthly_job(
+			config=TEST_CONFIG,
+			cameras=["Test-Camera"],
+			framerate=MONTHLY_FRAMERATE,
+			target_date=TARGET_DATE,
+			blur_box=True,
+		)
+
+	assert calls == []
+	assert events == []
