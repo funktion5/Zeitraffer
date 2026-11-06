@@ -26,6 +26,9 @@ services:
       - wordpress:/var/www/html
       - ../frontend/f5-webcams/:/var/www/html/wp-content/plugins/f5-webcams:ro
       - ../videos/:/var/www/html/wp-content/uploads/zeitraffer/:ro
+      # Avada is commercial and the repo is public: docker/avada/ is gitignored.
+      - ./avada/Avada/:/var/www/html/wp-content/themes/Avada
+      - ./avada/Avada-Child-Theme/:/var/www/html/wp-content/themes/Avada-Child-Theme
 
 volumes:
   wordpress:

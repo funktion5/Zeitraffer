@@ -51,3 +51,6 @@ docker-data/
 # Exports and reports (attendee lists and the like) hold personal data and never belong in git
 report-*.csv
 frontend/*.csv
+
+# Docker Avada
+docker/avada/
