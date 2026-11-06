@@ -702,7 +702,7 @@ def test_main_rejects_camera_filter_without_date(
 
 	with pytest.raises(
 		ValueError,
-		match="--cameras can only be used with --date or --target-date.",
+		match="--cameras can only be used with --date or --jobs.",
 	):
 		main_module.main()
 
@@ -824,28 +824,46 @@ def test_main_rejects_target_date_without_jobs(
 		main_module.main()
 
 
-# Camera filters must not apply to current automatic selected jobs.
-def test_main_rejects_camera_filter_for_automatic_jobs(
+# Automatic jobs may be limited to chosen cameras (the web "rebuild" button); this is not the
+# nightly production run.
+def test_main_runs_automatic_jobs_for_requested_cameras_only(
 	monkeypatch,
 ):
-	monkeypatch.setattr(
-		main_module,
-		"parse_arguments",
-		lambda: make_arguments(
-			cameras=[
-				"Camera-A",
-			],
-			jobs=[
-				"daily",
-			],
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			cameras=["Camera-B"],
+			jobs=["monthly", "daily"],
 		),
+		cameras=["Camera-A", "Camera-B"],
 	)
 
-	with pytest.raises(
-		ValueError,
-		match="--cameras can only be used with --date or --target-date.",
-	):
-		main_module.main()
+	job_calls = patch_automatic_jobs(monkeypatch)
+	run_marks: list[str] = []
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_started",
+		lambda: run_marks.append("started"),
+	)
+
+	monkeypatch.setattr(
+		main_module,
+		"mark_run_finished",
+		lambda: run_marks.append("finished"),
+	)
+
+	main_module.main()
+
+	# Jobs keep their fixed workflow order, whatever order they were requested in.
+	assert [job for job, _ in job_calls] == ["daily", "monthly"]
+	assert [kwargs["cameras"] for _, kwargs in job_calls] == [
+		["Camera-B"],
+		["Camera-B"],
+	]
+	assert [kwargs["manual_run"] for _, kwargs in job_calls] == [False, False]
+	# A partial run must not touch the marker of the nightly production run.
+	assert run_marks == []
 
 
 # A historical Weekly must identify exactly one camera.
@@ -996,6 +1014,30 @@ def test_main_rejects_unknown_camera_for_historical_jobs(
 			cameras=["Camera-A", "Unknown-Camera"],
 			jobs=["monthly", "yearly"],
 			target_date=date(2026, 9, 16),
+		),
+		cameras=["Camera-A", "Camera-B"],
+	)
+
+	job_calls = patch_automatic_jobs(monkeypatch)
+
+	with pytest.raises(
+		ValueError,
+		match="Requested cameras not found: Unknown-Camera",
+	):
+		main_module.main()
+
+	assert job_calls == []
+
+
+# Any unavailable camera must reject the complete automatic request as well.
+def test_main_rejects_unknown_camera_for_automatic_jobs(
+	monkeypatch,
+):
+	patch_common_runtime(
+		monkeypatch=monkeypatch,
+		arguments=make_arguments(
+			cameras=["Camera-A", "Unknown-Camera"],
+			jobs=["daily"],
 		),
 		cameras=["Camera-A", "Camera-B"],
 	)
