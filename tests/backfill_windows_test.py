@@ -87,8 +87,9 @@ def test_parse_arguments_keeps_the_dates_in_the_given_order():
 	assert args.dates == [date(2026, 6, 7), date(2026, 5, 8), date(2026, 4, 8)]
 
 
-# No window starts at night: the night run holds the lock from 02:00.
-@pytest.mark.parametrize("hour, minute", [(4, 0), (12, 30), (22, 59)])
+# No window starts at night: the night run holds the lock from 02:00. Windows are allowed from
+# 05:00 to 22:59.
+@pytest.mark.parametrize("hour, minute", [(5, 0), (12, 30), (22, 59)])
 def test_seconds_until_allowed_is_zero_during_the_working_hours(hour, minute):
 	assert backfill.seconds_until_allowed(datetime(2026, 11, 7, hour, minute)) == 0
 
@@ -96,12 +97,12 @@ def test_seconds_until_allowed_is_zero_during_the_working_hours(hour, minute):
 @pytest.mark.parametrize(
 	"now, expected",
 	[
-		(datetime(2026, 11, 6, 23, 0, 0), 5 * 3600),
-		(datetime(2026, 11, 7, 2, 30, 0), 90 * 60),
-		(datetime(2026, 11, 7, 3, 59, 59), 1),
+		(datetime(2026, 11, 6, 23, 0, 0), 6 * 3600),
+		(datetime(2026, 11, 7, 2, 30, 0), 150 * 60),
+		(datetime(2026, 11, 7, 4, 59, 59), 1),
 	],
 )
-def test_seconds_until_allowed_waits_for_04_00_at_night(now, expected):
+def test_seconds_until_allowed_waits_for_05_00_at_night(now, expected):
 	assert backfill.seconds_until_allowed(now) == expected
 
 
@@ -176,8 +177,8 @@ def test_chain_waits_five_minutes_while_the_lock_is_busy():
 	assert ran == [date(2026, 6, 7)]
 
 
-# A window that ends after 23:00 must not be followed by another one before 04:00.
-def test_chain_pauses_after_23_00_and_goes_on_at_04_00():
+# A window that ends after 23:00 must not be followed by another one before 05:00.
+def test_chain_pauses_after_23_00_and_goes_on_at_05_00():
 	clock = FakeClock(datetime(2026, 11, 6, 22, 50))
 	acquire, _ = make_lock()
 	ran_at = []
@@ -196,12 +197,13 @@ def test_chain_pauses_after_23_00_and_goes_on_at_04_00():
 		sleep=clock.sleep,
 	)
 
-	assert ran_at == [datetime(2026, 11, 6, 22, 50), datetime(2026, 11, 7, 4, 0)]
-	assert clock.slept == [16800]
+	assert ran_at == [datetime(2026, 11, 6, 22, 50), datetime(2026, 11, 7, 5, 0)]
+	# From 23:20 to 05:00 the next morning.
+	assert clock.slept == [20400]
 
 
-# If the night run is still going at 04:00, the lock check holds the chain back.
-def test_chain_keeps_waiting_when_the_night_run_overruns_04_00():
+# If the night run is still going at 05:00, the lock check holds the chain back.
+def test_chain_keeps_waiting_when_the_night_run_overruns_05_00():
 	clock = FakeClock(datetime(2026, 11, 7, 3, 0))
 	acquire, lock = make_lock(busy_times=3)
 	ran_at = []
@@ -219,9 +221,9 @@ def test_chain_keeps_waiting_when_the_night_run_overruns_04_00():
 		sleep=clock.sleep,
 	)
 
-	# 03:00 is not allowed: sleep to 04:00 first, then three busy attempts of five minutes each.
-	assert clock.slept == [3600, 300, 300, 300]
-	assert ran_at == [datetime(2026, 11, 7, 4, 15)]
+	# 03:00 is not allowed: sleep to 05:00 first, then three busy attempts of five minutes each.
+	assert clock.slept == [7200, 300, 300, 300]
+	assert ran_at == [datetime(2026, 11, 7, 5, 15)]
 
 
 # One bad window must not stop the others; the result list says which one failed.
@@ -258,11 +260,10 @@ def test_chain_goes_on_after_a_failed_window_and_reports_it():
 	]
 
 
-# The window reads its frames over ssh, like the web worker: a nohup shell has no such environment.
-def test_start_window_runs_the_command_with_the_ssh_frame_source_and_reads_the_summary(
+# The frames come from the Storage Box under its default ssh alias, like the web worker's.
+def test_start_window_runs_the_command_with_the_default_storage_box_and_reads_the_summary(
 	monkeypatch,
 ):
-	monkeypatch.delenv("TIMELAPSE_FRAME_SOURCE", raising=False)
 	monkeypatch.delenv("TIMELAPSE_STORAGE_BOX", raising=False)
 	calls = []
 
@@ -281,7 +282,6 @@ def test_start_window_runs_the_command_with_the_ssh_frame_source_and_reads_the_s
 
 	assert command == backfill.window_command(sys.executable, "SLSV", date(2026, 6, 7))
 	assert kwargs["cwd"] == PROJECT_ROOT
-	assert kwargs["env"]["TIMELAPSE_FRAME_SOURCE"] == "ssh"
 	assert kwargs["env"]["TIMELAPSE_STORAGE_BOX"] == "storagebox"
 	assert result == backfill.WindowResult(exit_code=0, failed=0)
 

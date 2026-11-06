@@ -3,7 +3,7 @@
 Helper for the blur backfill. Every window is the command the web UI runs for a manual Monthly:
 it blurs the window's frames on the Storage Box first and builds the video in manual-runs/. The
 chain takes the shared run lock for one window at a time and waits while it is busy (a web job,
-the night run), starts no window between 23:00 and 04:00, and goes on with the next window after
+the night run), starts no window between 23:00 and 05:00, and goes on with the next window after
 a failure. The exit code is 1 if any window failed, so the log shows which ones.
 
 Run from anywhere; nohup keeps it alive after the ssh session ends:
@@ -34,7 +34,7 @@ from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
 from src.storage_filter import acquire_run_lock  # noqa: E402
 
 # The night run holds the lock from 02:00; a window takes about two hours at most, so none is
-# started after 23:00 and the chain sleeps until 04:00, when the night run is long done.
+# started after 23:00 and the chain sleeps until 05:00, when the night run is long done.
 STOP_HOUR = 23
 RESUME_HOUR = 5
 LOCK_RETRY_SECONDS = 300
@@ -102,10 +102,9 @@ def seconds_until_allowed(now: datetime) -> int:
 
 
 def start_window(camera: str, target_date: date) -> WindowResult:
-	# A nohup shell has no frame source, and sudo clears it for the web worker for the same
-	# reason: say where the frames come from, as the web worker does.
+	# Without a local camera folder the frames come from the Storage Box; a nohup shell may not
+	# name its ssh alias, so give the same default as the web worker.
 	environment = os.environ.copy()
-	environment["TIMELAPSE_FRAME_SOURCE"] = "ssh"
 	environment.setdefault("TIMELAPSE_STORAGE_BOX", "storagebox")
 
 	completed = subprocess.run(
@@ -145,7 +144,10 @@ def run_chain(
 			wait = seconds_until_allowed(now())
 
 			if wait:
-				logger.info(f"Window {target_date}: paused for {wait} s (no windows 23:00 - 04:00)")
+				logger.info(
+					f"Window {target_date}: paused for {wait} s "
+					f"(no windows {STOP_HOUR}:00 - {RESUME_HOUR:02d}:00)"
+				)
 				sleep(wait)
 
 				continue
