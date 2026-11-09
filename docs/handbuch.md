@@ -1,9 +1,9 @@
 # Handbuch
 
 Für Entwicklerinnen und Entwickler, die Zeitraffer betreuen: wie es installiert wird, wie man jeden
-Job startet und was bei Fehlern zu tun ist. Die ausführlichen Beschreibungen stehen im
-[README](../README.md) und in den anderen Dateien in diesem Ordner; dieses Handbuch verweist dorthin,
-statt sie zu wiederholen.
+Job startet und was bei Fehlern zu tun ist. Einen Überblick gibt das [README](../README.md), die
+ausführlichen Beschreibungen stehen in den anderen Dateien in diesem Ordner; dieses Handbuch
+verweist dorthin, statt sie zu wiederholen.
 
 In den Befehlen steht `~/timelapse` für den Projektordner und `<Kamera>`, `<Datum>` (JJJJ-MM-TT)
 für die jeweiligen Werte.
@@ -78,7 +78,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
   dann trotzdem 0; der Nachtlauf-Wrapper prüft das Ergebnis und endet in diesem Fall mit 1.
   Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
 - **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst nach
-  `sudo install` (siehe [README: Wrapper installieren](../README.md#wrapper-installieren)).
+  `sudo install` (siehe [Installation](installation.md#wrapper-installieren)).
 - **Ein Neustart von Apache beendet einen laufenden Web-Auftrag.** Vorher `ls state/web-jobs/*.pid`
   prüfen.
 
@@ -110,7 +110,7 @@ grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
 ## Installation
 
 Kurzfassung als Checkliste. Die vollständigen Schritte stehen im
-[README unter Installation](../README.md#installation); auf einem frischen Debian- oder
+[Installation](installation.md); auf einem frischen Debian- oder
 Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte, legt die leere
 Login-Datei des Uploads an und spielt, wenn eine Sicherung bereitliegt, Modell, Status und Videos
 zurück (Schritt 3); den Zugang zur Storage Box (Schritt 5) und Cron (Schritt 6) richtet man nach
@@ -118,13 +118,13 @@ zurück (Schritt 3); den Zugang zur Storage Box (Schritt 5) und Cron (Schritt 6)
 
 | # | Schritt | Funktioniert, wenn |
 |---|---|---|
-| 1 | Systempakete installieren ([README](../README.md#systempakete-installieren)) | `ffmpeg -version`, `php -v`, `rsync --version` antworten |
-| 2 | Python 3.13 und virtuelle Umgebung ([README](../README.md#python-umgebung-einrichten)) | `.venv/bin/python3 --version` zeigt 3.13 |
+| 1 | Systempakete installieren ([Installation](installation.md#systempakete-installieren)) | `ffmpeg -version`, `php -v`, `rsync --version` antworten |
+| 2 | Python 3.13 und virtuelle Umgebung ([Installation](installation.md#python-umgebung-einrichten)) | `.venv/bin/python3 --version` zeigt 3.13 |
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
-| 4 | `config/config.json` anpassen ([README](../README.md#konfiguration)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
-| 5 | Zugriff auf die Storage Box einrichten ([README](../README.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf, Upload und Flagger (`./install.sh cron_hint` druckt sie, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
-| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([README](../README.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
+| 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
+| 5 | Zugriff auf die Storage Box einrichten ([Installation](installation.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
+| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf, Upload und Flagger (`./install.sh cron_hint` druckt sie, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
+| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
 | 8 | Tests | `.venv/bin/python3 -m pytest` grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |
 
@@ -260,7 +260,7 @@ Crontab fehlt oder der Rechner war aus.
 
 **Lösung:** Den blockierenden Prozess abwarten oder beenden, dann den
 [Lauf von Hand starten](#nächtlicher-lauf). Fehlt die Crontab, sie nach
-[README](../README.md#cron-installieren-oder-prüfen) wieder eintragen.
+[Installation](installation.md#cron-installieren-oder-prüfen) wieder eintragen.
 
 ### Kamera-Speicher nicht erreichbar
 
@@ -281,7 +281,7 @@ TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list          
 `TIMELAPSE_STORAGE_BOX` ist nicht gesetzt (in der Cron-Zeile oder in der Shell).
 
 **Lösung:** Die ssh-Verbindung von Hand prüfen und den Eintrag samt Schlüssel in `~/.ssh/config`
-richten ([README](../README.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh einen
+richten ([Installation](installation.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh einen
 geänderten Host-Key (`REMOTE HOST IDENTIFICATION HAS CHANGED`), den Fingerabdruck mit der
 Hetzner-Oberfläche vergleichen, bevor man ihn neu bestätigt (`ssh-keygen -R <host>`). Danach den Lauf von Hand starten.
 
@@ -446,7 +446,7 @@ TIMELAPSE_X264_CRF=23 .venv/bin/python3 -m src.main --jobs yearly --target-date 
 Ein ungültiger Wert bricht das Encodieren mit `TIMELAPSE_X264_CRF must be a whole number from 0 to
 51` (bzw. `timelapse.crf must be ...`) ab, es entsteht kein Video. Die Änderung gilt nur für neu
 erstellte Videos. `TIMELAPSE_X264_PRESET` ändert dagegen Laufzeit, Speicherbedarf und Größe, nicht
-den CRF-Wert ([README](../README.md#umgebungsvariablen)).
+den CRF-Wert ([Konfiguration](konfiguration.md#umgebungsvariablen)).
 
 ### Festplatte voll
 
@@ -500,7 +500,7 @@ Arbeitsspeicher prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
 
 **Lösung:** Passwort neu setzen: `sudo htpasswd -B /etc/apache2/.htpasswd <login>` (`-B` für
 bcrypt, ohne `-c`, sonst wird die Datei mit allen anderen Logins überschrieben)
-([README](../README.md#basisauthentifizierung-einrichten)).
+([Installation](installation.md#basisauthentifizierung-einrichten)).
 
 ### `403 Forbidden`
 
@@ -568,7 +568,7 @@ tail /var/log/apache2/zeitraffer-error.log
 **Ursache:** sudoers-Regel fehlt, installierter Wrapper fehlt oder veraltet, oder der Projektordner
 gehört `root` (dann verweigert die Seite den Start bewusst).
 
-**Lösung:** Wrapper und sudoers nach [README](../README.md#wrapper-installieren) neu einrichten.
+**Lösung:** Wrapper und sudoers nach [Installation](installation.md#wrapper-installieren) neu einrichten.
 
 ### „Der Videoauftrag wurde abgelehnt oder konnte nicht gestartet werden.“
 
@@ -627,7 +627,7 @@ Auftrag beendet worden; neu starten.
 zeigen; Details im Apache-Fehlerprotokoll.
 
 **Lösung:** Fehlenden Wrapper und sudoers-Zeile nach
-[README](../README.md#wrapper-installieren) ergänzen.
+[Installation](installation.md#wrapper-installieren) ergänzen.
 
 ### „Die Anfrage ist ungültig (Sicherheitstoken).“
 
@@ -640,7 +640,7 @@ zeigen; Details im Apache-Fehlerprotokoll.
 **Ursache:** Apache ruft die installierten Kopien unter `/usr/local/` auf, nicht `scripts/`.
 
 **Lösung:** Den geänderten Wrapper mit `sudo install` neu installieren
-([README](../README.md#wrapper-installieren)).
+([Installation](installation.md#wrapper-installieren)).
 
 ---
 
@@ -778,7 +778,7 @@ Das Protokoll steht in `logs/siteground-delivery.log`; je Kamera endet es mit
 ### Speicherfilter
 
 `TIMELAPSE_STORAGE_BOX is not set` heißt: Die Storage Box ist nicht angegeben; die Variable setzen
-([README](../README.md#umgebungsvariablen)). Kommt trotz gesetzter Variable `Storage box listing
+([Konfiguration](konfiguration.md#umgebungsvariablen)). Kommt trotz gesetzter Variable `Storage box listing
 failed`, siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar).
 
 ### WordPress
@@ -871,4 +871,4 @@ Verbindung (Mac im Ruhezustand) oder einem VS-Code-Update weiterlaufen.
 - Alte VS-Code-Server beenden, z. B. über „Remote-SSH: Kill VS Code Server on Host…“ in VS Code.
 - Während eines großen Renders keine weiteren Läufe oder Tests starten.
 - `TIMELAPSE_X264_PRESET=ultrafast` senkt den Speicherbedarf des Encoders deutlich (größere
-  Dateien; [README](../README.md#umgebungsvariablen)).
+  Dateien; [Konfiguration](konfiguration.md#umgebungsvariablen)).

@@ -5,8 +5,8 @@ vor dem Encoding unkenntlich. Der Code liegt in `src/privacy/`.
 
 **Stand:** Testfunktion. Sie ist für historische Tagesvideos (`--date` oder
 `--jobs daily --target-date`) und für Kalenderjahr-Yearlys mit
-`scripts/yearly-backfill.py --blur-people` verfügbar (Endung `_blur`, siehe README
-„Yearly-Backfill"). Automatische Läufe, Weekly, Monthly und die Weboberfläche verpixeln noch
+`scripts/yearly-backfill.py --blur-people` verfügbar (Endung `_blur`, siehe
+[werkzeuge.md](werkzeuge.md#yearly-backfill-für-kalenderjahre)). Automatische Läufe, Weekly, Monthly und die Weboberfläche verpixeln noch
 nicht.
 
 Seit dem 05.11.2026 gilt zusätzlich der Standard für von Hand gestartete Läufe: Bei Kameras aus

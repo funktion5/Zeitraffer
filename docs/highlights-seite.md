@@ -80,7 +80,7 @@ lehnt Symlinks ab.
 
 ## Einmalige Einrichtung auf dem Server
 
-Als root, wie bei den anderen Wrappern ([README: Wrapper installieren](../README.md#wrapper-installieren)):
+Als root, wie bei den anderen Wrappern ([Installation](installation.md#wrapper-installieren)):
 
 ```bash
 sudo install -o root -g root -m 755 \

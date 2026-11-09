@@ -1,690 +1,172 @@
 # Zeitraffer
 
-Zeitraffer macht aus den Bildern unserer Webcams automatisch Zeitraffer-Videos. Die Kameras laden
-den ganzen Tag Bilder auf einen Online-Speicher (die „Storage Box“). Jede Nacht holt sich das
-Programm diese Bilder, wählt die passenden aus und setzt sie zu Videos zusammen: ein Video pro
-Kamera für den Vortag, die letzte Woche, die letzten 30 Tage und das letzte Jahr.
+Zeitraffer macht aus den Bildern unserer Webcams jede Nacht automatisch Zeitraffer-Videos: ein
+Video pro Kamera für gestern, für die letzte Woche, für den letzten Monat und für das letzte Jahr.
+Die fertigen Videos erscheinen auf der Website unter dem Webcam-Bild.
 
-Das Programm läuft auf einem Linux-Server. Über eine Weboberfläche lassen sich zusätzlich Videos
-für beliebige vergangene Tage erstellen, ansehen und herunterladen.
+Diese Seite erklärt in einfachen Worten, **was** das Programm tut. Wie man es einrichtet und wie es
+im Inneren funktioniert, steht in den Dokumenten im Ordner [`docs/`](docs); am Ende dieser Seite
+steht, was wo zu finden ist.
 
-**Die Originalbilder der Kameras werden dabei niemals verändert.**
+## Der Weg eines Bildes – auf einen Blick
 
-Die Kapitel **Installation** und **Konfiguration** sind für die technische Einrichtung. Alle
-anderen Kapitel beschreiben in einfachen Worten, was das Programm tut; die technischen Einzelheiten
-stehen jeweils in einer eigenen Datei im Ordner [`docs/`](docs), die am Ende jedes Kapitels
-verlinkt ist.
+```
+ Kamera  ──►  Storage Box  ──►  Zeitraffer-Server  ──►  Website  ──►  Besucher
+ (macht      (sammelt alle      (baut jede Nacht       (zeigt das     (sehen das Video
+  Fotos)      Bilder, Archiv)    die Videos)            Video)         unter dem Bild)
+```
 
----
-## Inhalt
+1. **Kamera** – Jede Webcam macht den ganzen Tag über regelmäßig ein Foto und lädt es hoch.
+2. **Storage Box** – Ein Online-Speicher. Hier landen alle Bilder aller Kameras. Er ist
+   das Archiv: Das Programm liest von hier nur, es räumt hier nichts weg.
+3. **Zeitraffer-Server** – Ein Server, auf dem das Programm läuft. Jede Nacht holt er
+   sich die Bilder, wählt die passenden aus und setzt daraus die Videos zusammen.
+4. **Website** – Der Server lädt die fertigen Videos auf die Website hoch. Das WordPress-Plugin
+   „F5 Webcams“ zeigt sie unter dem Webcam-Bild an.
+5. **Besucher** – Sie sehen den Zeitraffer auf der Seite der jeweiligen Webcam.
 
-- [Installation](#installation)
-  - [Systempakete installieren](#systempakete-installieren)
-  - [Python-Umgebung einrichten](#python-umgebung-einrichten)
-  - [Zugriff auf die Storage Box](#zugriff-auf-die-storage-box)
-  - [Cron installieren oder prüfen](#cron-installieren-oder-prüfen)
-  - [Weboberfläche einrichten](#weboberfläche-einrichten)
-- [Konfiguration](#konfiguration)
-  - [Umgebungsvariablen](#umgebungsvariablen)
-- [Betrieb im Alltag](#betrieb-im-alltag)
-- [Weboberfläche](#weboberfläche)
-- [Highlights-Flagger](#highlights-flagger)
-- [Verpixelung](#verpixelung)
-- [WordPress-Seite](#wordpress-seite)
-- [Kommandozeile](#kommandozeile)
-- [Werkzeuge](#werkzeuge)
-- [Archiv](#archiv)
-- [Technik für Entwickler](#technik-für-entwickler)
-- [Aktueller Stand](#aktueller-stand)
-- [Noch offen](#noch-offen)
-- [Dokumentation](#dokumentation)
+## Was jede Nacht passiert
 
----
+Jede Nacht um 2 Uhr startet der Server von selbst vier Schritte nacheinander. Niemand muss etwas tun.
 
-## Installation
+```
+ 02:00 Uhr
+   │
+   ├─ 1. Menschen unkenntlich machen   (nur bei Kameras, auf denen Menschen zu sehen sind)
+   │
+   ├─ 2. Videos bauen                  (Tag, Woche, Monat, Jahr – für jede Kamera)
+   │
+   ├─ 3. Videos auf die Website laden
+   │
+   └─ 4. Nach Tieren und Flugobjekten suchen   (die „Highlights“)
+```
 
-*Für die technische Einrichtung.*
+Geht bei einem Schritt etwas schief, laufen die nächsten trotzdem weiter. Jeder Lauf schreibt einen
+Bericht, in dem sich Fehler nachlesen lassen.
 
-Platzhalter in den folgenden Beispielen:
+## Die vier Videos
 
-| Platzhalter | Bedeutung |
+| Video | Was es zeigt | Welche Bilder |
+|---|---|---|
+| **Tagesvideo** | gestern | alle Bilder bei Tageslicht, vom Sonnenaufgang bis zum Sonnenuntergang |
+| **Wochenvideo** | die letzten 7 Tage | die sieben Tagesvideos hintereinander |
+| **Monatsvideo** | die letzten 30 Tage | jeden Tag die Bilder um die Mittagszeit |
+| **Jahresvideo** | das letzte Jahr | jeden Tag bis zu fünf Bilder um die Mittagszeit |
+
+- Von jedem Video bleibt immer das neueste. Auf dem Server bleiben außerdem die Tagesvideos der
+  letzten 7 Tage, auf der Website je Kamera und Videoart die zwei neuesten.
+- War eine Kamera so lange ausgefallen, dass für ein Monats- oder Jahresvideo zu viele Tage fehlen
+  (beim Monat müssen 25 von 30 Tagen Bilder haben, beim Jahr 300 Tage), wird dieses Video in der
+  Nacht ausgelassen. Das alte Video bleibt dann stehen.
+- **Die Originalbilder verändert das Zeitraffer-Programm nie.** Die einzige Ausnahme ist das
+  Unkenntlichmachen von Menschen (siehe unten): Dort ersetzt eine verpixelte Fassung das Bild auf
+  dem Online-Speicher, und das Original wird vorher gesichert.
+
+## Menschen und Kennzeichen – der Datenschutz
+
+Auf manchen Kameras sind Menschen oder Autokennzeichen zu erkennen. Bei diesen Kameras (derzeit
+Scheunenviertel und SLSV) macht das Programm sie jede Nacht unkenntlich, **bevor** Videos gebaut werden.
+
+```
+ Bild vom Online-Speicher
+          │
+          ▼
+ Erkennung: Ist ein Mensch oder ein Kennzeichen zu sehen?
+          │                            │
+         ja                          nein
+          │                            │
+          ▼                            │
+ Das Original wird gesichert,          │
+ die Stelle wird verpixelt             │
+          │                            │
+          ▼                            ▼
+ Erst jetzt darf das Bild in ein Video
+```
+
+Der Grundsatz heißt: **Im Zweifel lieber kein Video als ein ungeprüftes Bild.**
+
+- Bei diesen Kameras entstehen die nächtlichen Videos nur aus Bildern, die geprüft wurden. Ist
+  gar kein geprüftes Bild da, wird die Kamera in dieser Nacht ausgelassen.
+- Ein von Hand bestelltes Video einer solchen Kamera prüft und verpixelt seine Bilder zuerst. Das
+  dauert deutlich länger (ein Monatsvideo mit rund 350 Bildern brauchte 55 Minuten).
+- Keine Erkennung findet jeden Menschen. Das Programm ist eine Hilfe, kein Freibrief.
+
+## Was man selbst tun kann – die Weboberfläche
+
+Zusätzlich gibt es eine kleine Webseite für das Team. Sie ist mit Benutzername und Passwort
+geschützt und nicht für das offene Internet gedacht. Dort kann man:
+
+- für eine Kamera ein **Video für einen beliebigen vergangenen Zeitraum** bestellen: einen Tag,
+  eine Woche, einen Monat oder ein Jahr, jeweils bis zu einem gewählten Datum. Monats- und
+  Jahresvideos gibt es auch mit den Bildern um den **Sonnenuntergang**. Das Video entsteht im
+  Hintergrund; ein Fenster meldet, wenn es fertig ist, und nennt bei einem Fehlschlag den Grund.
+  Solange eines entsteht, lässt sich kein weiteres bestellen.
+- Videos **ansehen und herunterladen**, auch die nächtlichen. **Löschen** lassen sich nur die
+  selbst bestellten.
+- auf der Seite **Highlights** Bilder ansehen, groß anzeigen, herunterladen und löschen, auf denen
+  das Programm Tiere oder Flugobjekte gefunden hat (Vögel, Flugzeuge, Drachen). Das Programm irrt
+  sich manchmal, darum zeigt die Seite nur die Markierung, und **ein Mensch entscheidet**. Treffer
+  bleiben 30 Tage erhalten. Gedacht ist das für die Auswahl guter Motive, zum Beispiel für YouTube.
+
+Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
+
+## Wenn ein Video fehlt oder zu alt ist
+
+1. **Welches Video, welche Kamera?** Fehlt nur ein Video einer Kamera, oder sind alle alt?
+2. **Nur das Monats- oder Jahresvideo einer Kamera fehlt:** Wahrscheinlich war die Kamera so lange
+   ausgefallen, dass zu viele Tage ohne Bilder sind (siehe „Die vier Videos“). Kamera und ihren
+   Upload zur Storage Box prüfen. Das Video kommt von selbst wieder, sobald genug Tage da sind.
+3. **Bei einer Kamera mit Menschen im Bild fehlen Videos:** Möglicherweise sind Bilder noch nicht
+   geprüft (siehe „Menschen und Kennzeichen“). Meist gleicht sich das in der nächsten Nacht aus; was
+   dahintersteckt, steht in [docs/verpixelung-box.md](docs/verpixelung-box.md#sperre-in-automatischen-videos).
+4. **Alle Videos sind alt:** Vermutlich ist der nächtliche Lauf nicht gelaufen. Das sieht man im
+   Bericht des Laufs; wie man ihn liest, steht im [Handbuch](docs/handbuch.md#nächtlicher-lauf).
+5. **Das Video ist auf dem Server, aber nicht auf der Website:** Dann ist der Upload hängengeblieben.
+   Was in den Protokollen steht und was zu tun ist:
+   [Handbuch – Upload auf die Website](docs/handbuch.md#upload-auf-die-website).
+
+Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.md](docs/handbuch.md).
+
+## Kleines Wörterbuch
+
+| Begriff | Bedeutung |
 |---|---|
-| `<benutzer>` | Linux-Konto, unter dem das Projekt läuft |
-| `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
-| `<login>` | Benutzername der Apache-Basisauthentifizierung |
-
-Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Anmeldung der Weboberfläche, leere Login-Datei für den Upload, auf Wunsch das Zurückspielen einer Sicherung, Apache, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Einen VPS einrichten](docs/vps.md).
-
-### Systempakete installieren
-
-`install.sh` installiert dieselbe Paketliste (Schritt `packages`):
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  git python3 python3-venv python3-pip \
-  ffmpeg rsync curl cron \
-  apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
-```
-
-### Python-Umgebung einrichten
-
-Voraussetzung ist **Python 3.13** (`python3 --version`); Debian 13 (trixie) bringt es mit. Auf
-Systemen mit älterem Python, etwa Ubuntu 24.04 (3.12), muss Python 3.13 zusätzlich installiert
-und die virtuelle Umgebung damit angelegt werden (`python3.13 -m venv .venv`); das ist bisher
-nicht getestet.
-
-Virtuelle Umgebung erstellen und aktivieren:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-Abhängigkeiten installieren:
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-`requirements.txt` enthält auch die Entwicklungswerkzeuge pytest und Ruff. Ruff ist auf eine feste
-Version gepinnt, damit lokal, im Pre-Push-Hook und in GitHub Actions identisch formatiert wird;
-die Konfiguration liegt in `pyproject.toml`.
-
-Für die Verpixelung von Personen wird zusätzlich ein Erkennungsmodell im Ordner `models/`
-benötigt. Es ist zu groß für das Repository und wird einmal heruntergeladen; Anleitung siehe
-[Verpixelung – Installation](docs/verpixelung.md#installation). Ohne Modell laufen alle anderen
-Funktionen normal.
-
-### Zugriff auf die Storage Box
-
-Die Originalbilder liegen auf der Storage Box. Die Zeitraffer-Jobs lesen sie nur: Sie holen die für
-einen Lauf nötigen Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`, der nach
-jeder Kamera wieder geleert wird. Es gibt keinen eingebundenen Ordner.
-
-Voraussetzungen:
-
-- ein SSH-Schlüssel nur für die Storage Box im Konto `<benutzer>`, ohne Passphrase (Cron braucht
-  ihn ohne Eingabe)
-- ein Eintrag in `~/.ssh/config` mit Benutzer, Host, Port und Schlüssel; `install.sh` erwartet den
-  Namen `storagebox`:
-
-```text
-Host storagebox
-    HostName <box-host>
-    User <box-user>
-    Port <box-port>
-    IdentityFile ~/.ssh/<schluessel>
-    IdentitiesOnly yes
-```
-
-- der öffentliche Schlüssel auf der Box und der Host-Fingerabdruck einmal bestätigt (Anleitung:
-  [Einen VPS einrichten](docs/vps.md))
-
-Benutzer, Host, Port und Schlüssel stehen nur in `~/.ssh/config`, nie im Repository. Das Programm
-kennt nur den Namen des Eintrags, über die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (siehe
-[Umgebungsvariablen](#umgebungsvariablen)).
-
-Verbindung prüfen (listet die Kameras und schreibt die Kameraliste der Weboberfläche):
-
-```bash
-TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list
-```
-
-### Cron installieren oder prüfen
-
-Der Eintrag aus [Zeitplanung mit Cron](docs/betrieb.md#zeitplanung-mit-cron) wird über
-
-```bash
-crontab -e
-```
-
-für den Benutzer `<benutzer>` installiert. Anschließend prüfen:
-
-```bash
-crontab -l
-```
-
-### Weboberfläche einrichten
-
-Die Weboberfläche ist eine kleine PHP-Anwendung ohne Datenbank und ohne separates API-Framework. Sie ist für das vertrauenswürdige lokale Netzwerk vorgesehen.
-
-```text
-Browser
-  → Apache und PHP
-  → eingeschränkter Wrapper
-  → bestehende Python-CLI
-  → Timelapse-Jobs und FFmpeg
-  → videos/ + logs/ + temp/ + state/
-```
-
-#### Apache-Konfiguration
-
-Die aktive Site verwendet sinngemäß folgende Konfiguration:
-
-```apache
-<VirtualHost *:80>
-    ServerName <hostname>.local
-
-    DocumentRoot <projektpfad>/web/public
-    DirectoryIndex index.php
-
-    <Directory <projektpfad>/web/public>
-        Options -Indexes
-        AllowOverride None
-        AuthType Basic
-        AuthName "Zeitraffer"
-        AuthUserFile /etc/apache2/.htpasswd
-        Require valid-user
-    </Directory>
-
-    Alias /videos/ <projektpfad>/videos/
-
-    <Directory <projektpfad>/videos>
-        Options -Indexes
-        AllowOverride None
-        AuthType Basic
-        AuthName "Zeitraffer"
-        AuthUserFile /etc/apache2/.htpasswd
-        Require valid-user
-    </Directory>
-
-    ErrorLog ${APACHE_LOG_DIR}/zeitraffer-error.log
-    CustomLog ${APACHE_LOG_DIR}/zeitraffer-access.log combined
-</VirtualHost>
-```
-
-Die Konfiguration wird als `/etc/apache2/sites-available/zeitraffer.conf` gespeichert und anschließend aktiviert:
-
-```bash
-sudo a2dissite 000-default.conf
-sudo a2ensite zeitraffer.conf
-sudo apache2ctl configtest
-sudo systemctl reload apache2
-```
-
-Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Servers geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
-
-Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
-
-Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
-
-#### Basisauthentifizierung einrichten
-
-Beide Verzeichnisse (`web/public` und der `/videos/`-Alias) werden per `AuthType Basic` geschützt. Die Zugangsdaten liegen in `/etc/apache2/.htpasswd`, außerhalb des Dokumenten-Stammverzeichnisses und damit über HTTP nicht erreichbar; die Datei wird nicht versioniert und darf nicht ins Repository gelangen. Auf einem frischen Host legt `install.sh` sie im Schritt `web_login` an.
-
-```bash
-sudo htpasswd -cB /etc/apache2/.htpasswd <login>
-```
-
-`-B` erzwingt bcrypt-Hashing (laut `htpasswd --help` „very secure“) anstelle des schwächeren MD5-Standards. `-c` legt die Datei neu an und darf nur beim ersten Benutzer verwendet werden; weitere Benutzer werden ohne `-c` ergänzt.
-
-Nach jeder Änderung an der Apache-Konfiguration:
-
-```bash
-sudo apache2ctl configtest
-sudo systemctl reload apache2
-```
-
-Prüfung:
-
-```bash
-curl -i http://localhost/            # erwartet: 401 Unauthorized
-curl -i http://localhost/videos/     # erwartet: 401 Unauthorized
-curl -i -u <login> http://localhost/  # erwartet: 200 OK nach Passworteingabe
-```
-
-#### Wrapper installieren
-
-Die versionierten Skripte werden als geschützte Laufzeitkopien installiert:
-
-```bash
-sudo install -d -o root -g root -m 755 /usr/local/libexec
-sudo install -o root -g root -m 644 \
-  scripts/web/timelapse-web-status.sh \
-  /usr/local/libexec/timelapse-web-status.sh
-sudo install -o root -g root -m 755 \
-  scripts/web/timelapse-web-worker \
-  /usr/local/libexec/timelapse-web-worker
-sudo install -o root -g root -m 755 \
-  scripts/web/timelapse-web-trigger \
-  /usr/local/sbin/timelapse-web-trigger
-sudo install -o root -g root -m 755 \
-  scripts/web/timelapse-web-delete \
-  /usr/local/sbin/timelapse-web-delete
-sudo install -o root -g root -m 755 \
-  scripts/web/timelapse-web-delete-highlight \
-  /usr/local/sbin/timelapse-web-delete-highlight
-```
-
-Die sudoers-Regeln erlauben ausschließlich den festen Trigger und die beiden festen Lösch-Wrapper, jeweils als `<benutzer>`:
-
-```sudoers
-www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
-www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete
-www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
-```
-
-Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`. `timelapse-web-delete-highlight` erwartet genau Kamera, Datum und Dateiname (nur `.jpg`, keine Symlinks) und löscht ausschließlich ein Bild unter `videos/<camera>/highlights/<datum>/`, nie die `manifest.json`.
-
-Die Regeln werden mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
-
-```bash
-sudo visudo -f /etc/sudoers.d/timelapse-web
-```
-
-Eingaben werden zusätzlich in PHP und in den Wrappern validiert; die sudoers-Regeln allein ersetzen diese Prüfungen nicht.
-
-Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut mit `sudo install` aktualisiert werden.
-
-#### Dateirechte für `www-data`
-
-`www-data` wird nicht in die Gruppe `<benutzer>` aufgenommen und erhält nur Zugriff auf das, was die Weboberfläche tatsächlich liest. Alles andere – Python-Code, Skripte, Tests, `.git`, `.venv`, Logs, temporäre Dateien und alle übrigen Dateien im Home-Verzeichnis – bleibt für `www-data` gesperrt.
-
-| Pfad | Rechte für „andere“ | Zweck |
-|---|---|---|
-| `/home/<benutzer>` | nur Durchgang (`--x`) | Weg zum Projekt |
-| übrige Einträge in `/home/<benutzer>` | keine | z. B. Backups, `.ssh` |
-| `timelapse/` | nur Durchgang (`--x`) | kein Auflisten des Projekts |
-| `web/` | lesen (`r-x` / `r--`) | PHP-Dateien und CSS |
-| `videos/` | lesen (`r-x` / `r--`) | Bibliothek, Wiedergabe, Speicheranzeige |
-| `config/` | nur Durchgang (`--x`) | – |
-| `config/config.json` | lesen (`r--`) | `ignored_cameras`, `flagger.cameras`, Zeitzone |
-| `state/` | nur Durchgang (`--x`) | – |
-| `state/web-jobs/` | lesen (vom Status-Skript als `755`/`644` angelegt) | Job-Status-Polling |
-| alle übrigen Einträge in `timelapse/` | keine | – |
-
-`logs/`, `temp/` und `reports/` werden mit Modus `770` vorab angelegt, damit die Python-Jobs sie später nicht weltlesbar erzeugen.
-
-Die Rechte setzt der Schritt `permissions` von `install.sh`. Er ist wiederholbar und kann jederzeit einzeln ausgeführt werden, etwa nachdem Videos von Hand kopiert wurden:
-
-```bash
-~/timelapse/install.sh permissions verify
-```
-
-Warum das nötig ist: Debian 13 legt Home-Verzeichnisse mit Modus `0700` an (`HOME_MODE` in `/etc/login.defs`), und `git clone` erzeugt alle Dateien weltlesbar. Ohne diesen Schritt antwortet Apache mit `403 Forbidden`, und im Fehlerlog steht `AH00035: ... search permissions are missing on a component of the path`.
-
-Die Rechte für „andere“ gelten technisch für alle lokalen Benutzer, nicht nur für `www-data`. Eine Beschränkung auf genau `www-data` wäre nur über ACLs (Paket `acl`) möglich.
-
-Neue Dateien der Python-Jobs sind durch die Standard-`umask` `0002` weltlesbar. Unter `videos/` ist das gewollt; in gesperrten Verzeichnissen wie `logs/` bleibt der Inhalt trotzdem unerreichbar, weil der Durchgang durch das Verzeichnis selbst fehlt.
-
----
-
-## Konfiguration
-
-*Für die technische Einrichtung.*
-
-Die produktive Konfiguration liegt fest unter:
-
-```text
-config/config.json
-```
-
-Beispiel:
-
-```json
-{
-  "location": {
-    "latitude": 52.472,
-    "longitude": 9.333,
-    "timezone": "Europe/Berlin"
-  },
-  "daylight_buffer_minutes": 90,
-  "automatic_daylight_buffer_minutes": {
-    "1": 30, "2": 60, "3": 60, "4": 60, "5": 90, "6": 90,
-    "7": 90, "8": 60, "9": 60, "10": 60, "11": 30, "12": 30
-  },
-  "interval_window": {
-    "target_time": "12:00",
-    "tolerance_minutes": 90
-  },
-  "min_coverage_days": {
-    "monthly": 25,
-    "yearly": 300
-  },
-  "image_scan_stall_timeout_seconds": 60,
-  "log_retention_days": 30,
-  "ignored_cameras": [
-    "Reolink",
-    "Wunstorf-Marktplatz",
-    "SVG"
-  ],
-  "timelapse": {
-    "daily_framerate": 10,
-    "monthly_framerate": 20,
-    "yearly_framerate": 20,
-    "ffmpeg_threads": 2,
-    "crf": 28
-  },
-  "privacy": {
-    "blur_cameras": ["…"],
-    "ignore_boxes": {"…": [[703, 557, 742, 643]]},
-    "ignore_top_share": 0.333,
-    "skip_labels": {"…": ["vehicle", "plate"]},
-    "min_person_score": {"…": 0.35},
-    "detector_command": [
-      ".venv/bin/python3", "-I", "src/privacy/detect.py",
-      "--model", "models/object_detection_yolox_2022nov.onnx",
-      "--tiles", "2",
-      "--threshold", "0.25",
-      "--vehicle-plate-share", "0.55",
-      "--vehicle-threshold", "0.15",
-      "--plate-search",
-      "--vehicle-block-ratio", "0.0133"
-    ],
-    "blur": {
-      "strength": 0.08,
-      "padding_ratio": 0.05,
-      "feather": 0.5
-    }
-  },
-  "flagger": {
-    "cameras": ["Strandallee", "SLSV", "BSV-Steinhude", "SKM-Mardorf", "Kitestrand"],
-    "retention_days": 30
-  }
-}
-```
-
-`automatic_daylight_buffer_minutes` ist der Zeitpuffer vor Sonnenaufgang und nach
-Sonnenuntergang für das automatische Daily, abhängig vom Monat des Zieltags (Schlüssel `"1"` bis
-`"12"`, alle zwölf müssen vorhanden sein): Mai bis Juli 90, März, April, August und September 60, sonst 30 Minuten.
-Das automatische Weekly wird aus den Dailys zusammengesetzt und übernimmt den Puffer damit pro Tag.
-Historische Daily- und Weekly-Läufe nutzen dagegen immer den festen Wert `daylight_buffer_minutes`
-(oder den per CLI/Weboberfläche gewählten), weil dieser im Dateinamen steht.
-`--daylight-buffer-minutes` überschreibt für einen Lauf beide Werte, auch bei automatischen Jobs.
-
-`interval_window` ist das tägliche Bildfenster für Monthly und Yearly: Zielzeit
-`target_time` (`HH:MM` oder `sunset`) ± `tolerance_minutes`. Automatische Läufe verwenden immer
-diesen Wert; historische Läufe können ihn per CLI überschreiben (siehe „Zeitfenster für
-historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reichen.
-
-`min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
-Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
-bis zur Fensterlänge (30 bzw. 365, mit 29. Februar im Zeitraum 366).
-
-`image_scan_stall_timeout_seconds` (Sekunden): Meldet der Bildscan einer Kamera so lange keinen
-Fortschritt, wird er abgebrochen und die Kamera übersprungen. Gemessen wird Stillstand, nicht
-die Gesamtdauer. `log_retention_days` (Tage): ältere Logdateien werden beim Start gelöscht.
-`timelapse.*_framerate` (Bilder pro Sekunde im Video; Weekly nutzt den Daily-Wert),
-`timelapse.ffmpeg_threads` (Threads pro FFmpeg-Aufruf) und `timelapse.crf` (x264-Qualität,
-ganze Zahl von 0 bis 51; niedriger ist besser und größer, höher ist kleiner; Standard 28)
-steuern die Videoerstellung.
-
-`privacy` steuert die Verpixelung von Personen und Kennzeichen: `detector_command` ist die
-Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
-(Blockgröße, Rand, weicher Übergang), `ignore_boxes` und `ignore_top_share` verwerfen bekannte
-Fehlerkennungen, `skip_labels` schaltet pro Kamera die Fahrzeug- und Kennzeichenverpixelung ab
-(z. B. Boote auf Trailern), `min_person_score` verwirft pro Kamera unsichere Personen-Boxen
-(z. B. Bootsplanen; kann entfernte Personen unverpixelt lassen). Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
-wird. Alle Werte und Grenzen:
-[docs/verpixelung.md](docs/verpixelung.md#konfiguration).
-
-`flagger` steuert den Highlights-Flagger: `cameras` sind die Kameras, die jede Nacht geprüft
-werden (leer = keine), `retention_days` ist die Aufbewahrung der Berichte in Tagen (mindestens
-7). Details: [docs/flagger.md](docs/flagger.md#konfiguration).
-
-Die Tests prüfen unter anderem:
-
-- erwarteten Config-Pfad
-- Existenz der Datei
-- gültige JSON-Syntax
-- erwartete Schlüssel
-- grundlegende Datentypen
-
-### Umgebungsvariablen
-
-Pfade und Einstellungen lassen sich über Umgebungsvariablen setzen. Für den normalen Betrieb
-braucht es nur `TIMELAPSE_STORAGE_BOX`; die Cron-Zeilen setzen sie.
-
-| Variable | Standard | Wirkung |
-|---|---|---|
-| `TIMELAPSE_CAMERA_ROOT` | keiner | Ordner mit den Kamerabildern statt der Storage Box, z. B. ein entpacktes NAS-Archiv ([docs/nas.md](docs/nas.md)). Ist er gesetzt, liest das Programm von dort; ein leerer Wert zählt als nicht gesetzt (dann gilt die Storage Box, falls `TIMELAPSE_STORAGE_BOX` gesetzt ist) |
-| `TIMELAPSE_STORAGE_BOX` | keiner | Name des Eintrags der Storage Box in `~/.ssh/config`, optional mit Basisordner: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen unter dem Alias, nie im Repository. Ohne ihn und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Lauf mit einer Fehlermeldung ab |
-| `TIMELAPSE_FRAME_SOURCE` | automatisch | Woher die Jobs die Kamerabilder lesen: `local` (Ordner aus `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Ohne Angabe gilt `local`, wenn `TIMELAPSE_CAMERA_ROOT` gesetzt ist, sonst `ssh`, wenn `TIMELAPSE_STORAGE_BOX` gesetzt ist |
-| `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
-| `TIMELAPSE_X264_CRF` | `timelapse.crf` aus `config/config.json` (28) | x264-Qualität für einen Lauf (ganze Zahl 0 bis 51; niedriger = besser und größer). Ein ungültiger Wert bricht das Encodieren mit einer Fehlermeldung ab |
-| `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
-| `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |
-
-Nur für Tests gedacht sind `TIMELAPSE_DISABLE_FILE_LOGGING` (setzt `tests/conftest.py`) und
-`TIMELAPSE_WEB_*` (`PYTHON`, `LOCK_FILE`, `STATUS_HELPER`, `STATUS_ROOT`, `WORKER`), mit denen die
-Tests die Web-Wrapper umleiten; `sudo` setzt die Umgebung im Betrieb ohnehin zurück.
-
----
-
-## Betrieb im Alltag
-
-Im Alltag muss niemand etwas tun. Jede Nacht um 2 Uhr startet der Server den Lauf von
-selbst und erstellt für jede Kamera neu:
-
-- ein **Tagesvideo** vom Vortag, nur mit den Bildern zwischen Sonnenaufgang und Sonnenuntergang,
-- ein **Wochenvideo** aus den Tagesvideos der letzten 7 Tage,
-- ein **Monatsvideo** aus den letzten 30 Tagen, jeweils mit den Bildern um die Mittagszeit,
-- ein **Jahresvideo** aus dem letzten Jahr, mit bis zu fünf Mittagsbildern pro Tag.
-
-Aufbewahrt werden die Tagesvideos der letzten 7 Tage und jeweils das neueste Wochen-, Monats- und
-Jahresvideo; ältere werden automatisch gelöscht. Fehlen einer Kamera zu viele Tage, etwa weil sie
-ausgefallen war, wird ihr Monats- oder Jahresvideo in dieser Nacht übersprungen.
-
-Nach den Videos lädt ein Skript die neuen Videos auf die Website hoch, danach läuft der
-Highlights-Flagger. Alles steht in einer Cron-Zeile; die Schritte laufen nacheinander, und ein
-fehlgeschlagener Schritt hält den nächsten nicht auf.
-
-Eine automatische Wiederholung nach einem Neustart des Servers gibt es nicht; ein abgebrochener Lauf
-lässt sich von Hand wiederholen.
-Jeder Lauf schreibt ein Protokoll, in dem sich Fehler nachlesen lassen.
-
-Details zu Zeitplan, Videotypen, Ablage, Aufbewahrung und Protokollen: [docs/betrieb.md](docs/betrieb.md).
-
----
-
-## Weboberfläche
-
-Die Weboberfläche ist im Browser erreichbar (Adresse des Servers, mit
-Benutzername und Passwort). Dort lässt sich:
-
-- für eine Kamera ein **Video für einen vergangenen Zeitraum** erstellen: Tag, Woche, Monat oder
-  Jahr, jeweils bis zu einem gewählten Datum. Monats- und Jahresvideos können statt der Mittagszeit
-  auch die Zeit um den **Sonnenuntergang** zeigen. Das Video entsteht im Hintergrund; ein Fenster
-  meldet, wenn es fertig ist, und nennt bei einem Fehlschlag den Grund, sofern er bekannt ist (etwa
-  zu wenige Tage mit Bildern). Bis dahin lässt sich kein weiteres Video starten.
-- ein so erstelltes Video **ansehen, herunterladen oder löschen**; das Löschen lädt die Seite nicht
-  neu, die Liste bleibt offen.
-- auf der Seite **Highlights** die Bilder ansehen, groß anzeigen und löschen (auch direkt in der
-  Großansicht), auf denen das Programm Tiere oder Flugobjekte gefunden hat (siehe nächstes
-  Kapitel).
-
-Die nächtlich erstellten Videos lassen sich dort ebenfalls ansehen und herunterladen (löschen
-lassen sich nur die selbst erstellten).
-
-Details zu Funktionen, Dateien und Abläufen: [docs/weboberflaeche.md](docs/weboberflaeche.md).
-Wie man sie einrichtet, steht unter [Weboberfläche einrichten](#weboberfläche-einrichten).
-
----
-
-## Highlights-Flagger
-
-Der Highlights-Flagger sucht in den Tagesbildern ausgewählter Kameras nach **Tieren und
-Flugobjekten** (Vögel, Flugzeuge, Drachen) und legt die Treffer auf der Seite **Highlights** der
-Weboberfläche ab. Dort lassen sich die Bilder groß ansehen, herunterladen oder löschen, zum
-Beispiel um gute Motive für YouTube oder die Website auszuwählen.
-
-- Geprüft werden derzeit Strandallee, SLSV, BSV-Steinhude, SKM-Mardorf und Kitestrand.
-- Dinge, die den ganzen Tag an derselben Stelle stehen, etwa ein Boot am Ufer oder eine Boje,
-  werden erkannt und nicht angezeigt.
-- Das Programm kann sich irren (ein Vogel im Flug wird oft als Flugzeug erkannt); darum zeigt die
-  Seite nur die Markierung, und ein Mensch entscheidet.
-- Treffer bleiben 30 Tage erhalten.
-- **Stand:** läuft seit dem 23.10.2026 jede Nacht automatisch nach den Videos.
-
-Details zu Erkennung, Schwellen, Aufruf und Protokoll: [docs/flagger.md](docs/flagger.md),
-zur Seite: [docs/highlights-seite.md](docs/highlights-seite.md).
-
-
----
-
-## Verpixelung
-
-Auf den Kamerabildern sind manchmal Menschen und Autokennzeichen zu sehen. Das Programm kann sie
-erkennen und verpixeln:
-
-- **In Videos:** Beim Erstellen eines Tagesvideos per Befehl (nicht über die Weboberfläche) lassen
-  sich Personen und Kennzeichen verpixeln. Das dauert deutlich länger und ist bisher ein Test.
-- **Bei von Hand gestarteten Videos:** Ein Tages-, Wochen-, Monats- oder Jahresvideo, das in der
-  Weboberfläche oder per Befehl für ein Datum erstellt wird, verpixelt bei Kameras mit Verpixelung
-  (derzeit Scheunenviertel und SLSV) vorher die Bilder auf dem Online-Speicher. Das ist der Standard,
-  es gibt keinen Schalter. Die Erstellung dauert dadurch deutlich länger (gemessen: ein Monatsvideo
-  mit 360 Bildern brauchte 55 Minuten). Die automatischen Videos der Nacht verpixeln nicht selbst.
-- **Direkt auf dem Online-Speicher:** Ein eigener Ablauf verpixelt die Bilder auf dem
-  Online-Speicher. Er läuft seit dem 23.10.2026 jede Nacht vor den Videos (derzeit für
-  Scheunenviertel und SLSV), damit die Tagesvideos verpixelt sind. Neue Bilder laufend zu
-  verpixeln, bevor die Website sie abholt, ist gebaut, läuft aber noch nicht.
-
-Im Zweifel verweigert das Programm lieber ein Video, als ein ungeprüftes Bild zu verwenden: Die
-automatischen Videos von Kameras mit Verpixelung (Tages-, Monats- und Jahresvideo; das Wochenvideo
-setzt die Tagesvideos zusammen) entstehen nur aus Bildern, die der Ablauf auf dem Online-Speicher
-geprüft hat. Ungeprüfte Bilder bleiben draußen, und ohne ein geprüftes Bild entsteht kein Video. Für
-die Bilder bis zu einem Jahr zurück ist das Nachholen erledigt (Stand 09.11.2026); ältere Bilder von
-SLSV sind nicht verpixelt, ein von Hand gestartetes Video verpixelt sie vorher.
-Keine Erkennung findet aber jeden Menschen.
-
-Details: [docs/verpixelung.md](docs/verpixelung.md) (Videos) und
-[docs/verpixelung-box.md](docs/verpixelung-box.md) (Online-Speicher).
-
----
-
-## WordPress-Seite
-
-Ein WordPress-Plugin zeigt die fertigen Videos auf einer WordPress-Website an: „F5 Webcams“
-(`frontend/f5-webcams/`, ein eigenes Repository). Es enthält den Player, den Shortcode `[zeitraffer]`,
-die Kameraeinträge mit ihrer Sichtbarkeit und die Videoübersicht im Admin.
-Es wird derzeit auf einem Testsystem auf dem Mac entwickelt.
-
-Die fertigen Videos lädt ein Skript auf dem VPS jede Nacht nach dem Nachtlauf per FTP auf die
-Website hoch (`scripts/copy_zeitraffer_videos_vps2siteground.sh`; die Zugangsdaten stehen in der
-nicht versionierten Datei `config/siteground.env`; eine Vorlage ohne Werte liegt als `config/siteground.env.example` im Repository). Pro Kamera und Videotyp bleiben die neuesten
-zwei Dateien liegen, ältere werden dort gelöscht.
-
-Details zu Einrichtung, Entwicklung und Fehlerbehebung: [docs/wordpress.md](docs/wordpress.md).
-
----
-
-## Kommandozeile
-
-Alles, was die Weboberfläche kann, und noch etwas mehr, lässt sich auch direkt auf dem Server per
-Befehl starten. Das ist für Technikerinnen und Techniker gedacht, etwa um einen Lauf zu wiederholen:
-
-```bash
-.venv/bin/python3 -m src.main                                         # vollständiger nächtlicher Lauf
-.venv/bin/python3 -m src.main --jobs daily --target-date 2026-10-20   # Tagesvideo für einen bestimmten Tag
-.venv/bin/python3 -m src.main --jobs yearly --target-date 2025-12-31 --cameras SLSV
-```
-
-Vorher prüfen, ob gerade ein anderer Lauf aktiv ist: Es läuft immer nur ein Lauf zur selben Zeit.
-
-Alle Aufrufe und Optionen: [docs/cli.md](docs/cli.md).
-
----
-
-## Werkzeuge
-
-Neben dem nächtlichen Lauf gibt es Hilfsprogramme, die bei Bedarf von Hand gestartet werden:
-
-- **Speicherfilter:** findet auf dem Online-Speicher leere Bilder und Bilder, die am selben Tag
-  doppelt hochgeladen wurden, und schreibt eine Liste. Er löscht nichts.
-- **Yearly-Backfill:** erstellt Jahresvideos für ganze Kalenderjahre, auch wenn einzelne Tage
-  fehlen.
-- **NAS-Archiv:** holt Bilder vergangener Jahre aus dem Archiv auf dem NAS, um damit Videos zu
-  erstellen.
-- **Sicherung:** `backup.sh` sichert von einem Host, was ein neuer Host braucht und nicht im Git liegt
-  (Erkennungsmodell, Status der Verpixelung, auf Wunsch die Videos), ohne Geheimnisse; `install.sh` spielt es auf einem neuen
-  Host zurück.
-
-Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill),
-[docs/nas.md](docs/nas.md) (NAS-Archiv) und [docs/vps.md](docs/vps.md) (Sicherung).
-
----
-
-## Archiv
-
-Der frühere Betrieb auf dem Raspberry Pi (SSHFS-Mount, Neuinstallation, Absturzprotokoll), der
-Container-Test mit Docker und das frühere Kopieren der Bilder vor dem Lauf sind stillgelegt und
-liegen im Ordner [`archive/`](archive). Übersicht: [archive/README.md](archive/README.md).
-
----
-
-## Technik für Entwickler
+| **Storage Box** | Der Online-Speicher, auf dem alle Kamerabilder liegen |
+| **Server** | Der Rechner, auf dem das Programm läuft (auch „VPS“ genannt) |
+| **Nachtlauf** | Die Arbeit, die der Server jede Nacht um 2 Uhr erledigt |
+| **Cronjob** | Ein regelmäßig automatisch gestarteter Auftrag; der Nachtlauf ist einer |
+| **Verpixeln** | Menschen und Kennzeichen auf einem Bild unkenntlich machen |
+| **Highlights** | Bilder, auf denen das Programm Tiere oder Flugobjekte gefunden hat |
+| **Weboberfläche** | Die kleine Webseite für das Team, um Videos zu bestellen und anzusehen |
+| **FFmpeg** | Das Programm, das aus vielen Bildern ein Video macht |
+| **WordPress-Plugin** | Der Teil auf der Website, der die Videos anzeigt („F5 Webcams“) |
+
+## Wo steht was?
+
+| Ich möchte … | Hier steht es |
+|---|---|
+| wissen, was zu tun ist, wenn etwas nicht klappt | [Handbuch](docs/handbuch.md) |
+| verstehen, wie der Nachtlauf, die Videoarten und die Aufbewahrung genau funktionieren | [docs/betrieb.md](docs/betrieb.md) |
+| einen Server umziehen oder die Sicherung zurückspielen | [docs/vps.md](docs/vps.md) |
+| wissen, wie die Verpixelung arbeitet | [docs/verpixelung.md](docs/verpixelung.md) und [docs/verpixelung-box.md](docs/verpixelung-box.md) |
+| etwas über die Highlights wissen | [docs/flagger.md](docs/flagger.md) und [docs/highlights-seite.md](docs/highlights-seite.md) |
+| das WordPress-Plugin verstehen | [docs/wordpress.md](docs/wordpress.md) |
+| einen Lauf von Hand starten | [docs/cli.md](docs/cli.md) |
+| Hilfsprogramme nutzen (Speicherfilter, Jahresvideos nachholen, NAS-Archiv) | [docs/werkzeuge.md](docs/werkzeuge.md) und [docs/nas.md](docs/nas.md) |
+| nachlesen, was früher war (Raspberry Pi, Docker-Test) | [archive/README.md](archive/README.md) |
+| YouTube-Beschreibungen schreiben | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md) und [youtube/texts](docs/youtube/youtube-texts.md) |
+| Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
+| den Code und die Ordner verstehen | [docs/architektur.md](docs/architektur.md) |
+| Einstellungen ändern (`config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) |
+| einen Server von Grund auf installieren | [docs/installation.md](docs/installation.md) und [docs/vps.md](docs/vps.md) |
+
+## Was noch fehlt
+
+Nachtlauf, Upload und Highlights laufen jede Nacht von selbst. Offen ist noch eine Sache: Neue
+Bilder werden bisher nur einmal pro Nacht verpixelt, nicht laufend am Tag. Dafür gibt es nur einen
+Entwurf, entschieden ist nichts.
+
+## Für Entwickler
 
 Das Programm ist in Python geschrieben, die Videos erzeugt FFmpeg, die Weboberfläche ist in PHP.
-Bei jeder Änderung prüfen automatische Tests und eine Stilprüfung den Code, sowohl vor dem
-Hochladen als auch auf GitHub.
-
-Aufbau des Codes, Ordnerstruktur, Sicherheitsprinzipien, Tests und Linting:
-[docs/architektur.md](docs/architektur.md).
-
----
-
-## Aktueller Stand
-
-Fertig und im täglichen Einsatz:
-
-- nächtliche Tages-, Wochen-, Monats- und Jahresvideos für alle Kameras
-- Videos für vergangene Zeiträume, per Weboberfläche oder Befehl, auch mit Sonnenuntergang
-- Weboberfläche mit Anmeldung: Videos erstellen, ansehen, herunterladen, löschen; auch die
-  nächtlichen Videos ansehen und herunterladen
-- Highlights-Flagger jede Nacht nach den Videos, Highlights-Seite mit Großansicht, Download und
-  Löschen
-- Protokolle, Aufräumen alter Videos
-- Betrieb auf dem VPS seit dem 30.10.2026: eine Cron-Zeile um 02:00 (Verpixelung nachholen,
-  Nachtlauf, Upload der Videos auf die Website, danach der Flagger); die Läufe vom 7. bis 9.11.2026
-  liefen ohne Fehler
-- Sperre für Kameras mit Verpixelung: Tagesvideos nur aus geprüften Bildern (seit dem 05.11.2026)
-- Erkennung leerer, abgeschnittener und doppelter Bilder
-- Installationsskript `install.sh` für einen frischen Debian- oder Ubuntu-Host
-- Speicherfilter, Yearly-Backfill und Werkzeuge für das NAS-Archiv
-- automatische Tests bei jeder Änderung
-
-Fertig, aber noch nicht im Dauerbetrieb:
-
-- laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
-- dieselbe Sperre für Monats- und Jahresvideos (gebaut am 09.11.2026; die erste Nacht damit steht
-  noch aus)
-- WordPress-Plugin (auf dem Testsystem)
-- Bilder verschiedener Größen in einem Video (Kamerawechsel) werden mit schwarzen Balken
-  eingepasst statt gestaucht; gilt ab der ersten Nacht auf dem VPS
-
----
-
-## Noch offen
-
-- Verpixelung neuer Bilder laufend starten; es gibt nur einen Entwurf (jede Minute tagsüber)
-  ([docs/plans/2026-10-30-live-blur-cron.md](docs/plans/2026-10-30-live-blur-cron.md)), nichts ist entschieden
-- VPS: HTTPS (Zertifikat per DNS-Prüfung bei Hetzner) und der Zugang der Kollegen zur
-  Weboberfläche des VPS; Liste in [docs/vps.md](docs/vps.md)
-
----
-
-## Dokumentation
-
-Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs):
-
-| Datei | Inhalt |
-|---|---|
-| [handbuch.md](docs/handbuch.md) | **Handbuch für Entwickler:** Installation als Checkliste, alle Jobs starten, Fehlerfälle und was zu tun ist |
-| [betrieb.md](docs/betrieb.md) | Zeitplan, Videotypen, Ablage, Aufbewahrung, Wiederanlauf, Protokolle |
-| [weboberflaeche.md](docs/weboberflaeche.md) | Funktionen und Abläufe der Weboberfläche |
-| [highlights-seite.md](docs/highlights-seite.md) | die Highlights-Seite |
-| [flagger.md](docs/flagger.md) | der Highlights-Flagger |
-| [verpixelung.md](docs/verpixelung.md) | Verpixelung in Videos |
-| [verpixelung-box.md](docs/verpixelung-box.md) | Verpixelung direkt auf dem Online-Speicher |
-| [wordpress.md](docs/wordpress.md) | das WordPress-Plugin |
-| [cli.md](docs/cli.md) | alle Befehle und Optionen |
-| [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill |
-| [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
-| [vps.md](docs/vps.md) | Einen VPS einrichten: Sicherung, `install.sh`, Handtest, bekannte Lücken |
-| [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
-| [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
-| [youtube/description-prompt](docs/youtube/youtube-description-prompt.md), [youtube/texts](docs/youtube/youtube-texts.md) | Texte für YouTube-Beschreibungen |
-
-Pläne und Entwürfe für neue Funktionen liegen in `docs/plans/` (offen oder zurückgestellt); fertig umgesetzte
-Pläne mit ihren Entwürfen liegen in `docs/plans/done/`.
+Aufbau, Tests und Sicherheitsregeln: [docs/architektur.md](docs/architektur.md).

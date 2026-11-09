@@ -168,7 +168,7 @@ Eine fehlerhafte Kamera hält die übrigen nicht auf. Der Bericht steht in
 - SSH-Zugang zur Storage Box über einen Alias in `~/.ssh/config` (Benutzer, Port, Schlüssel stehen
   nur dort, nie im Repository)
 - `TIMELAPSE_STORAGE_BOX="<ssh-alias>[:<basisordner>]"` (siehe
-  [README: Umgebungsvariablen](../README.md#umgebungsvariablen)); der Wrapper setzt ohne Angabe den
+  [Konfiguration](konfiguration.md#umgebungsvariablen)); der Wrapper setzt ohne Angabe den
   Alias `storagebox`
 - `rsync`, `ffmpeg` und `ffprobe` im `PATH`
 

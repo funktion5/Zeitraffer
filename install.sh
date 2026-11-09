@@ -217,7 +217,7 @@ step_apache() {
 	vhost="$(mktemp)"
 	# shellcheck disable=SC2064
 	trap "rm -f '$vhost'" EXIT
-	# Same layout as README "Apache-Konfiguration"; only the name, port and path are filled in.
+	# Same layout as docs/installation.md, "Apache-Konfiguration"; only the name, port and path are filled in.
 	cat >"$vhost" <<EOF
 <VirtualHost *:${WEB_PORT}>
     ServerName ${SERVER_NAME}

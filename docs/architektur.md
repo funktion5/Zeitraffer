@@ -92,7 +92,7 @@ listen und holen Kamerabilder über dieselbe Schnittstelle. `LocalFrameSource` l
 einem `ls -l` über ssh und holt die nötigen Bilder per rsync in einen Zwischenspeicher unter
 `temp/frame-cache/`; nach jeder Kamera werden sie wieder entfernt. Welche Quelle gilt, entscheidet
 `TIMELAPSE_FRAME_SOURCE`, sonst der gesetzte Ordner, sonst die Storage Box
-([README: Umgebungsvariablen](../README.md#umgebungsvariablen)).
+([Konfiguration](konfiguration.md#umgebungsvariablen)).
 
 ### `src/camera_list.py`
 
@@ -241,6 +241,8 @@ timelapse/
 │   ├── flagger.md
 │   ├── handbuch.md
 │   ├── highlights-seite.md
+│   ├── installation.md
+│   ├── konfiguration.md
 │   ├── nas.md
 │   ├── verpixelung-box.md
 │   ├── verpixelung.md
@@ -354,7 +356,7 @@ behandelt. `models/` enthält die Erkennungsmodelle für Verpixelung und Highlig
 werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind nicht im Repository.
 
 Was in welcher Datei unter `docs/` steht, listet das README unter
-[Dokumentation](../README.md#dokumentation).
+[Wo steht was?](../README.md#wo-steht-was).
 
 `install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
 Ordner); `backup.sh` sichert von einem Host, was ein neuer Host braucht und nicht im Git liegt (Modell,

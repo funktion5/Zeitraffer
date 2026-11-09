@@ -1,6 +1,6 @@
 # Lokale Weboberfläche
 
-Was die Weboberfläche kann, welche Dateien dazugehören und wie ein Video-Auftrag aus dem Browser abläuft. Die Einrichtung (Apache, Anmeldung, Wrapper, Dateirechte) steht im README unter Installation.
+Was die Weboberfläche kann, welche Dateien dazugehören und wie ein Video-Auftrag aus dem Browser abläuft. Die Einrichtung (Apache, Anmeldung, Wrapper, Dateirechte) steht in [installation.md](installation.md#weboberfläche-einrichten).
 
 
 ## Aktueller Funktionsumfang
@@ -106,7 +106,7 @@ nach einem übersprungenen Daily zählen nicht als Ursache. `job-status.php` üb
 Ursachen ins Deutsche und gibt sie als `reason` mit (zu wenige Tage mit Bildern im Zeitfenster,
 Woche nicht vollständig, keine Bilder am Tag, keine verwendbaren Bilder, Verpixelung nicht fertig oder von einer anderen Verpixelung belegt); unbekannter Text wird nie an den
 Browser weitergegeben, der Dialog zeigt dann den allgemeinen Hinweis. Die Änderung am Worker
-wirkt erst nach dem erneuten `sudo install` (README „Wrapper installieren“).
+wirkt erst nach dem erneuten `sudo install` ([Installation – Wrapper installieren](installation.md#wrapper-installieren)).
 
 Erlaubte Inhalte sind ausschließlich `running`, `completed` und `failed`. `job-status.php` akzeptiert nur eine 32-stellige, kleingeschriebene hexadezimale Job-ID und liefert den Zustand als JSON. Nach dem Start reicht `camera.php` die Auftragsdaten über die PHP-Session (`started_job`, einmalig gelesen) an die nächste Seite weiter; der Browser legt den laufenden Job dann in `sessionStorage` ab (`job-watcher.php`); nach einem Neuladen oder Seitenwechsel setzt er das Polling dort fort. Sobald `completed` oder `failed` vorliegt, wird der Eintrag entfernt und ein nativer `<dialog>` mit dem Ergebnis (bei `failed` mit der Ursache, falls bekannt) geöffnet. Holt der Browser eine Seite mit „Zurück“ aus seinem Zwischenspeicher, nimmt er das Warten dort wieder auf; ist der Auftrag inzwischen auf einer anderen Seite fertig gemeldet worden, hört die alte Abfrage auf, statt das Ergebnis ein zweites Mal zu zeigen. Eine fehlgeschlagene Abfrage (Netz weg, Pi beschäftigt) beendet das Warten nicht: der Browser fragt fünf Sekunden später erneut. Meldet der Endpunkt den Auftrag als unbekannt (404, Statusdatei entfernt), wird der Eintrag verworfen und der Button wieder freigegeben.
 
