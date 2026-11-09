@@ -10,7 +10,7 @@ no hold-back of Monthly/Yearly at that time (Julius did not want something he wo
 cheap): `src/privacy/blur_gate.py`, `src/jobs/monthly.py`, `src/jobs/yearly.py`, tests in
 `tests/privacy/privacy_blur_gate_test.py`, `tests/jobs/monthly_test.py`, `tests/jobs/yearly_test.py`. Same rule as
 the Daily (left out, none confirmed = skipped), applied before the coverage check, and in the Yearly before its
-selection. The Daily still has its own `split_confirmed_images`; moving it onto the shared module is open.
+selection. The Daily uses the same module since 2026-11-09 (its own `split_confirmed_images` was removed; its tests moved to dated file names).
 Where the infrastructure runs: the VPS.
 
 ## Goal
