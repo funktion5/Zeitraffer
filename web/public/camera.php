@@ -542,7 +542,7 @@ unset($_SESSION["started_job"]);
 			</div>
 
 			<?php if ($formMessage !== null && $submittedAction === "rebuild-jobs"): ?>
-				<p><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
+				<p class="form-message"><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
 			<?php endif; ?>
 
 			<form method="post" id="rebuild-form" action="/camera.php?camera=<?= rawurlencode($camera) ?>">
@@ -573,14 +573,14 @@ unset($_SESSION["started_job"]);
 				<p>Überträgt die neuesten automatischen Videos dieser Kamera auf die Website, so wie es der Nachtlauf jede Nacht tut. Diese Videos werden gesendet:</p>
 				<ul>
 					<?php foreach ($publishVideos as $publishJob => $publishFilename): ?>
-						<li><strong><?= htmlspecialchars(translateJobLabel($publishJob), ENT_QUOTES, "UTF-8") ?>:</strong> <?= htmlspecialchars($publishFilename, ENT_QUOTES, "UTF-8") ?></li>
+						<li><strong><?= htmlspecialchars(translateJobLabel($publishJob), ENT_QUOTES, "UTF-8") ?>:</strong> <code><?= htmlspecialchars($publishFilename, ENT_QUOTES, "UTF-8") ?></code></li>
 					<?php endforeach; ?>
 				</ul>
 				<p>Videos, die schon mit gleicher Größe auf der Website liegen, werden übersprungen. Ältere Videos auf der Website werden dabei gelöscht: Von jedem Zeitraum bleiben dort die zwei neuesten.</p>
 			</div>
 
 			<?php if ($formMessage !== null && $submittedAction === "publish-camera"): ?>
-				<p><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
+				<p class="form-message"><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
 			<?php endif; ?>
 
 			<form method="post" id="publish-form" action="/camera.php?camera=<?= rawurlencode($camera) ?>">

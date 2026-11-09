@@ -690,6 +690,73 @@ button:disabled {
 }
 
 
+/* Rebuild and upload sections: the two night-run tools. A teal edge sets them apart from the
+   manual form, and every tickbox is a chip that shows what is selected. */
+
+.video-rebuild,
+.video-publish {
+	border-left: 3px solid var(--color-primary-dark);
+}
+
+.video-rebuild fieldset {
+	flex-wrap: wrap;
+}
+
+.video-rebuild fieldset label,
+.video-publish form > label {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	width: fit-content;
+	padding: 0.5rem 0.85rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	cursor: pointer;
+}
+
+.video-rebuild fieldset label:has(input:checked),
+.video-publish form > label:has(input:checked) {
+	background: var(--color-surface-hover);
+	border-color: var(--color-primary);
+}
+
+.video-rebuild fieldset label:has(input:focus-visible),
+.video-publish form > label:has(input:focus-visible) {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+/* A button that waits for a tick is not busy: "progress" would say it is. */
+.video-rebuild button:disabled,
+.video-publish button:disabled {
+	cursor: not-allowed;
+}
+
+.form-message {
+	width: fit-content;
+	margin: 0 0 1.25rem;
+
+	padding: 0.6rem 0.8rem;
+
+	background: rgb(223 113 113 / 12%);
+	border: 1px solid var(--color-danger);
+	border-radius: var(--radius-small);
+
+	color: var(--color-danger);
+}
+
+.job-instructions code {
+	color: var(--color-text);
+
+	font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+	font-size: 0.85em;
+}
+
+
 /* -------------------------------------------------------------------------- */
 /* Job status                                                                 */
 /* -------------------------------------------------------------------------- */
