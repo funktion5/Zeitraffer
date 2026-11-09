@@ -31,6 +31,10 @@ elif [[ "$1" == "-m" && "$2" == "src.main" ]]; then
 		"root=${TIMELAPSE_CAMERA_ROOT-unset} box=${TIMELAPSE_STORAGE_BOX-unset}" >> "$R/fake/events"
 	if [[ -d "$R/fake/videos" ]]; then
 		mkdir -p "$R/videos"
+		# The wrapper verifies videos newer than its start marker. File timestamps tick every few
+		# milliseconds, so a copy right after the marker may not count as newer: a flaky
+		# "0 videos verified".
+		sleep 0.05
 		cp -R "$R/fake/videos/." "$R/videos/"
 	fi
 	if [[ -n "${FAKE_MAIN_SLEEP:-}" ]]; then
