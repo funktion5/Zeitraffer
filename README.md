@@ -108,6 +108,11 @@ geschützt und nicht für das offene Internet gedacht. Dort kann man:
   sich manchmal, darum zeigt die Seite nur die Markierung, und **ein Mensch entscheidet**. Treffer
   bleiben 30 Tage erhalten. Gedacht ist das für die Auswahl guter Motive, zum Beispiel für YouTube.
 
+- die **automatischen Videos einer Kamera neu erstellen lassen**, zum Beispiel wenn die Kamera in der
+  Nacht ausgefallen war, und sie danach **auf die Website übertragen**. Beides steckt auf der Seite
+  der Kamera in einer Leiste, die erst aufklappt, wenn man sie öffnet. Vor dem Übertragen muss man
+  ausdrücklich bestätigen; die Seite sagt vorher, welche Videos gesendet werden.
+
 Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 
 ## Wenn ein Video fehlt oder zu alt ist
@@ -124,6 +129,10 @@ Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 5. **Das Video ist auf dem Server, aber nicht auf der Website:** Dann ist der Upload hängengeblieben.
    Was in den Protokollen steht und was zu tun ist:
    [Handbuch – Upload auf die Website](docs/handbuch.md#upload-auf-die-website).
+6. **Ein Video fehlt, weil die Kamera in der Nacht ausgefallen war, und sie läuft wieder:** Auf der
+   Seite der Kamera in der Weboberfläche die Leiste „Automatische Videos neu erstellen und
+   hochladen“ öffnen, die fehlenden Videos neu erstellen, ansehen und danach auf die Website
+   übertragen ([so geht es](docs/weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)).
 
 Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.md](docs/handbuch.md).
 

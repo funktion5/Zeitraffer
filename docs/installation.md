@@ -216,17 +216,33 @@ sudo install -o root -g root -m 755 \
 sudo install -o root -g root -m 755 \
   scripts/web/timelapse-web-delete-highlight \
   /usr/local/sbin/timelapse-web-delete-highlight
+sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-rebuild \
+  /usr/local/sbin/timelapse-web-rebuild
+sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-publish \
+  /usr/local/sbin/timelapse-web-publish
+sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-worker-rebuild \
+  /usr/local/libexec/timelapse-web-worker-rebuild
+sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-worker-publish \
+  /usr/local/libexec/timelapse-web-worker-publish
 ```
 
-Die sudoers-Regeln erlauben ausschließlich den festen Trigger und die beiden festen Lösch-Wrapper, jeweils als `<benutzer>`:
+Die sudoers-Regeln erlauben ausschließlich die drei festen Trigger (Video-Auftrag, Neu erstellen, Upload) und die beiden festen Lösch-Wrapper, jeweils als `<benutzer>`:
 
 ```sudoers
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-rebuild *
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-publish *
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
 ```
 
 Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`. `timelapse-web-delete-highlight` erwartet genau Kamera, Datum und Dateiname (nur `.jpg`, keine Symlinks) und löscht ausschließlich ein Bild unter `videos/<camera>/highlights/<datum>/`, nie die `manifest.json`.
+
+`timelapse-web-rebuild` erwartet Job-ID, Kamera und ein bis vier Videoarten (`daily`, `weekly`, `monthly`, `yearly`), `timelapse-web-publish` genau Job-ID und Kamera. Beide prüfen die Kamera gegen `state/web-jobs/cameras.json` und nehmen dieselbe Laufsperre wie der Trigger; ihre Worker `timelapse-web-worker-rebuild` und `timelapse-web-worker-publish` müssen unter `/usr/local/libexec/` liegen (sonst endet der Trigger mit Exit 69). Der Upload-Worker liest keine Zugangsdaten: Er startet `scripts/copy_zeitraffer_videos_vps2siteground.sh`, das sie aus `config/siteground.env` liest. `./install.sh` installiert alles im Schritt `web_bridge`.
 
 Die Regeln werden mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
 

@@ -94,6 +94,11 @@ scripts/copy_zeitraffer_videos_vps2siteground.sh [<Kamera>] [--run]
 - Die Verbindung ist einfaches FTP (`ftp://`), also nicht verschlüsselt.
 - Das Ergebnis steht je Kamera im Protokoll `logs/siteground-delivery.log` in der Zeile
   `Ergebnis: hochgeladen=… übersprungen=… fehlgeschlagen=… gelöscht=…`.
+- Mit `<Kamera>` startet auch die Weboberfläche den Upload (Kameraseite, Leiste „Automatische Videos
+  neu erstellen und hochladen“, [weboberflaeche.md](weboberflaeche.md#auf-die-website-übertragen)).
+  Der Worker hängt die Ausgabe an dasselbe Protokoll an und legt es bei Bedarf nur für den
+  Projektbenutzer lesbar an. Die ausführliche Ausgabe von `curl` (`--verbose`) enthält den
+  FTP-Zugang; das Protokoll darf deshalb nicht weitergegeben werden.
 
 ### Highlights-Flagger
 

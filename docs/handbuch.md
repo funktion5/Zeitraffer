@@ -57,7 +57,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Zwischendateien | `temp/` |
 | Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
 | Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
-| Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-status.sh` |
+| Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
@@ -560,7 +560,7 @@ Auftrag, dessen Worker nie gestartet ist, gilt nach einer Minute als fehlgeschla
 **Prüfen:**
 
 ```bash
-sudo -l -U www-data                                    # Regeln für trigger, delete und delete-highlight?
+sudo -l -U www-data                                    # Regeln für trigger, rebuild, publish, delete und delete-highlight?
 cmp scripts/web/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
 tail /var/log/apache2/zeitraffer-error.log
 ```
@@ -572,7 +572,7 @@ gehört `root` (dann verweigert die Seite den Start bewusst).
 
 ### „Der Videoauftrag wurde abgelehnt oder konnte nicht gestartet werden.“
 
-**Prüfen:** `grep "Video wrapper failed with exit code" /var/log/apache2/zeitraffer-error.log | tail -3`
+**Prüfen:** `grep -E "(Video|Rebuild|Publish) wrapper failed with exit code" /var/log/apache2/zeitraffer-error.log | tail -3` (die drei Namen stehen für das historische Video, das Neuerstellen und den Upload)
 
 **Ursache:** Der Wrapper lief, hat den Auftrag aber abgelehnt. Der Exit-Code im Protokoll sagt warum:
 
@@ -602,6 +602,43 @@ Der Auftrag gilt als fehlgeschlagen, sobald kein neues Video entsteht.
 
 **Lösung:** Anderes Datum, Fenster oder anderen Videotyp wählen; sonst den Fehler wie beim
 [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen.
+
+### „Neu erstellen“: Ergebniszeile mit „übersprungen“ oder „fehlgeschlagen“
+
+**Symptom:** Der Abschlussdialog („Neu erstellen abgeschlossen“) zeigt zum Beispiel
+`Monatlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen`. Der Status ist trotzdem „abgeschlossen“:
+Er sagt nur, dass `src.main` ohne Fehler endete.
+
+**Prüfen:** `state/web-jobs/<id>.result` (dieselben Zeilen) und `logs/<job>/<heute>.log`, dort die
+Zeilen zur Kamera. Das Protokoll trägt das Datum des Auftrags.
+
+**Ursache:** *Übersprungen:* zu wenige Tage mit Bildern (Monthly mindestens 25 von 30, Yearly 300),
+bei einer Blur-Kamera kein bestätigt verpixeltes Bild ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos))
+oder keine Bilder am Tag. *Fehlgeschlagen:* ein Fehler bei dieser Kamera (Bildabruf, FFmpeg,
+Zeitüberschreitung); die Stelle steht im Protokoll.
+
+**Lösung:** Bei Blur-Kameras das nächtliche Nachholen der Verpixelung abwarten und neu erstellen;
+sonst den Fehler wie beim [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen. Ein übersprungenes
+Video lässt das vorhandene stehen.
+
+### Hochladen schlägt fehl
+
+**Symptom:** Der Dialog meldet „Hochladen fehlgeschlagen“ („Bitte das Anwendungsprotokoll prüfen.“),
+oder die Ergebniszeile zeigt `fehlgeschlagen` über 0, zum Beispiel
+`Hochgeladen: 2, übersprungen: 0, fehlgeschlagen: 1, gelöscht: 0`.
+
+**Prüfen:** `tail -n 60 ~/timelapse/logs/siteground-delivery.log` (die ausführliche Ausgabe enthält den
+FTP-Zugang: nichts davon weitergeben). `./install.sh verify` zeigt, ob die drei `SITEGROUND_*`-Werte
+gesetzt sind.
+
+**Ursache:** Ohne Ergebniszeile: Die Zugangsdaten fehlen (Exit 2), die Liste der Videos ist leer, oder
+für diese Kamera läuft schon ein Upload, zum Beispiel der nächtliche (Exit 3). Mit Ergebniszeile: Eine
+Datei fehlte oder ließ sich nicht hochladen oder umbenennen (FTP-Fehler); dort wird dann auch nicht
+aufgeräumt.
+
+**Lösung:** Zugangsdaten in `config/siteground.env` ergänzen, nach einem laufenden Upload erneut
+starten, bei FTP-Fehlern später noch einmal. Mehr zum Skript:
+[Upload auf die Website](betrieb.md#upload-auf-die-website).
 
 ### Auftrag scheint zu hängen
 

@@ -69,6 +69,9 @@ Retention wie beim Nachtlauf). Es ist aber kein Produktionslauf: Der Marker `sta
 wird nicht angelegt. Kameras aus `privacy.blur_cameras` bauen ihre Videos wie in der Nacht nur aus
 bestätigten Bildern ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
 
+Dasselbe bietet die Weboberfläche auf der Kameraseite, samt Upload auf die Website:
+[Neu erstellen wie der Nachtlauf](weboberflaeche.md#neu-erstellen-wie-der-nachtlauf).
+
 ## Beliebige Job-Kombination
 
 ```bash

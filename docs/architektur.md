@@ -264,9 +264,13 @@ timelapse/
 │   ├── web/   (Wrapper der Weboberfläche, installiert unter /usr/local/)
 │   │   ├── timelapse-web-delete
 │   │   ├── timelapse-web-delete-highlight
+│   │   ├── timelapse-web-publish
+│   │   ├── timelapse-web-rebuild
 │   │   ├── timelapse-web-status.sh
 │   │   ├── timelapse-web-trigger
-│   │   └── timelapse-web-worker
+│   │   ├── timelapse-web-worker
+│   │   ├── timelapse-web-worker-publish
+│   │   └── timelapse-web-worker-rebuild
 │   ├── copy_zeitraffer_videos_vps2siteground.sh   (Upload der Videos auf die Website)
 │   ├── list-deliverable-videos.py   (Liste der Videos, die hochgeladen werden dürfen)
 │   ├── storage-filter-all
@@ -334,6 +338,8 @@ timelapse/
 │       ├── job-state.php
 │       ├── json-response.php
 │       ├── process-runner.php
+│       ├── publish-runner.php
+│       ├── rebuild-runner.php
 │       ├── video-delete.php
 │       └── video-library.php
 ├── logs/         (Laufzeitdaten, nicht im Repository)
