@@ -909,7 +909,7 @@ def test_a_cache_root_from_the_environment_must_be_a_run_folder(ssh_env, monkeyp
 	assert images_module.get_frame_source().cache_root == parent / "12-aaaaaaaa"
 
 
-# Step 2a of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: once a frame is blurred on
+# Step 2a of docs/plans/done/2026-11-05-blur-backfill-for-long-videos.md: once a frame is blurred on
 # the box, the copy the job fetched earlier is stale. Drop only those copies, so the next
 # localize() fetches just them, not the whole camera again.
 def test_local_release_frames_changes_nothing(tmp_path):

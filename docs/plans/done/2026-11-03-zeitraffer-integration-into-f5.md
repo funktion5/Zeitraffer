@@ -8,7 +8,7 @@
 
 **Tech Stack:** PHP 8.4, WordPress 6.5+, the two offline harnesses (`harness-zeitraffer.php`, `harness.php`).
 
-**Spec:** `docs/superpowers/specs/2026-11-03-video-status-page-design.md` (the feature) and the status plan `docs/superpowers/plans/2026-11-03-video-status-page.md` (Tasks 1-6, built). New decisions of 2026-11-03, evening (colleague's green light, via Julius): full integration, Zeitraffer plugin retires, own file for the post type class, English file names (`class-timelapse-post-type.php`).
+**Spec:** `docs/plans/done/2026-11-03-video-status-page-design.md` (the feature) and the status plan `docs/plans/done/2026-11-03-video-status-page.md` (Tasks 1-6, built). New decisions of 2026-11-03, evening (colleague's green light, via Julius): full integration, Zeitraffer plugin retires, own file for the post type class, English file names (`class-timelapse-post-type.php`).
 
 ## Progress (updated 2026-11-03, evening)
 
@@ -25,7 +25,7 @@ Tasks 1-4 complete and checked by Julius in Docker (uncommitted). Open: Julius's
 - Deleting `frontend/zeitraffer/` needs Julius's explicit yes (global rule); until then it stays, deactivated.
 - Harness commands (HARNESS = `<memory-ordner>/status-page-artifacts`):
   `export PATH="$HOME/.config/herd-lite/bin:$PATH"; cd "$HARNESS" && php harness-zeitraffer.php` (expect `all checks passed`, today 52 checks) and `php harness.php check` (today 32 checks, plus the 10 baseline dumps in `baseline/`, byte-identical).
-- Ledger: `$HARNESS/ledger-integration.md`, first line `# SDD ledger — plan: docs/superpowers/plans/2026-11-03-zeitraffer-integration-into-f5.md`; one completion line per task, rulings as `Ruling: ... — why — cost if wrong`.
+- Ledger: `$HARNESS/ledger-integration.md`, first line `# SDD ledger — plan: docs/plans/done/2026-11-03-zeitraffer-integration-into-f5.md`; one completion line per task, rulings as `Ruling: ... — why — cost if wrong`.
 
 ## Review Focus
 

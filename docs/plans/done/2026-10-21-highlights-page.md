@@ -2,7 +2,7 @@
 
 Status: done. The page has been live since 2026-10-22; later changes are in
 [2026-10-26-web-ui-finetune.md](2026-10-26-web-ui-finetune.md). Current behaviour:
-[highlights-seite.md](../highlights-seite.md). The checkboxes below were not ticked while building; the code and git history are the record.
+[highlights-seite.md](../../highlights-seite.md). The checkboxes below were not ticked while building; the code and git history are the record.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -12,7 +12,7 @@ Status: done. The page has been live since 2026-10-22; later changes are in
 
 **Tech Stack:** PHP 8.4 (no 8.5-only syntax), bash, pytest, the existing `web/` code and `style.css`.
 
-**Spec:** `docs/superpowers/specs/2026-10-21-highlights-page-design.md`. The data it reads is defined in `docs/superpowers/specs/2026-10-21-highlights-flagger-design.md` (the `manifest.json` contract); the writer is the other plan, `docs/plans/2026-10-21-highlights-flagger.md`. This plan does not depend on it: fixtures are written by hand.
+**Spec:** `docs/plans/done/2026-10-21-highlights-page-design.md`. The data it reads is defined in `docs/plans/done/2026-10-21-highlights-flagger-design.md` (the `manifest.json` contract); the writer is the other plan, `docs/plans/done/2026-10-21-highlights-flagger.md`. This plan does not depend on it: fixtures are written by hand.
 
 ## Global Constraints
 
@@ -26,7 +26,7 @@ Status: done. The page has been live since 2026-10-22; later changes are in
 - Page layout: per camera, days newest first, items highest score first (manifest order), a camera in `flagger.cameras` with no items stays visible as "geprüft, nichts gefunden". The model's guess is shown with a question mark (for example "Flugzeug?").
 - German labels: bird Vogel, airplane Flugzeug, kite Drachen, cat Katze, dog Hund, horse Pferd, sheep Schaf, cow Kuh, elephant Elefant, bear Bär, zebra Zebra, giraffe Giraffe; unknown labels pass through.
 - Accessibility (BFSG, WCAG 2.2 AA): semantic headings, labelled filter controls, real buttons and links with visible focus, native `<dialog>` confirm, image `alt` made of camera, time and label, nothing relies on colour or hover alone.
-- Test environment: everything runs on the Pi itself with the project venv (`.venv`, Python 3.13) and its `php-cli`, no Docker; check it as in "Task 0: Check the Pi environment" of `docs/plans/2026-10-21-highlights-flagger.md`. Wherever this plan says `python -m pytest ...`, run `nice -n 19 .venv/bin/python -m pytest ...`, one process at a time. Tests must not touch real videos, the installed wrappers or `/usr/bin/sudo`.
+- Test environment: everything runs on the Pi itself with the project venv (`.venv`, Python 3.13) and its `php-cli`, no Docker; check it as in "Task 0: Check the Pi environment" of `docs/plans/done/2026-10-21-highlights-flagger.md`. Wherever this plan says `python -m pytest ...`, run `nice -n 19 .venv/bin/python -m pytest ...`, one process at a time. Tests must not touch real videos, the installed wrappers or `/usr/bin/sudo`.
 - Commits are Julius's: never run `git commit` or `git push`. The work happens on the production Pi, so: never run production jobs, never edit the crontab or sudoers, never install or change anything as root (Julius installs the wrapper and the sudoers line himself), run heavy commands with `nice -n 19`, one heavy process at a time (2 GB RAM). A "Commit" step means: stage the listed paths (`git add <paths>`, never `git add .`), write the message to `<scratchpad>/commit-<n>.txt`, hand Julius `git commit -F <that file>`. The message ends with the `Co-Authored-By` line of the model that did the work.
 
 ## Review Focus

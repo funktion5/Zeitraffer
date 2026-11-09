@@ -1,7 +1,7 @@
 # Highlights Flagger Implementation Plan
 
 Status: done. The flagger was built by 2026-10-22 and runs nightly from cron (since 2026-10-23; its own
-cron line on the VPS since 2026-10-30). Current behaviour: [flagger.md](../flagger.md). The checkboxes below were not ticked while building; the code and git history are the record.
+cron line on the VPS since 2026-10-30). Current behaviour: [flagger.md](../../flagger.md). The checkboxes below were not ticked while building; the code and git history are the record.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -11,7 +11,7 @@ cron line on the VPS since 2026-10-30). Current behaviour: [flagger.md](../flagg
 
 **Tech Stack:** Python 3.13, numpy, opencv-python-headless, onnxruntime (all already in `requirements.txt`), pytest, ruff.
 
-**Spec:** `docs/superpowers/specs/2026-10-21-highlights-flagger-design.md`. The web side is a separate plan: `docs/plans/2026-10-21-highlights-page.md`.
+**Spec:** `docs/plans/done/2026-10-21-highlights-flagger-design.md`. The web side is a separate plan: `docs/plans/done/2026-10-21-highlights-page.md`.
 
 ## Global Constraints
 

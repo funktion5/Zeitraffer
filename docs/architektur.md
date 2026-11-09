@@ -234,8 +234,7 @@ timelapse/
 │   ├── .env.example
 │   └── pull-videos.sh
 ├── docs/
-│   ├── plans/   (Umsetzungspläne)
-│   ├── superpowers/   (Entwürfe (Specs) neuer Funktionen)
+│   ├── plans/   (offene und zurückgestellte Pläne; fertige Pläne und Entwürfe in plans/done/)
 │   ├── architektur.md
 │   ├── betrieb.md
 │   ├── cli.md

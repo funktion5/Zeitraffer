@@ -148,7 +148,7 @@ Das Skript belegt denselben Lock wie Cron und Weboberfläche und wird nicht von 
 `scripts/timelapse-nightly-staged` startet den automatischen Lauf für alle Kameras und prüft das
 Ergebnis. Cron ruft ihn auf ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Der Name stammt
 aus der Zeit, als er die Bilder vorher kopierte; das Kopierwerkzeug (`stage-frames.py`) ist
-stillgelegt und liegt im [Archiv](../archive/staging/).
+stillgelegt und liegt im [Archiv](../archive/staging).
 
 Ablauf:
 

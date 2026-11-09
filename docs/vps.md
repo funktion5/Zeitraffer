@@ -234,4 +234,4 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
   dem Pi); der Nachtlauf dauerte damit rund 41 Minuten (Lauf vom 29.10., noch mit dem früheren CRF).
   Die Qualität steht seit dem 30.10.2026 auf CRF 28 (`timelapse.crf` in `config/config.json`); an
   einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB).
-  Die Laufzeit des Nachtlaufs mit CRF 28 zeigen die ersten Nächte ([Plan](plans/2026-10-30-video-crf.md)).
+  Die Laufzeit des Nachtlaufs mit CRF 28 zeigen die ersten Nächte ([Plan](plans/done/2026-10-30-video-crf.md)).

@@ -14,7 +14,7 @@
 
 **Tech Stack:** Python 3.11+ (3.13 in CI and on the VPS), pytest, ruff, `ssh` and `rsync` (already used), PHP and bash for the web trio.
 
-**Spec:** `docs/superpowers/specs/2026-10-27-ssh-frames-design.md` (read it first; this plan only adds the decisions it leaves open).
+**Spec:** `docs/plans/done/2026-10-27-ssh-frames-design.md` (read it first; this plan only adds the decisions it leaves open).
 
 ## Global Constraints
 
@@ -252,7 +252,7 @@ Tests: `test_fetch_error_counts_as_failed_and_other_cameras_still_run` (Review F
 
 ### Task 24: nightly wrapper without staging
 
-**Files:** Modify `scripts/timelapse-nightly-staged`, `tests/nightly_staged_test.py`. The wrapper stops calling `stage-frames.py` and `--clean-only`, and stops exporting `TIMELAPSE_CAMERA_ROOT` (the staging folder); it keeps the lock, the per-camera loop, the verification and the report, and writes `cameras.json` through `python3 -m src.camera_list`. Tests: no staging call; the camera list is written; failure of one camera still gives exit 1. Hand check: one full nightly run on the VPS, report read by the user.
+**Files:** Modify `scripts/timelapse-nightly-staged`, `tests/scripts/nightly_staged_test.py`. The wrapper stops calling `stage-frames.py` and `--clean-only`, and stops exporting `TIMELAPSE_CAMERA_ROOT` (the staging folder); it keeps the lock, the per-camera loop, the verification and the report, and writes `cameras.json` through `python3 -m src.camera_list`. Tests: no staging call; the camera list is written; failure of one camera still gives exit 1. Hand check: one full nightly run on the VPS, report read by the user.
 
 **Phase D checkpoint:** a fresh reviewer reads Tasks 20 to 24. Then `wp-security-reviewer` (read-only, Opus) reviews the one place where web input reaches a privileged path: camera-name handling in `timelapse-web-trigger` (no argument or command injection, exit 66 for an unknown name and nothing else), the `sudo` environment in `timelapse-web-worker`, `cameras.json` handling and file modes, and the rule that `www-data` never holds an ssh key or talks to the box. Its findings are fixed before the user pushes Phase D (approved by the user 2026-10-28).
 

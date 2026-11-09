@@ -7,9 +7,8 @@ from pathlib import Path
 
 import pytest
 
-SCRIPT = (
-	Path(__file__).resolve().parent.parent / "scripts" / "copy_zeitraffer_videos_vps2siteground.sh"
-)
+ROOT = Path(__file__).resolve().parent.parent.parent
+SCRIPT = ROOT / "scripts" / "copy_zeitraffer_videos_vps2siteground.sh"
 
 # The FTP login is not in the script: it comes from the environment or from a file that git
 # ignores (siteground.env). The tests set their own values in the environment, point

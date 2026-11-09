@@ -1,7 +1,7 @@
 # Blur Catch-up Before the Nightly Run — Implementation Plan
 
 Status: done. The catch-up has been in cron since 2026-10-23 and runs on the VPS since 2026-10-30
-([vps.md](../vps.md)). The Daily gate is a separate, not started part:
+([vps.md](../../vps.md)). The Daily gate is a separate, not started part:
 [2026-10-23-blur-daily-gate.md](2026-10-23-blur-daily-gate.md). The checkboxes below were not ticked while building; the code and git history are the record.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
@@ -308,7 +308,7 @@ git commit -m "blur: add --catch-up, a round without the time budget"
 **Files:**
 - Modify: crontab (Julius runs the commands; Claude never edits it)
 - Modify: `docs/betrieb.md` (sections "Nächtlicher Produktionslauf" and "Wiederanlauf nach Neustart"), `docs/verpixelung-box.md` (Stand, Cron block), `docs/handbuch.md:35`, `README.md` (Verpixelung summary, "Noch offen")
-- Modify: `docs/plans/2026-10-23-blur-daily-gate.md` (Status line)
+- Modify: `docs/plans/done/2026-10-23-blur-daily-gate.md` (Status line)
 
 **Interfaces:**
 - Consumes: `python3 -m src.privacy.blur_box --all-blur-cameras --catch-up` (Task 2).
@@ -387,13 +387,13 @@ before `<projektpfad>/.venv/bin/python3 -m src.main` inside `-c '...'`.
   `Er läuft jede Nacht vor den Videos und verpixelt die Bilder der letzten zwei Tage; die laufende Verpixelung neuer Bilder ist noch nicht im Dauerbetrieb.`
 - "Noch offen": `- Verpixelung jede Nacht automatisch starten` -> `- Verpixelung neuer Bilder laufend (jede Minute) starten`.
 
-`docs/plans/2026-10-23-blur-daily-gate.md`, after the Status line add:
+`docs/plans/done/2026-10-23-blur-daily-gate.md`, after the Status line add:
 `Part 1 (catch-up) built 2026-10-<dd>, see [2026-10-23-blur-catch-up.md](2026-10-23-blur-catch-up.md); Part 2 (gate) still not started.`
 
 - [ ] **Step 6: Hand over the commit**
 
 ```bash
-git add config/config.json docs/betrieb.md docs/verpixelung-box.md docs/handbuch.md README.md docs/plans/2026-10-23-blur-daily-gate.md docs/plans/2026-10-23-blur-catch-up.md
+git add config/config.json docs/betrieb.md docs/verpixelung-box.md docs/handbuch.md README.md docs/plans/done/2026-10-23-blur-daily-gate.md docs/plans/done/2026-10-23-blur-catch-up.md
 git commit -m "blur: SLSV joins the blur cameras; the catch-up runs before the nightly timelapse run"
 ```
 

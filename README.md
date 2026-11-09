@@ -12,7 +12,7 @@ für beliebige vergangene Tage erstellen, ansehen und herunterladen.
 
 Die Kapitel **Installation** und **Konfiguration** sind für die technische Einrichtung. Alle
 anderen Kapitel beschreiben in einfachen Worten, was das Programm tut; die technischen Einzelheiten
-stehen jeweils in einer eigenen Datei im Ordner [`docs/`](docs/), die am Ende jedes Kapitels
+stehen jeweils in einer eigenen Datei im Ordner [`docs/`](docs), die am Ende jedes Kapitels
 verlinkt ist.
 
 ---
@@ -609,7 +609,7 @@ Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill
 
 Der frühere Betrieb auf dem Raspberry Pi (SSHFS-Mount, Neuinstallation, Absturzprotokoll), der
 Container-Test mit Docker und das frühere Kopieren der Bilder vor dem Lauf sind stillgelegt und
-liegen im Ordner [`archive/`](archive/). Übersicht: [archive/README.md](archive/README.md).
+liegen im Ordner [`archive/`](archive). Übersicht: [archive/README.md](archive/README.md).
 
 ---
 
@@ -666,7 +666,7 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 ## Dokumentation
 
-Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
+Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs):
 
 | Datei | Inhalt |
 |---|---|
@@ -686,4 +686,5 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
 | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md), [youtube/texts](docs/youtube/youtube-texts.md) | Texte für YouTube-Beschreibungen |
 
-Pläne und Entwürfe für neue Funktionen liegen in `docs/plans/` und `docs/superpowers/`.
+Pläne und Entwürfe für neue Funktionen liegen in `docs/plans/` (offen oder zurückgestellt); fertig umgesetzte
+Pläne mit ihren Entwürfen liegen in `docs/plans/done/`.

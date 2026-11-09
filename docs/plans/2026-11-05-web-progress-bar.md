@@ -8,7 +8,7 @@ down for later. The manual Weekly blur comes first.
 
 A manual Daily, Monthly, Yearly (soon Weekly) of a blur camera can take 30 to 60 minutes, because
 its frames are blurred on the Storage Box first
-([blur-backfill plan](2026-11-05-blur-backfill-for-long-videos.md)). The camera page only says
+([blur-backfill plan](done/2026-11-05-blur-backfill-for-long-videos.md)). The camera page only says
 "... läuft. Ein neues Video kann erst danach gestartet werden." A colleague cannot tell whether
 the job is at the start or nearly done.
 

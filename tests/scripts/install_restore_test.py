@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-INSTALL = Path(__file__).resolve().parent.parent / "install.sh"
+INSTALL = Path(__file__).resolve().parent.parent.parent / "install.sh"
 
 pytestmark = pytest.mark.skipif(
 	shutil.which("bash") is None or shutil.which("rsync") is None,

@@ -8,7 +8,7 @@
 
 **Tech Stack:** PHP 8.0-compatible object-oriented WordPress plugin code, WordPress post meta and cron APIs, an offline PHP harness for tests (see "Test method").
 
-**Spec:** `docs/superpowers/specs/2026-11-03-video-status-page-design.md`
+**Spec:** `docs/plans/done/2026-11-03-video-status-page-design.md`
 
 ## Global Constraints
 

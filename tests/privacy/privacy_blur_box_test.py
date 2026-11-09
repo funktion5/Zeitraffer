@@ -867,7 +867,7 @@ def test_state_from_the_old_single_file_is_honoured(setup: Setup) -> None:
 	assert setup.detected() == []
 
 
-# Step 1 of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: blur the frames a job hands over
+# Step 1 of docs/plans/done/2026-11-05-blur-backfill-for-long-videos.md: blur the frames a job hands over
 # (any age, any month), not "the last LISTED_DAYS days". Interface proposed before the code:
 #   blur_box.blur_frames(writer, camera, names, detector_command, settings, state_root, now,
 #                        rules=None) -> BoxRoundSummary

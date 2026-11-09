@@ -2,7 +2,7 @@
 
 Status: done 2026-10-26. The delete feedback was reworked on 2026-10-30: the success message is the
 green line above the player (camera page) or under the heading (highlights) again. Current behaviour:
-[weboberflaeche.md](../weboberflaeche.md). The checkboxes below were not ticked while building; the code and git history are the record.
+[weboberflaeche.md](../../weboberflaeche.md). The checkboxes below were not ticked while building; the code and git history are the record.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

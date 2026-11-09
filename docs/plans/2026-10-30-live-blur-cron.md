@@ -145,5 +145,5 @@ at option B.
 ## Out of scope
 
 - The Daily gate (a Daily is only built from confirmed blurred images): Julius builds it once the
-  live round is active (docs/plans/2026-10-23-blur-daily-gate.md, part 2).
-- A backfill of old images (docs/plans/2026-10-23-blur-catch-up.md).
+  live round is active (docs/plans/done/2026-10-23-blur-daily-gate.md, part 2).
+- A backfill of old images (docs/plans/done/2026-10-23-blur-catch-up.md).

@@ -19,7 +19,7 @@ from src.privacy.anonymize import PrivacyCheckError
 from src.privacy.box_writer import BoxWriter
 from src.storage_filter import acquire_run_lock
 
-# Step 2b of docs/plans/2026-11-05-blur-backfill-for-long-videos.md: what a manual Monthly or Yearly
+# Step 2b of docs/plans/done/2026-11-05-blur-backfill-for-long-videos.md: what a manual Monthly or Yearly
 # with --blur-box does between choosing its frames and building the video:
 #   blur_job.blur_job_frames(camera, images, config, now=None) -> bool
 # True means the video may be built: every frame is confirmed, cut-off ones excepted. When it is

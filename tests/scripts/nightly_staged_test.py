@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-WRAPPER = Path(__file__).resolve().parent.parent / "scripts" / "timelapse-nightly-staged"
+WRAPPER = Path(__file__).resolve().parent.parent.parent / "scripts" / "timelapse-nightly-staged"
 
 pytestmark = pytest.mark.skipif(shutil.which("flock") is None, reason="needs flock(1)")
 

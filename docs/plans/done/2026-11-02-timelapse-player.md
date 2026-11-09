@@ -8,7 +8,7 @@
 
 **Tech Stack:** PHP (WordPress plugins), vanilla JavaScript, modern CSS with native nesting, `node --test`.
 
-**Spec:** `docs/superpowers/specs/2026-11-02-timelapse-player-design.md`
+**Spec:** `docs/plans/done/2026-11-02-timelapse-player-design.md`
 
 ## Global Constraints
 

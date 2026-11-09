@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-BACKUP = Path(__file__).resolve().parent.parent / "backup.sh"
+BACKUP = Path(__file__).resolve().parent.parent.parent / "backup.sh"
 
 pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="needs bash")
 

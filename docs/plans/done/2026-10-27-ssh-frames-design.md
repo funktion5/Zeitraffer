@@ -1,7 +1,7 @@
 # Frames over ssh: dropping the mount (design)
 
 Status: built, finished 2026-10-30. This is the design as written on 2026-10-27, before the work;
-the plan ([2026-10-27-ssh-frames.md](../plans/2026-10-27-ssh-frames.md)) lists the deviations and
+the plan ([2026-10-27-ssh-frames.md](2026-10-27-ssh-frames.md)) lists the deviations and
 [architektur.md](../../architektur.md) describes the result.
 
 ## Intent and why

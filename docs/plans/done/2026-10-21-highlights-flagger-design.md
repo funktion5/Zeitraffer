@@ -2,7 +2,7 @@
 
 Status: built and in use. This is the design as written on 2026-10-21, before the work; where it
 differs from the code, [flagger.md](../../flagger.md) and the code win (the stationary filter, for
-example, came later). Plan: [2026-10-21-highlights-flagger.md](../../plans/2026-10-21-highlights-flagger.md).
+example, came later). Plan: [2026-10-21-highlights-flagger.md](2026-10-21-highlights-flagger.md).
 
 ## Intent
 
