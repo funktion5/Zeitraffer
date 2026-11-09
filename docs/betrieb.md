@@ -11,11 +11,17 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 
 Die installierte Crontab verpixelt täglich um 02:00 Uhr zuerst die noch offenen Bilder der
 letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)) und startet dann den
-Nachtlauf. Danach folgt in derselben Zeile der [Highlights-Flagger](#highlights-flagger):
+Nachtlauf. Danach lädt ein Skript die neuen Videos auf die Website hoch
+([Upload auf die Website](#upload-auf-die-website)), und zuletzt folgt in derselben Zeile der
+[Highlights-Flagger](#highlights-flagger):
 
 ```cron
-0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
+0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
+
+`./install.sh cron_hint` druckt diese Zeile. Der Upload-Schritt braucht die Zugangsdaten in
+`config/siteground.env` (siehe [Upload auf die Website](#upload-auf-die-website)); `./install.sh
+verify` warnt, wenn sie fehlen.
 
 Der Wrapper `scripts/timelapse-nightly-staged` nimmt die Sperre selbst. (Der Name stammt aus der Zeit,
 als er die Bilder vorher herüberkopierte; das tut er nicht mehr.) Er schreibt die Kameraliste der
@@ -27,7 +33,10 @@ Cron-Zeile setzt `medium` (FFmpeg-Standard).
 
 Schlägt das Nachholen der Verpixelung fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`);
 die Fehler stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
-`privacy.blur_cameras` damit aus verpixelten Bildern.
+`privacy.blur_cameras` damit aus verpixelten Bildern. Außerdem baut der Lauf die automatischen
+Videos dieser Kameras nur aus Bildern, die der Box-Job bestätigt hat
+([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); im Code gilt das für das Daily seit
+dem 05.11.2026, für Monthly und Yearly seit dem 09.11.2026.
 
 `flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock,
 wird kein zweiter Produktionslauf gestartet; der Wrapper meldet das und endet mit Status 75.
@@ -48,6 +57,41 @@ Nachtlauf, Flagger, Weboberfläche und Speicherfilter verwenden dieselbe Sperre:
 
 Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die
 Anwendung schreibt ihre eigenen Job-Logs.
+
+### Upload auf die Website
+
+Nach dem Nachtlauf lädt `scripts/copy_zeitraffer_videos_vps2siteground.sh` die fertigen Videos
+per FTP in den Ordner der Website, den das WordPress-Plugin liest
+([wordpress.md](wordpress.md#videos-auf-die-live-seite-bringen-welche-dateien-dürfen-raus)).
+Welche Dateien dabei überhaupt in Frage kommen, bestimmt `scripts/list-deliverable-videos.py`.
+
+```bash
+scripts/copy_zeitraffer_videos_vps2siteground.sh [<Kamera>] [--run]
+```
+
+- Ohne `--run` ist es ein Trockenlauf: Es gibt keine Verbindung, nichts wird gesendet oder gelöscht.
+- Ohne `<Kamera>` ruft sich das Skript einmal je Kamera der Liste selbst auf, jeweils mit eigener
+  Sperre (nur im echten Lauf: `state/siteground-delivery-<Kamera>.lock`), eigener Ausgabe und
+  eigenem Ergebnis. Eine fehlgeschlagene Kamera hält die anderen nicht auf.
+- Eine Datei, die schon mit gleicher Größe auf der Website liegt, wird übersprungen. Alle anderen
+  gehen zuerst unter einem versteckten Namen (`.<Name>.part`) hoch und werden erst danach auf den
+  echten Namen umbenannt; fehlende Ordner legt das Skript an.
+- Aufgeräumt wird je Kamera und Videotyp: Es bleiben die zwei neuesten Videos, das neueste und das
+  vorherige. Das passiert nur, wenn in diesem Ordner weder eine Datei fehlt noch ein Upload oder
+  Umbenennen fehlgeschlagen ist und wenn die Dateiliste der Website lesbar ist und die gerade
+  gesendete Datei enthält. Nur fertige `.mp4`-Namen zählen.
+- Eine leere Liste bricht ab: Es wird nichts gesendet und nichts gelöscht.
+- Rückgabewerte bei einem Aufruf mit `<Kamera>`: `0` alles gut, `1` ein Upload ist fehlgeschlagen
+  oder die Liste ist leer bzw. nicht erstellbar (auch fehlendes `curl` oder `flock`), `2` Aufruf oder
+  Zugangsdaten falsch, `3` für diese Kamera läuft schon ein Lauf. Ohne `<Kamera>` (so ruft Cron es
+  auf) endet das Skript mit `1`, sobald eine Kamera fehlgeschlagen ist, gleich mit welchem dieser
+  Codes; die Ursache steht im Protokoll.
+- Die Zugangsdaten stehen in `config/siteground.env` (nicht versioniert, je Zeile `NAME=Wert` für
+  `SITEGROUND_HOST`, `SITEGROUND_USER`, `SITEGROUND_PASS`). Eine gleichnamige Umgebungsvariable hat
+  Vorrang; `SITEGROUND_CONFIG` nennt eine andere Datei.
+- Die Verbindung ist einfaches FTP (`ftp://`), also nicht verschlüsselt.
+- Das Ergebnis steht je Kamera im Protokoll `logs/siteground-delivery.log` in der Zeile
+  `Ergebnis: hochgeladen=… übersprungen=… fehlgeschlagen=… gelöscht=…`.
 
 ### Highlights-Flagger
 
@@ -83,6 +127,9 @@ crontab -l
 - Zieltag-Frames mit byte-identischem Inhalt vom Vortag werden ausgeschlossen
 - spätere byte-identische Bilder innerhalb des Zieltags werden ebenfalls ausgeschlossen
 - bleibt danach kein Zieltag-Frame übrig, wird die Kamera übersprungen und ein vorhandenes Video bleibt erhalten
+- Kameras aus `privacy.blur_cameras` (automatischer Lauf): nur Bilder, die der Box-Job bestätigt hat
+  ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); ist keines bestätigt, wird die
+  Kamera übersprungen
 - Framerate: `daily_framerate`
 - Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
 
@@ -107,6 +154,9 @@ crontab -l
   `--window-tolerance-minutes` verschiebbar)
 - verwendet alle ausgewählten Intervallbilder
 - filtert byte-identische Bilder innerhalb jedes einzelnen Tages
+- Kameras aus `privacy.blur_cameras` (automatischer Lauf): nur bestätigte Bilder
+  ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)), und zwar vor der Mindestabdeckung:
+  ein unbestätigtes Bild zählt nicht als Tag
 - Mindestabdeckung: `min_coverage_days.monthly` (25 von 30 Tagen), automatisch und historisch;
   darunter wird die Kamera übersprungen. Ein Tag gilt als fehlend, wenn im gewählten Zeitfenster
   kein brauchbares Bild liegt. Fehlende Tage fehlen im Video und werden als Bereiche geloggt.
@@ -121,6 +171,9 @@ crontab -l
 - Zielzeit: 12:00 Uhr bzw. die Mitte des gewählten Fensters
 - bis zu 5 eindeutige Frames pro Tag
 - bei Duplikaten werden weitere Kandidaten nachgezogen
+- Kameras aus `privacy.blur_cameras` (automatischer Lauf): nur bestätigte Bilder
+  ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)), und zwar vor der Mindestabdeckung
+  und vor der Frame-Auswahl: ein unbestätigtes Bild zählt nicht als Tag und wird nie gewählt
 - Mindestabdeckung: `min_coverage_days.yearly` (300 Tage, auch im Schaltjahr), automatisch und
   historisch; darunter wird die Kamera übersprungen, bevor die Frame-Auswahl läuft. Fehlende
   Tage fehlen im Video und werden als Bereiche geloggt.
@@ -323,11 +376,15 @@ logs/
 ├── yearly/YYYY-MM-DD.log
 ├── filter/YYYY-MM-DD.log
 ├── privacy/YYYY-MM-DD.log
-└── flagger/YYYY-MM-DD.log
+├── flagger/YYYY-MM-DD.log
+├── nightly/<Lauf>/report.txt
+└── siteground-delivery.log
 ```
 
 `filter` schreibt der [Speicherfilter](werkzeuge.md), `privacy` die
 [Box-Verpixelung](verpixelung-box.md) und `flagger` der [Highlights-Flagger](flagger.md).
+`nightly` enthält je Nachtlauf den Bericht des Wrappers (neben `report.txt` auch `main.out`), und
+`siteground-delivery.log` das Protokoll des [Uploads auf die Website](#upload-auf-die-website).
 
 Bei einer gezielten Job-Auswahl wird vor dem ersten ausgeführten Job direkt dessen Log aktiviert. Bei mehreren Jobs wird vor jedem weiteren Job auf das passende Log gewechselt.
 

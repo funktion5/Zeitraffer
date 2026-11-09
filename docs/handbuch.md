@@ -33,7 +33,8 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 |---|---|---|
 | Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Highlights-Flagger | direkt nach dem Nachtlauf, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
+| Upload der Videos auf die Website | direkt nach dem Nachtlauf, vor dem Flagger, in derselben Cron-Zeile ([betrieb.md](betrieb.md#upload-auf-die-website)) | Cron |
+| Highlights-Flagger | direkt nach dem Upload, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
@@ -120,7 +121,7 @@ Box (Schritt 5) und Cron (Schritt 6) richtet man nach [vps.md](vps.md) von Hand 
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([README](../README.md#konfiguration)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
 | 5 | Zugriff auf die Storage Box einrichten ([README](../README.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf und Flagger (`./install.sh cron_hint` druckt sie) |
+| 6 | Cron eintragen ([README](../README.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf, Upload und Flagger (`./install.sh cron_hint` druckt sie, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
 | 7 | Apache, Anmeldung, Wrapper, Dateirechte ([README](../README.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
 | 8 | Tests | `.venv/bin/python3 -m pytest` grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |
@@ -745,6 +746,29 @@ Ziffern, `.`, `_` und `-` (am Anfang ein Buchstabe oder eine Ziffer, damit der W
 ssh-Option gelesen wird), optional als `benutzer@host`. Den Eintrag in `~/.ssh/config` danach
 benennen oder den Alias in der Cron-Zeile korrigieren.
 
+Die Meldungen `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` und
+`[<Kamera>] Blur gate: no confirmed image - skipping camera.` kommen aus der Sperre der
+automatischen Videos von Blur-Kameras.
+Das erste heißt: N Bilder hat der Box-Job nicht bestätigt, das Video entsteht aus den übrigen; das
+zweite: gar kein Bild war bestätigt, die Kamera wird übersprungen und ihr bisheriges Video bleibt.
+Ursachen, Prüfung und Lösung:
+[verpixelung-box.md](verpixelung-box.md#fehlersuche).
+
+### Upload auf die Website
+
+Das Protokoll steht in `logs/siteground-delivery.log`; je Kamera endet es mit
+`Ergebnis: hochgeladen=… übersprungen=… fehlgeschlagen=… gelöscht=…`
+([betrieb.md](betrieb.md#upload-auf-die-website)).
+
+| Meldung | Ursache | Lösung |
+|---|---|---|
+| `Die Liste der freigegebenen Videos konnte nicht erstellt werden.` | `scripts/list-deliverable-videos.py` ist fehlgeschlagen, z. B. weil `videos/` fehlt | das Skript einzeln ausführen und die Meldung lesen |
+| `Die Liste ist leer: Es wird nichts gesendet und nichts gelöscht.` oder `Die Liste ist leer: Für <Kamera> wird nichts gesendet und nichts gelöscht.` | keine freigegebenen Videos (alle Kameras in `ignored_cameras`, noch keine Videos) bzw. die genannte Kamera ist nicht freigegeben | Liste prüfen: `.venv/bin/python3 scripts/list-deliverable-videos.py` |
+| `SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen ausgefüllt sein.` | `config/siteground.env` fehlt oder ist unvollständig | Datei anlegen, siehe [betrieb.md](betrieb.md#upload-auf-die-website) |
+| `Es läuft bereits ein anderer Lauf.` (Rückgabewert 3) | für diese Kamera läuft schon ein Upload | warten und wiederholen |
+| `Upload fehlgeschlagen: …` oder `Umbenennen fehlgeschlagen: …` | FTP-Verbindung oder Rechte auf der Website | Aufgeräumt wird in diesem Ordner dann nicht (`Aufräumen von … übersprungen`); Verbindung prüfen, die nächste Nacht lädt erneut hoch |
+| `Mindestens eine Kamera ist fehlgeschlagen.` | siehe die Zeilen darüber im Protokoll | je Kamera behandeln |
+
 ### Speicherfilter
 
 `TIMELAPSE_STORAGE_BOX is not set` heißt: Die Storage Box ist nicht angegeben; die Variable setzen
@@ -807,8 +831,8 @@ dasselbe ohnehin.
 statt GNU, `spawn` statt `fork`; Stand 29.10.2026: 897 bestanden, 67 fehlgeschlagen, ohne
 `onnxruntime`). Das ist kein Fehler im Code.
 
-**Lösung:** Maßgeblich sind der VPS und CI (beide Linux). Änderungen mit `rsync --no-perms` auf den
-VPS bringen ([vps.md](vps.md#code-auf-den-vps-bringen-solange-er-nicht-pullen-kann)) und dort
+**Lösung:** Maßgeblich sind der VPS und CI (beide Linux). Änderungen pushen und auf dem VPS mit
+`git pull` holen ([vps.md](vps.md#code-auf-den-vps-bringen)) und dort
 `.venv/bin/python3 -m pytest`, `ruff check .` und `ruff format --check .` ausführen. Fehlschläge,
 die über die bekannten macOS-Fälle hinausgehen, sind echt.
 

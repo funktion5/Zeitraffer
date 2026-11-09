@@ -127,13 +127,13 @@ Der Flagger nimmt dieselbe Sperre wie der nächtliche Lauf, die Web-Jobs und der
 (`state/zeitraffer-run.lock`). Ist sie belegt, schreibt er „Skipped" ins Log und beendet sich.
 So läuft er nie gleichzeitig mit einem Encoding.
 
-Der Flagger läuft jede Nacht direkt nach dem nächtlichen Lauf, am Ende derselben Cron-Zeile, aber
-außerhalb von `flock -c`, damit seine eigene Sperre nicht an der von Cron scheitert. Es gibt keine
-feste Uhrzeit, er startet erst, wenn die Videos fertig sind (Details und die ganze Zeile:
-[Betrieb](betrieb.md#highlights-flagger)). Das Ende der Zeile:
+Der Flagger läuft jede Nacht nach dem nächtlichen Lauf und dem Upload der Videos, am Ende
+derselben Cron-Zeile, aber außerhalb von `flock -c`, damit seine eigene Sperre nicht an der von
+Cron scheitert. Es gibt keine feste Uhrzeit, er startet erst, wenn die Videos fertig sind (Details
+und die ganze Zeile: [Betrieb](betrieb.md#highlights-flagger)). Das Ende der Zeile:
 
 ```cron
-… timelapse-nightly-staged; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
+… timelapse-nightly-staged; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
 
 ## Ausgabe

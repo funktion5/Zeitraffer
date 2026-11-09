@@ -133,7 +133,7 @@ TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list
 
 ### Cron installieren oder prüfen
 
-Der Eintrag aus [Zeitplanung mit Cron](docs/betrieb.md#zeitplanung-mit-cron) werden über
+Der Eintrag aus [Zeitplanung mit Cron](docs/betrieb.md#zeitplanung-mit-cron) wird über
 
 ```bash
 crontab -e
@@ -466,6 +466,10 @@ Aufbewahrt werden die Tagesvideos der letzten 7 Tage und jeweils das neueste Woc
 Jahresvideo; ältere werden automatisch gelöscht. Fehlen einer Kamera zu viele Tage, etwa weil sie
 ausgefallen war, wird ihr Monats- oder Jahresvideo in dieser Nacht übersprungen.
 
+Nach den Videos lädt ein Skript die neuen Videos auf die Website hoch, danach läuft der
+Highlights-Flagger. Alles steht in einer Cron-Zeile; die Schritte laufen nacheinander, und ein
+fehlgeschlagener Schritt hält den nächsten nicht auf.
+
 Eine automatische Wiederholung nach einem Neustart des Servers gibt es nicht; ein abgebrochener Lauf
 lässt sich von Hand wiederholen.
 Jeder Lauf schreibt ein Protokoll, in dem sich Fehler nachlesen lassen.
@@ -536,7 +540,12 @@ erkennen und verpixeln:
   Scheunenviertel und SLSV), damit die Tagesvideos verpixelt sind. Neue Bilder laufend zu
   verpixeln, bevor die Website sie abholt, ist gebaut, läuft aber noch nicht.
 
-Im Zweifel verweigert das Programm lieber ein Video, als ein ungeprüftes Bild zu verwenden.
+Im Zweifel verweigert das Programm lieber ein Video, als ein ungeprüftes Bild zu verwenden: Die
+automatischen Videos von Kameras mit Verpixelung (Tages-, Monats- und Jahresvideo; das Wochenvideo
+setzt die Tagesvideos zusammen) entstehen nur aus Bildern, die der Ablauf auf dem Online-Speicher
+geprüft hat. Ungeprüfte Bilder bleiben draußen, und ohne ein geprüftes Bild entsteht kein Video. Für
+die Bilder bis zu einem Jahr zurück ist das Nachholen erledigt (Stand 09.11.2026); ältere Bilder von
+SLSV sind nicht verpixelt, ein von Hand gestartetes Video verpixelt sie vorher.
 Keine Erkennung findet aber jeden Menschen.
 
 Details: [docs/verpixelung.md](docs/verpixelung.md) (Videos) und
@@ -551,8 +560,10 @@ Ein WordPress-Plugin zeigt die fertigen Videos auf einer WordPress-Website an: �
 die Kameraeinträge mit ihrer Sichtbarkeit und die Videoübersicht im Admin.
 Es wird derzeit auf einem Testsystem auf dem Mac entwickelt.
 
-Die Videos gelangen noch nicht automatisch auf die echte Website; dieser Schritt fehlt noch (siehe
-[Noch offen](#noch-offen)).
+Die fertigen Videos lädt ein Skript auf dem VPS jede Nacht nach dem Nachtlauf per FTP auf die
+Website hoch (`scripts/copy_zeitraffer_videos_vps2siteground.sh`; die Zugangsdaten stehen in der
+nicht versionierten Datei `config/siteground.env`). Pro Kamera und Videotyp bleiben die neuesten
+zwei Dateien liegen, ältere werden dort gelöscht.
 
 Details zu Einrichtung, Entwicklung und Fehlerbehebung: [docs/wordpress.md](docs/wordpress.md).
 
@@ -621,6 +632,10 @@ Fertig und im täglichen Einsatz:
 - Highlights-Flagger jede Nacht nach den Videos, Highlights-Seite mit Großansicht, Download und
   Löschen
 - Protokolle, Aufräumen alter Videos
+- Betrieb auf dem VPS seit dem 30.10.2026: eine Cron-Zeile um 02:00 (Verpixelung nachholen,
+  Nachtlauf, Upload der Videos auf die Website, danach der Flagger); die Läufe vom 7. bis 9.11.2026
+  liefen ohne Fehler
+- Sperre für Kameras mit Verpixelung: Tagesvideos nur aus geprüften Bildern (seit dem 05.11.2026)
 - Erkennung leerer, abgeschnittener und doppelter Bilder
 - Installationsskript `install.sh` für einen frischen Debian- oder Ubuntu-Host
 - Speicherfilter, Yearly-Backfill und Werkzeuge für das NAS-Archiv
@@ -629,10 +644,9 @@ Fertig und im täglichen Einsatz:
 Fertig, aber noch nicht im Dauerbetrieb:
 
 - laufende Verpixelung neuer Bilder auf dem Online-Speicher (siehe [Verpixelung](#verpixelung))
+- dieselbe Sperre für Monats- und Jahresvideos (gebaut am 09.11.2026; die erste Nacht damit steht
+  noch aus)
 - WordPress-Plugin (auf dem Testsystem)
-- Betrieb auf dem VPS seit dem 30.10.2026: Cron läuft (02:00 Verpixelung nachholen, Nachtlauf,
-  danach der Flagger in derselben Zeile); alle Job-Arten und ein voller Nachtlauf wurden vorher von Hand geprüft, die
-  ersten Nächte werden noch gelesen
 - Bilder verschiedener Größen in einem Video (Kamerawechsel) werden mit schwarzen Balken
   eingepasst statt gestaucht; gilt ab der ersten Nacht auf dem VPS
 
@@ -640,12 +654,10 @@ Fertig, aber noch nicht im Dauerbetrieb:
 
 ## Noch offen
 
-- die fertigen Videos automatisch auf die echte Website bringen
 - Verpixelung neuer Bilder laufend starten; es gibt nur einen Entwurf (jede Minute tagsüber)
   ([docs/plans/2026-10-30-live-blur-cron.md](docs/plans/2026-10-30-live-blur-cron.md)), nichts ist entschieden
-- VPS: HTTPS (Zertifikat per DNS-Prüfung bei Hetzner), Zugang der Kollegen zur Weboberfläche des
-  VPS, ein Deploy-Schlüssel, damit der VPS den Code selbst holen kann; Liste in
-  [docs/vps.md](docs/vps.md)
+- VPS: HTTPS (Zertifikat per DNS-Prüfung bei Hetzner) und der Zugang der Kollegen zur
+  Weboberfläche des VPS; Liste in [docs/vps.md](docs/vps.md)
 
 ---
 

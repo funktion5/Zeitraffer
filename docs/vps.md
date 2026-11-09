@@ -8,10 +8,11 @@ der Ordner `DEST` aus `backup.env` (Standard `~/timelapse-backup`). Er sollte ni
 `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die unverschlüsselten
 Videos hochgeladen.
 
-**Stand 30.10.2026:** Der Umzug ist abgeschlossen. Die Crontab des Pi ist leer, die Crontab des VPS
-enthält die Zeile aus `./install.sh cron_hint` (02:00: Verpixelung nachholen, Nachtlauf, danach der
-Flagger). Die erste Nacht auf dem VPS war die vom 30. auf den 31.10.; die ersten Nächte
-werden gelesen (Bericht des Nachtlaufs, Zusammenfassungen, Verpixelungs- und Flagger-Protokoll).
+**Stand 09.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
+des Pi ist leer, die Crontab des VPS enthält eine Zeile (02:00: Verpixelung nachholen, Nachtlauf,
+Upload der Videos auf die Website, danach der Flagger); es ist dieselbe Zeile, die
+`./install.sh cron_hint` druckt ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Die
+Läufe vom 7. bis 9.11.2026 gingen mit allen 17 Kameras ohne Fehler durch.
 
 Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Jobs lesen die Bilder per ssh von der
 Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-staged`; der frühere
@@ -146,24 +147,37 @@ durch und dauerte rund 41 Minuten (Preset `medium`, zwei Kerne).
 
 Einen Tag wählen, zu dem der Pi schon ein Video hat, und beide vergleichen. Historische Läufe mit
 `--target-date` landen getrennt von den automatischen Videos (siehe [betrieb.md](betrieb.md)).
-Erst wenn das passt: Pi-Cron entfernen, dann die Zeilen aus `./install.sh cron_hint` in
-`crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts laufen.
+Erst wenn das passt: Pi-Cron entfernen, die Zugangsdaten für den Upload in `config/siteground.env`
+anlegen und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
+ohne `--run`, siehe [betrieb.md](betrieb.md#upload-auf-die-website)), dann die Zeile aus
+`./install.sh cron_hint` in `crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts
+laufen.
 
-## Code auf den VPS bringen (solange er nicht pullen kann)
+## Code auf den VPS bringen
 
-Das Repository ist privat und der VPS hat keinen Deploy-Schlüssel, ein `git pull` geht also noch
-nicht. Bis das gelöst ist, kopiert man geänderte Dateien vom Mac aus, im Projektordner dort:
+Das Repository ist öffentlich, der VPS holt den Code mit `git pull` über HTTPS vom Zweig `main`
+(ohne Deploy-Schlüssel). Auf dem Mac speichern und pushen, dann auf dem VPS:
 
 ```bash
-git diff --name-only --diff-filter=d <stand> | rsync -avn --no-perms --files-from=- ./ <vps>:timelapse/
+cd ~/timelapse && git pull
 ```
 
-`<stand>` ist der Commit, dessen Dateien schon auf dem VPS liegen. Erst die Probe mit `-n`, dann
-dieselbe Zeile ohne `n`. Die Option `--no-perms` ist wichtig: Ohne sie setzt rsync die Rechte der
-Mac-Ordner auf die Ordner des VPS und macht `./install.sh permissions` rückgängig, `www-data` könnte
-dann `src/` lesen. Neue Ordner entstehen mit den Standardrechten des VPS; danach einmal
-`./install.sh permissions`. Wurden Dateien verschoben, die Verschiebung zuerst auf dem VPS mit `mv`
-nachvollziehen, sonst bleiben veraltete Kopien liegen.
+Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
+
+```bash
+.venv/bin/python3 -m pytest -q && .venv/bin/python3 -m ruff check . && .venv/bin/python3 -m ruff format --check .
+```
+
+- **Läuft gerade ein Job?** Prüfen mit `ps -eo pid,etime,cmd | grep "[s]rc.main"`. Dann vorher
+  `git fetch && git diff --stat HEAD origin/main` ansehen: Änderungen nur in Dokumenten, Tests und
+  Plänen sind unkritisch. Betrifft der Unterschied `src/`, `scripts/` oder `config/`, erst nach dem
+  Job pullen, denn der laufende Job liest diese Dateien.
+- **Neue Ordner:** danach einmal `./install.sh permissions`.
+- **Geänderte Dateien in `scripts/web/`:** `./install.sh web_bridge` kopiert sie neu nach
+  `/usr/local` (die Web-Wrapper laufen als root-eigene Kopien).
+- `./install.sh` nur starten, wenn kein Job läuft.
+- Wurden Dateien verschoben oder gelöscht, entfernt `git pull` sie auch auf dem VPS; liegen bleiben
+  nur ignorierte Dateien (`temp/`, `logs/`, `state/`, `videos/`).
 
 ## Bekannte Lücken (nach dem Umzug klären)
 
@@ -172,9 +186,15 @@ nachvollziehen, sonst bleiben veraltete Kopien liegen.
 - **Port 80:** Bei `WEB_PORT` ungleich 80 lauscht Apache weiter auf 80 (Debian-Standard in
   `ports.conf`) und zeigt dort die Debian-Standardseite. Auf dem VPS sperrt das die Hetzner-Firewall.
   Auf einem Host ohne Firewall `Listen 80` in `/etc/apache2/ports.conf` auskommentieren.
-- **Flagger und laufende Verpixelung:** Der Flagger steht am Ende der 02:00-Zeile
-  (`./install.sh cron_hint`) und startet damit erst nach dem Nachtlauf, ohne feste Uhrzeit. Die
-  laufende Verpixelung neuer Bilder ist nicht in Cron (Entwurf: [Plan](plans/2026-10-30-live-blur-cron.md)).
+- **Flagger und laufende Verpixelung:** Der Flagger steht am Ende der 02:00-Zeile und startet damit
+  erst nach dem Nachtlauf und dem Upload, ohne feste Uhrzeit. Die laufende Verpixelung neuer Bilder
+  ist nicht in Cron (Entwurf: [Plan](plans/2026-10-30-live-blur-cron.md)).
+- **Zugangsdaten für den Upload:** `install.sh` legt `config/siteground.env` nicht an (die Datei
+  ist nicht im Repository). Auf einem frisch eingerichteten Host muss sie von Hand entstehen
+  ([Upload auf die Website](betrieb.md#upload-auf-die-website)); `./install.sh verify` warnt, wenn
+  sie oder einer ihrer drei Werte fehlt.
+- **Upload ohne Verschlüsselung:** Das Upload-Skript nutzt einfaches FTP (`ftp://`). Die Zugangsdaten
+  stehen in `config/siteground.env`, nicht im Repository.
 - **Weboberfläche für das Team:** Die Oberfläche des Pi zeigt seit dem Umzug keine neuen Videos
   mehr. Der Zugang zur Oberfläche des VPS (HTTP auf `WEB_PORT`, HTTPS steht aus) ist für die
   Kolleginnen und Kollegen noch zu klären.

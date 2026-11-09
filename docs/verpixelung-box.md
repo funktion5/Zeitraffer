@@ -294,12 +294,12 @@ der nächsten Runde erneut versucht.
 Ein automatisches Tages-, Monats- oder Jahresvideo einer Blur-Kamera (`privacy.blur_cameras`) wird
 nur aus Bildern gebaut, die dieser Job bestätigt hat: letzte Zeile in der
 [Statusdatei](#statusdatei) mit `blurred`, `clean` oder `night`. Alles andere (`refused`,
-`replacing`, kein Eintrag) bleibt draußen, weil es noch eine Person zeigen kann. Beim Tagesvideo
-gilt das seit dem 04.11.2026, beim Monats- und Jahresvideo seit dem 09.11.2026
-(`src/privacy/blur_gate.py`).
+`replacing`, kein Eintrag) bleibt draußen, weil es noch eine Person zeigen kann. Im Code gilt das
+beim Tagesvideo seit dem 05.11.2026, beim Monats- und Jahresvideo seit dem 09.11.2026
+(`src/privacy/blur_gate.py`); auf dem VPS wirkt es ab dem jeweiligen `git pull`.
 
 - Das Video entsteht trotzdem, aus den bestätigten Bildern. Im Log steht je Kamera eine Warnung:
-  `[Kamera] Blur gate: left out N of M unconfirmed images: ...` (höchstens 10 Namen).
+  `[<Kamera>] Blur gate: left out N of M unconfirmed images: ...` (höchstens 10 Namen).
 - Ist kein einziges Bild bestätigt (das Nachholen ist ausgefallen, die Kamera hat keine Statusdatei),
   wird die Kamera übersprungen (`skipped`, kein Fehler); das bisherige Video bleibt.
 - Beim Monats- und Jahresvideo kommt die Sperre **vor** der Mindestabdeckung (Monthly 25 von 30
@@ -451,7 +451,10 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | `Blur not finished: another blur run holds the lock - skipping camera: …` | Das nächtliche Nachholen oder ein anderer Auftrag verpixelt gerade | **kein Video**; später noch einmal starten |
 | `Blur not finished: N of M not blurred yet: …` | Bilder des von Hand gestarteten Videos sind nicht bestätigt (Fehler, unvollständiger Upload, abgelehnt) | **kein Video**; Auftrag noch einmal starten, er macht beim Rest weiter; die Ursache steht im Log davor |
 | `… was blurred before, recorded and not blurred again` | Schutz vor doppelter Sicherung: das Bild war schon verpixelt | nichts |
-| `Refused, stays unblurred: …` | Bild zu alt oder Namensformat unbekannt | **Bild bleibt unverpixelt**; bei Bedarf von Hand bearbeiten |
+| `Refused, stays unblurred: …` | Bild zu alt (die nächtliche Runde nimmt nur die letzten 48 Stunden) oder Namensformat unbekannt | **Bild bleibt unverpixelt**, bis ein von Hand gestartetes Video, das dieses Bild verwendet, es nachholt (dieser Lauf hebt die Altersgrenze an) |
+| `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Der Box-Job hat diese Bilder nicht bestätigt (`refused`, noch nicht bearbeitet, abgeschnittenes JPEG) | Das automatische Video entsteht aus den übrigen Bildern. Status ansehen: `grep -h '"status": "refused"' state/privacy/box/<Kamera>/*.jsonl`. Ein von Hand gestartetes Daily des Tages holt `refused`-Bilder nach; abgeschnittene Bilder bleiben dauerhaft draußen |
+| `[<Kamera>] Blur gate: no confirmed image - skipping camera.` | Kein einziges Bild war bestätigt (Nachholen ausgefallen, keine Statusdatei) | Die Kamera zählt als `skipped`, das bisherige Video bleibt; Protokoll des Nachholens in `logs/privacy/` prüfen |
+| `Monthly coverage too low` oder `Yearly coverage too low` direkt nach einer `Blur gate`-Zeile | Durch die Sperre fehlen so viele Tage, dass die Mindestabdeckung unterschritten ist | Kamera wird übersprungen; fehlende Bilder bestätigen lassen (Nachholen prüfen, von Hand gestartetes Monthly) |
 | `Deferred …: … lies in the future` | Uhrzeit im Dateinamen mehr als 2 h voraus | Kamerauhr prüfen; wird jede Runde neu versucht |
 | `Deferred …: Limit of 300 backups per run reached` | sehr großer Rückstand | nichts; die nächste Runde macht weiter |
 | `Not processed, retrying next round: …` | Fehler bei diesem Bild (Detektor, SSH, Prüfsumme) | Meldung dahinter lesen; wird jede Runde neu versucht |

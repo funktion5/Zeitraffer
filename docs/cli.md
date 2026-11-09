@@ -57,6 +57,18 @@ Nur Yearly für alle verfügbaren Kameras:
 python3 -m src.main --jobs yearly
 ```
 
+Mit `--cameras` lässt sich ein solcher Lauf auf bestimmte Kameras beschränken, zum Beispiel um die
+automatischen Videos einer Kamera neu zu bauen:
+
+```bash
+python3 -m src.main --jobs monthly yearly --cameras SLSV
+```
+
+Das Ergebnis ersetzt das automatische Video dieser Kameras (Ausgabe unter `videos/<camera>/<job>/`,
+Retention wie beim Nachtlauf). Es ist aber kein Produktionslauf: Der Marker `state/run-in-progress`
+wird nicht angelegt. Kameras aus `privacy.blur_cameras` bauen ihre Videos wie in der Nacht nur aus
+bestätigten Bildern ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
+
 ## Beliebige Job-Kombination
 
 ```bash
@@ -239,7 +251,8 @@ python3 -m src.main \
 	--cameras Scheunenviertel Nordufer_wide
 ```
 
-`--cameras` ist gemeinsam mit `--date` oder `--target-date` gültig. Historische Daily-,
+`--cameras` ist gemeinsam mit `--date` oder `--jobs` gültig (mit `--jobs` ohne `--target-date`
+betrifft es einen automatischen Lauf, siehe oben). Historische Daily-,
 Monthly- und Yearly-Läufe können eine oder mehrere Kameras verarbeiten. Ohne `--cameras`
 verarbeiten sie alle erkannten und nicht global ignorierten Kameras. Ein historisches Weekly
 benötigt genau eine Kamera.
@@ -257,7 +270,7 @@ Nicht gültig sind unter anderem:
 --target-date ohne --jobs
 historisches Weekly ohne genau eine Kamera
 historisches Weekly gemeinsam mit einem weiteren Job
---cameras ohne --date oder --target-date
+--cameras ohne --date oder --jobs
 --daylight-buffer-minutes mit monthly oder yearly
 --window-time / --window-tolerance-minutes ohne --target-date
 --window-time / --window-tolerance-minutes mit daily oder weekly
@@ -269,7 +282,9 @@ historisches Weekly gemeinsam mit einem weiteren Job
 Ein historischer Lauf (`--date` oder `--jobs daily|weekly|monthly|yearly --target-date`) einer
 Kamera aus `privacy.blur_cameras` verpixelt die Bilder seines Videos zuerst **auf der Storage Box**
 und baut das Video danach aus den verpixelten Bildern. Es gibt keinen Schalter und keine Ausnahme;
-jedes Zeitfenster ist erfasst. Automatische Läufe verpixeln nie.
+jedes Zeitfenster ist erfasst. Automatische Läufe verpixeln nie; sie bauen ihre Videos nur aus
+Bildern, die der Box-Job bestätigt hat
+([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
 
 ```bash
 python3 -m src.main --jobs monthly --target-date 2026-10-05 --cameras SLSV

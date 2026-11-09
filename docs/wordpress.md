@@ -350,15 +350,14 @@ Sie laufen nicht in der GitHub-Action, die nur die Python-Pipeline und die PHP-W
 
 ## Wichtig für den Live-Betrieb
 
-Diese Anleitung beschreibt nur die lokale Entwicklungsumgebung. Auf der Live-Seite werden Plugin und Videos nicht von Docker bereitgestellt. Das Plugin erwartet die Videos unter `wp-content/uploads/zeitraffer/` in genau der Ordnerstruktur oben. Deployment auf die Live-Seite oder den Pi gehört nicht zu diesem Ablauf und passiert nie automatisch.
+Diese Anleitung beschreibt nur die lokale Entwicklungsumgebung. Auf der Live-Seite werden Plugin und Videos nicht von Docker bereitgestellt. Das Plugin erwartet die Videos unter `wp-content/uploads/zeitraffer/` in genau der Ordnerstruktur oben. Das Plugin selbst auf die Live-Seite zu bringen gehört nicht zu diesem Ablauf und passiert nie automatisch. Die fertigen Videos dagegen lädt der VPS jede Nacht hoch, siehe den nächsten Abschnitt.
 
 ## Videos auf die Live-Seite bringen: welche Dateien dürfen raus
 
-Der Schritt, der die fertigen Videos vom VPS auf die Live-Seite bringt, ist noch nicht gebaut (README, „Noch offen“). Damit er nicht mehr überträgt als nötig, gibt es auf dem VPS eine Liste der erlaubten Dateien. Sie wird nur gelesen und schreibt nichts:
+Die fertigen Videos bringt jede Nacht `scripts/copy_zeitraffer_videos_vps2siteground.sh` per FTP vom VPS auf die Live-Seite (Aufruf, Ablauf und Zugangsdaten: [Upload auf die Website](betrieb.md#upload-auf-die-website)). Damit es nicht mehr überträgt als nötig, bestimmt eine Liste der erlaubten Dateien, was überhaupt in Frage kommt; das Skript ruft sie selbst auf. Die Liste wird nur gelesen und schreibt nichts, man kann sie auch einzeln ansehen:
 
 ```bash
 .venv/bin/python3 scripts/list-deliverable-videos.py > deliverable.txt
-rsync -a --files-from=deliverable.txt videos/ <Ziel>
 ```
 
 **Was auf der Liste steht**
@@ -370,10 +369,10 @@ rsync -a --files-from=deliverable.txt videos/ <Ziel>
 
 **Neue Kamera.** Den Namen in `ignored_cameras` (`config/config.json`) eintragen, wenn die Kamera eingerichtet wird, vor dem ersten Lauf um 02:00, sonst baut die Nacht schon ein Video. Erst wenn die Kamera live gehen darf, den Namen entfernen. Der Entwurf des Kameraeintrags im WordPress-Plugin ist nur die zweite Sicherung. Wird eine Kamera wegen ihres Inhalts zurückgezogen (Datenschutz, nicht verpixelt), reicht der Entwurf nicht: Die Dateien auf der Live-Seite müssen gelöscht werden.
 
-**Regeln für den Übertragungsjob.** Der Job ist nicht Teil dieses Repositorys, und die Liste schützt nur, wenn er sie benutzt.
+**Was der Upload daraus macht.** Das Skript liegt im Repository und überträgt nur Einträge der Liste; ein Eintrag, der kein sicherer Pfad der Form `<Kamera>/<Zeitraum>/<Name>.mp4` ist, wird abgelehnt.
 
-1. Eine neue Datei zuerst unter einem versteckten Temporärnamen im selben Ordner hochladen (`rsync` macht das ohne `--inplace` von selbst).
-2. Die Größe mit der Quelle vergleichen.
-3. Erst dann auf den endgültigen Namen umbenennen.
-4. Erst danach, je Kamera und Zeitraum, das neueste und das vorherige Video behalten und ältere löschen. Das vorherige ist die Sicherung und deckt eine zwischengespeicherte Seite ab, die noch den alten Dateinamen enthält.
-5. Bei jedem Fehler, bei einer leeren Liste und wenn nichts Neues da ist, wird nichts gelöscht. Nie `rsync --delete` verwenden.
+1. Eine Datei, die mit gleicher Größe schon auf der Live-Seite liegt, wird übersprungen.
+2. Eine neue Datei geht zuerst unter einem versteckten Temporärnamen (`.<Name>.part`) im selben Ordner hoch. Die Größe wird danach nicht noch einmal verglichen; ein fehlgeschlagener Upload oder Umbenennungsschritt zählt als Fehler.
+3. Erst dann wird auf den endgültigen Namen umbenannt.
+4. Danach bleiben je Kamera und Zeitraum das neueste und das vorherige Video, ältere werden gelöscht. Das vorherige ist die Sicherung und deckt eine zwischengespeicherte Seite ab, die noch den alten Dateinamen enthält.
+5. Bei einem Fehler in einem Ordner, bei einer leeren Liste und wenn die Dateiliste der Live-Seite nicht lesbar ist oder die gerade gesendete Datei nicht enthält, wird dort nichts gelöscht.

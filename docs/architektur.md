@@ -20,6 +20,8 @@ Verantwortlich für:
 - ausgewählte automatische Jobs koordinieren
 - feste Workflow-Reihenfolge beibehalten
 - optionales `target_date` an automatische Jobs weiterreichen
+- `--cameras` mit `--jobs` (ohne `--target-date`): automatische Jobs nur für die gewählten Kameras;
+  das ist kein Produktionslauf und legt den Statusmarker nicht an
 - Framerates aus der Config an die Jobs weiterreichen
 - den persistenten Statusmarker des vollständigen Produktionslaufs verwalten
 
@@ -35,6 +37,8 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - entfernt Zieltag-Frames, deren Inhalt bereits am Vortag vorhanden war
 - erstellt Daily-Videos
 - hält ein exaktes rollierendes 7-Tage-Fenster relativ zum verarbeiteten Zieldatum
+- Blur-Kameras: ein manueller Lauf verpixelt seine Bilder zuerst auf der Box
+  (`privacy/blur_job.py`), ein automatischer baut nur aus bestätigten Bildern (`privacy/blur_gate.py`)
 
 `weekly.py`
 - erstellt automatische Weeklys aus vorhandenen Daily-Videos
@@ -43,6 +47,8 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - füllt fehlende automatische Dailys nicht mit älteren Videos auf
 - verlangt für historische Weeklys vollständige Bildabdeckung
 - verwendet für automatische Weeklys FFmpeg-Concat ohne Re-Encoding
+- hat keine eigene Sperre für Blur-Kameras: ein automatisches Weekly erbt sie von den Dailys, ein
+  manuelles verpixelt seine Bilder zuerst auf der Box
 
 `monthly.py`
 - verarbeitet ein rollierendes 30-Tage-Fenster
@@ -50,13 +56,18 @@ Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
 - verwendet Originalbilder
 - berücksichtigt alle ausgewählten Bilder im täglichen Zielzeitfenster aus `interval_window`
   (Standard 12:00 Uhr ±90 Minuten; historisch per CLI überschreibbar, auch `sunset`)
+- Blur-Kameras: manuell zuerst verpixeln (vor der Abdeckungsprüfung), automatisch nur bestätigte
+  Bilder (`privacy/blur_gate.py`, ebenfalls vor der Abdeckungsprüfung)
 
 `yearly.py`
 - verarbeitet ein Kalenderjahr bis zum Enddatum (365 oder 366 Tage, je nachdem ob ein
   29. Februar im Zeitraum liegt)
 - Fenster endet standardmäßig gestern oder am expliziten `target_date`
 - verwendet Originalbilder
-- delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py`
+- delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py` (bis zu fünf eindeutige,
+  vollständige Bilder pro Tag, am nächsten an der Zielzeit)
+- Blur-Kameras: automatisch nur bestätigte Bilder (`privacy/blur_gate.py`), vor Abdeckungsprüfung und
+  Auswahl; manuell werden die Bilder verpixelt, die die Auswahl liefert
 
 ### `src/images.py`
 
@@ -161,6 +172,13 @@ Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dai
   Mount gibt es nicht mehr)
 - `box_writer.py`: einzige Stelle, die auf die Box schreibt (Sicherung des Originals, Upload,
   geprüfter Tausch)
+- `blur_job.py`: Verpixelung der Bilder eines von Hand gestarteten Videos vor dem Videobau
+  (`blur_job_frames`); nutzt `blur_box` und `box_writer` und passt deren Altersgrenze und Anzahl der
+  Sicherungen an die Bilder des Videos an
+- `blur_gate.py`: die Sperre der automatischen Videos von Blur-Kameras (Daily, Monthly, Yearly): nur
+  Bilder, die der Box-Job bestätigt hat (`blurred`, `clean`, `night`), liest den Status auf der
+  Seite des Monats jedes Bildes und schreibt nichts
+  ([verpixelung-box.md](verpixelung-box.md#sperre-in-automatischen-videos))
 
 ### `src/flagger/`
 
@@ -226,6 +244,7 @@ timelapse/
 │   ├── nas.md
 │   ├── verpixelung-box.md
 │   ├── verpixelung.md
+│   ├── vps.md
 │   ├── weboberflaeche.md
 │   ├── werkzeuge.md
 │   ├── wordpress.md
@@ -246,6 +265,8 @@ timelapse/
 │   │   ├── timelapse-web-status.sh
 │   │   ├── timelapse-web-trigger
 │   │   └── timelapse-web-worker
+│   ├── copy_zeitraffer_videos_vps2siteground.sh   (Upload der Videos auf die Website)
+│   ├── list-deliverable-videos.py   (Liste der Videos, die hochgeladen werden dürfen)
 │   ├── storage-filter-all
 │   ├── timelapse-nightly-staged
 │   └── yearly-backfill.py
@@ -267,6 +288,8 @@ timelapse/
 │   │   ├── __init__.py
 │   │   ├── anonymize.py
 │   │   ├── blur_box.py
+│   │   ├── blur_gate.py
+│   │   ├── blur_job.py
 │   │   ├── box_writer.py
 │   │   └── detect.py
 │   ├── camera_list.py
@@ -336,6 +359,7 @@ Was in welcher Datei unter `docs/` steht, listet das README unter
 `install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
 Ordner); `backup.sh` holt dafür einmalig, was nicht im Git liegt. Ablauf: [vps.md](vps.md).
 `scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
+Der Upload der fertigen Videos auf die Website steht in [betrieb.md](betrieb.md#upload-auf-die-website).
 Stillgelegtes (Raspberry Pi, Container-Test, Staging) liegt in [`archive/`](../archive/README.md).
 
 ## Sicherheit und Datenintegrität
@@ -346,7 +370,8 @@ Grundregeln des Projekts:
   vorher das Original).
 - Frames nur lokal unter `temp/` vorbereiten.
 - Unbekannte Dateinamensformate niemals erraten.
-- Verpixelung schlägt im Zweifel fehl: lieber kein Video als ein ungeprüftes Bild.
+- Verpixelung schlägt im Zweifel fehl: lieber kein Video als ein ungeprüftes Bild. Automatische
+  Videos von Blur-Kameras entstehen nur aus Bildern, die der Box-Job bestätigt hat.
 - Bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen.
 - Daily-Retention erst nach erfolgreicher Videoerstellung anwenden.
 - Fehler einer Kamera dürfen spätere Kameras nicht unnötig blockieren.
