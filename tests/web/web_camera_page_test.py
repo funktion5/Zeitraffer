@@ -364,6 +364,39 @@ def test_rebuild_with_valid_jobs_starts_the_job_and_redirects(tmp_path):
 	assert job_id not in out
 
 
+# The rebuild and upload sections are rarely needed, so both sit in one bar that is closed by
+# default (a plain <details>, no script).
+def test_the_rebuild_and_upload_sections_are_collapsed_by_default(tmp_path):
+	make_automatic_videos(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	rebuild = out.index('class="video-rebuild"')
+	publish = out.index('class="video-publish"')
+	closing = out.index("</details>", publish)
+
+	assert '<details class="video-tools">' in out
+	assert 'class="video-tools" open' not in out
+	assert "Automatische Videos neu erstellen und hochladen" in out
+	assert out.index('class="video-tools"') < rebuild < publish < closing
+	assert closing < out.index('class="video-create"')
+
+
+# A refused request comes back as the page with its message inside the bar: it has to be open then,
+# or nobody would see why nothing happened.
+def test_the_tools_are_open_after_a_refused_request(tmp_path):
+	make_automatic_videos(tmp_path)
+
+	for post in (rebuild_post([]), publish_post(confirm=None)):
+		out, _ = render(tmp_path, post=post)
+
+		assert '<details class="video-tools" open>' in out
+
+	out, _ = render(tmp_path)
+
+	assert '<details class="video-tools">' in out
+
+
 # The upload section sits right after the rebuild section; a message about an upload request has to
 # show there, and the other forms must not show it.
 def publish_section(out: str) -> str:

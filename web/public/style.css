@@ -690,6 +690,78 @@ button:disabled {
 }
 
 
+/* The rebuild and upload sections are rarely needed, so they sit in one bar that is closed by
+   default. It looks like the rows of the video lists: a teal arrow that turns when it is open. */
+
+.video-tools {
+	grid-column: 1 / -1;
+
+	margin-top: 0.5rem;
+}
+
+.video-tools > summary {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+
+	padding: 0.75rem 1rem;
+
+	background: var(--color-surface);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-medium);
+
+	color: var(--color-text);
+	font-weight: 600;
+
+	cursor: pointer;
+	user-select: none;
+
+	list-style: none;
+}
+
+.video-tools > summary::-webkit-details-marker {
+	display: none;
+}
+
+.video-tools > summary::before {
+	content: "›";
+
+	display: inline-block;
+
+	color: var(--color-primary);
+
+	font-size: 1.1rem;
+	font-weight: 700;
+
+	transition: transform 0.15s ease;
+}
+
+.video-tools[open] > summary::before {
+	transform: rotate(90deg);
+}
+
+.video-tools > summary:hover {
+	background: var(--color-surface-light);
+}
+
+.video-tools > summary:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+/* Open: the two sections follow the bar with the page's usual gap. */
+.video-tools[open] > summary {
+	margin-bottom: 1.5rem;
+}
+
+.video-tools section {
+	margin-top: 0;
+}
+
+.video-tools section + section {
+	margin-top: 1.5rem;
+}
+
 /* Rebuild and upload sections: the two night-run tools, used one after the other (build, look at
    the video, upload). Numbered steps say so, and every tickbox is a chip that shows what is
    selected. */

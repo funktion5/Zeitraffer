@@ -532,7 +532,11 @@ unset($_SESSION["started_job"]);
 				</div>
 			<?php endforeach; ?>
 		</section>
-	          <section class="video-rebuild">
+	          <?php // Closed by default; open again after a refused request so its message is seen. ?>
+		<details class="video-tools"<?= in_array($submittedAction, ["rebuild-jobs", "publish-camera"], true) ? " open" : "" ?>>
+			<summary>Automatische Videos neu erstellen und hochladen</summary>
+
+		<section class="video-rebuild">
 			<h2>Neu erstellen wie der Nachtlauf</h2>
 
 			<div class="job-instructions">
@@ -598,7 +602,9 @@ unset($_SESSION["started_job"]);
 		</section>
 		<?php endif; ?>
 
-		          <section class="video-create">
+		          </details>
+
+		<section class="video-create">
 	            <h2>Historisches Video erstellen</h2>
 
 	            <div class="job-instructions">
