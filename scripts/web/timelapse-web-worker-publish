@@ -1,0 +1,105 @@
+#!/bin/bash
+
+set -u
+
+# Uploads ONE camera's newest videos through the delivery script (a real run, "--run") and leaves
+# one German result line next to the status file. The name must keep "timelapse-web-worker":
+# job-state.php looks for it in /proc/<pid>/cmdline to tell a running worker from a stale PID.
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
+# The script itself reads the login from config/siteground.env; nothing of it passes through here.
+PUBLISH_SCRIPT="${TIMELAPSE_WEB_PUBLISH_SCRIPT:-${PROJECT_ROOT}/scripts/copy_zeitraffer_videos_vps2siteground.sh}"
+# The file the night upload appends to (docs/betrieb.md).
+DELIVERY_LOG="${PROJECT_ROOT}/logs/siteground-delivery.log"
+
+if [[ $# -ne 2 ]]; then
+	echo "Usage: timelapse-web-worker-publish <job-id> <camera>" >&2
+	exit 64
+fi
+
+JOB_ID="$1"
+CAMERA="$2"
+
+if [[ ! -r "$STATUS_HELPER" ]]; then
+	echo "Status helper is unavailable." >&2
+	exit 69
+fi
+
+# Load the validated atomic status-file operations.
+source "$STATUS_HELPER"
+
+if ! is_valid_job_id "$JOB_ID"; then
+	echo "Invalid job ID." >&2
+	exit 64
+fi
+
+# The trigger checked this already; this worker is its own entry point, and the name becomes an
+# argument of the script that talks to the live site.
+if [[ ! "$CAMERA" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+# Record our own PID so job-status.php can detect a "running" status left
+# behind by a worker that died without ever reaching write_job_status below
+# (e.g. the host rebooted mid-job).
+write_job_pid "$JOB_ID" "$$"
+
+cd "$PROJECT_ROOT" || exit 69
+
+# The script's output is kept in a private temp file (mktemp creates it 600): curl --verbose puts
+# the FTP login into it, so it never goes anywhere but the delivery log below. Without it no result
+# can be read, so the job fails.
+output_file="$(mktemp)" || {
+	write_job_status "$JOB_ID" "failed" || true
+	exit 1
+}
+trap 'rm -f "$output_file"' EXIT
+
+bash "$PUBLISH_SCRIPT" "$CAMERA" --run >"$output_file" 2>&1
+exit_code="$?"
+
+# The same file the night upload writes to. Private from the start, for the same reason: the
+# verbose output holds the login.
+(
+	umask 077
+	mkdir -p "$(dirname "$DELIVERY_LOG")" && cat "$output_file" >>"$DELIVERY_LOG"
+) 2>/dev/null || true
+
+# The only part of the output the browser ever sees: the numbers of the script's result line
+# "Ergebnis: hochgeladen=N übersprungen=N fehlgeschlagen=N gelöscht=N", in German words. The script
+# prints no such line when it aborts early (empty list, missing login, another upload running).
+pattern='Ergebnis: hochgeladen=([0-9]+) übersprungen=([0-9]+) fehlgeschlagen=([0-9]+) gelöscht=([0-9]+)'
+result_text=""
+failed_count=""
+
+while IFS= read -r line; do
+	if [[ "$line" =~ $pattern ]]; then
+		result_text="Hochgeladen: ${BASH_REMATCH[1]}, übersprungen: ${BASH_REMATCH[2]}, fehlgeschlagen: ${BASH_REMATCH[3]}, gelöscht: ${BASH_REMATCH[4]}"
+		failed_count="${BASH_REMATCH[3]}"
+	fi
+done <"$output_file"
+
+# Written before the final status, so it is there when the browser sees the status.
+if [[ -n "$result_text" ]]; then
+	result_file="${STATUS_ROOT}/${JOB_ID}.result"
+	printf '%s\n' "$result_text" >"$result_file" && chmod 644 "$result_file" 2>/dev/null || true
+fi
+
+# Completed only when the script ended cleanly, printed its result and nothing failed: an abort
+# without a result line is a failure, not an upload that happened to have nothing to do.
+if [[ "$exit_code" -eq 0 && -n "$result_text" && "$failed_count" -eq 0 ]]; then
+	write_job_status "$JOB_ID" "completed"
+	exit 0
+fi
+
+write_job_status "$JOB_ID" "failed" || true
+
+if [[ "$exit_code" -ne 0 ]]; then
+	exit "$exit_code"
+fi
+
+exit 1

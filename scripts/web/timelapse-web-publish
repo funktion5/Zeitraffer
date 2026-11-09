@@ -1,0 +1,90 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Starts the upload of ONE camera's newest videos to the website (what the night upload does for
+# every camera). Same checks, lock and status files as timelapse-web-trigger; only the arguments
+# differ. Nothing but the job ID and the camera name comes in: no host, login, folder or file.
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+LOCK_FILE="${TIMELAPSE_WEB_LOCK_FILE:-${PROJECT_ROOT}/state/zeitraffer-run.lock}"
+CAMERA_LIST="${PROJECT_ROOT}/state/web-jobs/cameras.json"
+STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
+WORKER="${TIMELAPSE_WEB_WORKER_PUBLISH:-/usr/local/libexec/timelapse-web-worker-publish}"
+
+if [[ $# -ne 2 ]]; then
+	echo "Usage: timelapse-web-publish <job-id> <camera>" >&2
+	exit 64
+fi
+
+JOB_ID="$1"
+CAMERA="$2"
+
+if [[ ! -r "$STATUS_HELPER" || ! -x "$WORKER" ]]; then
+	echo "Web job support files are unavailable." >&2
+	exit 69
+fi
+
+# Load job-ID validation and atomic status writes.
+source "$STATUS_HELPER"
+
+if ! is_valid_job_id "$JOB_ID"; then
+	echo "Invalid job ID." >&2
+	exit 64
+fi
+
+# Only plain names: the pattern the web page applies and the storage listing uses. The name ends up
+# in a file path and as an argument of the delivery script. This also covers an empty name, "/",
+# "." and "..".
+if [[ ! "$CAMERA" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+# The cameras come from the list file the nightly run writes (python3 -m src.camera_list), not from
+# a folder: the storage is not mounted on this host. The name is handed over as an argument and has
+# to equal an entry as a whole, so it is never spliced into code or taken for a pattern. -I ignores
+# the working directory and the environment. A missing or unusable file lists no camera.
+camera_is_listed() {
+	python3 -I -c '
+import json
+import sys
+
+try:
+	with open(sys.argv[1], encoding="utf-8") as file:
+		cameras = json.load(file)
+except (OSError, ValueError):
+	sys.exit(1)
+
+sys.exit(0 if isinstance(cameras, list) and sys.argv[2] in cameras else 1)
+' "$CAMERA_LIST" "$1"
+}
+
+if ! camera_is_listed "$CAMERA"; then
+	echo "Camera not found: $CAMERA" >&2
+	exit 66
+fi
+
+cd "$PROJECT_ROOT"
+
+# The worker inherits this descriptor, so the lock stays held until the worker ends. No video job
+# runs while an upload does, and the other way round.
+exec 9>"$LOCK_FILE"
+
+if ! flock -n 9; then
+	echo "Another timelapse job is already running." >&2
+	exit 75
+fi
+
+write_job_status "$JOB_ID" "running"
+
+nohup "$WORKER" "$JOB_ID" "$CAMERA" \
+	</dev/null \
+	>/dev/null \
+	2>&1 &
+
+JOB_PID="$!"
+
+echo "Videoauftrag gestartet (PID ${JOB_PID})."

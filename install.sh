@@ -276,11 +276,13 @@ step_web_bridge() {
 	log "Installing the web-to-Python bridge wrappers and the sudoers rules"
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-trigger" /usr/local/sbin/timelapse-web-trigger
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-rebuild" /usr/local/sbin/timelapse-web-rebuild
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-publish" /usr/local/sbin/timelapse-web-publish
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete" /usr/local/sbin/timelapse-web-delete
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete-highlight" /usr/local/sbin/timelapse-web-delete-highlight
 	sudo install -d -o root -g root -m 755 /usr/local/libexec
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker" /usr/local/libexec/timelapse-web-worker
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker-rebuild" /usr/local/libexec/timelapse-web-worker-rebuild
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker-publish" /usr/local/libexec/timelapse-web-worker-publish
 	sudo install -m 644 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-status.sh" /usr/local/libexec/timelapse-web-status.sh
 
 	# Generated for this account, then checked by visudo before it can lock sudo out.
@@ -291,6 +293,7 @@ step_web_bridge() {
 	cat >"$sudoers" <<EOF
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-rebuild *
+www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-publish *
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
 EOF
@@ -389,6 +392,8 @@ step_verify() {
 		&& echo "sudoers: trigger rule active" || warn "sudoers: trigger rule missing for www-data."
 	grep -q "timelapse-web-rebuild" <<<"$sudo_rules" \
 		&& echo "sudoers: rebuild rule active" || warn "sudoers: rebuild rule missing for www-data."
+	grep -q "timelapse-web-publish" <<<"$sudo_rules" \
+		&& echo "sudoers: publish rule active" || warn "sudoers: publish rule missing for www-data."
 	grep -Eq "timelapse-web-delete([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: delete rule active" || warn "sudoers: delete rule missing for www-data."
 	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
