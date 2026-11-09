@@ -131,7 +131,7 @@ automatic ones. That is why Julius's answer to the cutoff question depends on th
    ssh question from step 0.
 
 Later and separate, not part of this plan: extending the Daily gate to Monthly/Yearly (Julius decided
-against it on 2026-11-04; the backfill makes it cheap to revisit), and the `--check-stale` watchdog.
+against it on 2026-11-04; the backfill makes it cheap to revisit; BUILT 2026-11-09, see 2026-10-23-blur-daily-gate.md), and the `--check-stale` watchdog.
 
 ## Review findings (2026-11-05, read: box_writer, blur_box, frame_source, images, jobs, main, video, web wrappers, tests)
 

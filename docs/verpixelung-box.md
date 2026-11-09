@@ -289,23 +289,31 @@ verpixelten Bildern zusätzlich `backup`, `boxes` (je `[x0, y0, x1, y1, Sicherhe
 Bilder ohne Eintrag (fehlgeschlagen, Upload noch nicht fertig, auf später verschoben) werden in
 der nächsten Runde erneut versucht.
 
-## Sperre im automatischen Tagesvideo
+## Sperre in automatischen Videos
 
-Ein automatisches Tagesvideo einer Blur-Kamera (`privacy.blur_cameras`) wird nur aus Bildern gebaut,
-die dieser Job bestätigt hat: letzte Zeile in der [Statusdatei](#statusdatei) mit `blurred`, `clean`
-oder `night`. Alles andere (`refused`, `replacing`, kein Eintrag) bleibt draußen, weil es noch eine
-Person zeigen kann.
+Ein automatisches Tages-, Monats- oder Jahresvideo einer Blur-Kamera (`privacy.blur_cameras`) wird
+nur aus Bildern gebaut, die dieser Job bestätigt hat: letzte Zeile in der
+[Statusdatei](#statusdatei) mit `blurred`, `clean` oder `night`. Alles andere (`refused`,
+`replacing`, kein Eintrag) bleibt draußen, weil es noch eine Person zeigen kann. Beim Tagesvideo
+gilt das seit dem 04.11.2026, beim Monats- und Jahresvideo seit dem 09.11.2026
+(`src/privacy/blur_gate.py`).
 
 - Das Video entsteht trotzdem, aus den bestätigten Bildern. Im Log steht je Kamera eine Warnung:
   `[Kamera] Blur gate: left out N of M unconfirmed images: ...` (höchstens 10 Namen).
 - Ist kein einziges Bild bestätigt (das Nachholen ist ausgefallen, die Kamera hat keine Statusdatei),
-  wird die Kamera übersprungen (`skipped`, kein Fehler); das Video des Vortags bleibt.
+  wird die Kamera übersprungen (`skipped`, kein Fehler); das bisherige Video bleibt.
+- Beim Monats- und Jahresvideo kommt die Sperre **vor** der Mindestabdeckung (Monthly 25 von 30
+  Tagen, Yearly 300 Tage): ein unbestätigtes Bild zählt nicht als Tag. Fehlen dadurch zu viele Tage,
+  wird die Kamera wegen zu geringer Abdeckung übersprungen, statt ein Video mit Lücken zu
+  veröffentlichen.
+- Das Jahresvideo prüft **vor** der Bildauswahl: ein unbestätigtes Bild wird nie für das Jahr
+  gewählt. Hat der Tag ein anderes bestätigtes Bild im Zeitfenster, nimmt die Auswahl dieses.
+- Die Sperre liest den Status auf der Seite des Monats jedes Bildes (beim Jahresvideo bis zu 13
+  Seiten). Für eine neue Blur-Kamera entsteht ein Monats- oder Jahresvideo daher erst, wenn genug
+  Tage bestätigt sind (die Mindestabdeckung); das geht z. B. mit einem von Hand gestarteten Monthly
+  ([Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos)).
 - Ausgenommen sind historische Läufe (sie landen in `manual-runs/`) und Kameras ohne Blur.
 - Das Wochenvideo wird aus den Tagesvideos zusammengesetzt und erbt die Sperre.
-- **Nicht abgedeckt:** das automatische Monats- und Jahresvideo. Es besteht aus älteren Bildern, die
-  der Box-Job nicht immer erreicht hat. Von Hand gestartete Läufe verpixeln ihre Bilder dagegen
-  vorher (nächster Abschnitt); mit einem von Hand gestarteten Monthly lassen sich ältere Zeiträume
-  nachholen. Siehe [Grenzen](#grenzen).
 
 ## Verpixelung bei von Hand gestarteten Videos
 
@@ -420,10 +428,12 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 - Bilder, die älter als 48 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
   `refused` im Log.
 - Keine Erkennung findet 100 % aller Personen (siehe [verpixelung.md](verpixelung.md#grenzen)).
-- Das automatische Monats- und Jahresvideo einer Blur-Kamera ist von der [Sperre im Tagesvideo](#sperre-im-automatischen-tagesvideo)
-  nicht erfasst; ältere Bilder aus der Zeit vor dem Box-Job können unverpixelt darin stehen. Von Hand
-  gestartete Läufe verpixeln ihre Bilder dagegen vorher
-  ([Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos)).
+- Bilder, die der Box-Job nie bestätigen kann (abgeschnittene JPEGs auf der Box, `refused` nach
+  einem Ausfall von mehr als 48 Stunden), fehlen dauerhaft in den automatischen Videos der
+  Blur-Kameras (siehe [Sperre in automatischen Videos](#sperre-in-automatischen-videos)). Ein von
+  Hand gestartetes Daily des Tages holt `refused`-Bilder nach.
+- Automatische Monats- und Jahresvideos, die vor dem 09.11.2026 gebaut wurden, sind nicht
+  nachträglich geprüft worden; die nächtlichen Videos ersetzen sich selbst.
 - Einzelne Bilder (Scheunenviertel, erste von Hand gestartete Läufe am 05.11.2026, vor dem Schutz
   vor doppelten Sicherungen) haben zwei Sicherungen in `original/`. Das ist harmlos: das Mosaik ist
   nur etwas gröber, gelöscht wurde nichts.

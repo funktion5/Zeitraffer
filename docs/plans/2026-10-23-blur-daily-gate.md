@@ -5,8 +5,13 @@ Status: Part 1 (catch-up) built and in cron since 2026-10-23, see
 `split_confirmed_images`, tests in `tests/jobs/daily_test.py`); Julius runs the tests on the VPS. Decisions of
 2026-11-04: an unconfirmed image is LEFT OUT and the Daily is built from the confirmed ones (not skipped);
 if no image is confirmed the camera is skipped; no checksum comparison (open decision 2 = no, maybe later);
-no hold-back of Monthly/Yearly (Julius does not want something he would have to remove again; they stay a
-known gap, see docs/verpixelung-box.md, Grenzen). Where the infrastructure runs: the VPS.
+no hold-back of Monthly/Yearly at that time (Julius did not want something he would have to remove again).
+**Monthly/Yearly gate built 2026-11-09** (Julius reversed that once the backfill, finished 2026-11-07, made it
+cheap): `src/privacy/blur_gate.py`, `src/jobs/monthly.py`, `src/jobs/yearly.py`, tests in
+`tests/privacy/privacy_blur_gate_test.py`, `tests/jobs/monthly_test.py`, `tests/jobs/yearly_test.py`. Same rule as
+the Daily (left out, none confirmed = skipped), applied before the coverage check, and in the Yearly before its
+selection. The Daily still has its own `split_confirmed_images`; moving it onto the shared module is open.
+Where the infrastructure runs: the VPS.
 
 ## Goal
 
@@ -63,7 +68,7 @@ The catch-up reduces skipped Dailies; only the gate guarantees nothing unblurred
 - On failure: log every offending image (name + status) in one error line per camera, then
   behave as decided in open decision 1. Never raise past the camera loop (per-camera errors keep
   later cameras running, see CLAUDE.md conventions).
-- The Weekly is built from Dailies, so it inherits the gate. Monthly/Yearly are not covered:
+- The Weekly is built from Dailies, so it inherits the gate. Monthly/Yearly were not covered by this plan (gated since 2026-11-09, see the status above):
   their frames are older than 24 h; they depend on the live job or the planned backfill
   (docs/verpixelung-box.md, open items).
 
