@@ -25,7 +25,7 @@
 
 Failure modes the spec implies, each pinned by a test in the owning task:
 1. Rebuild with no job ticked, or an unknown job value ("hourly"): refused on the server, no sudo call (T2, T3).
-2. The same job twice, or jobs sent out of order: each runs once, in the fixed order daily, weekly, monthly, yearly (T2).
+2. The same job twice, or jobs sent out of order: each runs once, in the fixed order daily, weekly, monthly, yearly (`src.main` does this, T1 pins the order; the trigger passes the values on).
 3. Publish without exactly `confirm=yes`, or with a missing or wrong CSRF token: refused, nothing started (T5).
 4. Camera name `../x`, empty, `.`, or not in the camera list: refused (T2, T4).
 5. Run lock held (another job or the night run): a "läuft bereits" message, nothing started (T2, T4).
@@ -60,12 +60,11 @@ Failure modes the spec implies, each pinned by a test in the owning task:
 - Test: `tests/web/web_rebuild_test.py` (patterns: `test_web_trigger_writes_running_and_launches_worker`, `web_status_test.py:375`; `test_web_worker_reads_frames_over_ssh_from_the_default_box`, `:220`)
 
 **Interfaces:**
-- Produces: trigger `timelapse-web-rebuild <job-id> <camera> <job> [<job> ...]` (1 to 4 jobs from daily|weekly|monthly|yearly; exit 64 bad arguments, 66 camera not listed, 69 support files missing, 75 lock held, 0 started with the message `Videoauftrag gestartet (PID <n>).`). It sorts and de-duplicates the jobs and starts `timelapse-web-worker-rebuild <job-id> <camera> <job>...` in the background. Worker override env: `TIMELAPSE_WEB_WORKER_REBUILD`.
+- Produces: trigger `timelapse-web-rebuild <job-id> <camera> <job> [<job> ...]` (1 to 4 jobs from daily|weekly|monthly|yearly; exit 64 bad arguments, 66 camera not listed, 69 support files missing, 75 lock held, 0 started with the message `Videoauftrag gestartet (PID <n>).`). It passes the jobs on as given (`src.main` runs them in its fixed order, once each, so the trigger does not sort or de-duplicate) and starts `timelapse-web-worker-rebuild <job-id> <camera> <job>...` in the background. Worker override env: `TIMELAPSE_WEB_WORKER_REBUILD`.
 - The worker runs `$PYTHON -m src.main --jobs <jobs> --cameras <camera>` WITHOUT `--target-date`, with `TIMELAPSE_FRAME_SOURCE=ssh` and the box default as the existing worker. It keeps stderr in a temp file, writes `<jobId>.result` with one German line per `<Job> timelapse job finished ... created=N ... skipped=N ... failed=N` log line, in the form `Täglich: 1 erstellt, 0 übersprungen, 0 fehlgeschlagen` (labels as `translateJobLabel()`, `web/src/video-library.php:7`), then status `completed` when `src.main` exits 0, otherwise `failed` plus the existing reason mechanism.
 
 - [ ] **Step 1: Write the failing tests** (`tests/web/web_rebuild_test.py`; fake worker and fake python as in the patterns):
-  - `test_rebuild_trigger_starts_the_worker_with_jobs_in_fixed_order`: arguments `monthly daily` reach the fake worker as `daily monthly`; status file says `running`.
-  - `test_rebuild_trigger_runs_each_job_once`: `daily daily` becomes `daily`.
+  - `test_rebuild_trigger_starts_the_worker_with_camera_and_jobs`: the arguments reach the fake worker; status file says `running`. (Order and uniqueness are `src.main`'s job, not the trigger's.)
   - `test_rebuild_trigger_rejects_no_job_an_unknown_job_and_a_fifth_value`: exit 64, worker not started.
   - `test_rebuild_trigger_rejects_unsafe_camera_names`: `../x`, an empty name, `.`: exit 64.
   - `test_rebuild_trigger_rejects_an_unlisted_camera`: exit 66.

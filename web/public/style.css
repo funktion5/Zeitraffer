@@ -555,6 +555,7 @@ video {
 /* Video creation                                                             */
 /* -------------------------------------------------------------------------- */
 
+.video-rebuild,
 .video-create {
 	grid-column: 1 / -1;
 
@@ -634,7 +635,8 @@ fieldset label {
 	cursor: pointer;
 }
 
-input[type="radio"] {
+input[type="radio"],
+input[type="checkbox"] {
 	accent-color: var(--color-primary);
 }
 
@@ -720,6 +722,14 @@ dialog {
 	color: var(--color-text);
 
 	box-shadow: 0 20px 60px rgb(0 0 0 / 45%);
+}
+
+/* The result line of every job of a rebuild, under the dialog's message. */
+#job-result-lines {
+	margin: 0.75rem 0 0;
+	padding-left: 1.1rem;
+
+	list-style: disc;
 }
 
 dialog::backdrop {

@@ -549,3 +549,91 @@ def test_delete_manual_video_refuses_without_run_user(tmp_path):
 
 	assert result["deleted"] is False
 	assert args == []
+
+
+# The rebuild trigger gets the camera and the jobs, nothing else: the browser sends no more.
+def test_start_rebuild_job_calls_the_trigger_with_camera_and_jobs(tmp_path):
+	result, args = run_wrapper(
+		tmp_path,
+		"rebuild-runner.php",
+		'startRebuildJob("cam", ["daily", "monthly"])',
+		0,
+	)
+
+	assert result["started"] is True
+	assert len(result["jobId"]) == 32
+	assert args[:3] == ["-n", "-u", pwd.getpwuid(os.getuid()).pw_name]
+	assert args[3:] == [
+		"/usr/local/sbin/timelapse-web-rebuild",
+		result["jobId"],
+		"cam",
+		"daily",
+		"monthly",
+	]
+
+
+def test_start_rebuild_job_reports_a_busy_lock(tmp_path):
+	result, _ = run_wrapper(tmp_path, "rebuild-runner.php", 'startRebuildJob("cam", ["daily"])', 75)
+
+	assert result == {
+		"started": False,
+		"jobId": None,
+		"message": "Es läuft bereits ein anderer Zeitraffer-Auftrag.",
+	}
+
+
+# Wrapper stderr is logged server-side only, never returned to the browser.
+def test_start_rebuild_job_hides_wrapper_error_details(tmp_path):
+	result, _ = run_wrapper(tmp_path, "rebuild-runner.php", 'startRebuildJob("cam", ["daily"])', 1)
+
+	assert result["started"] is False
+	assert "denied" not in result["message"]
+
+
+def test_start_rebuild_job_refuses_without_run_user(tmp_path):
+	run_php(tmp_path, "process-runner.php", {PROJECT_ROOT_CALL: json.dumps("/")}, "echo 0;")
+	result, args = run_wrapper(
+		tmp_path, "rebuild-runner.php", 'startRebuildJob("cam", ["daily"])', 0
+	)
+
+	assert result["started"] is False
+	assert args == []
+
+
+# The worker's result lines for the browser: at most 8, no empty ones, nothing for a missing file
+# or an ID that is not 32 hex characters (no path is built from it).
+def test_read_job_results_returns_the_lines_or_nothing(tmp_path):
+	status_root = tmp_path / "web-jobs"
+	status_root.mkdir()
+	two_lines = "a" * 32
+	twelve_lines = "b" * 32
+	(status_root / f"{two_lines}.result").write_text(
+		"Täglich: 1 erstellt, 0 übersprungen, 0 fehlgeschlagen\n\n"
+		"Jährlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen\n"
+	)
+	(status_root / f"{twelve_lines}.result").write_text(
+		"".join(f"Zeile {number}\n" for number in range(12))
+	)
+	root = json.dumps(str(status_root))
+
+	result = run_php(
+		tmp_path,
+		"job-state.php",
+		{},
+		"echo json_encode(["
+		f"readJobResults({root}, {json.dumps(two_lines)}), "
+		f"count(readJobResults({root}, {json.dumps(twelve_lines)})), "
+		f"readJobResults({root}, {json.dumps('c' * 32)}), "
+		f'readJobResults({root}, "../x"),'
+		"]);",
+	)
+
+	assert result == [
+		[
+			"Täglich: 1 erstellt, 0 übersprungen, 0 fehlgeschlagen",
+			"Jährlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen",
+		],
+		8,
+		[],
+		[],
+	]

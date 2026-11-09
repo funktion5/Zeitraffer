@@ -16,6 +16,7 @@ def render(tmp_path: Path, get=None, post=None, sudo_exit: int = 0):
 	swaps = {
 		"src/video-delete.php": (SUDO_PATH, sudo),
 		"src/job-runner.php": (SUDO_PATH, sudo),
+		"src/rebuild-runner.php": (SUDO_PATH, sudo),
 	}
 	return render_page(
 		tmp_path, "camera.php", swaps, get or {"camera": CAMERA}, post, sudo_exit, TOKEN
@@ -261,3 +262,95 @@ def test_the_page_asks_whether_another_job_is_running(tmp_path):
 	out, _ = render(tmp_path)
 
 	assert "/running-job.php" in out
+
+
+# The rebuild section sits between the player/lists and the historical-video section; a message
+# about a rebuild request has to show there, not in the other form.
+def rebuild_section(out: str) -> str:
+	return out.split('class="video-rebuild"')[1].split('class="video-create"')[0]
+
+
+def rebuild_post(jobs=None, token: str = TOKEN) -> dict:
+	post = {"action": "rebuild-jobs", "csrf_token": token, "camera": CAMERA}
+
+	if jobs is not None:
+		post["rebuild_jobs"] = jobs
+
+	return post
+
+
+# The checkboxes start unticked and the button disabled until one is ticked, so a click is always a
+# deliberate choice. The server refuses an empty selection anyway (the tests below).
+def test_rebuild_form_checkboxes_start_unticked_and_the_button_is_disabled(tmp_path):
+	out, _ = render(tmp_path)
+
+	section = rebuild_section(out)
+	form = section.split('id="rebuild-form"')[1].split("</form>")[0]
+
+	assert "<h2>Neu erstellen wie der Nachtlauf</h2>" in section
+	assert form.count('name="rebuild_jobs[]"') == 4
+
+	for job in ("daily", "weekly", "monthly", "yearly"):
+		assert f'name="rebuild_jobs[]" value="{job}"' in form
+
+	assert "checked" not in form
+	assert '<button type="submit" disabled>' in form
+	# The Weekly is built from the Daily videos that exist.
+	assert "Täglich mit ankreuzen" in section
+
+
+def test_rebuild_without_a_ticked_job_is_refused_without_calling_sudo(tmp_path):
+	for jobs in (None, []):
+		out, args = render(tmp_path, post=rebuild_post(jobs))
+
+		assert "Bitte mindestens ein Video zum Neuerstellen auswählen." in rebuild_section(out)
+		assert "Bitte mindestens ein Video" not in out.split('class="video-create"')[1]
+		assert args == []
+
+
+# A crafted request: unknown values, a mix of known and unknown, a nested array, a plain string.
+def test_rebuild_with_an_unknown_job_is_refused(tmp_path):
+	for jobs in (["hourly"], ["daily", "hourly"], [["daily"]], "daily"):
+		out, args = render(tmp_path, post=rebuild_post(jobs))
+
+		assert "Der ausgewählte Videotyp ist ungültig." in rebuild_section(out)
+		assert args == []
+
+
+def test_rebuild_with_a_bad_csrf_token_is_refused(tmp_path):
+	out, args = render(tmp_path, post=rebuild_post(["daily"], token="wrong"))
+
+	assert "Die Anfrage ist ungültig (Sicherheitstoken)." in rebuild_section(out)
+	assert args == []
+
+
+# Post/Redirect/Get as for the manual video: the POST answers with a redirect only, the next page
+# load hands the job to the watcher exactly once. The jobs go on in their fixed order.
+def test_rebuild_with_valid_jobs_starts_the_job_and_redirects(tmp_path):
+	out, args = render(tmp_path, post=rebuild_post(["monthly", "daily"]))
+
+	assert out.strip() == ""
+	assert args[3] == "/usr/local/sbin/timelapse-web-rebuild"
+	job_id = args[4]
+	assert args[5:] == [CAMERA, "daily", "monthly"]
+
+	out, _ = render(tmp_path)
+
+	assert f'"jobId":"{job_id}"' in out
+	assert '"kind":"rebuild"' in out
+	assert '"jobs":["daily","monthly"]' in out
+
+	out, _ = render(tmp_path)
+
+	assert job_id not in out
+
+
+def test_rebuild_busy_lock_keeps_the_page_with_its_message(tmp_path):
+	out, _ = render(tmp_path, post=rebuild_post(["daily"]), sudo_exit=75)
+
+	assert "Es läuft bereits ein anderer Zeitraffer-Auftrag." in rebuild_section(out)
+
+	# A refused start leaves nothing in the session for the next page load.
+	out, _ = render(tmp_path)
+
+	assert '"jobId"' not in out

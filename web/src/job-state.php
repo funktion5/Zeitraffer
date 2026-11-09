@@ -60,6 +60,36 @@ function resolveJobStatus(string $statusRoot, string $jobId, string $status): st
 }
 
 
+// The result lines a worker leaves next to the status file (one German line per finished job).
+// At most 8, none empty. An ID that is not 32 hex characters gives nothing, so no path is built
+// from it. Read-only, like the rest of this file.
+function readJobResults(string $statusRoot, string $jobId): array
+{
+	if (preg_match("/^[a-f0-9]{32}$/", $jobId) !== 1) {
+		return [];
+	}
+
+	$resultFile = $statusRoot . "/" . $jobId . ".result";
+
+	if (!is_file($resultFile) || !is_readable($resultFile)) {
+		return [];
+	}
+
+	$lines = file($resultFile, FILE_IGNORE_NEW_LINES);
+
+	if ($lines === false) {
+		return [];
+	}
+
+	$lines = array_values(array_filter(
+		array_map("trim", $lines),
+		static fn (string $line): bool => $line !== "",
+	));
+
+	return array_slice($lines, 0, 8);
+}
+
+
 // Whether any web job is running right now (the camera pages show a notice for it). Only files
 // named like a job ID count: the folder also holds cameras.json and the like.
 function hasRunningWebJob(string $statusRoot): bool

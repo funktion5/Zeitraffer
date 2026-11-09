@@ -95,4 +95,11 @@ if ($status === "failed" && is_file($reasonFile) && is_readable($reasonFile)) {
 	}
 }
 
+// A rebuild leaves one line per finished job; the page shows them under the final message.
+$results = readJobResults($statusRoot, $jobId);
+
+if ($results !== []) {
+	$payload["results"] = $results;
+}
+
 respondWithJson(200, $payload);

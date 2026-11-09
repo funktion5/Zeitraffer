@@ -1,0 +1,132 @@
+#!/bin/bash
+
+set -u
+
+# Runs the chosen automatic jobs for ONE camera and leaves one German result line per finished job
+# next to the status file. The name must keep "timelapse-web-worker": job-state.php looks for it in
+# /proc/<pid>/cmdline to tell a running worker from a stale PID.
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
+STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
+
+if [[ $# -lt 3 || $# -gt 6 ]]; then
+	echo "Usage: timelapse-web-worker-rebuild <job-id> <camera> <job> [<job> ...]" >&2
+	exit 64
+fi
+
+JOB_ID="$1"
+CAMERA="$2"
+shift 2
+JOBS=("$@")
+
+if [[ ! -r "$STATUS_HELPER" ]]; then
+	echo "Status helper is unavailable." >&2
+	exit 69
+fi
+
+# Load the validated atomic status-file operations.
+source "$STATUS_HELPER"
+
+if ! is_valid_job_id "$JOB_ID"; then
+	echo "Invalid job ID." >&2
+	exit 64
+fi
+
+for job in "${JOBS[@]}"; do
+	case "$job" in
+		daily|weekly|monthly|yearly)
+			;;
+		*)
+			echo "Invalid job: $job" >&2
+			exit 64
+			;;
+	esac
+done
+
+# Record our own PID so job-status.php can detect a "running" status left
+# behind by a worker that died without ever reaching write_job_status below
+# (e.g. the host rebooted mid-job).
+write_job_pid "$JOB_ID" "$$"
+
+# This host has no mount and sudo clears the environment, so say where the frames come from. The
+# alias is a Host entry in the ~/.ssh/config of the account this runs as; the key stays with that
+# account, and the web server user never holds one.
+export TIMELAPSE_FRAME_SOURCE=ssh
+export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-storagebox}"
+
+# No --target-date: that would make it a manual run writing to manual-runs/. --jobs also keeps it
+# from counting as the production run, so the night run's marker stays untouched.
+COMMAND=(
+	"$PYTHON"
+	-m
+	src.main
+	--jobs
+	"${JOBS[@]}"
+	--cameras
+	"$CAMERA"
+)
+
+cd "$PROJECT_ROOT" || exit 69
+
+# src.main logs to stderr; keep it for this run so the result lines and a failure reason can be
+# read from it. Without a temp file the job still runs, it just cannot report either.
+output_file="$(mktemp)" || output_file=/dev/null
+trap '[[ "$output_file" == /dev/null ]] || rm -f "$output_file"' EXIT
+
+# One line per "<Job> timelapse job finished ... | created=N | skipped=N | failed=N" that every job
+# logs (the night report reads the same lines). Written before the final status, so it is there
+# when the browser sees it. No such line, no file.
+write_result_lines() {
+	local result_file="${STATUS_ROOT}/${JOB_ID}.result"
+	local pattern=' \| INFO \| (Daily|Weekly|Monthly|Yearly) timelapse job finished .*created=([0-9]+) \| skipped=([0-9]+) \| failed=([0-9]+)'
+	local lines=""
+	local line label
+
+	while IFS= read -r line; do
+		if [[ "$line" =~ $pattern ]]; then
+			# The labels of translateJobLabel() in web/src/video-library.php.
+			case "${BASH_REMATCH[1]}" in
+				Daily) label="Täglich" ;;
+				Weekly) label="Wöchentlich" ;;
+				Monthly) label="Monatlich" ;;
+				Yearly) label="Jährlich" ;;
+			esac
+
+			lines+="${label}: ${BASH_REMATCH[2]} erstellt, ${BASH_REMATCH[3]} übersprungen, ${BASH_REMATCH[4]} fehlgeschlagen"$'\n'
+		fi
+	done <"$output_file"
+
+	if [[ -n "$lines" ]]; then
+		printf '%s' "$lines" >"$result_file" || return 0
+		chmod 644 "$result_file" 2>/dev/null || true
+	fi
+}
+
+# The last "- skipping" warning says why a job ended without a video (e.g. too few days);
+# diagnostics logged after it are not the cause. job-status.php translates the known ones and
+# shows nothing for the rest. Written before "failed", so it is there when the browser sees it.
+write_failure_reason() {
+	local reason_file="${STATUS_ROOT}/${JOB_ID}.reason"
+
+	grep -F ' | WARNING | ' "$output_file" | grep -F ' - skipping ' | tail -n 1 \
+		| sed 's/^.* | WARNING | //' \
+		>"$reason_file" || true
+	chmod 644 "$reason_file" 2>/dev/null || true
+}
+
+# "completed" means the process ended without an uncaught error; what each job did (built, skipped,
+# failed for this camera) is in the result lines.
+if "${COMMAND[@]}" 2>"$output_file"; then
+	write_result_lines
+	write_job_status "$JOB_ID" "completed"
+	exit 0
+else
+	exit_code="$?"
+	write_result_lines
+	write_failure_reason
+	write_job_status "$JOB_ID" "failed" || true
+	exit "$exit_code"
+fi

@@ -5,6 +5,7 @@ session_start();
 
 require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/job-runner.php";
+require_once __DIR__ . "/../src/rebuild-runner.php";
 require_once __DIR__ . "/../src/video-delete.php";
 require_once __DIR__ . "/../src/json-response.php";
 
@@ -80,6 +81,8 @@ $allowedWindowTolerances = [
 ];
 
 $formMessage = null;
+// Set from the POST below; the page shows a message in the form section the request came from.
+$submittedAction = null;
 $videoDeleted = false;
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
@@ -225,6 +228,51 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 					"bufferMinutes" => $daylightBufferMinutes,
 					"windowTime" => $windowTime,
 					"windowToleranceMinutes" => $windowToleranceMinutes,
+				];
+				header("Location: /camera.php?camera=" . rawurlencode($camera));
+
+				exit;
+			}
+		}
+
+	// ----------------------------------------------------------------------
+	// Rebuild the automatic videos (what the night run does for this camera)
+	// ----------------------------------------------------------------------
+	} elseif ($submittedAction === "rebuild-jobs") {
+		$submittedRebuildJobs = $_POST["rebuild_jobs"] ?? [];
+
+		if (!is_array($submittedRebuildJobs)) {
+			$formMessage = "Der ausgewählte Videotyp ist ungültig.";
+
+		} elseif ($submittedRebuildJobs === []) {
+			$formMessage = "Bitte mindestens ein Video zum Neuerstellen auswählen.";
+
+		// A crafted request: any value that is not exactly one of the four job names refuses the
+		// whole request. (in_array is strict, so a nested array never causes a warning.)
+		} elseif (array_filter(
+			$submittedRebuildJobs,
+			static fn ($job): bool => !is_string($job) || !in_array($job, $allowedJobs, true),
+		) !== []) {
+			$formMessage = "Der ausgewählte Videotyp ist ungültig.";
+
+		} else {
+			// The fixed order of $allowedJobs, each job once, whatever the browser sent.
+			$rebuildJobs = array_values(array_filter(
+				$allowedJobs,
+				static fn (string $job): bool => in_array($job, $submittedRebuildJobs, true),
+			));
+
+			$jobResult = startRebuildJob($submittedCamera, $rebuildJobs);
+
+			$formMessage = $jobResult["message"];
+
+			// Post/Redirect/Get, as for the manual video above.
+			if ($jobResult["started"]) {
+				$_SESSION["started_job"] = [
+					"kind" => "rebuild",
+					"jobId" => $jobResult["jobId"],
+					"jobs" => $rebuildJobs,
+					"camera" => $submittedCamera,
 				];
 				header("Location: /camera.php?camera=" . rawurlencode($camera));
 
@@ -454,7 +502,40 @@ unset($_SESSION["started_job"]);
 				</div>
 			<?php endforeach; ?>
 		</section>
-	          <section class="video-create">
+	          <section class="video-rebuild">
+			<h2>Neu erstellen wie der Nachtlauf</h2>
+
+			<div class="job-instructions">
+				<p>Baut die automatischen Videos dieser Kamera neu, mit denselben Einstellungen wie der Nachtlauf. Ein neu erstelltes Video ersetzt das vorhandene. Ein Zieldatum gibt es hier nicht.</p>
+				<p><strong>Wöchentlich</strong> baut auf den vorhandenen Täglich-Videos auf. Fehlt ein Tagesvideo, Täglich mit ankreuzen.</p>
+				<p>Das kann lange dauern. Solange es läuft, kann kein anderer Auftrag starten und kein Nachtlauf beginnen.</p>
+			</div>
+
+			<?php if ($formMessage !== null && $submittedAction === "rebuild-jobs"): ?>
+				<p><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
+			<?php endif; ?>
+
+			<form method="post" id="rebuild-form" action="/camera.php?camera=<?= rawurlencode($camera) ?>">
+				<input type="hidden" name="action" value="rebuild-jobs">
+				<input type="hidden" name="camera" value="<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>">
+				<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, "UTF-8") ?>">
+
+				<fieldset>
+					<legend>Welche Videos neu erstellen?</legend>
+
+					<?php foreach ($allowedJobs as $rebuildJob): ?>
+						<label>
+							<input type="checkbox" name="rebuild_jobs[]" value="<?= htmlspecialchars($rebuildJob, ENT_QUOTES, "UTF-8") ?>">
+							<?= htmlspecialchars(translateJobLabel($rebuildJob), ENT_QUOTES, "UTF-8") ?>
+						</label>
+					<?php endforeach; ?>
+				</fieldset>
+
+				<button type="submit" disabled>Neu erstellen</button>
+			</form>
+		</section>
+
+		          <section class="video-create">
 	            <h2>Historisches Video erstellen</h2>
 
 	            <div class="job-instructions">
@@ -469,7 +550,7 @@ unset($_SESSION["started_job"]);
 	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um 12:00 Uhr (±90 Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
 	            </div>
 
-	              <?php if ($formMessage !== null): ?>
+	              <?php if ($formMessage !== null && $submittedAction !== "rebuild-jobs"): ?>
                 <p>
                   <?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?>
                 </p>
@@ -722,6 +803,23 @@ unset($_SESSION["started_job"]);
 		window.addEventListener("pageshow", () => {
 			createButton.disabled = sessionStorage.getItem("timelapsePendingJob") !== null;
 		});
+
+		// The rebuild button stays disabled until a video type is ticked, and while this tab's own job
+		// runs. The job watcher fires "change" on the form when a job is over; the server refuses an
+		// empty selection anyway.
+		const rebuildForm = document.querySelector("#rebuild-form");
+		const rebuildButton = rebuildForm.querySelector('button[type="submit"]');
+
+		function updateRebuildButton() {
+			const anyTicked = rebuildForm.querySelector('input[name="rebuild_jobs[]"]:checked') !== null;
+			rebuildButton.disabled = !anyTicked || sessionStorage.getItem("timelapsePendingJob") !== null;
+		}
+
+		rebuildForm.addEventListener("change", updateRebuildButton);
+		rebuildForm.addEventListener("submit", () => {
+			rebuildButton.disabled = true;
+		});
+		window.addEventListener("pageshow", updateRebuildButton);
 
 		// Yesterday by default and nothing after today, in the browser's (local) time.
 		function isoDate(date) {

@@ -12,6 +12,8 @@ $jobWatcherCurrentCamera = $camera ?? "";
 <dialog id="job-result-dialog">
 	<h2 id="job-result-title">Video-Auftrag</h2>
 	<p id="job-result-message"></p>
+	<!-- The result line of every job of a rebuild; hidden for a single manual video. -->
+	<ul id="job-result-lines" hidden></ul>
 
 	<form method="dialog" id="job-result-form">
 		<button type="submit" id="job-result-dismiss-button">Schließen</button>
@@ -36,6 +38,7 @@ $jobWatcherCurrentCamera = $camera ?? "";
 		const message = document.querySelector("#job-result-message");
 		const dismissButton = document.querySelector("#job-result-dismiss-button");
 		const openButton = document.querySelector("#job-result-open-button");
+		const resultLines = document.querySelector("#job-result-lines");
 
 		let openButtonHandler = null;
 
@@ -64,10 +67,55 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}).toString();
 		}
 
+		function isRebuild(pendingJob) {
+			return pendingJob.kind === "rebuild";
+		}
+
+		function rebuildLabels(pendingJob) {
+			return pendingJob.jobs.map((job) => JOB_LABELS[job] ?? job).join(", ");
+		}
+
+		// A rebuild has no single video to open: the dialog lists what each ticked job did.
+		function showRebuildResult(pendingJob, status, reason, results) {
+			const lines = results ?? [];
+			const subject = `${pendingJob.camera}: ${rebuildLabels(pendingJob)}`;
+
+			if (openButtonHandler !== null) {
+				openButton.removeEventListener("click", openButtonHandler);
+				openButtonHandler = null;
+			}
+
+			if (status === "completed") {
+				title.textContent = "Neu erstellen abgeschlossen";
+				message.textContent = `${subject} ist fertig.` + (lines.length > 0 ? " Ergebnis je Video:" : "");
+			} else {
+				title.textContent = "Neu erstellen fehlgeschlagen";
+				// reason: German text from job-status.php for known causes.
+				message.textContent = `${subject} konnte nicht abgeschlossen werden. `
+					+ (reason ?? "Bitte das Anwendungsprotokoll prüfen.");
+			}
+
+			// textContent only: the lines come from the server, never as markup.
+			resultLines.replaceChildren(...lines.map((line) => {
+				const item = document.createElement("li");
+				item.textContent = line;
+				return item;
+			}));
+			resultLines.hidden = lines.length === 0;
+			dismissButton.hidden = false;
+			dismissButton.textContent = "Schließen";
+			openButton.hidden = true;
+
+			if (typeof dialog.showModal === "function") {
+				dialog.showModal();
+			}
+		}
+
 		function showResult(pendingJob, status, reason) {
 			const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
 			const dateLabel = formatGermanDate(pendingJob.targetDate);
 			const onSameCameraPage = CURRENT_CAMERA !== "" && CURRENT_CAMERA === pendingJob.camera;
+			resultLines.hidden = true;
 
 			if (openButtonHandler !== null) {
 				openButton.removeEventListener("click", openButtonHandler);
@@ -114,6 +162,9 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 		// The job is over: drop the status line and let camera.php's form start the next one.
 		function finishLiveStatus() {
+			// camera.php's rebuild form enables its button again; it also looks at the pending job.
+		document.querySelector("#rebuild-form")?.dispatchEvent(new Event("change"));
+
 			const liveStatus = document.querySelector("#job-live-status");
 			const createButton = document.querySelector('#create-video-form button[type="submit"]');
 
@@ -164,10 +215,12 @@ $jobWatcherCurrentCamera = $camera ?? "";
 					const liveStatus = document.querySelector("#job-live-status");
 
 					if (liveStatus !== null) {
-						const jobLabel = JOB_LABELS[pendingJob.job] ?? pendingJob.job;
 						const otherCamera = pendingJob.camera !== CURRENT_CAMERA ? ` (${pendingJob.camera})` : "";
-						const text = `${jobLabel}${otherCamera} für den ${formatGermanDate(pendingJob.targetDate)} läuft. `
-							+ "Ein neues Video kann erst danach gestartet werden.";
+						const subject = isRebuild(pendingJob)
+							? `Neu erstellen${otherCamera}: ${rebuildLabels(pendingJob)}`
+							: `${JOB_LABELS[pendingJob.job] ?? pendingJob.job}${otherCamera} für den `
+								+ formatGermanDate(pendingJob.targetDate);
+						const text = `${subject} läuft. Ein neues Video kann erst danach gestartet werden.`;
 						liveStatus.hidden = false;
 
 						// Unchanged text is not rewritten, so screen readers announce it once.
@@ -183,7 +236,11 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				if (result.status === "completed" || result.status === "failed") {
 					sessionStorage.removeItem(PENDING_JOB_KEY);
 					finishLiveStatus();
-					showResult(pendingJob, result.status, result.reason);
+					if (isRebuild(pendingJob)) {
+						showRebuildResult(pendingJob, result.status, result.reason, result.results);
+					} else {
+						showResult(pendingJob, result.status, result.reason);
+					}
 					return;
 				}
 

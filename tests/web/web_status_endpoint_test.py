@@ -120,6 +120,29 @@ def test_status_endpoint_translates_known_failure_reasons_only(tmp_path, warning
 	)
 
 
+# A rebuild leaves one line per finished job next to the status; the page shows them under the
+# final message. A job without that file answers exactly as before (the tests above).
+def test_status_endpoint_includes_results_when_the_file_exists(tmp_path):
+	job_id = "d" * 32
+	status_root = tmp_path / "web-jobs"
+	status_root.mkdir()
+	(status_root / f"{job_id}.status").write_text("completed\n")
+	(status_root / f"{job_id}.result").write_text(
+		"Täglich: 1 erstellt, 0 übersprungen, 0 fehlgeschlagen\n"
+		"Jährlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen\n"
+	)
+
+	result = run_status_endpoint(status_root, f"id={job_id}")
+
+	assert json.loads(result.stdout) == {
+		"status": "completed",
+		"results": [
+			"Täglich: 1 erstellt, 0 übersprungen, 0 fehlgeschlagen",
+			"Jährlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen",
+		],
+	}
+
+
 # A worker that died before writing its PID must not leave the job "running" forever (the
 # create button stays locked until the job ends); a fresh start without PID is still running.
 @pytest.mark.parametrize(("age_seconds", "expected"), [(5, "running"), (120, "failed")])
