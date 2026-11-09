@@ -20,13 +20,16 @@
 #   WEB_PORT      port of the vhost (default: 80). TLS is not set up here.
 #   HTPASSWD_USER login name of the web UI, used only when /etc/apache2/.htpasswd does not exist
 #                 yet (asked for when unset; the password is always asked for by htpasswd)
+#   BACKUP_DIR    absolute path of a backup made by backup.sh (default ~/timelapse-backup); the
+#                 step restore copies its models/, state/ and videos/ into the project if the
+#                 folder exists, and never overwrites a file that is already there
 #   REWRITE_VHOST=1  overwrite an existing, different vhost file (it is kept by default, so a
 #                    later TLS setup is not undone by a re-run)
 #
 # Not done here, on purpose: the crontab (printed at the end, you paste it), the FTP password of
 # the nightly upload (the step upload_login only creates config/siteground.env from the template
-# config/siteground.env.example; the values are filled in by hand, see docs/betrieb.md) and the
-# copy of models/, state/ and videos/ (rsync from the Mac, see docs/vps.md).
+# config/siteground.env.example; the values are filled in by hand, see docs/betrieb.md). The
+# models/, state/ and videos/ come from a backup made by backup.sh (step restore), see docs/vps.md.
 
 set -euo pipefail
 
@@ -47,6 +50,7 @@ ALL_STEPS=(
 	venv
 	web_login
 	upload_login
+	restore
 	known_hosts
 	apache
 	web_bridge
@@ -141,6 +145,36 @@ step_upload_login() {
 	cp "$template" "$file"
 	chmod 600 "$file"
 	warn "config/siteground.env was created from the template and is EMPTY: fill in SITEGROUND_HOST, SITEGROUND_USER and SITEGROUND_PASS by hand. Until then the nightly upload fails."
+}
+
+step_restore() {
+	log "Restoring models, state and videos from the backup folder"
+	local backup="${BACKUP_DIR:-$HOME/timelapse-backup}"
+	# rsync reads "host:path" as a remote source, so only an absolute path is accepted.
+	[[ "$backup" == /* ]] || fail "BACKUP_DIR must be an absolute path: $backup"
+	if [[ ! -d "$backup" ]]; then
+		echo "No backup folder at $backup: nothing to restore (docs/vps.md)."
+		return
+	fi
+
+	local name restored=0
+	for name in models state videos; do
+		[[ -d "$backup/$name" ]] || continue
+		mkdir -p "$PROJECT_ROOT/$name"
+		# Never overwrite and never delete: a file that already exists here is newer than the
+		# backup's, so a re-run on a working host changes nothing that is in use. The modes are set
+		# by the permissions step afterwards.
+		rsync -a --no-perms --ignore-existing "$backup/$name/" "$PROJECT_ROOT/$name/"
+		echo "Restored $name/"
+		restored=$((restored + 1))
+	done
+
+	if ((restored == 0)); then
+		warn "$backup holds no models/, state/ or videos/: nothing restored."
+	fi
+	if [[ -f "$backup/crontab.txt" ]]; then
+		echo "crontab.txt is for reference only: it is not installed."
+	fi
 }
 
 step_known_hosts() {
@@ -402,7 +436,7 @@ main() {
 		"step_$step"
 	done
 
-	log "Done. Copy models/, state/ and videos/ over, run './install.sh permissions verify', then log in to the dashboard."
+	log "Done. Missing models/, state/ or videos/? Put a backup of backup.sh into ~/timelapse-backup and run './install.sh restore permissions verify'. Then log in to the dashboard."
 }
 
 main "$@"
