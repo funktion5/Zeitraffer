@@ -9,6 +9,7 @@ from frame_source_fakes import RecordingFrameSource
 import src.date_coverage as date_coverage_module
 import src.images as images_module
 import src.jobs.daily as daily_module
+import src.privacy.blur_gate as blur_gate_module
 from src.image_worker import WorkerExitedError
 
 TEST_CONFIG = {
@@ -933,6 +934,12 @@ BLUR_CAMERA = "Blur-Camera"
 BLUR_CONFIG = {**TEST_CONFIG, "privacy": {"blur_cameras": [BLUR_CAMERA]}}
 
 
+# A frame of the Daily's day. The gate looks the state up by the date and time in the file name, so
+# the names must be readable ones.
+def frame_name(index: int) -> str:
+	return f"20260916T{10 + index:02d}0000.jpg"
+
+
 # One state file per camera and month, one JSON line per event, like blur_box.record_processed.
 def write_blur_state(state_root: Path, camera: str, entries: list[dict]) -> None:
 	path = state_root / camera / "2026-09.jsonl"
@@ -952,7 +959,7 @@ def run_blur_daily(
 ):
 	state_root = tmp_path / "state"
 
-	monkeypatch.setattr(daily_module, "BLUR_STATE_ROOT", state_root)
+	monkeypatch.setattr(blur_gate_module, "BLUR_STATE_ROOT", state_root)
 
 	if entries is not None:
 		write_blur_state(state_root, camera, entries)
@@ -986,13 +993,13 @@ def test_blur_camera_daily_is_built_from_confirmed_images_only(
 	tmp_path,
 	caplog,
 ):
-	images = [Path(f"{name}.jpg") for name in "abcdef"]
+	images = [Path(frame_name(index)) for index in range(6)]
 	entries = [
-		{"image": "a.jpg", "status": "blurred"},
-		{"image": "b.jpg", "status": "clean"},
-		{"image": "c.jpg", "status": "night"},
-		{"image": "d.jpg", "status": "refused", "reason": "detector failed"},
-		{"image": "e.jpg", "status": "replacing"},
+		{"image": images[0].name, "status": "blurred"},
+		{"image": images[1].name, "status": "clean"},
+		{"image": images[2].name, "status": "night"},
+		{"image": images[3].name, "status": "refused", "reason": "detector failed"},
+		{"image": images[4].name, "status": "replacing"},
 	]
 
 	events, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
@@ -1000,7 +1007,7 @@ def test_blur_camera_daily_is_built_from_confirmed_images_only(
 	assert built == [images[:3]]
 	assert events == [f"create:{BLUR_CAMERA}", f"release:{BLUR_CAMERA}"]
 	assert "left out 3 of 6" in caplog.text
-	assert all(name in caplog.text for name in ("d.jpg", "e.jpg", "f.jpg"))
+	assert all(image.name in caplog.text for image in images[3:])
 	assert "created=1 | skipped=0 | failed=0" in caplog.text
 
 
@@ -1009,12 +1016,12 @@ def test_blur_gate_last_state_line_wins(
 	monkeypatch,
 	tmp_path,
 ):
-	images = [Path("a.jpg"), Path("b.jpg")]
+	images = [Path(frame_name(0)), Path(frame_name(1))]
 	entries = [
-		{"image": "a.jpg", "status": "refused"},
-		{"image": "a.jpg", "status": "blurred"},
-		{"image": "b.jpg", "status": "blurred"},
-		{"image": "b.jpg", "status": "replacing"},
+		{"image": images[0].name, "status": "refused"},
+		{"image": images[0].name, "status": "blurred"},
+		{"image": images[1].name, "status": "blurred"},
+		{"image": images[1].name, "status": "replacing"},
 	]
 
 	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
@@ -1027,9 +1034,9 @@ def test_blur_gate_matches_the_file_name_not_the_path(
 	monkeypatch,
 	tmp_path,
 ):
-	images = [Path("temp/Blur-Camera/a.jpg")]
+	images = [Path("temp/Blur-Camera") / frame_name(0)]
 
-	entries = [{"image": "a.jpg", "status": "clean"}]
+	entries = [{"image": frame_name(0), "status": "clean"}]
 
 	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
 
@@ -1042,7 +1049,7 @@ def test_blur_gate_is_silent_when_everything_is_confirmed(
 	tmp_path,
 	caplog,
 ):
-	images = [Path("a.jpg"), Path("b.jpg")]
+	images = [Path(frame_name(0)), Path(frame_name(1))]
 	entries = [{"image": image.name, "status": "blurred"} for image in images]
 
 	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
@@ -1058,7 +1065,10 @@ def test_blur_gate_is_silent_when_everything_is_confirmed(
 	[
 		None,
 		[],
-		[{"image": "a.jpg", "status": "refused"}, {"image": "b.jpg", "status": "replacing"}],
+		[
+			{"image": frame_name(0), "status": "refused"},
+			{"image": frame_name(1), "status": "replacing"},
+		],
 	],
 )
 def test_blur_gate_skips_the_camera_when_nothing_is_confirmed(
@@ -1067,7 +1077,7 @@ def test_blur_gate_skips_the_camera_when_nothing_is_confirmed(
 	caplog,
 	entries,
 ):
-	images = [Path("a.jpg"), Path("b.jpg")]
+	images = [Path(frame_name(0)), Path(frame_name(1))]
 
 	events, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
 
@@ -1156,8 +1166,8 @@ def test_an_automatic_daily_never_blurs_it_uses_the_gate(
 	monkeypatch,
 	tmp_path,
 ):
-	images = [Path("a.jpg"), Path("b.jpg")]
-	entries = [{"image": "a.jpg", "status": "blurred"}]
+	images = [Path(frame_name(0)), Path(frame_name(1))]
+	entries = [{"image": images[0].name, "status": "blurred"}]
 	calls = patch_blur(monkeypatch)
 
 	_, built = run_blur_daily(monkeypatch, tmp_path, images, entries)
