@@ -257,6 +257,18 @@ def test_a_camera_outside_the_blur_list_has_no_note(tmp_path):
 	assert "verpixelt" not in out
 
 
+# The "a job is running" notice sits at the very top, in the header every page shares, so it is seen
+# without scrolling; the watcher script fills it, and it starts hidden. Once, and no longer inside
+# the manual-video form.
+def test_the_job_notice_is_in_the_header_and_hidden_until_a_job_runs(tmp_path):
+	out, _ = render(tmp_path)
+
+	assert out.count('id="job-live-status"') == 1
+	assert '<p id="job-live-status" role="status" aria-live="polite" hidden></p>' in out
+	assert out.index('id="job-live-status"') < out.index("<main")
+	assert out.index('id="job-live-status"') < out.index('class="video-create"')
+
+
 # A job another colleague started is announced on every camera page, not only in the tab that
 # started it: the page asks running-job.php (the JavaScript itself is not tested, as elsewhere).
 def test_the_page_asks_whether_another_job_is_running(tmp_path):

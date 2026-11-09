@@ -618,7 +618,6 @@ unset($_SESSION["started_job"]);
                   <?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?>
                 </p>
 	                <?php endif; ?>
-	              <p id="job-live-status" role="status" aria-live="polite" hidden></p>
 	            <form method="post" id="create-video-form"
                     action="/camera.php?camera=<?= rawurlencode($camera) ?>">
 							<input

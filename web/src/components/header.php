@@ -66,3 +66,6 @@ declare(strict_types=1);
 		</div>
 	<?php endif; ?>
 </header>
+
+<!-- A running job, announced at the very top of every page; job-watcher.php fills and hides it. -->
+<p id="job-live-status" role="status" aria-live="polite" hidden></p>

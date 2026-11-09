@@ -104,6 +104,14 @@ def test_the_delete_message_is_visible_after_a_reload_with_deleted(tmp_path):
 	assert visible + "Bild erfolgreich gelöscht.</p>" in out
 
 
+# The notice for a running job is in the shared header, so it shows here too.
+def test_the_job_notice_is_in_the_header(tmp_path):
+	out, _ = render(tmp_path)
+
+	assert out.count('id="job-live-status"') == 1
+	assert out.index('id="job-live-status"') < out.index("<main")
+
+
 def test_default_period_is_seven_days(tmp_path):
 	make_day(tmp_path, "A", days_ago(3), [item("recent.jpg")])
 	make_day(tmp_path, "A", days_ago(10), [item("old.jpg")])
