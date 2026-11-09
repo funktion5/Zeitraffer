@@ -46,7 +46,8 @@ def parse_arguments():
 		"--cameras",
 		nargs="+",
 		help=(
-			"Process specified cameras for Manual Daily or historical jobs. "
+			"Process specified cameras for Manual Daily, historical jobs or selected automatic "
+			"jobs (--jobs without --target-date, not the production run). "
 			"Historical Weekly requires exactly one camera."
 		),
 	)
@@ -151,8 +152,8 @@ def main():
 			"(--date or --jobs daily --target-date)."
 		)
 
-	if args.cameras and not args.date and not args.target_date:
-		raise ValueError("--cameras can only be used with --date or --target-date.")
+	if args.cameras and not args.date and not args.jobs:
+		raise ValueError("--cameras can only be used with --date or --jobs.")
 
 	window_override_requested = (
 		args.window_time is not None or args.window_tolerance_minutes is not None
@@ -230,8 +231,9 @@ def main():
 
 	available_cameras = [camera for camera in available_cameras if camera not in ignored_cameras]
 
-	# Historical jobs may process only explicitly requested cameras.
-	if (args.date or args.target_date) and args.cameras:
+	# Manual, historical and selected automatic jobs may process only explicitly requested cameras.
+	# The check above guarantees that --cameras comes with --date or --jobs.
+	if args.cameras:
 		available_cameras = require_cameras(args.cameras, available_cameras)
 
 	target_date = args.date or args.target_date
