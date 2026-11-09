@@ -227,7 +227,8 @@ festen Wrapper. Aufbau und Dateien: [weboberflaeche.md](weboberflaeche.md).
 timelapse/
 ├── archive/   (stillgelegt: Raspberry Pi, Container-Test, Staging; siehe archive/README.md)
 ├── config/
-│   └── config.json
+│   ├── config.json
+│   └── siteground.env.example   (Vorlage für die Zugangsdaten des Uploads)
 ├── docker/
 │   ├── docker-compose.yml
 │   ├── .env.example
@@ -340,6 +341,8 @@ timelapse/
 ├── state/        (Laufzeitdaten, nicht im Repository)
 ├── temp/         (Laufzeitdaten, nicht im Repository)
 ├── videos/       (Laufzeitdaten, nicht im Repository)
+├── backup.env.example
+├── backup.sh
 ├── .gitignore
 ├── install.sh
 ├── pyproject.toml
@@ -349,13 +352,15 @@ timelapse/
 
 Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten
 behandelt. `models/` enthält die Erkennungsmodelle für Verpixelung und Highlights-Flagger; sie
-werden separat heruntergeladen bzw. vom bisherigen Host kopiert und sind nicht im Repository.
+werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind nicht im Repository.
 
 Was in welcher Datei unter `docs/` steht, listet das README unter
 [Dokumentation](../README.md#dokumentation).
 
 `install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
-Ordner); Ablauf: [vps.md](vps.md).
+Ordner); `backup.sh` sichert von einem Host, was ein neuer Host braucht und nicht im Git liegt (Modell,
+Status, auf Wunsch Videos, keine Geheimnisse), und `install.sh` spielt es im Schritt `restore` zurück. Ablauf:
+[vps.md](vps.md).
 `scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
 Der Upload der fertigen Videos auf die Website steht in [betrieb.md](betrieb.md#upload-auf-die-website).
 Stillgelegtes (Raspberry Pi, Container-Test, Staging) liegt in [`archive/`](../archive/README.md).

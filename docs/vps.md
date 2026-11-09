@@ -4,8 +4,9 @@ Einrichtung eines Hosts (Debian 13) für den Zeitraffer. Der Betrieb lief zuerst
 Raspberry Pi und ist seit dem 30.10.2026 auf dem VPS; der Pi ist stillgelegt. `install.sh` im
 Projektordner richtet einen frischen Host ein; dieser Ablauf sagt, was davor und danach von Hand
 passiert. Platzhalter: `<vps>` ist der ssh-Alias des neuen Hosts in `~/.ssh/config` des Macs,
-`<alter-host>` der bisherige Host und `<ordner>` ein Zwischenordner auf dem Mac. Er sollte nicht
-unter `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die
+`<alter-host>` der ssh-Alias des bisherigen Hosts. Die Sicherung liegt standardmäßig in
+`~/timelapse-backup` (auf dem Mac wie auf dem neuen Host). Wird ein anderer Ordner gewählt, sollte
+er nicht unter `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die
 unverschlüsselten Videos hochgeladen.
 
 **Stand 09.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
@@ -19,7 +20,39 @@ Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-s
 Plan liegt im [Archiv](../archive/staging/docs/plans/web-server-nightly-run.md)).
 Das Projekt muss in `~/timelapse` liegen, weil die installierten Web-Wrapper dort suchen.
 
-## 1. Auf dem VPS: Repo, Schlüssel und Eintrag für die Storage Box
+## 1. Auf dem Mac: Sicherung vom bisherigen Host (optional)
+
+Solange der bisherige Host noch läuft, sichert `backup.sh` (im Repository-Ordner auf dem Mac
+gestartet), was der neue Host braucht und nicht im Git liegt: das Erkennungsmodell (`models/`), den
+Status (`state/` ohne Sperrdateien, Laufmarke und `web-jobs/`, darin der Status der Verpixelung) und
+die Crontab zum Nachlesen; mit `VIDEOS=1` auch die Videos (ohne versteckte Dateien). Es liest nur
+vom Host (ssh und rsync, kein sudo) und schreibt dort nichts.
+
+```bash
+BACKUP_HOST=<alter-host> ./backup.sh              # models/, state/, crontab.txt
+BACKUP_HOST=<alter-host> VIDEOS=1 ./backup.sh     # zusätzlich videos/
+```
+
+Statt der Variablen geht auch eine Datei `backup.env` neben dem Skript (Vorlage:
+`backup.env.example`, nicht versioniert); `PROJECT_DIR` und `DEST` stellen den Projektordner auf dem
+Host und das Ziel um; ein geändertes `DEST` muss beim Kopieren (Schritt 3) und als `BACKUP_DIR` beim
+Installieren (Schritt 5) wieder auftauchen. Die Sicherung ist nur für den eigenen Benutzer lesbar.
+Fehlermeldungen:
+[Handbuch](handbuch.md#fehler-sicherung-und-wiederherstellung).
+
+**Was nicht in der Sicherung ist, mit Absicht:** keine Geheimnisse. Die Anmeldung der Weboberfläche
+legt `install.sh` neu an, das Passwort des Uploads trägt man von Hand ein (beides siehe Schritt 4),
+und der ssh-Schlüssel für die Storage Box ist pro Host ein neuer (Schritt 2).
+
+- **`state/` nicht weglassen:** Ohne `state/privacy/box/` kennt der neue Host keinen bestätigten
+  Frame, und die [Sperre](verpixelung-box.md#sperre-in-automatischen-videos) lässt dann die Monats-
+  und Jahresvideos der Blur-Kameras aus, bis die Bilder neu bestätigt sind.
+- **Das Modell** lässt sich auch neu laden ([verpixelung.md](verpixelung.md#installation)).
+- **Die Videos** sind groß (bei der Planung 4,6 GB) und optional: Der nächtliche Lauf baut neue. Der
+  Weekly-Job fügt aber nur vorhandene Daily-Videos zusammen und braucht keine eigenen Bilder; ohne
+  gesicherte Videos fehlen ihm anfangs die Dailys.
+
+## 2. Auf dem VPS: Repo, Schlüssel und Eintrag für die Storage Box
 
 ```bash
 git clone https://github.com/funktion5/Zeitraffer.git ~/timelapse
@@ -52,17 +85,38 @@ Die Option `-s` bitte gegen die aktuelle Hetzner-Doku prüfen; die Box muss daf�
 erlauben. Den angezeigten Host-Fingerabdruck mit dem aus der Hetzner-Oberfläche vergleichen. Ist der
 bisherige Host stillgelegt, seinen Schlüssel auf der Box entfernen.
 
-## 2. Zugangsdaten der Weboberfläche
+## 3. Sicherung auf den neuen Host kopieren (optional)
 
-Hier ist nichts zu kopieren: `install.sh` legt die Anmeldung der Weboberfläche im Schritt
-`web_login` selbst an. Es fragt nach einem Benutzernamen (oder nimmt `HTPASSWD_USER`) und danach
-nach dem Passwort; das Passwort landet weder in einem Argument noch in einer Datei oder im
-Protokoll. Gibt es `/etc/apache2/.htpasswd` schon, bleibt die Datei unverändert. Weitere Benutzer
-später: `sudo htpasswd -B /etc/apache2/.htpasswd <login>`.
+Vom Mac aus, in den Ordner, den `install.sh` standardmäßig liest:
+
+```bash
+rsync -a ~/timelapse-backup/ <vps>:~/timelapse-backup/
+```
+
+Mit Videos dauert das länger; der Befehl lässt sich nach einem Abbruch einfach wiederholen. Prüfen,
+ob alles angekommen ist (`install.sh verify` prüft das nicht):
+
+```bash
+ssh <vps> 'du -sh ~/timelapse-backup/*'
+```
+
+## 4. Zugangsdaten der Weboberfläche und des Uploads
+
+Hier ist nichts zu kopieren: `install.sh` legt beides selbst an.
+
+- **Weboberfläche:** Im Schritt `web_login` fragt es nach einem Benutzernamen (oder nimmt
+  `HTPASSWD_USER`) und danach nach dem Passwort; das Passwort landet weder in einem Argument noch in
+  einer Datei oder im Protokoll. Gibt es `/etc/apache2/.htpasswd` schon, bleibt die Datei
+  unverändert. Weitere Benutzer später: `sudo htpasswd -B /etc/apache2/.htpasswd <login>`.
+- **Upload auf die Website:** Im Schritt `upload_login` kopiert es die Vorlage
+  `config/siteground.env.example` nach `config/siteground.env` (nur für den Benutzer lesbar). Die
+  Datei ist **leer**: die drei Werte `SITEGROUND_HOST`, `SITEGROUND_USER` und `SITEGROUND_PASS`
+  trägt man von Hand ein. Bis dahin schlägt der nächtliche Upload fehl, und `./install.sh verify`
+  warnt. Eine vorhandene Datei bleibt bei jedem Lauf unverändert.
 
 Die Cron-Zeilen des bisherigen Hosts dürfen nicht auf den neuen Host.
 
-## 3. Auf dem VPS: `install.sh`
+## 5. Auf dem VPS: `install.sh`
 
 ```bash
 cd ~/timelapse
@@ -75,49 +129,25 @@ Ort ab. Auf einem anderen Rechner (etwa einem Pi 5) laufen dieselben Schritte. P
 WLAN abschalten oder Absturzprotokolle gehört nicht dazu.
 
 Der Installer prüft zuerst, ob der `Host`-Eintrag und sein Schlüssel existieren. Dann fragt er nach
-dem sudo-Passwort, installiert Pakete, legt die virtuelle Umgebung an, legt die Anmeldung der
-Weboberfläche an (Benutzername und Passwort, Schritt `web_login`), bestätigt den Host-Fingerabdruck
-der Box, richtet Apache (HTTP mit Basisauthentifizierung), Wrapper und sudoers ein und setzt die
-Dateirechte. Er ist
-wiederholbar, einzelne Schritte laufen mit `./install.sh <schritt> [<schritt> ...]`. Zum Schluss
-steht die Cron-Zeile in der Ausgabe; installiert wird sie nicht.
+dem sudo-Passwort und führt der Reihe nach aus: Pakete installieren, virtuelle Umgebung anlegen,
+Anmeldung der Weboberfläche anlegen (`web_login`), Login-Datei des Uploads anlegen (`upload_login`),
+eine Sicherung zurückspielen (`restore`), den Host-Fingerabdruck der Box bestätigen
+(`known_hosts`), Apache (HTTP mit Basisauthentifizierung), Wrapper und sudoers einrichten und die
+Dateirechte setzen. Zum Schluss prüft `verify` das Ergebnis, und die Cron-Zeile steht in der
+Ausgabe; installiert wird sie nicht. Der Installer ist wiederholbar, einzelne Schritte laufen mit
+`./install.sh <schritt> [<schritt> ...]`.
 
-Vom bisherigen Host wird nichts übernommen; `config/config.json` kommt aus Git. Absichtlich
-auch nicht: Crontab, sudoers- und vhost-Datei des bisherigen Hosts (sie nennen dessen Benutzer) und
+`restore` liest `~/timelapse-backup` (`BACKUP_DIR` nennt einen anderen absoluten Pfad). Gibt es den
+Ordner nicht, wird der Schritt übersprungen und der Host fängt leer an. Sonst kopiert er `models/`,
+`state/` und `videos/` aus der Sicherung ins Projekt, überschreibt dabei nie eine vorhandene Datei
+und löscht nichts; die Crontab aus der Sicherung wird nicht installiert. Wurde die Sicherung erst
+nach dem Installieren kopiert: `./install.sh restore permissions verify`.
+
+Außer dem Inhalt der Sicherung wird nichts vom bisherigen Host übernommen; `config/config.json`
+kommt aus Git. Absichtlich auch nicht: Crontab, sudoers- und vhost-Datei des bisherigen Hosts (sie nennen dessen Benutzer) und
 alle seine SSH-Schlüssel.
 
-## 4. Modell, Status und Videos vom bisherigen Host kopieren
-
-Vom Mac aus, zuerst vom bisherigen Host in den Zwischenordner, dann auf den neuen Host (die beiden
-Hosts sprechen nicht direkt miteinander). Es sind die Befehle des Umzugs vom Pi, nur mit dem
-bisherigen Host als Quelle:
-
-```bash
-rsync -a <alter-host>:timelapse/models/ <ordner>/models/
-rsync -a <alter-host>:timelapse/state/ <ordner>/state/
-rsync -a --progress <alter-host>:timelapse/videos/ <ordner>/videos/
-
-rsync -a <ordner>/models/ <vps>:~/timelapse/models/
-rsync -a <ordner>/state/ <vps>:~/timelapse/state/
-rsync -a --progress <ordner>/videos/ <vps>:~/timelapse/videos/
-```
-
-Das Modell lässt sich auch neu laden ([verpixelung.md](verpixelung.md#installation)). Den Status
-(`state/`) nicht weglassen: Ohne `state/privacy/box/` kennt der neue Host keinen bestätigten Frame,
-und die [Sperre](verpixelung-box.md#sperre-in-automatischen-videos) lässt dann die Monats- und
-Jahresvideos der Blur-Kameras aus, bis die Bilder neu bestätigt sind.
-
-Die Videos zuletzt: Sie sind groß (bei der Planung 4,6 GB) und der Befehl lässt sich nach einem
-Abbruch einfach wiederholen. Prüfen, ob alles angekommen ist (`install.sh verify` prüft das nicht):
-
-```bash
-ssh <vps> 'du -sh ~/timelapse/videos ~/timelapse/state ~/timelapse/models'
-```
-
-Danach auf dem VPS `./install.sh permissions verify`. Die Videos müssen vor dem ersten nächtlichen
-Lauf da sein: Der Weekly-Job fügt vorhandene Daily-Videos zusammen und braucht keine eigenen Bilder.
-
-## 5. Weboberfläche ansehen
+## 6. Weboberfläche ansehen
 
 Der vhost ist HTTP mit Basisauthentifizierung, das Passwort ginge also unverschlüsselt über das
 Netz. Bis es HTTPS gibt, die Seite über einen ssh-Tunnel öffnen (lokaler Port 8055, weil 8080 der
@@ -130,7 +160,7 @@ ssh -L 8055:localhost:55222 <vps>
 Dann im Browser `http://localhost:8055/` öffnen. Der Port 55222 muss dafür in der Firewall nicht
 offen sein.
 
-## 6. Von Hand prüfen, dann Cron
+## 7. Von Hand prüfen, dann Cron
 
 Ein Tag, eine Kamera, vom Menschen ausgeführt. Auf dem VPS im Projektordner:
 
@@ -146,10 +176,11 @@ Danach als Gesamtprobe den ganzen Nachtlauf einmal von Hand starten
 ([Handbuch](handbuch.md#nächtlicher-lauf)). Der Lauf vom 29.10.2026 ging mit 16 Kameras ohne Fehler
 durch und dauerte rund 41 Minuten (Preset `medium`, zwei Kerne).
 
-Einen Tag wählen, zu dem der bisherige Host schon ein Video hat, und beide vergleichen. Historische Läufe mit
-`--target-date` landen getrennt von den automatischen Videos (siehe [betrieb.md](betrieb.md)).
-Erst wenn das passt: die Cron-Zeilen des bisherigen Hosts entfernen, die drei Werte in `config/siteground.env`
-eintragen (die Datei hat `install.sh` aus der Vorlage angelegt) und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
+Einen Tag wählen, zu dem der bisherige Host schon ein Video hat, und beide vergleichen.
+Historische Läufe mit `--target-date` landen getrennt von den automatischen Videos (siehe
+[betrieb.md](betrieb.md)). Erst wenn das passt: die Cron-Zeilen des bisherigen Hosts entfernen, die
+drei Werte in `config/siteground.env` eintragen (die Datei hat `install.sh` aus der Vorlage
+angelegt) und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
 ohne `--run`, siehe [betrieb.md](betrieb.md#upload-auf-die-website)), dann die Zeile aus
 `./install.sh cron_hint` in `crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts
 laufen.

@@ -16,6 +16,7 @@ für die jeweiligen Werte.
 - [Fehler: nächtlicher Lauf](#fehler-nächtlicher-lauf)
 - [Fehler: Weboberfläche](#fehler-weboberfläche)
 - [Fehler: Erkennung, Highlights und Verpixelung](#fehler-erkennung-highlights-und-verpixelung)
+- [Fehler: Sicherung und Wiederherstellung](#fehler-sicherung-und-wiederherstellung)
 - [Fehler: Entwicklung und CI](#fehler-entwicklung-und-ci)
 - [Arbeitsspeicher](#arbeitsspeicher)
 
@@ -36,7 +37,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Highlights-Flagger | direkt nach dem Upload, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
-| Speicherfilter, Yearly-Backfill, NAS-Werkzeuge | bei Bedarf | Befehl |
+| Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
 ### Wo was liegt
 
@@ -110,8 +111,10 @@ grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
 
 Kurzfassung als Checkliste. Die vollständigen Schritte stehen im
 [README unter Installation](../README.md#installation); auf einem frischen Debian- oder
-Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte; den Zugang zur Storage
-Box (Schritt 5) und Cron (Schritt 6) richtet man nach [vps.md](vps.md) von Hand ein.
+Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte, legt die leere
+Login-Datei des Uploads an und spielt, wenn eine Sicherung bereitliegt, Modell, Status und Videos
+zurück (Schritt 3); den Zugang zur Storage Box (Schritt 5) und Cron (Schritt 6) richtet man nach
+[vps.md](vps.md) von Hand ein.
 
 | # | Schritt | Funktioniert, wenn |
 |---|---|---|
@@ -216,6 +219,22 @@ Details: [flagger.md](flagger.md).
 ```
 
 Details: [werkzeuge.md](werkzeuge.md); NAS-Archiv: [nas.md](nas.md).
+
+### Sicherung
+
+Auf dem eigenen Rechner (macOS oder Linux) im Repository-Ordner, mit dem ssh-Alias des
+Hosts, von dem gesichert wird:
+
+```bash
+BACKUP_HOST=<ssh-alias> ./backup.sh              # models/, state/, crontab.txt
+BACKUP_HOST=<ssh-alias> VIDEOS=1 ./backup.sh     # zusätzlich videos/
+```
+
+Die Sicherung landet in `~/timelapse-backup`. Sie enthält das Erkennungsmodell, den Status
+(darunter den der Verpixelung), die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos, aber
+keine Geheimnisse: Die Anmeldung der Weboberfläche legt `install.sh` neu an, das Passwort des
+Uploads trägt man von Hand ein. Einspielen auf einem neuen Host (`./install.sh restore`):
+[vps.md](vps.md).
 
 ---
 
@@ -634,7 +653,7 @@ Flagger und Verpixelung nutzen das Erkennungsmodell YOLOX (`models/`, über `onn
 **Symptom:** `Flagger not started: model file missing: models/object_detection_yolox_2022nov.onnx`;
 bei der Verpixelung bricht der Lauf ab, statt ein ungeprüftes Video zu erzeugen.
 
-**Lösung:** `models/` vom bisherigen Host zurückkopieren (bevorzugt: dieselbe Datei hält
+**Lösung:** `models/` aus der Sicherung zurückspielen (`./install.sh restore`; bevorzugt: dieselbe Datei hält
 zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
 ([verpixelung.md](verpixelung.md#installation)).
 
@@ -649,8 +668,8 @@ zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
 **Ursache:** `onnxruntime` oder OpenCV fehlen in der virtuellen Umgebung oder passen nicht zur
 Plattform; seltener eine beschädigte Modelldatei.
 
-**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`; Modelldatei mit der vom bisherigen
-Host vergleichen (`sha256sum models/*.onnx`).
+**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`; Modelldatei mit der aus der
+Sicherung vergleichen (`sha256sum models/*.onnx`).
 
 ### Erkennung liegt falsch
 
@@ -751,7 +770,7 @@ Das Protokoll steht in `logs/siteground-delivery.log`; je Kamera endet es mit
 |---|---|---|
 | `Die Liste der freigegebenen Videos konnte nicht erstellt werden.` | `scripts/list-deliverable-videos.py` ist fehlgeschlagen, z. B. weil `videos/` fehlt | das Skript einzeln ausführen und die Meldung lesen |
 | `Die Liste ist leer: Es wird nichts gesendet und nichts gelöscht.` oder `Die Liste ist leer: Für <Kamera> wird nichts gesendet und nichts gelöscht.` | keine freigegebenen Videos (alle Kameras in `ignored_cameras`, noch keine Videos) bzw. die genannte Kamera ist nicht freigegeben | Liste prüfen: `.venv/bin/python3 scripts/list-deliverable-videos.py` |
-| `SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen ausgefüllt sein.` | `config/siteground.env` fehlt oder ist unvollständig | Datei anlegen, siehe [betrieb.md](betrieb.md#upload-auf-die-website) |
+| `SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen ausgefüllt sein.` | `config/siteground.env` fehlt oder ist unvollständig | `./install.sh upload_login` legt sie aus der Vorlage an (leer), dann die drei Werte eintragen, siehe [betrieb.md](betrieb.md#upload-auf-die-website) |
 | `Es läuft bereits ein anderer Lauf.` (Rückgabewert 3) | für diese Kamera läuft schon ein Upload | warten und wiederholen |
 | `Upload fehlgeschlagen: …` oder `Umbenennen fehlgeschlagen: …` | FTP-Verbindung oder Rechte auf der Website | Aufgeräumt wird in diesem Ordner dann nicht (`Aufräumen von … übersprungen`); Verbindung prüfen, die nächste Nacht lädt erneut hoch |
 | `Mindestens eine Kamera ist fehlgeschlagen.` | siehe die Zeilen darüber im Protokoll | je Kamera behandeln |
@@ -765,6 +784,29 @@ failed`, siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreich
 ### WordPress
 
 Siehe [wordpress.md](wordpress.md#fehlerbehebung-wordpress-frontend).
+
+---
+
+## Fehler: Sicherung und Wiederherstellung
+
+Meldungen von `backup.sh` und vom Schritt `restore` des Installers, dazu die ssh-Meldung bei
+geändertem Host-Key, die rsync durchreicht.
+
+| Meldung | Ursache | Lösung |
+|---|---|---|
+| `BACKUP_HOST is not set: …` | der ssh-Alias fehlt | `BACKUP_HOST=<alias> ./backup.sh` oder den Alias in `backup.env` eintragen |
+| `Invalid BACKUP_HOST: …` | der Alias beginnt nicht mit Buchstabe oder Ziffer oder enthält andere Zeichen als Buchstaben, Ziffern, `.`, `_`, `@` und `-` | den Alias aus `~/.ssh/config` verwenden |
+| `Invalid PROJECT_DIR (relative to the host's home, no '..'): …` | der Pfad ist absolut, enthält `..` oder Zeichen außer Buchstaben, Ziffern, `.`, `_`, `/` und `-` | relativ zum Home-Ordner des Hosts angeben, zum Beispiel `timelapse` |
+| `VIDEOS must be 0 or 1.` | `VIDEOS` hat einen anderen Wert | `0` oder `1` setzen |
+| `ssh was not found on this computer.` oder `rsync was not found on this computer.` | Werkzeug fehlt auf dem eigenen Rechner | installieren |
+| `[WARN] models/ could not be saved.` und am Ende `Not saved: …` | rsync konnte den Ordner nicht holen (Ordner fehlt auf dem Host, `PROJECT_DIR` falsch, Verbindung) | die rsync-Meldung davor lesen, Alias und `PROJECT_DIR` prüfen; alles andere ist gesichert, der Lauf ist wiederholbar |
+| `No crontab on <alias> (or it is not readable).` | der Host hat keine Crontab | nichts: `crontab.txt` bleibt leer, die Sicherung ist trotzdem vollständig |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Host neu installiert | Fingerabdruck prüfen, dann `ssh-keygen -R <host>` |
+| `BACKUP_DIR must be an absolute path: …` (bei `install.sh`) | `BACKUP_DIR` ist relativ | absoluten Pfad angeben |
+| `No backup folder at …: nothing to restore` | es liegt keine Sicherung bereit | bei einem Neuaufbau ohne Sicherung normal; sonst die Sicherung nach `~/timelapse-backup` kopieren und `./install.sh restore` starten |
+| `… holds no models/, state/ or videos/: nothing restored.` | der Sicherungsordner enthält keinen dieser Ordner | Inhalt prüfen: `ls ~/timelapse-backup` |
+
+Einrichtung des Servers: [vps.md](vps.md).
 
 ---
 

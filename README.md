@@ -53,7 +53,7 @@ Platzhalter in den folgenden Beispielen:
 | `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
 | `<login>` | Benutzername der Apache-Basisauthentifizierung |
 
-Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Einen VPS einrichten](docs/vps.md).
+Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Anmeldung der Weboberfläche, leere Login-Datei für den Upload, auf Wunsch das Zurückspielen einer Sicherung, Apache, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Einen VPS einrichten](docs/vps.md).
 
 ### Systempakete installieren
 
@@ -211,7 +211,7 @@ Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTP
 
 #### Basisauthentifizierung einrichten
 
-Beide Verzeichnisse (`web/public` und der `/videos/`-Alias) werden per `AuthType Basic` geschützt. Die Zugangsdaten liegen in `/etc/apache2/.htpasswd`, außerhalb des Dokumenten-Stammverzeichnisses und damit über HTTP nicht erreichbar; die Datei wird nicht versioniert und darf nicht ins Repository gelangen.
+Beide Verzeichnisse (`web/public` und der `/videos/`-Alias) werden per `AuthType Basic` geschützt. Die Zugangsdaten liegen in `/etc/apache2/.htpasswd`, außerhalb des Dokumenten-Stammverzeichnisses und damit über HTTP nicht erreichbar; die Datei wird nicht versioniert und darf nicht ins Repository gelangen. Auf einem frischen Host legt `install.sh` sie im Schritt `web_login` an.
 
 ```bash
 sudo htpasswd -cB /etc/apache2/.htpasswd <login>
@@ -562,7 +562,7 @@ Es wird derzeit auf einem Testsystem auf dem Mac entwickelt.
 
 Die fertigen Videos lädt ein Skript auf dem VPS jede Nacht nach dem Nachtlauf per FTP auf die
 Website hoch (`scripts/copy_zeitraffer_videos_vps2siteground.sh`; die Zugangsdaten stehen in der
-nicht versionierten Datei `config/siteground.env`). Pro Kamera und Videotyp bleiben die neuesten
+nicht versionierten Datei `config/siteground.env`; eine Vorlage ohne Werte liegt als `config/siteground.env.example` im Repository). Pro Kamera und Videotyp bleiben die neuesten
 zwei Dateien liegen, ältere werden dort gelöscht.
 
 Details zu Einrichtung, Entwicklung und Fehlerbehebung: [docs/wordpress.md](docs/wordpress.md).
@@ -596,9 +596,12 @@ Neben dem nächtlichen Lauf gibt es Hilfsprogramme, die bei Bedarf von Hand gest
   fehlen.
 - **NAS-Archiv:** holt Bilder vergangener Jahre aus dem Archiv auf dem NAS, um damit Videos zu
   erstellen.
+- **Sicherung:** `backup.sh` sichert von einem Host, was ein neuer Host braucht und nicht im Git liegt
+  (Erkennungsmodell, Status der Verpixelung, auf Wunsch die Videos), ohne Geheimnisse; `install.sh` spielt es auf einem neuen
+  Host zurück.
 
-Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill) und
-[docs/nas.md](docs/nas.md) (NAS-Archiv).
+Details: [docs/werkzeuge.md](docs/werkzeuge.md) (Speicherfilter, Yearly-Backfill),
+[docs/nas.md](docs/nas.md) (NAS-Archiv) und [docs/vps.md](docs/vps.md) (Sicherung).
 
 ---
 
@@ -678,7 +681,7 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [cli.md](docs/cli.md) | alle Befehle und Optionen |
 | [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill |
 | [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
-| [vps.md](docs/vps.md) | Einen VPS einrichten: `install.sh`, Daten übernehmen, Handtest, bekannte Lücken |
+| [vps.md](docs/vps.md) | Einen VPS einrichten: Sicherung, `install.sh`, Handtest, bekannte Lücken |
 | [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
 | [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
 | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md), [youtube/texts](docs/youtube/youtube-texts.md) | Texte für YouTube-Beschreibungen |
