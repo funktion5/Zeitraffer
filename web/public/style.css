@@ -690,12 +690,35 @@ button:disabled {
 }
 
 
-/* Rebuild and upload sections: the two night-run tools. A teal edge sets them apart from the
-   manual form, and every tickbox is a chip that shows what is selected. */
+/* Rebuild and upload sections: the two night-run tools, used one after the other (build, look at
+   the video, upload). Numbered steps say so, and every tickbox is a chip that shows what is
+   selected. */
 
-.video-rebuild,
-.video-publish {
-	border-left: 3px solid var(--color-primary-dark);
+.video-rebuild h2::before,
+.video-publish h2::before {
+	display: inline-grid;
+	place-items: center;
+
+	width: 1.5rem;
+	height: 1.5rem;
+	margin-right: 0.6rem;
+
+	background: var(--color-primary-dark);
+	border-radius: 50%;
+
+	color: #effcff;
+
+	font-size: 0.85rem;
+	line-height: 1;
+	vertical-align: 0.1em;
+}
+
+.video-rebuild h2::before {
+	content: "1";
+}
+
+.video-publish h2::before {
+	content: "2";
 }
 
 .video-rebuild fieldset {
