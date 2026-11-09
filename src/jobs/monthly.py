@@ -9,6 +9,7 @@ from src.interval_window import (
 	resolve_target_seconds,
 )
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_gate import apply_blur_gate
 from src.privacy.blur_job import blur_job_frames
 from src.video import create_timelapse
 from src.video import cleanup_automatic_video_retention
@@ -108,6 +109,21 @@ def run_monthly_job(
 			):
 				failed_count += 1
 				continue
+
+			# An automatic Monthly is public, so a blur camera's video is built from frames the box
+			# blur job has confirmed only. Before the coverage check: a frame that cannot go public
+			# is not a day with a picture.
+			if not manual_run and camera in blur_cameras:
+				monthly_images = apply_blur_gate(
+					camera,
+					monthly_images,
+					config["location"]["timezone"],
+				)
+
+				if not monthly_images:
+					logger.warning(f"[{camera}] Blur gate: no confirmed image - skipping camera.")
+					skipped_count += 1
+					continue
 
 			if not check_coverage(
 				images=monthly_images,

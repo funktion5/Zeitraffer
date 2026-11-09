@@ -1,11 +1,14 @@
+import json
 import subprocess
 from datetime import date, time, timedelta
 from pathlib import Path
 
+import pytest
 from frame_source_fakes import RecordingFrameSource
 
 import src.images as images_module
 import src.jobs.monthly as monthly_module
+import src.privacy.blur_gate as blur_gate_module
 from src.image_worker import WorkerExitedError
 from src.jobs.monthly import run_monthly_job
 from src.interval_window import SUNSET, IntervalWindow
@@ -724,6 +727,36 @@ def run_monthly_with_config(cameras, manual_run=True):
 	)
 
 
+# The box blur job's state, redirected to a temporary folder: one file per camera and month, one
+# JSON line per event, like blur_box.record_processed.
+@pytest.fixture
+def blur_state(monkeypatch, tmp_path) -> Path:
+	root = tmp_path / "blur-state"
+
+	monkeypatch.setattr(blur_gate_module, "BLUR_STATE_ROOT", root)
+
+	return root
+
+
+# Write a status for every given image on the page of its own month.
+def write_frame_states(root: Path, camera: str, statuses: dict[Path, str]) -> None:
+	pages: dict[str, list[dict]] = {}
+
+	for image, status in statuses.items():
+		image_date = images_module.extract_date(image.name)
+
+		pages.setdefault(f"{image_date:%Y-%m}", []).append({"image": image.name, "status": status})
+
+	for month, entries in pages.items():
+		path = root / camera / f"{month}.jsonl"
+		path.parent.mkdir(parents=True, exist_ok=True)
+		path.write_text("".join(json.dumps(entry) + "\n" for entry in entries), encoding="utf-8")
+
+
+def confirm_frames(root: Path, camera: str, images: list[Path]) -> None:
+	write_frame_states(root, camera, {image: "blurred" for image in images})
+
+
 def test_a_manual_run_blurs_the_selected_frames_of_a_blur_camera_before_the_video(monkeypatch):
 	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
 	calls = patch_blur(monkeypatch, events)
@@ -735,9 +768,11 @@ def test_a_manual_run_blurs_the_selected_frames_of_a_blur_camera_before_the_vide
 	assert calls[0]["config"] is BLUR_CONFIG
 
 
-def test_an_automatic_run_never_blurs_even_a_blur_camera(monkeypatch):
+def test_an_automatic_run_never_blurs_even_a_blur_camera(monkeypatch, blur_state):
 	events = patch_monthly_job(monkeypatch, lambda **kwargs: create_complete_monthly_images())
 	calls = patch_blur(monkeypatch, events)
+
+	confirm_frames(blur_state, "Test-Camera", create_complete_monthly_images())
 
 	run_monthly_with_config(["Test-Camera"], manual_run=False)
 
@@ -808,3 +843,144 @@ def test_the_other_cameras_still_run_when_one_blur_is_not_ready(monkeypatch):
 		"create:Working-Camera",
 		"release:Working-Camera",
 	]
+
+
+# ---- Blur gate: an automatic Monthly of a blur camera is built from confirmed frames only ----
+
+
+# Replace the video build so the test sees which frames reach it.
+def patch_video_build(monkeypatch, events) -> list[list[Path]]:
+	built = []
+
+	def fake_create_timelapse(camera, images, **kwargs):
+		events.append(f"create:{camera}")
+		built.append(list(images))
+
+		return Path(f"videos/{camera}/monthly/video.mp4")
+
+	monkeypatch.setattr(monthly_module, "create_timelapse", fake_create_timelapse)
+
+	return built
+
+
+# blurred, clean and night are confirmed; refused, replacing and no entry at all are not. The
+# Monthly is still built, from the confirmed frames, and the left-out ones are named in the log.
+def test_an_automatic_blur_camera_monthly_is_built_from_confirmed_frames_only(
+	monkeypatch,
+	blur_state,
+	caplog,
+):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	built = patch_video_build(monkeypatch, events)
+
+	confirmed_statuses = ("blurred", "clean", "night")
+	statuses = {images[0]: "refused", images[1]: "replacing"}
+	statuses |= {image: confirmed_statuses[index % 3] for index, image in enumerate(images[3:])}
+
+	write_frame_states(blur_state, "Test-Camera", statuses)
+
+	run_monthly_with_config(["Test-Camera"], manual_run=False)
+
+	assert built == [images[3:]]
+	assert events == ["create:Test-Camera", "release:Test-Camera"]
+	assert "[Test-Camera] Blur gate: left out 3 of 30" in caplog.text
+	assert all(image.name in caplog.text for image in images[:3])
+	assert "created=1 | skipped=0 | failed=0" in caplog.text
+
+
+# Frames that cannot go public are not days with a picture: the coverage check counts the confirmed
+# frames only, so a Monthly with too many unconfirmed days is skipped, not built with holes.
+def test_the_coverage_check_counts_only_confirmed_frames(monkeypatch, blur_state, caplog):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	built = patch_video_build(monkeypatch, events)
+
+	# 24 confirmed days are one short of the configured minimum of 25.
+	statuses = {image: "refused" for image in images[:6]}
+	statuses |= {image: "blurred" for image in images[6:]}
+
+	write_frame_states(blur_state, "Test-Camera", statuses)
+
+	run_monthly_with_config(["Test-Camera"], manual_run=False)
+
+	assert built == []
+	assert events == ["release:Test-Camera"]
+	assert "Monthly coverage too low" in caplog.text
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+
+
+# No confirmed frame at all (the nightly blur failed, or the camera has no state) is a skip, not a
+# failure and not a video of unchecked frames; the fetched frames are still released.
+@pytest.mark.parametrize("refused", [False, True], ids=["no-state", "all-refused"])
+def test_a_blur_camera_without_a_confirmed_frame_is_skipped(
+	monkeypatch,
+	blur_state,
+	caplog,
+	refused,
+):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	built = patch_video_build(monkeypatch, events)
+
+	if refused:
+		write_frame_states(blur_state, "Test-Camera", {image: "refused" for image in images})
+
+	run_monthly_with_config(["Test-Camera"], manual_run=False)
+
+	assert built == []
+	assert events == ["release:Test-Camera"]
+	assert "[Test-Camera] Blur gate: left out 30 of 30" in caplog.text
+	assert "[Test-Camera] Blur gate: no confirmed image - skipping camera." in caplog.text
+	assert "created=0 | skipped=1 | failed=0" in caplog.text
+	# This is not the thin-month case and not the "camera delivered no images" case.
+	assert "coverage too low" not in caplog.text
+	assert "No valid Monthly images" not in caplog.text
+
+
+# A manual run is not public: it blurs first and needs no earlier state.
+def test_a_manual_run_is_not_gated(monkeypatch, blur_state, caplog):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	built = patch_video_build(monkeypatch, events)
+
+	patch_blur(monkeypatch, events)
+
+	run_monthly_with_config(["Test-Camera"], manual_run=True)
+
+	assert built == [images]
+	assert "Blur gate" not in caplog.text
+
+
+# Cameras without people are not gated and need no state, automatic runs included.
+def test_an_automatic_run_of_a_camera_outside_the_blur_list_is_not_gated(
+	monkeypatch,
+	blur_state,
+	caplog,
+):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	built = patch_video_build(monkeypatch, events)
+
+	run_monthly_with_config(["Plain-Camera"], manual_run=False)
+
+	assert built == [images]
+	assert "Blur gate" not in caplog.text
+
+
+# One camera's gate must not stop the others.
+def test_the_other_cameras_still_run_when_one_is_gated_out(monkeypatch, blur_state, caplog):
+	images = create_complete_monthly_images()
+	events = patch_monthly_job(monkeypatch, lambda **kwargs: images)
+	patch_video_build(monkeypatch, events)
+
+	confirm_frames(blur_state, "Working-Camera", images)
+
+	run_monthly_with_config(["Stuck-Camera", "Working-Camera"], manual_run=False)
+
+	assert events == [
+		"release:Stuck-Camera",
+		"create:Working-Camera",
+		"release:Working-Camera",
+	]
+	assert "created=1 | skipped=1 | failed=0" in caplog.text
