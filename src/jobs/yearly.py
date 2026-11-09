@@ -20,6 +20,7 @@ from src.interval_window import (
 	resolve_target_seconds,
 )
 from src.logger import RUN_ID, format_run_context, logger
+from src.privacy.blur_gate import apply_blur_gate
 from src.privacy.blur_job import blur_job_frames
 from src.video import create_timelapse, cleanup_automatic_video_retention
 from src.yearly_selection import select_yearly_images_isolated
@@ -107,6 +108,22 @@ def run_yearly_job(
 				skipped_count += 1
 
 				continue
+
+			# An automatic Yearly is public, so a blur camera's video is built from frames the box
+			# blur job has confirmed only. Before the coverage check and the selection: a frame that
+			# cannot go public is not a day with a picture and must never be picked for the year.
+			if not manual_run and camera in blur_cameras:
+				interval_images = apply_blur_gate(
+					camera,
+					interval_images,
+					location["timezone"],
+				)
+
+				if not interval_images:
+					logger.warning(f"[{camera}] Blur gate: no confirmed image - skipping camera.")
+					skipped_count += 1
+
+					continue
 
 			if not check_coverage(
 				images=interval_images,
