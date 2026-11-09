@@ -164,7 +164,8 @@ def run_publish_worker(
 ) -> subprocess.CompletedProcess:
 	project_root = tmp_path / "project"
 	status_root = project_root / "state" / "web-jobs"
-	project_root.mkdir()
+	# A test may have made the folder already (to put an earlier log into it).
+	project_root.mkdir(exist_ok=True)
 
 	script_arguments_file = tmp_path / "script-arguments"
 	fake_script = tmp_path / "fake-delivery.sh"
