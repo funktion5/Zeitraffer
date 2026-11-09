@@ -148,8 +148,8 @@ durch und dauerte rund 41 Minuten (Preset `medium`, zwei Kerne).
 
 Einen Tag wählen, zu dem der bisherige Host schon ein Video hat, und beide vergleichen. Historische Läufe mit
 `--target-date` landen getrennt von den automatischen Videos (siehe [betrieb.md](betrieb.md)).
-Erst wenn das passt: die Cron-Zeilen des bisherigen Hosts entfernen, die Zugangsdaten für den Upload in `config/siteground.env`
-anlegen und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
+Erst wenn das passt: die Cron-Zeilen des bisherigen Hosts entfernen, die drei Werte in `config/siteground.env`
+eintragen (die Datei hat `install.sh` aus der Vorlage angelegt) und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
 ohne `--run`, siehe [betrieb.md](betrieb.md#upload-auf-die-website)), dann die Zeile aus
 `./install.sh cron_hint` in `crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts
 laufen.
@@ -190,10 +190,10 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
 - **Flagger und laufende Verpixelung:** Der Flagger steht am Ende der 02:00-Zeile und startet damit
   erst nach dem Nachtlauf und dem Upload, ohne feste Uhrzeit. Die laufende Verpixelung neuer Bilder
   ist nicht in Cron (Entwurf: [Plan](plans/2026-10-30-live-blur-cron.md)).
-- **Zugangsdaten für den Upload:** `install.sh` legt `config/siteground.env` nicht an (die Datei
-  ist nicht im Repository). Auf einem frisch eingerichteten Host muss sie von Hand entstehen
-  ([Upload auf die Website](betrieb.md#upload-auf-die-website)); `./install.sh verify` warnt, wenn
-  sie oder einer ihrer drei Werte fehlt.
+- **Passwort des Uploads:** `install.sh` legt `config/siteground.env` im Schritt `upload_login` aus
+  der Vorlage `config/siteground.env.example` an, aber leer. Die drei Werte trägt man von Hand ein
+  ([Upload auf die Website](betrieb.md#upload-auf-die-website)); `./install.sh verify` warnt, solange
+  einer fehlt.
 - **Upload ohne Verschlüsselung:** Das Upload-Skript nutzt einfaches FTP (`ftp://`). Die Zugangsdaten
   stehen in `config/siteground.env`, nicht im Repository.
 - **Weboberfläche für das Team:** Die Oberfläche des Pi zeigt seit dem Umzug keine neuen Videos

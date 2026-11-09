@@ -23,9 +23,10 @@
 #   REWRITE_VHOST=1  overwrite an existing, different vhost file (it is kept by default, so a
 #                    later TLS setup is not undone by a re-run)
 #
-# Not done here, on purpose: the crontab (printed at the end, you paste it), the FTP login of the
-# nightly upload (config/siteground.env, git-ignored, see docs/betrieb.md) and the copy of
-# models/, state/ and videos/ (rsync from the Mac, see docs/vps.md).
+# Not done here, on purpose: the crontab (printed at the end, you paste it), the FTP password of
+# the nightly upload (the step upload_login only creates config/siteground.env from the template
+# config/siteground.env.example; the values are filled in by hand, see docs/betrieb.md) and the
+# copy of models/, state/ and videos/ (rsync from the Mac, see docs/vps.md).
 
 set -euo pipefail
 
@@ -45,6 +46,7 @@ ALL_STEPS=(
 	packages
 	venv
 	web_login
+	upload_login
 	known_hosts
 	apache
 	web_bridge
@@ -124,6 +126,21 @@ step_web_login() {
 	# Only Apache needs to read the password hashes, not every local user.
 	sudo chown root:www-data /etc/apache2/.htpasswd
 	sudo chmod 640 /etc/apache2/.htpasswd
+}
+
+step_upload_login() {
+	log "Preparing the login file of the nightly upload"
+	local file="$PROJECT_ROOT/config/siteground.env"
+	local template="$PROJECT_ROOT/config/siteground.env.example"
+	# An existing file holds the real login and is never touched.
+	if [[ -f "$file" ]]; then
+		echo "config/siteground.env exists: leaving it as it is."
+		return
+	fi
+	[[ -f "$template" ]] || fail "Missing the template config/siteground.env.example."
+	cp "$template" "$file"
+	chmod 600 "$file"
+	warn "config/siteground.env was created from the template and is EMPTY: fill in SITEGROUND_HOST, SITEGROUND_USER and SITEGROUND_PASS by hand. Until then the nightly upload fails."
 }
 
 step_known_hosts() {

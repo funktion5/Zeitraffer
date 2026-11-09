@@ -87,8 +87,10 @@ scripts/copy_zeitraffer_videos_vps2siteground.sh [<Kamera>] [--run]
   auf) endet das Skript mit `1`, sobald eine Kamera fehlgeschlagen ist, gleich mit welchem dieser
   Codes; die Ursache steht im Protokoll.
 - Die Zugangsdaten stehen in `config/siteground.env` (nicht versioniert, je Zeile `NAME=Wert` für
-  `SITEGROUND_HOST`, `SITEGROUND_USER`, `SITEGROUND_PASS`). Eine gleichnamige Umgebungsvariable hat
-  Vorrang; `SITEGROUND_CONFIG` nennt eine andere Datei.
+  `SITEGROUND_HOST`, `SITEGROUND_USER`, `SITEGROUND_PASS`). Eine Vorlage ohne Werte liegt im
+  Repository (`config/siteground.env.example`); `./install.sh` kopiert sie beim Einrichten eines
+  Hosts, die Werte trägt man von Hand ein. Eine gleichnamige Umgebungsvariable hat Vorrang;
+  `SITEGROUND_CONFIG` nennt eine andere Datei.
 - Die Verbindung ist einfaches FTP (`ftp://`), also nicht verschlüsselt.
 - Das Ergebnis steht je Kamera im Protokoll `logs/siteground-delivery.log` in der Zeile
   `Ergebnis: hochgeladen=… übersprungen=… fehlgeschlagen=… gelöscht=…`.
