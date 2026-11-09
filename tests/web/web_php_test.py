@@ -600,6 +600,85 @@ def test_start_rebuild_job_refuses_without_run_user(tmp_path):
 	assert args == []
 
 
+# The publish trigger gets the camera and nothing else: no file names, no host, no login.
+def test_start_publish_job_calls_the_trigger_with_the_camera(tmp_path):
+	result, args = run_wrapper(tmp_path, "publish-runner.php", 'startPublishJob("cam")', 0)
+
+	assert result["started"] is True
+	assert len(result["jobId"]) == 32
+	assert args[:3] == ["-n", "-u", pwd.getpwuid(os.getuid()).pw_name]
+	assert args[3:] == ["/usr/local/sbin/timelapse-web-publish", result["jobId"], "cam"]
+
+
+def test_start_publish_job_reports_a_busy_lock(tmp_path):
+	result, _ = run_wrapper(tmp_path, "publish-runner.php", 'startPublishJob("cam")', 75)
+
+	assert result == {
+		"started": False,
+		"jobId": None,
+		"message": "Es läuft bereits ein anderer Zeitraffer-Auftrag.",
+	}
+
+
+# Wrapper stderr is logged server-side only, never returned to the browser.
+def test_start_publish_job_hides_wrapper_error_details(tmp_path):
+	result, _ = run_wrapper(tmp_path, "publish-runner.php", 'startPublishJob("cam")', 1)
+
+	assert result["started"] is False
+	assert "denied" not in result["message"]
+
+
+def test_start_publish_job_refuses_without_run_user(tmp_path):
+	run_php(tmp_path, "process-runner.php", {PROJECT_ROOT_CALL: json.dumps("/")}, "echo 0;")
+	result, args = run_wrapper(tmp_path, "publish-runner.php", 'startPublishJob("cam")', 0)
+
+	assert result["started"] is False
+	assert args == []
+
+
+# The preview on the camera page: per period the newest video by file name, with the same rules as
+# scripts/list-deliverable-videos.py (the delivery script sends exactly that list): regular,
+# non-empty, non-hidden .mp4 directly in the period folder, no symlinks. Periods in the fixed order,
+# only those that have one. Test renders in manual-runs/ and the like are never looked at.
+def test_newest_automatic_videos_returns_the_newest_file_per_period(tmp_path):
+	camera = tmp_path / "videos" / "cam"
+	other = tmp_path / "elsewhere"
+	other.mkdir()
+	(other / "cam_2099-01-01.mp4").write_bytes(b"x")
+
+	for period, names in {
+		"daily": ["cam_2026-11-07.mp4", "cam_2026-11-08.mp4"],
+		"monthly": ["cam_2026-10-01.mp4"],
+	}.items():
+		(camera / period).mkdir(parents=True)
+		for name in names:
+			(camera / period / name).write_bytes(b"x")
+
+	# Things that must never be picked, each sorted AFTER the valid file so a wrong rule shows.
+	monthly = camera / "monthly"
+	(monthly / "cam_2026-10-09.mp4").write_bytes(b"")
+	(monthly / ".cam_2026-10-10.tmp.mp4").write_bytes(b"x")
+	(monthly / "cam_2026-10-11.MP4").write_bytes(b"x")
+	(monthly / "cam_2026-10-12.mp4").mkdir()
+	(monthly / "cam_2026-10-13.mp4").symlink_to(other / "cam_2099-01-01.mp4")
+	(monthly / "notes.txt").write_text("x")
+	# A period folder that is a link, and a test render folder, are not looked at.
+	(camera / "weekly").symlink_to(other, target_is_directory=True)
+	(camera / "manual-runs" / "yearly").mkdir(parents=True)
+	(camera / "manual-runs" / "yearly" / "cam_2026-11-08.mp4").write_bytes(b"x")
+
+	result = videos_library(tmp_path, 'echo json_encode(newestAutomaticVideos("cam"));')
+
+	assert result == {"daily": "cam_2026-11-08.mp4", "monthly": "cam_2026-10-01.mp4"}
+	assert list(result) == ["daily", "monthly"]
+
+
+def test_newest_automatic_videos_is_empty_without_a_camera_folder(tmp_path):
+	result = videos_library(tmp_path, 'echo json_encode(newestAutomaticVideos("cam"));')
+
+	assert result == []
+
+
 # The worker's result lines for the browser: at most 8, no empty ones, nothing for a missing file
 # or an ID that is not 32 hex characters (no path is built from it).
 def test_read_job_results_returns_the_lines_or_nothing(tmp_path):

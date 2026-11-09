@@ -71,14 +71,24 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			return pendingJob.kind === "rebuild";
 		}
 
+		function isPublish(pendingJob) {
+			return pendingJob.kind === "publish";
+		}
+
 		function rebuildLabels(pendingJob) {
 			return pendingJob.jobs.map((job) => JOB_LABELS[job] ?? job).join(", ");
 		}
 
-		// A rebuild has no single video to open: the dialog lists what each ticked job did.
-		function showRebuildResult(pendingJob, status, reason, results) {
+		// A rebuild or an upload has no single video to open: the dialog lists the result line(s) the
+		// worker wrote.
+		function showListResult(pendingJob, status, reason, results) {
 			const lines = results ?? [];
-			const subject = `${pendingJob.camera}: ${rebuildLabels(pendingJob)}`;
+			const publishing = isPublish(pendingJob);
+			const action = publishing ? "Hochladen" : "Neu erstellen";
+			const subject = publishing
+				? `${pendingJob.camera}: Hochladen`
+				: `${pendingJob.camera}: ${rebuildLabels(pendingJob)}`;
+			const resultHint = publishing ? " Ergebnis:" : " Ergebnis je Video:";
 
 			if (openButtonHandler !== null) {
 				openButton.removeEventListener("click", openButtonHandler);
@@ -86,10 +96,10 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}
 
 			if (status === "completed") {
-				title.textContent = "Neu erstellen abgeschlossen";
-				message.textContent = `${subject} ist fertig.` + (lines.length > 0 ? " Ergebnis je Video:" : "");
+				title.textContent = `${action} abgeschlossen`;
+				message.textContent = `${subject} ist fertig.` + (lines.length > 0 ? resultHint : "");
 			} else {
-				title.textContent = "Neu erstellen fehlgeschlagen";
+				title.textContent = `${action} fehlgeschlagen`;
 				// reason: German text from job-status.php for known causes.
 				message.textContent = `${subject} konnte nicht abgeschlossen werden. `
 					+ (reason ?? "Bitte das Anwendungsprotokoll prüfen.");
@@ -162,8 +172,9 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 		// The job is over: drop the status line and let camera.php's form start the next one.
 		function finishLiveStatus() {
-			// camera.php's rebuild form enables its button again; it also looks at the pending job.
+			// camera.php's rebuild and upload forms enable their buttons again; they also look at the pending job.
 		document.querySelector("#rebuild-form")?.dispatchEvent(new Event("change"));
+		document.querySelector("#publish-form")?.dispatchEvent(new Event("change"));
 
 			const liveStatus = document.querySelector("#job-live-status");
 			const createButton = document.querySelector('#create-video-form button[type="submit"]');
@@ -218,8 +229,10 @@ $jobWatcherCurrentCamera = $camera ?? "";
 						const otherCamera = pendingJob.camera !== CURRENT_CAMERA ? ` (${pendingJob.camera})` : "";
 						const subject = isRebuild(pendingJob)
 							? `Neu erstellen${otherCamera}: ${rebuildLabels(pendingJob)}`
-							: `${JOB_LABELS[pendingJob.job] ?? pendingJob.job}${otherCamera} für den `
-								+ formatGermanDate(pendingJob.targetDate);
+							: isPublish(pendingJob)
+								? `Hochladen${otherCamera}`
+								: `${JOB_LABELS[pendingJob.job] ?? pendingJob.job}${otherCamera} für den `
+									+ formatGermanDate(pendingJob.targetDate);
 						const text = `${subject} läuft. Ein neues Video kann erst danach gestartet werden.`;
 						liveStatus.hidden = false;
 
@@ -236,8 +249,8 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				if (result.status === "completed" || result.status === "failed") {
 					sessionStorage.removeItem(PENDING_JOB_KEY);
 					finishLiveStatus();
-					if (isRebuild(pendingJob)) {
-						showRebuildResult(pendingJob, result.status, result.reason, result.results);
+					if (isRebuild(pendingJob) || isPublish(pendingJob)) {
+						showListResult(pendingJob, result.status, result.reason, result.results);
 					} else {
 						showResult(pendingJob, result.status, result.reason);
 					}

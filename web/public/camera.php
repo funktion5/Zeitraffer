@@ -6,6 +6,7 @@ session_start();
 require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/job-runner.php";
 require_once __DIR__ . "/../src/rebuild-runner.php";
+require_once __DIR__ . "/../src/publish-runner.php";
 require_once __DIR__ . "/../src/video-delete.php";
 require_once __DIR__ . "/../src/json-response.php";
 
@@ -24,6 +25,8 @@ $cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
 
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
 $automaticVideos = $camera === "" ? [] : findVideos($camera, "");
+// What an upload would send (the upload section lists it and is absent when it is empty).
+$publishVideos = $camera === "" ? [] : newestAutomaticVideos($camera);
 
 // Strings only: an array here (?job[]=x) would make the lookups below throw.
 $selectedJob = is_string($_GET["job"] ?? null) ? $_GET["job"] : "";
@@ -272,6 +275,33 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 					"kind" => "rebuild",
 					"jobId" => $jobResult["jobId"],
 					"jobs" => $rebuildJobs,
+					"camera" => $submittedCamera,
+				];
+				header("Location: /camera.php?camera=" . rawurlencode($camera));
+
+				exit;
+			}
+		}
+
+	// ----------------------------------------------------------------------
+	// Upload the newest automatic videos of this camera to the website
+	// ----------------------------------------------------------------------
+	} elseif ($submittedAction === "publish-camera") {
+		// Only the exact string "yes" confirms: a bare checkbox sends "on", and a crafted request
+		// can send anything, also an array. The disabled button in the browser is no check.
+		if (($_POST["confirm"] ?? null) !== "yes") {
+			$formMessage = "Bitte bestätigen, dass die Videos übertragen werden sollen.";
+
+		} else {
+			$jobResult = startPublishJob($submittedCamera);
+
+			$formMessage = $jobResult["message"];
+
+			// Post/Redirect/Get, as for the other jobs above.
+			if ($jobResult["started"]) {
+				$_SESSION["started_job"] = [
+					"kind" => "publish",
+					"jobId" => $jobResult["jobId"],
 					"camera" => $submittedCamera,
 				];
 				header("Location: /camera.php?camera=" . rawurlencode($camera));
@@ -535,6 +565,39 @@ unset($_SESSION["started_job"]);
 			</form>
 		</section>
 
+		          <?php if ($publishVideos !== []): ?>
+		<section class="video-publish">
+			<h2>Auf die Website übertragen</h2>
+
+			<div class="job-instructions">
+				<p>Überträgt die neuesten automatischen Videos dieser Kamera auf die Website, so wie es der Nachtlauf jede Nacht tut. Diese Videos werden gesendet:</p>
+				<ul>
+					<?php foreach ($publishVideos as $publishJob => $publishFilename): ?>
+						<li><strong><?= htmlspecialchars(translateJobLabel($publishJob), ENT_QUOTES, "UTF-8") ?>:</strong> <?= htmlspecialchars($publishFilename, ENT_QUOTES, "UTF-8") ?></li>
+					<?php endforeach; ?>
+				</ul>
+				<p>Videos, die schon mit gleicher Größe auf der Website liegen, werden übersprungen. Ältere Videos auf der Website werden dabei gelöscht: Von jedem Zeitraum bleiben dort die zwei neuesten.</p>
+			</div>
+
+			<?php if ($formMessage !== null && $submittedAction === "publish-camera"): ?>
+				<p><?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?></p>
+			<?php endif; ?>
+
+			<form method="post" id="publish-form" action="/camera.php?camera=<?= rawurlencode($camera) ?>">
+				<input type="hidden" name="action" value="publish-camera">
+				<input type="hidden" name="camera" value="<?= htmlspecialchars($camera, ENT_QUOTES, "UTF-8") ?>">
+				<input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrfToken, ENT_QUOTES, "UTF-8") ?>">
+
+				<label>
+					<input type="checkbox" name="confirm" value="yes">
+					Ja, diese Videos jetzt auf die Website übertragen
+				</label>
+
+				<button type="submit" disabled>Auf die Website übertragen</button>
+			</form>
+		</section>
+		<?php endif; ?>
+
 		          <section class="video-create">
 	            <h2>Historisches Video erstellen</h2>
 
@@ -550,7 +613,7 @@ unset($_SESSION["started_job"]);
 	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um 12:00 Uhr (±90 Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
 	            </div>
 
-	              <?php if ($formMessage !== null && $submittedAction !== "rebuild-jobs"): ?>
+	              <?php if ($formMessage !== null && !in_array($submittedAction, ["rebuild-jobs", "publish-camera"], true)): ?>
                 <p>
                   <?= htmlspecialchars($formMessage, ENT_QUOTES, "UTF-8") ?>
                 </p>
@@ -820,6 +883,24 @@ unset($_SESSION["started_job"]);
 			rebuildButton.disabled = true;
 		});
 		window.addEventListener("pageshow", updateRebuildButton);
+
+		// The upload button stays disabled until the confirmation is ticked, and while this tab's own
+		// job runs. The server only accepts the exact confirmation; this is a convenience.
+		const publishForm = document.querySelector("#publish-form");
+
+		if (publishForm !== null) {
+			const publishButton = publishForm.querySelector('button[type="submit"]');
+			const updatePublishButton = () => {
+				const confirmed = publishForm.querySelector('input[name="confirm"]:checked') !== null;
+				publishButton.disabled = !confirmed || sessionStorage.getItem("timelapsePendingJob") !== null;
+			};
+
+			publishForm.addEventListener("change", updatePublishButton);
+			publishForm.addEventListener("submit", () => {
+				publishButton.disabled = true;
+			});
+			window.addEventListener("pageshow", updatePublishButton);
+		}
 
 		// Yesterday by default and nothing after today, in the browser's (local) time.
 		function isoDate(date) {

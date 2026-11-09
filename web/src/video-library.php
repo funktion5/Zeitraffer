@@ -192,6 +192,56 @@ function findVideos(string $camera, string $runFolder): array
 	return $videos;
 }
 
+// The preview of what an upload would send: per period the newest automatic video, as [period =>
+// filename] in the fixed order, only periods that have one. The delivery script decides what really
+// goes (scripts/list-deliverable-videos.py); this mirrors its rules so the page shows the same
+// list: only the four period folders directly under the camera folder, no symlinks, and in them
+// the newest BY FILE NAME among the regular, non-empty, non-hidden *.mp4 files (".mp4" in lower
+// case only, as its glob). Test renders in manual-runs/ and the like are never looked at. The
+// camera folder's own ignored_cameras rule is already applied by findAvailableCameras().
+function newestAutomaticVideos(string $camera): array
+{
+	$cameraPath = projectRoot() . "/videos/" . $camera;
+
+	if (is_link($cameraPath) || !is_dir($cameraPath) || !is_readable($cameraPath)) {
+		return [];
+	}
+
+	$newest = [];
+
+	foreach (["daily", "weekly", "monthly", "yearly"] as $job) {
+		$jobPath = $cameraPath . "/" . $job;
+
+		if (is_link($jobPath) || !is_dir($jobPath) || !is_readable($jobPath)) {
+			continue;
+		}
+
+		$validNames = [];
+
+		foreach (scandir($jobPath) as $filename) {
+			if (str_starts_with($filename, ".") || !str_ends_with($filename, ".mp4")) {
+				continue;
+			}
+
+			$filePath = $jobPath . "/" . $filename;
+
+			// A half-written video is hidden until its rename; an empty file is a failed render.
+			if (is_link($filePath) || !is_file($filePath) || filesize($filePath) === 0) {
+				continue;
+			}
+
+			$validNames[] = $filename;
+		}
+
+		if ($validNames !== []) {
+			sort($validNames, SORT_STRING);
+			$newest[$job] = end($validNames);
+		}
+	}
+
+	return $newest;
+}
+
 // Extracts the ISO target date and, if present, the daylight buffer (in
 // minutes) or the Monthly/Yearly interval window from a manual-run filename
 // (`{camera}_{date}.mp4`, `{camera}_{date}_{buffer}min.mp4` or
