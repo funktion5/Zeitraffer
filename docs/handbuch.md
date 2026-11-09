@@ -16,7 +16,6 @@ für die jeweiligen Werte.
 - [Fehler: nächtlicher Lauf](#fehler-nächtlicher-lauf)
 - [Fehler: Weboberfläche](#fehler-weboberfläche)
 - [Fehler: Erkennung, Highlights und Verpixelung](#fehler-erkennung-highlights-und-verpixelung)
-- [Fehler: Sicherung und Wiederherstellung](#fehler-sicherung-und-wiederherstellung)
 - [Fehler: Entwicklung und CI](#fehler-entwicklung-und-ci)
 - [Arbeitsspeicher](#arbeitsspeicher)
 
@@ -37,7 +36,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Highlights-Flagger | direkt nach dem Upload, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
 | Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
 | Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
-| Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
+| Speicherfilter, Yearly-Backfill, NAS-Werkzeuge | bei Bedarf | Befehl |
 
 ### Wo was liegt
 
@@ -218,18 +217,6 @@ Details: [flagger.md](flagger.md).
 
 Details: [werkzeuge.md](werkzeuge.md); NAS-Archiv: [nas.md](nas.md).
 
-### Sicherung
-
-Auf dem eigenen Rechner (macOS, Linux, Windows mit WSL) im Repository-Ordner:
-
-```bash
-./backup.sh                  # mit Videos
-SKIP_VIDEOS=1 ./backup.sh    # ohne Videos
-```
-
-Einspielen auf einem neuen Host: [vps.md](vps.md). Das Backup enthält nur noch die htpasswd
-verschlüsselt, dazu `config.json`, Crontab (nur zum Nachlesen), `models/`, `state/` und `videos/`.
-
 ---
 
 ## Fehler: nächtlicher Lauf
@@ -276,8 +263,8 @@ TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list          
 
 **Lösung:** Die ssh-Verbindung von Hand prüfen und den Eintrag samt Schlüssel in `~/.ssh/config`
 richten ([README](../README.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh einen
-geänderten Host-Key, den Fingerabdruck mit der Hetzner-Oberfläche vergleichen, bevor man ihn neu
-bestätigt. Danach den Lauf von Hand starten.
+geänderten Host-Key (`REMOTE HOST IDENTIFICATION HAS CHANGED`), den Fingerabdruck mit der
+Hetzner-Oberfläche vergleichen, bevor man ihn neu bestätigt (`ssh-keygen -R <host>`). Danach den Lauf von Hand starten.
 
 ### Bildsuche bricht ab („stalled“)
 
@@ -647,7 +634,7 @@ Flagger und Verpixelung nutzen das Erkennungsmodell YOLOX (`models/`, über `onn
 **Symptom:** `Flagger not started: model file missing: models/object_detection_yolox_2022nov.onnx`;
 bei der Verpixelung bricht der Lauf ab, statt ein ungeprüftes Video zu erzeugen.
 
-**Lösung:** `models/` aus der Sicherung zurückkopieren (bevorzugt: dieselbe Datei hält
+**Lösung:** `models/` vom bisherigen Host zurückkopieren (bevorzugt: dieselbe Datei hält
 zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
 ([verpixelung.md](verpixelung.md#installation)).
 
@@ -662,8 +649,8 @@ zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
 **Ursache:** `onnxruntime` oder OpenCV fehlen in der virtuellen Umgebung oder passen nicht zur
 Plattform; seltener eine beschädigte Modelldatei.
 
-**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`; Modelldatei mit der aus der
-Sicherung vergleichen (`sha256sum models/*.onnx`).
+**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`; Modelldatei mit der vom bisherigen
+Host vergleichen (`sha256sum models/*.onnx`).
 
 ### Erkennung liegt falsch
 
@@ -778,21 +765,6 @@ failed`, siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreich
 ### WordPress
 
 Siehe [wordpress.md](wordpress.md#fehlerbehebung-wordpress-frontend).
-
----
-
-## Fehler: Sicherung und Wiederherstellung
-
-| Meldung | Ursache | Lösung |
-|---|---|---|
-| `Missing tool on this computer: rsync` (oder `openssl`) | Werkzeug fehlt auf dem eigenen Rechner | installieren, unter WSL `sudo apt install rsync openssl` |
-| `rsync: command not found` während der Sicherung | `rsync` fehlt auf dem Host | dort installieren |
-| `No project folder at ... on the host (set PROJECT_DIR)` | Projekt liegt woanders | `PROJECT_DIR` in `backup.env` setzen |
-| `skipped (missing or not readable): ...` | Datei fehlt auf dem Host oder ist ohne `sudo` nicht lesbar | auf einem Host ohne diese Datei normal; sonst `sudo`-Zugang prüfen |
-| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Host neu installiert | `ssh-keygen -R <host>` |
-| `Could not decrypt ... (wrong passphrase?)` bei `install.sh` | falsche Passphrase | erneut starten; die Passphrase gilt pro Sicherung |
-
-Einrichtung des Servers: [vps.md](vps.md).
 
 ---
 

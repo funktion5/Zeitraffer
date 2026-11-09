@@ -1,16 +1,13 @@
 #!/bin/bash
 # Host-neutral installer for a fresh Debian/Ubuntu host (a VPS now, a Pi or any other machine
-# later). Run it from inside the cloned repo, as the login user (not root), after the two
-# preparations below (details: docs/vps.md):
-#   1. A Storage Box key on this host (ssh-keygen, ssh-copy-id) and a Host entry for it in
-#      ~/.ssh/config, named by BOX_ALIAS. The old host's key is deliberately not carried over.
-#   2. The backup of the old host copied into $HOME:
-#        pi-backup.tar.gz.enc   encrypted htpasswd, made by backup.sh
-#        config.json            optional; a local edit made on the old host
+# later). Run it from inside the cloned repo, as the login user (not root), after one
+# preparation (details: docs/vps.md): a Storage Box key on this host (ssh-keygen, ssh-copy-id) and
+# a Host entry for it in ~/.ssh/config, named by BOX_ALIAS. The old host's key is deliberately not
+# carried over. Nothing from the old host's backup is needed: the web UI login is created here.
 # The repo must live in ~/timelapse: the installed web wrappers look there.
 #
-# The jobs read the frames over ssh from the Storage Box (a FrameSource in src/images.py), so there
-# is no SSHFS mount, no /mnt/cameras and no @reboot recovery here.
+# The jobs read the frames over ssh from the Storage Box (a FrameSource in src/frame_source.py),
+# so there is no SSHFS mount, no /mnt/cameras and no @reboot recovery here.
 #
 # Usage:
 #   ./install.sh                  run every step in order
@@ -21,12 +18,13 @@
 #   BOX_ALIAS     Host name of the Storage Box in ~/.ssh/config (default: storagebox)
 #   SERVER_NAME   vhost name, the subdomain (default: localhost)
 #   WEB_PORT      port of the vhost (default: 80). TLS is not set up here.
-#   BACKUP_TAR    default ~/pi-backup.tar.gz.enc
-#   BACKUP_CONFIG default ~/config.json
+#   HTPASSWD_USER login name of the web UI, used only when /etc/apache2/.htpasswd does not exist
+#                 yet (asked for when unset; the password is always asked for by htpasswd)
 #   REWRITE_VHOST=1  overwrite an existing, different vhost file (it is kept by default, so a
 #                    later TLS setup is not undone by a re-run)
 #
-# Not done here, on purpose: the crontab (printed at the end, you paste it) and the copy of
+# Not done here, on purpose: the crontab (printed at the end, you paste it), the FTP login of the
+# nightly upload (config/siteground.env, git-ignored, see docs/betrieb.md) and the copy of
 # models/, state/ and videos/ (rsync from the Mac, see docs/vps.md).
 
 set -euo pipefail
@@ -37,11 +35,7 @@ RUN_USER="$(id -un)"
 RUN_GROUP="$(id -gn)"
 SERVER_NAME="${SERVER_NAME:-localhost}"
 WEB_PORT="${WEB_PORT:-80}"
-BACKUP_TAR="${BACKUP_TAR:-$HOME/pi-backup.tar.gz.enc}"
-BACKUP_CONFIG="${BACKUP_CONFIG:-$HOME/config.json}"
 REWRITE_VHOST="${REWRITE_VHOST:-0}"
-# Must match backup.sh; change both together.
-CIPHER=(-aes-256-cbc -pbkdf2 -iter 600000 -md sha256)
 # The ssh alias the code uses for the Storage Box (handed over as TIMELAPSE_STORAGE_BOX); user,
 # host, port and key live in ~/.ssh/config, so none of them is in the repository.
 BOX_ALIAS="${BOX_ALIAS:-storagebox}"
@@ -50,7 +44,7 @@ ALL_STEPS=(
 	preflight
 	packages
 	venv
-	restore_backup
+	web_login
 	known_hosts
 	apache
 	web_bridge
@@ -62,10 +56,6 @@ ALL_STEPS=(
 log() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33mWARNING: %s\033[0m\n' "$*" >&2; }
 fail() { printf '\033[1;31mERROR: %s\033[0m\n' "$*" >&2; exit 1; }
-
-require_file() {
-	[[ -f "$1" ]] || fail "Missing expected file: $1"
-}
 
 has_box_alias() {
 	grep -qsE "^Host[[:space:]]+$BOX_ALIAS([[:space:]]|$)" "$HOME/.ssh/config"
@@ -84,8 +74,6 @@ step_preflight() {
 		|| warn "Python is older than 3.13 (CI runs 3.13); src/ is meant to stay runnable on 3.11."
 	[[ "$WEB_PORT" =~ ^[0-9]+$ ]] || fail "WEB_PORT must be a number."
 	[[ "$SERVER_NAME" =~ ^[A-Za-z0-9.-]+$ ]] || fail "SERVER_NAME has characters a hostname cannot have."
-	require_file "$BACKUP_TAR"
-	[[ -f "$BACKUP_CONFIG" ]] || warn "$BACKUP_CONFIG not found: using config/config.json from git."
 	# Checked now so a missing entry or key does not cost a package install and a passphrase first.
 	has_box_alias \
 		|| fail "~/.ssh/config has no Host $BOX_ALIAS entry (HostName, User, Port, IdentityFile). See docs/vps.md, or set BOX_ALIAS."
@@ -103,7 +91,7 @@ step_packages() {
 	sudo apt-get update
 	sudo apt-get install -y \
 		git python3 python3-venv python3-pip \
-		ffmpeg openssl rsync curl cron \
+		ffmpeg rsync curl cron \
 		apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 	sudo systemctl enable --now cron
 }
@@ -115,38 +103,27 @@ step_venv() {
 	"$PROJECT_ROOT/.venv/bin/pip" install -r requirements.txt
 }
 
-step_restore_backup() {
-	log "Restoring from the backup (htpasswd, config.json)"
-	# Extract to a staging dir, not onto /, and install only the one file this host needs. The
-	# sudoers file and the vhost are generated for this host below, and the Storage Box key is
-	# a new one made here, so none of the old host's system files or SSH keys are involved.
-	local staging
-	staging="$(mktemp -d)"
-	# EXIT, not RETURN: fail() exits from inside this function, and a RETURN trap would not
-	# fire then, leaving the extracted secret in /tmp.
-	# shellcheck disable=SC2064
-	trap "sudo rm -rf '$staging'" EXIT
-
-	local passphrase
-	read -rsp "Passphrase of the backup: " passphrase
-	echo
-	# Through a pipe, never as an argument or a file; the plain archive is never written.
-	openssl enc -d "${CIPHER[@]}" -pass fd:3 -in "$BACKUP_TAR" 3< <(printf '%s' "$passphrase") \
-		| sudo tar xzf - -C "$staging" \
-		|| fail "Could not decrypt $BACKUP_TAR (wrong passphrase?)."
-	unset passphrase
-
-	# Only Apache needs to read the password hashes, not every local user.
-	sudo test -f "$staging/etc/apache2/.htpasswd" || fail "Backup has no etc/apache2/.htpasswd."
-	sudo install -o root -g www-data -m 640 "$staging/etc/apache2/.htpasswd" /etc/apache2/.htpasswd
-
-	sudo rm -rf "$staging"
-	trap - EXIT
-
-	# A local edit made on the old host would otherwise be lost; git already provides the base file.
-	if [[ -f "$BACKUP_CONFIG" ]]; then
-		cp "$BACKUP_CONFIG" "$PROJECT_ROOT/config/config.json"
+step_web_login() {
+	log "Setting up the web UI login (Apache Basic Auth)"
+	# An existing file is never touched: a re-run must not replace the logins that are in use.
+	if sudo test -f /etc/apache2/.htpasswd; then
+		echo "/etc/apache2/.htpasswd exists: leaving it as it is."
+		return
 	fi
+
+	local login="${HTPASSWD_USER:-}"
+	if [[ -z "$login" ]]; then
+		read -rp "Login name for the web UI: " login
+	fi
+	[[ "$login" =~ ^[A-Za-z0-9._-]+$ ]] \
+		|| fail "The login may only contain letters, digits, '.', '_' and '-'."
+
+	# htpasswd asks for the password itself (twice, on the terminal): it never appears in an
+	# argument, a file or the log. -B is bcrypt, -c creates the file.
+	sudo htpasswd -cB /etc/apache2/.htpasswd "$login" || fail "htpasswd could not create the login."
+	# Only Apache needs to read the password hashes, not every local user.
+	sudo chown root:www-data /etc/apache2/.htpasswd
+	sudo chmod 640 /etc/apache2/.htpasswd
 }
 
 step_known_hosts() {
@@ -182,7 +159,8 @@ step_known_hosts() {
 
 step_apache() {
 	log "Installing the Apache vhost (HTTP, Basic Auth; TLS comes later)"
-	sudo test -f /etc/apache2/.htpasswd || fail "Missing expected file: /etc/apache2/.htpasswd"
+	sudo test -f /etc/apache2/.htpasswd \
+		|| fail "Missing /etc/apache2/.htpasswd: run './install.sh web_login' first."
 
 	local vhost
 	vhost="$(mktemp)"
@@ -276,7 +254,7 @@ step_permissions() {
 	# makes everything world-readable, so both have to be corrected here.
 	chmod o+x "$HOME"
 	# Pass-through on $HOME makes every world-readable file in it reachable by name, including
-	# the backup archive, so close everything at the top of $HOME except the project itself.
+	# any file copied there, so close everything at the top of $HOME except the project itself.
 	find "$HOME" -mindepth 1 -maxdepth 1 ! -path "$PROJECT_ROOT" -perm /o=rwx -exec chmod o-rwx {} +
 	cd "$PROJECT_ROOT"
 
@@ -360,6 +338,15 @@ step_verify() {
 	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: highlight delete rule active" \
 		|| warn "sudoers: highlight delete rule missing for www-data."
+
+	# The nightly upload to the website reads its FTP login from here. Only the names are tested,
+	# the values are never printed.
+	local login_key
+	for login_key in SITEGROUND_HOST SITEGROUND_USER SITEGROUND_PASS; do
+		grep -qs "^${login_key}=." "$PROJECT_ROOT/config/siteground.env" \
+			&& echo "upload login: $login_key is set" \
+			|| warn "config/siteground.env has no $login_key: the nightly upload would fail (docs/betrieb.md)."
+	done
 }
 
 step_cron_hint() {
@@ -369,13 +356,15 @@ Paste this line into 'crontab -e' yourself, and only after the old host's cron l
 same job must never run on both hosts. Run each command once by hand first (docs/vps.md). If an
 older separate 04:00 flagger line is still there, delete it: the flagger would run twice.
 
-# Blur the last 48 h on the Storage Box, then the nightly run, then the highlights flagger. The
-# run reads the frames over ssh (no copy step) and takes the run lock itself. The flagger starts
-# only when the videos are done, however long that takes, so it needs no time of its own; it takes
-# the run lock itself too, so it stays outside flock. The steps are joined with ';', so a failing
-# step never stops the next one. TIMELAPSE_X264_PRESET=medium is FFmpeg's default, i.e. what the
-# old Pi produced; the wrapper would otherwise fall back to ultrafast.
-0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
+# Blur the last 48 h on the Storage Box, then the nightly run, then the upload of the new videos
+# to the website, then the highlights flagger. The run reads the frames over ssh (no copy step) and
+# takes the run lock itself. The upload needs config/siteground.env (docs/betrieb.md); without it
+# the step only logs an error. The flagger starts only when the videos are done, however long that
+# takes, so it needs no time of its own; it takes the run lock itself too, so it stays outside
+# flock. The steps are joined with ';', so a failing step never stops the next one.
+# TIMELAPSE_X264_PRESET=medium is FFmpeg's default, i.e. what the old Pi produced; the wrapper
+# would otherwise fall back to ultrafast.
+0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; /bin/bash ${PROJECT_ROOT}/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> ${PROJECT_ROOT}/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
 
 Not included: the 5-minute live blur job (docs/verpixelung-box.md).
 EOF

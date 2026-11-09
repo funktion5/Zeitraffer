@@ -53,7 +53,7 @@ Platzhalter in den folgenden Beispielen:
 | `<projektpfad>` | Projektordner, z. B. `/home/<benutzer>/timelapse` |
 | `<login>` | Benutzername der Apache-Basisauthentifizierung |
 
-Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Umzug auf den VPS](docs/vps.md).
+Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frischen Debian- oder Ubuntu-Host übernimmt `install.sh` die Schritte: Pakete, Python-Umgebung, Apache mit Anmeldung, Wrapper, sudoers und Dateirechte. Die Bilder liest das Programm bei jedem Lauf per ssh von der Storage Box; einen eingebundenen Ordner gibt es nicht. Ablauf und Vorbereitung: [Einen VPS einrichten](docs/vps.md).
 
 ### Systempakete installieren
 
@@ -63,7 +63,7 @@ Die folgenden Abschnitte beschreiben die Einrichtung von Hand. Für einen frisch
 sudo apt-get update
 sudo apt-get install -y \
   git python3 python3-venv python3-pip \
-  ffmpeg openssl rsync curl cron \
+  ffmpeg rsync curl cron \
   apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 ```
 
@@ -119,7 +119,7 @@ Host storagebox
 ```
 
 - der öffentliche Schlüssel auf der Box und der Host-Fingerabdruck einmal bestätigt (Anleitung:
-  [Umzug auf den VPS](docs/vps.md))
+  [Einen VPS einrichten](docs/vps.md))
 
 Benutzer, Host, Port und Schlüssel stehen nur in `~/.ssh/config`, nie im Repository. Das Programm
 kennt nur den Namen des Eintrags, über die Umgebungsvariable `TIMELAPSE_STORAGE_BOX` (siehe
@@ -678,7 +678,7 @@ Alle ausführlichen Beschreibungen liegen im Ordner [`docs/`](docs/):
 | [cli.md](docs/cli.md) | alle Befehle und Optionen |
 | [werkzeuge.md](docs/werkzeuge.md) | Speicherfilter, Yearly-Backfill |
 | [nas.md](docs/nas.md) | Werkzeuge für das NAS-Archiv |
-| [vps.md](docs/vps.md) | Umzug auf einen VPS: Backup, `install.sh`, Handtest, bekannte Lücken |
+| [vps.md](docs/vps.md) | Einen VPS einrichten: `install.sh`, Daten übernehmen, Handtest, bekannte Lücken |
 | [architektur.md](docs/architektur.md) | Code, Ordnerstruktur, Sicherheit, Tests |
 | [archive/README.md](archive/README.md) | stillgelegter Code und Doku: Raspberry Pi, SSHFS-Mount, Container-Test, Staging |
 | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md), [youtube/texts](docs/youtube/youtube-texts.md) | Texte für YouTube-Beschreibungen |

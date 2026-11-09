@@ -1,12 +1,12 @@
-# Umzug auf den VPS
+# Einen VPS einrichten
 
-Einmaliger Umzug vom Raspberry Pi auf den VPS (Debian 13). Der Pi wird danach stillgelegt, deshalb
-ist das Backup einmalig und es gibt keinen Rückweg. `install.sh` im Projektordner richtet den VPS
-ein; dieser Ablauf sagt, was davor und danach von Hand passiert. Platzhalter: `<vps>` ist der
-ssh-Alias des VPS in `~/.ssh/config` des Macs, `<pi-user>@<pi-host>` der Pi und `<backup-ordner>`
-der Ordner `DEST` aus `backup.env` (Standard `~/timelapse-backup`). Er sollte nicht unter
-`~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die unverschlüsselten
-Videos hochgeladen.
+Einrichtung eines Hosts (Debian 13) für den Zeitraffer. Der Betrieb lief zuerst auf einem
+Raspberry Pi und ist seit dem 30.10.2026 auf dem VPS; der Pi ist stillgelegt. `install.sh` im
+Projektordner richtet einen frischen Host ein; dieser Ablauf sagt, was davor und danach von Hand
+passiert. Platzhalter: `<vps>` ist der ssh-Alias des neuen Hosts in `~/.ssh/config` des Macs,
+`<alter-host>` der bisherige Host und `<ordner>` ein Zwischenordner auf dem Mac. Er sollte nicht
+unter `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die
+unverschlüsselten Videos hochgeladen.
 
 **Stand 09.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
 des Pi ist leer, die Crontab des VPS enthält eine Zeile (02:00: Verpixelung nachholen, Nachtlauf,
@@ -19,19 +19,7 @@ Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-s
 Plan liegt im [Archiv](../archive/staging/docs/plans/web-server-nightly-run.md)).
 Das Projekt muss in `~/timelapse` liegen, weil die installierten Web-Wrapper dort suchen.
 
-## 1. Auf dem Mac: Backup (einmalig)
-
-Videos zuerst in den Backup-Ordner holen, dann der Rest (Geheimnisse, Modell, `state/`):
-
-```bash
-rsync -a --progress <pi-user>@<pi-host>:~/timelapse/videos/ <backup-ordner>/videos/
-SKIP_VIDEOS=1 ./backup.sh
-```
-
-`backup.sh` fragt eine Passphrase ab (Passwortmanager, ohne sie ist das Backup wertlos) und das
-sudo-Passwort des Pi. Nichts wird auf dem Pi zurückgelassen.
-
-## 2. Auf dem VPS: Repo, Schlüssel und Eintrag für die Storage Box
+## 1. Auf dem VPS: Repo, Schlüssel und Eintrag für die Storage Box
 
 ```bash
 git clone https://github.com/funktion5/Zeitraffer.git ~/timelapse
@@ -39,8 +27,9 @@ ssh-keygen -t ed25519 -f ~/.ssh/<schluessel> -N ""
 ```
 
 Ohne Passphrase, weil Cron den Schlüssel ohne Eingabe braucht. Der Schlüssel dient nur der Storage
-Box; der Schlüssel des Pi wird nicht übernommen. Dann in `~/.ssh/config` einen Eintrag anlegen
-(Benutzer, Host und Port der Box stehen in `/etc/timelapse/mount.env` auf dem Pi):
+Box; der Schlüssel des bisherigen Hosts wird nicht übernommen. Dann in `~/.ssh/config` einen
+Eintrag anlegen (Benutzer, Host und Port der Box stehen in der `~/.ssh/config` des bisherigen Hosts
+oder in der Hetzner-Oberfläche):
 
 ```text
 Host storagebox
@@ -60,20 +49,20 @@ ssh-copy-id -s -i ~/.ssh/<schluessel>.pub storagebox
 ```
 
 Die Option `-s` bitte gegen die aktuelle Hetzner-Doku prüfen; die Box muss dafür Passwort-Login
-erlauben. Den angezeigten Host-Fingerabdruck mit dem aus der Hetzner-Oberfläche vergleichen. Wenn der
-Pi stillgelegt ist, seinen Schlüssel auf der Box entfernen.
+erlauben. Den angezeigten Host-Fingerabdruck mit dem aus der Hetzner-Oberfläche vergleichen. Ist der
+bisherige Host stillgelegt, seinen Schlüssel auf der Box entfernen.
 
-## 3. Backup auf den VPS kopieren
+## 2. Zugangsdaten der Weboberfläche
 
-Vom Mac aus, in den Home-Ordner des VPS:
+Hier ist nichts zu kopieren: `install.sh` legt die Anmeldung der Weboberfläche im Schritt
+`web_login` selbst an. Es fragt nach einem Benutzernamen (oder nimmt `HTPASSWD_USER`) und danach
+nach dem Passwort; das Passwort landet weder in einem Argument noch in einer Datei oder im
+Protokoll. Gibt es `/etc/apache2/.htpasswd` schon, bleibt die Datei unverändert. Weitere Benutzer
+später: `sudo htpasswd -B /etc/apache2/.htpasswd <login>`.
 
-```bash
-scp <backup-ordner>/pi-backup.tar.gz.enc <backup-ordner>/config.json <vps>:~/
-```
+Die Cron-Zeilen des bisherigen Hosts dürfen nicht auf den neuen Host.
 
-`pi-crontab.txt` wird nicht gebraucht: Die Pi-Cron-Zeilen dürfen nicht auf den VPS.
-
-## 4. Auf dem VPS: `install.sh`
+## 3. Auf dem VPS: `install.sh`
 
 ```bash
 cd ~/timelapse
@@ -86,25 +75,37 @@ Ort ab. Auf einem anderen Rechner (etwa einem Pi 5) laufen dieselben Schritte. P
 WLAN abschalten oder Absturzprotokolle gehört nicht dazu.
 
 Der Installer prüft zuerst, ob der `Host`-Eintrag und sein Schlüssel existieren. Dann fragt er nach
-dem sudo-Passwort und der Backup-Passphrase, installiert Pakete, legt die virtuelle Umgebung an,
-bestätigt den Host-Fingerabdruck der Box, richtet Apache (HTTP mit Basisauthentifizierung, die
-htpasswd kommt aus dem Backup), Wrapper und sudoers ein und setzt die Dateirechte. Er ist
+dem sudo-Passwort, installiert Pakete, legt die virtuelle Umgebung an, legt die Anmeldung der
+Weboberfläche an (Benutzername und Passwort, Schritt `web_login`), bestätigt den Host-Fingerabdruck
+der Box, richtet Apache (HTTP mit Basisauthentifizierung), Wrapper und sudoers ein und setzt die
+Dateirechte. Er ist
 wiederholbar, einzelne Schritte laufen mit `./install.sh <schritt> [<schritt> ...]`. Zum Schluss
 steht die Cron-Zeile in der Ausgabe; installiert wird sie nicht.
 
-Aus dem Backup kommt nur die htpasswd (und optional `config.json`). Absichtlich nicht übernommen:
-Pi-Crontab, sudoers- und vhost-Datei des Pi (sie nennen den Pi-Benutzer und HTTP ohne Namen) und
-alle SSH-Schlüssel des Pi.
+Vom bisherigen Host wird nichts übernommen; `config/config.json` kommt aus Git. Absichtlich
+auch nicht: Crontab, sudoers- und vhost-Datei des bisherigen Hosts (sie nennen dessen Benutzer) und
+alle seine SSH-Schlüssel.
 
-## 5. Modell, Status und Videos kopieren
+## 4. Modell, Status und Videos vom bisherigen Host kopieren
 
-Vom Mac aus:
+Vom Mac aus, zuerst vom bisherigen Host in den Zwischenordner, dann auf den neuen Host (die beiden
+Hosts sprechen nicht direkt miteinander). Es sind die Befehle des Umzugs vom Pi, nur mit dem
+bisherigen Host als Quelle:
 
 ```bash
-rsync -a <backup-ordner>/models/ <vps>:~/timelapse/models/
-rsync -a <backup-ordner>/state/ <vps>:~/timelapse/state/
-rsync -a --progress <backup-ordner>/videos/ <vps>:~/timelapse/videos/
+rsync -a <alter-host>:timelapse/models/ <ordner>/models/
+rsync -a <alter-host>:timelapse/state/ <ordner>/state/
+rsync -a --progress <alter-host>:timelapse/videos/ <ordner>/videos/
+
+rsync -a <ordner>/models/ <vps>:~/timelapse/models/
+rsync -a <ordner>/state/ <vps>:~/timelapse/state/
+rsync -a --progress <ordner>/videos/ <vps>:~/timelapse/videos/
 ```
+
+Das Modell lässt sich auch neu laden ([verpixelung.md](verpixelung.md#installation)). Den Status
+(`state/`) nicht weglassen: Ohne `state/privacy/box/` kennt der neue Host keinen bestätigten Frame,
+und die [Sperre](verpixelung-box.md#sperre-in-automatischen-videos) lässt dann die Monats- und
+Jahresvideos der Blur-Kameras aus, bis die Bilder neu bestätigt sind.
 
 Die Videos zuletzt: Sie sind groß (bei der Planung 4,6 GB) und der Befehl lässt sich nach einem
 Abbruch einfach wiederholen. Prüfen, ob alles angekommen ist (`install.sh verify` prüft das nicht):
@@ -116,7 +117,7 @@ ssh <vps> 'du -sh ~/timelapse/videos ~/timelapse/state ~/timelapse/models'
 Danach auf dem VPS `./install.sh permissions verify`. Die Videos müssen vor dem ersten nächtlichen
 Lauf da sein: Der Weekly-Job fügt vorhandene Daily-Videos zusammen und braucht keine eigenen Bilder.
 
-## 6. Weboberfläche ansehen
+## 5. Weboberfläche ansehen
 
 Der vhost ist HTTP mit Basisauthentifizierung, das Passwort ginge also unverschlüsselt über das
 Netz. Bis es HTTPS gibt, die Seite über einen ssh-Tunnel öffnen (lokaler Port 8055, weil 8080 der
@@ -129,7 +130,7 @@ ssh -L 8055:localhost:55222 <vps>
 Dann im Browser `http://localhost:8055/` öffnen. Der Port 55222 muss dafür in der Firewall nicht
 offen sein.
 
-## 7. Von Hand prüfen, dann Cron
+## 6. Von Hand prüfen, dann Cron
 
 Ein Tag, eine Kamera, vom Menschen ausgeführt. Auf dem VPS im Projektordner:
 
@@ -145,9 +146,9 @@ Danach als Gesamtprobe den ganzen Nachtlauf einmal von Hand starten
 ([Handbuch](handbuch.md#nächtlicher-lauf)). Der Lauf vom 29.10.2026 ging mit 16 Kameras ohne Fehler
 durch und dauerte rund 41 Minuten (Preset `medium`, zwei Kerne).
 
-Einen Tag wählen, zu dem der Pi schon ein Video hat, und beide vergleichen. Historische Läufe mit
+Einen Tag wählen, zu dem der bisherige Host schon ein Video hat, und beide vergleichen. Historische Läufe mit
 `--target-date` landen getrennt von den automatischen Videos (siehe [betrieb.md](betrieb.md)).
-Erst wenn das passt: Pi-Cron entfernen, die Zugangsdaten für den Upload in `config/siteground.env`
+Erst wenn das passt: die Cron-Zeilen des bisherigen Hosts entfernen, die Zugangsdaten für den Upload in `config/siteground.env`
 anlegen und den Upload als Trockenlauf prüfen (`scripts/copy_zeitraffer_videos_vps2siteground.sh`
 ohne `--run`, siehe [betrieb.md](betrieb.md#upload-auf-die-website)), dann die Zeile aus
 `./install.sh cron_hint` in `crontab -e` einfügen. Dieselbe Aufgabe darf nie auf beiden Hosts

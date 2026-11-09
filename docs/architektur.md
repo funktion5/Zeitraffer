@@ -340,8 +340,6 @@ timelapse/
 ├── state/        (Laufzeitdaten, nicht im Repository)
 ├── temp/         (Laufzeitdaten, nicht im Repository)
 ├── videos/       (Laufzeitdaten, nicht im Repository)
-├── backup.env.example
-├── backup.sh
 ├── .gitignore
 ├── install.sh
 ├── pyproject.toml
@@ -351,13 +349,13 @@ timelapse/
 
 Runtime-Daten unter `logs/`, `reports/`, `state/`, `temp/` und `videos/` werden nicht als Quelldaten
 behandelt. `models/` enthält die Erkennungsmodelle für Verpixelung und Highlights-Flagger; sie
-werden separat heruntergeladen bzw. aus der Sicherung zurückgespielt und sind nicht im Repository.
+werden separat heruntergeladen bzw. vom bisherigen Host kopiert und sind nicht im Repository.
 
 Was in welcher Datei unter `docs/` steht, listet das README unter
 [Dokumentation](../README.md#dokumentation).
 
 `install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
-Ordner); `backup.sh` holt dafür einmalig, was nicht im Git liegt. Ablauf: [vps.md](vps.md).
+Ordner); Ablauf: [vps.md](vps.md).
 `scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
 Der Upload der fertigen Videos auf die Website steht in [betrieb.md](betrieb.md#upload-auf-die-website).
 Stillgelegtes (Raspberry Pi, Container-Test, Staging) liegt in [`archive/`](../archive/README.md).
