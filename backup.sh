@@ -119,10 +119,10 @@ pull models
 # Locks and the run marker would block the new host; web-jobs/ is only transient job status.
 pull state --exclude='*.lock' --exclude='run-in-progress' --exclude='web-jobs/'
 
-# Only settings.json out of config/: the values colleagues saved on the web UI settings page are not
+# Only the two settings files out of config/: the values colleagues saved on the web UI settings tabs are not
 # in git. The filter keeps everything else in that folder (the upload login among it) out of the
 # backup, and a host that never saved settings simply has no file to take.
-pull config --include='settings.json' --exclude='*'
+pull config --include='settings.json' --include='settings-privacy.json' --exclude='*'
 
 if [[ "$VIDEOS" == "1" ]]; then
     # Hidden files are half-written renders and macOS leftovers.

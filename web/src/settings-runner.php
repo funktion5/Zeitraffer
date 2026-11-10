@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 require_once __DIR__ . "/process-runner.php";
 
+// The two settings files, one per tab: the scope names the file on the host, so nothing else may
+// reach the wrapper.
+const SETTINGS_SCOPES = ["general", "privacy"];
+
 const SETTINGS_SAVE_FAILED_MESSAGE = "Die Einstellungen konnten nicht gespeichert werden.";
 const SETTINGS_INVALID_MESSAGE = "Die Eingaben sind ungültig.";
 
@@ -21,13 +25,19 @@ function decodeSettingsReply(string $stdout): ?array
 // wrapper and the writer behind it validate everything again, so nothing here is trusted either way.
 // Returns ["status" => "saved" | "invalid" | "stale" | "failed", "errors" => string[], "mtime" => int].
 // A failure's details go to the server log only, never into the result.
-function saveSettings(array $values, int $loadedMtime): array
+function saveSettings(array $values, int $loadedMtime, string $scope = "general"): array
 {
 	$failed = static fn(): array => [
 		"status" => "failed",
 		"errors" => [SETTINGS_SAVE_FAILED_MESSAGE],
 		"mtime" => $loadedMtime,
 	];
+
+	if (!in_array($scope, SETTINGS_SCOPES, true)) {
+		error_log("Settings wrapper not started: unknown scope.");
+
+		return $failed();
+	}
 
 	$runUser = projectRunUser();
 
@@ -51,6 +61,7 @@ function saveSettings(array $values, int $loadedMtime): array
 		"-u",
 		$runUser,
 		"/usr/local/sbin/timelapse-web-settings",
+		$scope,
 		(string) $loadedMtime,
 		$json,
 	]);

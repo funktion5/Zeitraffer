@@ -19,6 +19,7 @@ reports/
 
 # Values saved on the web UI settings page: per host, never in git (settings.example.json shows the shape)
 config/settings.json
+config/settings-privacy.json
 
 # OS
 .DS_Store

@@ -48,28 +48,40 @@ def run_wrapper(environment: dict, *arguments: str) -> subprocess.CompletedProce
 	)
 
 
-# The values reach the writer on stdin and the time as an option: nothing from the web request is
-# ever spliced into a command line.
-def test_wrapper_passes_the_json_on_stdin_and_the_mtime_as_an_option(tmp_path):
+# The scope, the values and the time reach the writer as options and on stdin: nothing from the web
+# request is ever spliced into a command line.
+def test_wrapper_passes_the_scope_and_time_as_options_and_the_json_on_stdin(tmp_path):
 	environment = prepare(tmp_path)
 
-	result = run_wrapper(environment, "123", SETTINGS_JSON)
+	result = run_wrapper(environment, "general", "123", SETTINGS_JSON)
 
 	assert result.returncode == 0
 	assert result.stdout.strip() == '{"status": "saved"}'
 	assert (tmp_path / "args").read_text().splitlines() == [
 		"-m",
 		"src.settings_save",
+		"--scope",
+		"general",
 		"--expected-mtime",
 		"123",
 	]
 	assert (tmp_path / "stdin").read_text().strip() == SETTINGS_JSON
 
 
+@pytest.mark.parametrize("scope", ["general", "privacy"])
+def test_wrapper_accepts_each_known_scope(tmp_path, scope):
+	environment = prepare(tmp_path)
+
+	result = run_wrapper(environment, scope, "5", SETTINGS_JSON)
+
+	assert result.returncode == 0
+	assert (tmp_path / "args").read_text().splitlines()[2:4] == ["--scope", scope]
+
+
 def test_wrapper_runs_the_writer_from_the_project_root(tmp_path):
 	environment = prepare(tmp_path)
 
-	run_wrapper(environment, "0", SETTINGS_JSON)
+	run_wrapper(environment, "general", "0", SETTINGS_JSON)
 
 	recorded = Path((tmp_path / "args.cwd").read_text().strip())
 
@@ -80,17 +92,26 @@ def test_wrapper_runs_the_writer_from_the_project_root(tmp_path):
 	"arguments",
 	[
 		[],
-		["123"],
-		["123", SETTINGS_JSON, "extra"],
-		["abc", SETTINGS_JSON],
-		["-1", SETTINGS_JSON],
-		["12 3", SETTINGS_JSON],
-		["1.5", SETTINGS_JSON],
-		["", SETTINGS_JSON],
-		["1234567890123", SETTINGS_JSON],
-		["123", "x" * 9000],
+		["general"],
+		["general", "123"],
+		["general", "123", SETTINGS_JSON, "extra"],
+		["general", "abc", SETTINGS_JSON],
+		["general", "-1", SETTINGS_JSON],
+		["general", "12 3", SETTINGS_JSON],
+		["general", "1.5", SETTINGS_JSON],
+		["general", "", SETTINGS_JSON],
+		["general", "1234567890123", SETTINGS_JSON],
+		["general", "123", "x" * 9000],
 		# 4097 two-byte characters are 8194 bytes: the limit counts bytes, not characters.
-		["123", "ä" * 4097],
+		["general", "123", "ä" * 4097],
+		# The scope is checked against a fixed list, never passed on as it came.
+		["other", "123", SETTINGS_JSON],
+		["", "123", SETTINGS_JSON],
+		["General", "123", SETTINGS_JSON],
+		["general ", "123", SETTINGS_JSON],
+		["--scope", "123", SETTINGS_JSON],
+		["../x", "123", SETTINGS_JSON],
+		["123", "general", SETTINGS_JSON],
 	],
 )
 def test_wrapper_rejects_bad_arguments(tmp_path, arguments):
@@ -105,7 +126,7 @@ def test_wrapper_rejects_bad_arguments(tmp_path, arguments):
 def test_wrapper_accepts_json_exactly_at_the_size_limit(tmp_path):
 	environment = prepare(tmp_path)
 
-	result = run_wrapper(environment, "123", "x" * 8192)
+	result = run_wrapper(environment, "general", "123", "x" * 8192)
 
 	assert result.returncode == 0
 	assert (tmp_path / "args").exists()
@@ -121,7 +142,7 @@ def test_wrapper_accepts_json_exactly_at_the_size_limit(tmp_path):
 def test_wrapper_returns_the_writers_exit_code_and_output(tmp_path, exit_code, output):
 	environment = prepare(tmp_path, exit_code=exit_code, output=output)
 
-	result = run_wrapper(environment, "123", SETTINGS_JSON)
+	result = run_wrapper(environment, "general", "123", SETTINGS_JSON)
 
 	assert result.returncode == exit_code
 	assert result.stdout.strip() == output
@@ -131,7 +152,7 @@ def test_wrapper_reports_a_missing_python(tmp_path):
 	environment = prepare(tmp_path)
 	environment["TIMELAPSE_WEB_PYTHON"] = str(tmp_path / "no-such-python")
 
-	result = run_wrapper(environment, "123", SETTINGS_JSON)
+	result = run_wrapper(environment, "general", "123", SETTINGS_JSON)
 
 	assert result.returncode == 69
 	assert not (tmp_path / "args").exists()

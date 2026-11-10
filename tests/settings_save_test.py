@@ -260,12 +260,14 @@ def test_a_log_that_cannot_be_written_does_not_fail_the_save(paths, tmp_path):
 	assert paths.settings.exists()
 
 
-def run_main(monkeypatch, paths, text, expected_mtime):
+def run_main(monkeypatch, paths, text, expected_mtime, scope="general"):
 	monkeypatch.setattr(config_module, "CONFIG_PATH", paths.config)
 	monkeypatch.setattr(config_module, "SETTINGS_PATH", paths.settings)
+	monkeypatch.setattr(config_module, "PRIVACY_SETTINGS_PATH", privacy_file(paths))
 	monkeypatch.setattr(settings_save, "SETTINGS_LOG_PATH", paths.log)
+	arguments = ["--scope", scope, "--expected-mtime", str(expected_mtime)]
 
-	return settings_save.main(["--expected-mtime", str(expected_mtime)], io.StringIO(text))
+	return settings_save.main(arguments, io.StringIO(text))
 
 
 def test_main_saved_exits_zero_and_prints_one_json_line(monkeypatch, paths, capsys):
@@ -314,3 +316,95 @@ def test_main_stale_page_exits_73(monkeypatch, paths, capsys):
 	assert code == 73
 	assert reply["status"] == "stale"
 	assert reply["mtime"] == FILE_TIME
+
+
+# The privacy tab saves into its own file with its own rules: the two tabs never touch each other.
+def privacy_file(paths: Paths):
+	return paths.settings.parent / "settings-privacy.json"
+
+
+def save_privacy(paths: Paths, names: list, expected_mtime: int = 0):
+	return settings_save.save_settings(
+		{"privacy": {"blur_cameras": names}},
+		expected_mtime,
+		scope="privacy",
+		config_path=paths.config,
+		settings_path=privacy_file(paths),
+		log_path=paths.log,
+	)
+
+
+def test_a_privacy_save_writes_only_the_privacy_file(paths):
+	names = [*read_base(paths)["privacy"]["blur_cameras"], "Alpha"]
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	before = paths.settings.read_bytes()
+
+	result = save_privacy(paths, names)
+
+	assert result.status == "saved"
+	assert json.loads(privacy_file(paths).read_text()) == {
+		"privacy": {"blur_cameras": sorted(names)}
+	}
+	assert paths.settings.read_bytes() == before
+
+
+def test_the_base_blur_list_is_not_stored_as_an_override(paths):
+	result = save_privacy(paths, read_base(paths)["privacy"]["blur_cameras"])
+
+	assert result.status == "saved"
+	assert json.loads(privacy_file(paths).read_text()) == {}
+
+
+def test_the_privacy_scope_refuses_general_keys(paths):
+	result = settings_save.save_settings(
+		{"timelapse": {"crf": 30}},
+		0,
+		scope="privacy",
+		config_path=paths.config,
+		settings_path=privacy_file(paths),
+		log_path=paths.log,
+	)
+
+	assert result.status == "invalid"
+	assert not privacy_file(paths).exists()
+
+
+def test_a_save_in_one_scope_does_not_make_the_other_stale(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	names = [*read_base(paths)["privacy"]["blur_cameras"], "Alpha"]
+
+	assert save_privacy(paths, names).status == "saved"
+	assert save(paths, base_submission(paths), expected_mtime=FILE_TIME).status == "saved"
+
+
+def test_the_log_line_names_the_scope(paths):
+	names = [*read_base(paths)["privacy"]["blur_cameras"], "Alpha"]
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 30
+
+	save_privacy(paths, names)
+	save(paths, submission)
+
+	lines = paths.log.read_text(encoding="utf-8").splitlines()
+
+	assert "[privacy] privacy.blur_cameras" in lines[0]
+	assert "[general] timelapse.crf" in lines[1]
+
+
+def test_main_saves_the_privacy_scope_to_its_own_file(monkeypatch, paths, capsys):
+	names = [*read_base(paths)["privacy"]["blur_cameras"], "Alpha"]
+
+	code = run_main(
+		monkeypatch, paths, json.dumps({"privacy": {"blur_cameras": names}}), 0, scope="privacy"
+	)
+
+	assert code == 0
+	assert json.loads(privacy_file(paths).read_text()) == {
+		"privacy": {"blur_cameras": sorted(names)}
+	}
+	assert not paths.settings.exists()
+
+
+def test_main_refuses_an_unknown_scope(monkeypatch, paths):
+	with pytest.raises(SystemExit):
+		run_main(monkeypatch, paths, "{}", 0, scope="other")

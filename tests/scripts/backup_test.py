@@ -60,6 +60,7 @@ cp -R "$FAKE_REMOTE/$remote_path/." "$destination"
 SECRET_NAME = "siteground.env"
 STATE_LINE = '{"image": "a.jpg", "status": "blurred"}\n'
 SETTINGS_LINE = '{"timelapse": {"crf": 30}}\n'
+PRIVACY_LINE = '{"privacy": {"blur_cameras": ["Alpha"]}}\n'
 
 
 def make_remote(root: Path, settings: bool = True) -> Path:
@@ -75,6 +76,7 @@ def make_remote(root: Path, settings: bool = True) -> Path:
 
 	if settings:
 		files["timelapse/config/settings.json"] = SETTINGS_LINE
+		files["timelapse/config/settings-privacy.json"] = PRIVACY_LINE
 
 	for name, content in files.items():
 		path = remote / name
@@ -174,12 +176,14 @@ def test_models_state_settings_and_crontab_are_saved(tmp_path):
 
 	assert run.result.returncode == 0
 	assert names_below(run.destination) == [
+		"config/settings-privacy.json",
 		"config/settings.json",
 		"crontab.txt",
 		"models/model.onnx",
 		"state/privacy/box/SLSV/2026-11.jsonl",
 	]
 	assert (run.destination / "config/settings.json").read_text() == SETTINGS_LINE
+	assert (run.destination / "config/settings-privacy.json").read_text() == PRIVACY_LINE
 	assert (run.destination / "crontab.txt").read_text() == "0 2 * * * example\n"
 	assert run.sources() == [
 		"alias:timelapse/models/",
@@ -225,8 +229,12 @@ def test_no_secret_is_requested_or_saved(tmp_path):
 
 	assert len(config_calls) == 1
 	assert "--include=settings.json" in config_calls[0]
+	assert "--include=settings-privacy.json" in config_calls[0]
 	assert "--exclude=*" in config_calls[0]
 	assert config_calls[0].index("--include=settings.json") < config_calls[0].index("--exclude=*")
+	assert config_calls[0].index("--include=settings-privacy.json") < config_calls[0].index(
+		"--exclude=*"
+	)
 	assert SECRET_NAME not in " ".join(names_below(run.destination))
 	assert "config/config.json" not in names_below(run.destination)
 
@@ -237,6 +245,7 @@ def test_the_settings_file_is_optional(tmp_path):
 
 	assert run.result.returncode == 0
 	assert "config/settings.json" not in names_below(run.destination)
+	assert "config/settings-privacy.json" not in names_below(run.destination)
 	assert SECRET_NAME not in " ".join(names_below(run.destination))
 
 

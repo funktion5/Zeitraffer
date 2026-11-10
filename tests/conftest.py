@@ -39,3 +39,4 @@ def no_real_settings_file(monkeypatch, tmp_path):
 	import src.config as config_module
 
 	monkeypatch.setattr(config_module, "SETTINGS_PATH", tmp_path / "no-settings.json")
+	monkeypatch.setattr(config_module, "PRIVACY_SETTINGS_PATH", tmp_path / "no-privacy.json")

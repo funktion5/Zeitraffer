@@ -13,11 +13,20 @@ VALUES_PHP = '["timelapse" => ["crf" => 30], "ignored_cameras" => ["Alpha", "Bet
 FAILED_MESSAGE = "Die Einstellungen konnten nicht gespeichert werden."
 
 
-def save(tmp_path, exit_code: int, out: str = "", values_php: str = VALUES_PHP, mtime: int = 123):
+def save(
+	tmp_path,
+	exit_code: int,
+	out: str = "",
+	values_php: str = VALUES_PHP,
+	mtime: int = 123,
+	scope: str | None = None,
+):
+	scope_php = "" if scope is None else f', "{scope}"'
+
 	return run_wrapper(
 		tmp_path,
 		"settings-runner.php",
-		f"saveSettings({values_php}, {mtime})",
+		f"saveSettings({values_php}, {mtime}{scope_php})",
 		exit_code,
 		out,
 	)
@@ -31,6 +40,7 @@ def test_save_settings_calls_the_wrapper_with_the_mtime_and_the_json(tmp_path):
 	assert args[:3] == ["-n", "-u", pwd.getpwuid(os.getuid()).pw_name]
 	assert args[3:] == [
 		"/usr/local/sbin/timelapse-web-settings",
+		"general",
 		"123",
 		json.dumps(VALUES, separators=(",", ":")),
 	]
@@ -126,6 +136,23 @@ def test_save_settings_refuses_without_a_run_user(tmp_path):
 	run_php(tmp_path, "process-runner.php", {PROJECT_ROOT_CALL: json.dumps("/")}, "echo 0;")
 
 	result, args = save(tmp_path, 0, SAVED)
+
+	assert result["status"] == "failed"
+	assert args == []
+
+
+def test_save_settings_passes_the_privacy_scope_to_the_wrapper(tmp_path):
+	result, args = save(tmp_path, 0, SAVED, scope="privacy")
+
+	assert args[3:5] == ["/usr/local/sbin/timelapse-web-settings", "privacy"]
+	assert args[5] == "123"
+	assert result["status"] == "saved"
+
+
+# The scope names a file on the host: only the two known names ever reach the wrapper.
+@pytest.mark.parametrize("scope", ["other", "", "General", "privacy ", "../x"])
+def test_save_settings_refuses_an_unknown_scope(tmp_path, scope):
+	result, args = save(tmp_path, 0, SAVED, scope=scope)
 
 	assert result["status"] == "failed"
 	assert args == []

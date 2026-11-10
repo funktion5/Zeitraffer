@@ -38,6 +38,9 @@ def test_the_web_server_user_can_read_the_settings_file():
 
 	assert "! -name settings.json" in step
 	assert "chmod o=r config/settings.json" in step
+	# The privacy tab has its own file, read by the pages the same way.
+	assert "! -name settings-privacy.json" in step
+	assert "chmod o=r config/settings-privacy.json" in step
 
 
 # A wrapper that is installed but not executable in git would fail only on the VPS.

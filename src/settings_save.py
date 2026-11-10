@@ -11,7 +11,14 @@ from typing import TextIO
 import src.config as config_module
 from src.config import PROJECT_ROOT
 from src.logger import logger
-from src.settings import ALLOWED_KEYS, get_leaf, load_valid_settings, set_leaf, validate_settings
+from src.settings import (
+	ALLOWED_KEYS_BY_SCOPE,
+	SCOPES,
+	get_leaf,
+	load_valid_settings,
+	set_leaf,
+	validate_settings,
+)
 
 # Private to the account the writer runs as: the web server user never reads it.
 SETTINGS_LOG_PATH = PROJECT_ROOT / "logs" / "settings.log"
@@ -48,10 +55,10 @@ def _normalize(value: object) -> object:
 
 # Only what differs from config.json is stored. A value set back to the base value disappears from
 # the file, so an edit of config.json made later still reaches that key.
-def _overrides(base: dict, clean: dict) -> dict:
+def _overrides(base: dict, clean: dict, keys: tuple[str, ...]) -> dict:
 	overrides: dict = {}
 
-	for key in ALLOWED_KEYS:
+	for key in keys:
 		value = get_leaf(clean, key, _MISSING)
 
 		if value is _MISSING:
@@ -94,10 +101,10 @@ def _render(value: object) -> str:
 
 # One line per save: when, and which keys went from which value to which. No address, no user agent.
 # The save is already done at this point, so a log that cannot be written must not fail it.
-def _log_changes(log_path: Path, base: dict, before: dict, after: dict) -> None:
+def _log_changes(log_path: Path, base: dict, before: dict, after: dict, scope: str) -> None:
 	changes = []
 
-	for key in ALLOWED_KEYS:
+	for key in ALLOWED_KEYS_BY_SCOPE[scope]:
 		old = _effective(base, before, key)
 		new = _effective(base, after, key)
 
@@ -105,7 +112,7 @@ def _log_changes(log_path: Path, base: dict, before: dict, after: dict) -> None:
 			changes.append(f"{key}: {_render(old)} -> {_render(new)}")
 
 	stamp = datetime.now().astimezone().isoformat(timespec="seconds")
-	line = f"{stamp} {'; '.join(changes) if changes else 'no changes'}\n"
+	line = f"{stamp} [{scope}] {'; '.join(changes) if changes else 'no changes'}\n"
 
 	try:
 		descriptor = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
@@ -126,15 +133,18 @@ def save_settings(
 	submitted: object,
 	expected_mtime: int,
 	*,
+	scope: str = "general",
 	config_path: Path | None = None,
 	settings_path: Path | None = None,
 	log_path: Path | None = None,
 ) -> SaveResult:
 	config_path = config_path if config_path is not None else config_module.CONFIG_PATH
-	settings_path = settings_path if settings_path is not None else config_module.SETTINGS_PATH
+	settings_path = (
+		settings_path if settings_path is not None else config_module.settings_path_for(scope)
+	)
 	log_path = log_path if log_path is not None else SETTINGS_LOG_PATH
 
-	clean, errors = validate_settings(submitted)
+	clean, errors = validate_settings(submitted, scope)
 	mtime = current_mtime(settings_path)
 
 	if errors:
@@ -146,11 +156,11 @@ def save_settings(
 	with config_path.open("r", encoding="utf-8") as file:
 		base = json.load(file)
 
-	before = load_valid_settings(settings_path)
-	after = _overrides(base, clean)
+	before = load_valid_settings(settings_path, scope)
+	after = _overrides(base, clean, ALLOWED_KEYS_BY_SCOPE[scope])
 
 	_write_atomically(settings_path, after)
-	_log_changes(log_path, base, before, after)
+	_log_changes(log_path, base, before, after, scope)
 
 	return SaveResult("saved", (), current_mtime(settings_path))
 
@@ -159,6 +169,7 @@ def save_settings(
 # Unparsable input is treated like any other invalid submission.
 def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
 	parser = argparse.ArgumentParser(description="Save the values of the web UI settings page.")
+	parser.add_argument("--scope", choices=sorted(SCOPES), default="general")
 	parser.add_argument("--expected-mtime", type=int, required=True)
 	arguments = parser.parse_args(argv)
 
@@ -170,7 +181,7 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
 	except ValueError:
 		submitted = None
 
-	result = save_settings(submitted, arguments.expected_mtime)
+	result = save_settings(submitted, arguments.expected_mtime, scope=arguments.scope)
 	reply = {"status": result.status, "errors": list(result.errors), "mtime": result.mtime}
 
 	print(json.dumps(reply))

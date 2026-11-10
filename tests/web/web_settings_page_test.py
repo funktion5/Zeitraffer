@@ -167,7 +167,7 @@ def test_a_valid_save_sends_the_values_to_the_wrapper_and_redirects(tmp_path):
 	)
 	values = sent_values(args)
 
-	assert args[3:5] == ["/usr/local/sbin/timelapse-web-settings", "0"]
+	assert args[3:6] == ["/usr/local/sbin/timelapse-web-settings", "general", "0"]
 	assert values["timelapse"]["crf"] == 30
 	assert values["ignored_cameras"] == ["Beta", "Reolink"]
 	assert values["flagger"]["cameras"] == ["Alpha", "Beta"]
@@ -195,7 +195,7 @@ def test_the_page_time_goes_to_the_wrapper(tmp_path):
 
 	_, args = render(tmp_path, form_post(loaded_mtime=str(FILE_TIME)), sudo_out=SAVED)
 
-	assert args[4] == str(FILE_TIME)
+	assert args[5] == str(FILE_TIME)
 
 
 # Text that is not a whole number goes on as text: the writer's message names the problem.

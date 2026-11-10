@@ -205,6 +205,30 @@ def test_an_empty_config_folder_in_the_backup_restores_nothing(tmp_path):
 	assert project_files(tmp_path) == []
 
 
+def test_both_settings_files_are_restored(tmp_path):
+	backup = tmp_path / "backup"
+
+	write(backup / "config" / "settings.json", "{}\n")
+	write(backup / "config" / "settings-privacy.json", '{"privacy": {"blur_cameras": ["A"]}}\n')
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert project_files(tmp_path) == ["config/settings-privacy.json", "config/settings.json"]
+
+
+def test_an_existing_privacy_settings_file_is_never_overwritten(tmp_path):
+	backup = tmp_path / "backup"
+
+	write(backup / "config" / "settings-privacy.json", '{"privacy": {"blur_cameras": ["A"]}}\n')
+	write(tmp_path / "project" / "config" / "settings-privacy.json", "kept\n")
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert (tmp_path / "project" / "config" / "settings-privacy.json").read_text() == "kept\n"
+
+
 def test_an_empty_backup_folder_is_reported(tmp_path):
 	backup = tmp_path / "backup"
 	backup.mkdir()

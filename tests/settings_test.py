@@ -5,6 +5,7 @@ import pytest
 import src.config as config_module
 from src.settings import (
 	ALLOWED_KEYS,
+	ALLOWED_KEYS_BY_SCOPE,
 	load_valid_settings,
 	merge_settings,
 	read_settings_file,
@@ -260,3 +261,99 @@ def test_load_config_without_a_settings_file_equals_config_json():
 	base = json.loads(config_module.CONFIG_PATH.read_text(encoding="utf-8"))
 
 	assert config_module.load_config() == base
+
+
+# The privacy values live in a second file and scope, so the two tabs of the web UI never touch each
+# other's settings.
+def patch_files(tmp_path, monkeypatch, general, privacy):
+	general_path = tmp_path / "general.json"
+	privacy_path = tmp_path / "privacy.json"
+
+	for path, content in ((general_path, general), (privacy_path, privacy)):
+		if content is not None:
+			text = content if isinstance(content, str) else json.dumps(content)
+			path.write_text(text, encoding="utf-8")
+
+	monkeypatch.setattr(config_module, "SETTINGS_PATH", general_path)
+	monkeypatch.setattr(config_module, "PRIVACY_SETTINGS_PATH", privacy_path)
+
+
+def test_tests_never_read_a_real_privacy_settings_file():
+	assert not config_module.PRIVACY_SETTINGS_PATH.exists()
+	assert config_module.PRIVACY_SETTINGS_PATH != (
+		config_module.PROJECT_ROOT / "config" / "settings-privacy.json"
+	)
+
+
+def test_scopes_have_their_own_allowlists():
+	assert ALLOWED_KEYS_BY_SCOPE["general"] == ALLOWED_KEYS
+	assert ALLOWED_KEYS_BY_SCOPE["privacy"] == ("privacy.blur_cameras",)
+	assert not set(ALLOWED_KEYS_BY_SCOPE["general"]) & set(ALLOWED_KEYS_BY_SCOPE["privacy"])
+
+
+def test_the_privacy_scope_accepts_its_keys_and_refuses_general_ones():
+	clean, errors = validate_settings({"privacy": {"blur_cameras": ["Alpha"]}}, "privacy")
+
+	assert errors == []
+	assert clean == {"privacy": {"blur_cameras": ["Alpha"]}}
+
+	clean, errors = validate_settings({"timelapse": {"crf": 30}}, "privacy")
+
+	assert clean == {}
+	assert errors[0].startswith("timelapse.crf")
+
+
+@pytest.mark.parametrize("names", [["../x"], ["a/b"], [""], [1], "Alpha"])
+def test_blur_cameras_must_be_plain_names(names):
+	clean, errors = validate_settings(nest("privacy.blur_cameras", names), "privacy")
+
+	assert clean == {}
+	assert errors[0].startswith("privacy.blur_cameras")
+
+
+def test_load_config_lays_both_files_over_config_json(tmp_path, monkeypatch):
+	base = json.loads(config_module.CONFIG_PATH.read_text(encoding="utf-8"))
+	patch_files(
+		tmp_path,
+		monkeypatch,
+		{"timelapse": {"crf": 30}},
+		{"privacy": {"blur_cameras": ["Alpha"]}},
+	)
+
+	config = config_module.load_config()
+
+	assert config["timelapse"]["crf"] == 30
+	assert config["privacy"]["blur_cameras"] == ["Alpha"]
+	assert config["privacy"]["blur"] == base["privacy"]["blur"]
+
+
+def test_each_file_only_applies_its_own_scope(tmp_path, monkeypatch):
+	base = json.loads(config_module.CONFIG_PATH.read_text(encoding="utf-8"))
+	patch_files(
+		tmp_path,
+		monkeypatch,
+		{"privacy": {"blur_cameras": ["Evil"]}},
+		{"timelapse": {"crf": 30}},
+	)
+
+	config = config_module.load_config()
+
+	assert config["privacy"]["blur_cameras"] == base["privacy"]["blur_cameras"]
+	assert config["timelapse"]["crf"] == base["timelapse"]["crf"]
+
+
+def test_a_broken_privacy_file_leaves_the_general_values_alone(tmp_path, monkeypatch):
+	base = json.loads(config_module.CONFIG_PATH.read_text(encoding="utf-8"))
+	patch_files(tmp_path, monkeypatch, {"timelapse": {"crf": 30}}, "{not json")
+
+	config = config_module.load_config()
+
+	assert config["timelapse"]["crf"] == 30
+	assert config["privacy"] == base["privacy"]
+
+
+def test_settings_path_for_follows_the_patched_paths(tmp_path, monkeypatch):
+	patch_files(tmp_path, monkeypatch, {}, {})
+
+	assert config_module.settings_path_for("general") == tmp_path / "general.json"
+	assert config_module.settings_path_for("privacy") == tmp_path / "privacy.json"

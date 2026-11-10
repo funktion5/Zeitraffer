@@ -53,7 +53,7 @@ _DAYLIGHT_BUFFER = IntRule(0, 240)
 
 # Everything the settings page may change, by dotted leaf key. Anything not listed here (the whole
 # "privacy" block, "location", ffmpeg threads, the scan timeout) is refused on purpose.
-RULES: dict[str, Rule] = {
+GENERAL_RULES: dict[str, Rule] = {
 	"timelapse.crf": IntRule(18, 35),
 	"timelapse.daily_framerate": IntRule(1, 60),
 	"timelapse.monthly_framerate": IntRule(1, 60),
@@ -70,7 +70,20 @@ RULES: dict[str, Rule] = {
 	"log_retention_days": IntRule(1, 365),
 }
 
-ALLOWED_KEYS: tuple[str, ...] = tuple(RULES)
+ALLOWED_KEYS: tuple[str, ...] = tuple(GENERAL_RULES)
+
+# The privacy tab of the web UI has its own scope, file and rules, so a save on one tab never
+# touches the other tab's settings. The blur camera list comes first; the other privacy keys follow
+# with their own rule types.
+PRIVACY_RULES: dict[str, Rule] = {
+	"privacy.blur_cameras": CameraNamesRule(),
+}
+
+SCOPES: dict[str, dict[str, Rule]] = {"general": GENERAL_RULES, "privacy": PRIVACY_RULES}
+
+ALLOWED_KEYS_BY_SCOPE: dict[str, tuple[str, ...]] = {
+	name: tuple(rules) for name, rules in SCOPES.items()
+}
 
 
 def set_leaf(target: dict, dotted_key: str, value: object) -> None:
@@ -99,10 +112,11 @@ def get_leaf(source: dict, dotted_key: str, default: object = None) -> object:
 # passed (nested again) and one German message per rejected leaf, each starting with its dotted
 # key. A leaf is the value at an allowlisted key; a dict anywhere else is walked into, so a key
 # outside the allowlist is always named in an error and never silently kept.
-def validate_settings(raw: object) -> tuple[dict, list[str]]:
+def validate_settings(raw: object, scope: str = "general") -> tuple[dict, list[str]]:
 	if not isinstance(raw, dict):
 		return {}, ["Ungültige Eingabe"]
 
+	rules = SCOPES[scope]
 	clean: dict = {}
 	errors: list[str] = []
 
@@ -113,8 +127,8 @@ def validate_settings(raw: object) -> tuple[dict, list[str]]:
 			# A dot inside a key would let "timelapse.crf" skip the nesting.
 			if "." in str(key):
 				errors.append(f"{path}: nicht änderbar")
-			elif path in RULES:
-				rule = RULES[path]
+			elif path in rules:
+				rule = rules[path]
 
 				if rule.accepts(value):
 					set_leaf(clean, path, value)
@@ -168,8 +182,8 @@ def read_settings_file(path: Path) -> dict:
 
 
 # What load_config() lays over config.json: the valid part of the file, a warning for the rest.
-def load_valid_settings(path: Path) -> dict:
-	clean, errors = validate_settings(read_settings_file(path))
+def load_valid_settings(path: Path, scope: str = "general") -> dict:
+	clean, errors = validate_settings(read_settings_file(path), scope)
 
 	for error in errors:
 		logger.warning(f"Settings value ignored: {error}")

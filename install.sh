@@ -171,12 +171,14 @@ step_restore() {
 
 	# From config/ only the settings file comes back, never the folder: nothing else in it belongs to
 	# a backup (the upload login stays out on purpose), and an empty folder restores nothing.
-	if [[ -f "$backup/config/settings.json" ]]; then
+	local settings_file
+	for settings_file in settings.json settings-privacy.json; do
+		[[ -f "$backup/config/$settings_file" ]] || continue
 		mkdir -p "$PROJECT_ROOT/config"
-		rsync -a --no-perms --ignore-existing "$backup/config/settings.json" "$PROJECT_ROOT/config/"
-		echo "Restored config/settings.json"
+		rsync -a --no-perms --ignore-existing "$backup/config/$settings_file" "$PROJECT_ROOT/config/"
+		echo "Restored config/$settings_file"
 		restored=$((restored + 1))
-	fi
+	done
 
 	if ((restored == 0)); then
 		warn "$backup holds no models/, state/, videos/ or config/settings.json: nothing restored."
@@ -318,7 +320,7 @@ step_permissions() {
 	log "Setting website-only permissions for www-data"
 	# www-data is deliberately not in the login user's group. It gets pass-through on the path
 	# down to the project and read access only to what the PHP code touches: web/, videos/,
-	# config/config.json, config/settings.json and state/web-jobs/. Debian 13 creates homes as 0700 and git clone
+	# config/config.json, the two settings files and state/web-jobs/. Debian 13 creates homes as 0700 and git clone
 	# makes everything world-readable, so both have to be corrected here.
 	chmod o+x "$HOME"
 	# Pass-through on $HOME makes every world-readable file in it reachable by name, including
@@ -342,11 +344,15 @@ step_permissions() {
 	find web videos -type d -exec chmod o+rx,o-w {} +
 	find web videos -type f -exec chmod o+r,o-wx {} +
 
-	# settings.json is the one other file the pages read: the values saved on the settings page.
-	find config -mindepth 1 ! -name config.json ! -name settings.json -exec chmod o-rwx {} +
+	# settings.json and settings-privacy.json are the other files the pages read: the values saved on
+	# the two settings tabs (Allgemein and Verpixelung).
+	find config -mindepth 1 ! -name config.json ! -name settings.json ! -name settings-privacy.json -exec chmod o-rwx {} +
 	chmod o=r config/config.json
 	if [[ -f config/settings.json ]]; then
 		chmod o=r config/settings.json
+	fi
+	if [[ -f config/settings-privacy.json ]]; then
+		chmod o=r config/settings-privacy.json
 	fi
 
 	# web-jobs/ itself is created 755/644 by timelapse-web-status.sh; everything else in

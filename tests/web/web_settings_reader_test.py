@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from src.settings import ALLOWED_KEYS
+from src.settings import ALLOWED_KEYS, ALLOWED_KEYS_BY_SCOPE
 from web_php_test import PROJECT_ROOT_CALL, run_php
 
 
@@ -33,16 +33,22 @@ def php(folder: Path, code: str):
 	)
 
 
-def write_config(folder: Path, base: dict | str | None, settings: dict | str | None = None) -> None:
+def write_config(
+	folder: Path,
+	base: dict | str | None,
+	settings: dict | str | None = None,
+	privacy: dict | str | None = None,
+) -> None:
 	config = folder / "config"
 	config.mkdir(parents=True, exist_ok=True)
 
 	if base is not None:
 		(config / "config.json").write_text(base if isinstance(base, str) else json.dumps(base))
 
-	if settings is not None:
-		text = settings if isinstance(settings, str) else json.dumps(settings)
-		(config / "settings.json").write_text(text)
+	for name, content in (("settings.json", settings), ("settings-privacy.json", privacy)):
+		if content is not None:
+			text = content if isinstance(content, str) else json.dumps(content)
+			(config / name).write_text(text)
 
 
 def effective(folder: Path) -> dict:
@@ -154,3 +160,69 @@ def test_both_libraries_use_the_shared_reader(tmp_path):
 	)
 
 	assert result == [["New"], ["Beta"]]
+
+
+# The privacy tab has its own file and scope: each file applies only its own keys.
+def test_the_privacy_file_applies_privacy_keys_only(tmp_path):
+	privacy = {"privacy": {"blur_cameras": ["Alpha"]}, "timelapse": {"crf": 99}}
+	write_config(tmp_path, BASE, privacy=privacy)
+
+	config = effective(tmp_path)
+
+	assert config["privacy"]["blur_cameras"] == ["Alpha"]
+	assert config["timelapse"]["crf"] == 28
+
+
+def test_the_general_file_does_not_apply_privacy_keys(tmp_path):
+	write_config(tmp_path, BASE, settings={"privacy": {"blur_cameras": ["Evil"]}})
+
+	assert effective(tmp_path)["privacy"] == BASE["privacy"]
+
+
+def test_both_files_apply_together(tmp_path):
+	write_config(
+		tmp_path,
+		BASE,
+		settings={"timelapse": {"crf": 30}},
+		privacy={"privacy": {"blur_cameras": ["Alpha"]}},
+	)
+
+	config = effective(tmp_path)
+
+	assert config["timelapse"]["crf"] == 30
+	assert config["privacy"] == {"blur_cameras": ["Alpha"]}
+
+
+@pytest.mark.parametrize("privacy", [None, "{not json", "[1]", ""])
+def test_a_missing_or_broken_privacy_file_gives_the_base(tmp_path, privacy):
+	write_config(tmp_path, BASE, privacy=privacy)
+
+	assert effective(tmp_path) == BASE
+
+
+def test_each_scope_has_its_own_modification_time(tmp_path):
+	folder = tmp_path / "scopes"
+	write_config(folder, BASE, settings={}, privacy={})
+	os.utime(folder / "config" / "settings.json", (FILE_TIME, FILE_TIME))
+	os.utime(folder / "config" / "settings-privacy.json", (FILE_TIME + 60, FILE_TIME + 60))
+
+	times = php(
+		folder,
+		'echo json_encode([readSettingsMtime(), readSettingsMtime("general"), '
+		'readSettingsMtime("privacy")]);',
+	)
+
+	assert times == [FILE_TIME, FILE_TIME, FILE_TIME + 60]
+
+
+def test_a_missing_privacy_file_has_time_zero(tmp_path):
+	write_config(tmp_path, BASE, settings={})
+
+	assert php(tmp_path, 'echo json_encode(readSettingsMtime("privacy"));') == 0
+
+
+def test_php_privacy_key_list_equals_the_python_allowlist(tmp_path):
+	keys = php(tmp_path, "echo json_encode(PRIVACY_SETTINGS_ALLOWED_KEYS);")
+
+	assert len(keys) == len(set(keys))
+	assert sorted(keys) == sorted(ALLOWED_KEYS_BY_SCOPE["privacy"])

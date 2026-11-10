@@ -15,13 +15,25 @@ PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 # Generous for the form (twelve months, two camera lists), small enough to refuse junk early.
 MAX_JSON_BYTES=8192
 
-if [[ $# -ne 2 ]]; then
-	echo "Usage: timelapse-web-settings <expected-mtime> <settings-json>" >&2
+if [[ $# -ne 3 ]]; then
+	echo "Usage: timelapse-web-settings <scope> <expected-mtime> <settings-json>" >&2
 	exit 64
 fi
 
-EXPECTED_MTIME="$1"
-SETTINGS_JSON="$2"
+SCOPE="$1"
+EXPECTED_MTIME="$2"
+SETTINGS_JSON="$3"
+
+# The scope names a settings file (the Allgemein tab or the Verpixelung tab): only the two known names
+# pass, never what arrived.
+case "$SCOPE" in
+	general|privacy)
+		;;
+	*)
+		echo "Invalid scope." >&2
+		exit 64
+		;;
+esac
 
 # The settings file's modification time in whole seconds, as the page read it. Digits only, so it
 # can never be taken for an option.
@@ -44,4 +56,4 @@ fi
 cd "$PROJECT_ROOT"
 
 # set -e hands the writer's exit code on: 0 saved, 65 invalid values, 73 changed in the meantime.
-"$PYTHON" -m src.settings_save --expected-mtime "$EXPECTED_MTIME" <<<"$SETTINGS_JSON"
+"$PYTHON" -m src.settings_save --scope "$SCOPE" --expected-mtime "$EXPECTED_MTIME" <<<"$SETTINGS_JSON"

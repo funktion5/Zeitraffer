@@ -36,6 +36,18 @@ const SETTINGS_ALLOWED_KEYS = [
 	"log_retention_days",
 ];
 
+// The privacy tab's own scope: its keys live in config/settings-privacy.json, so a save on one tab
+// never touches the other tab's settings. The same rule as above: names only, and a test compares
+// this list with the Python one.
+const PRIVACY_SETTINGS_ALLOWED_KEYS = [
+	"privacy.blur_cameras",
+];
+
+const SETTINGS_SCOPE_KEYS = [
+	"general" => SETTINGS_ALLOWED_KEYS,
+	"privacy" => PRIVACY_SETTINGS_ALLOWED_KEYS,
+];
+
 // A JSON file as an array. A missing, unreadable or broken file, or one that holds no array or
 // object, gives an empty array.
 function readJsonObjectFile(string $path): array
@@ -62,16 +74,24 @@ function readBaseConfig(): array
 	return readJsonObjectFile(projectRoot() . "/config/config.json");
 }
 
-function settingsFilePath(): string
+// The file of a settings scope: "general" is the Allgemein tab, "privacy" the Verpixelung tab.
+function settingsFilePath(string $scope = "general"): string
 {
-	return projectRoot() . "/config/settings.json";
+	$name = match ($scope) {
+		"general" => "settings.json",
+		"privacy" => "settings-privacy.json",
+		default => throw new InvalidArgumentException("Unknown settings scope."),
+	};
+
+	return projectRoot() . "/config/" . $name;
 }
 
 // The settings file's modification time in whole seconds, 0 when there is no file. The settings
-// page hands it back on save, so a save from an outdated page can be refused.
-function readSettingsMtime(): int
+// page hands it back on save, so a save from an outdated page can be refused. One time per scope:
+// a save on one tab never makes the other tab's page out of date.
+function readSettingsMtime(string $scope = "general"): int
 {
-	$path = settingsFilePath();
+	$path = settingsFilePath($scope);
 
 	if (!is_file($path)) {
 		return 0;
@@ -120,13 +140,17 @@ function setSettingsLeaf(array &$target, string $dottedKey, mixed $value): void
 function readProjectConfig(): array
 {
 	$config = readBaseConfig();
-	$settings = readJsonObjectFile(settingsFilePath());
 
-	foreach (SETTINGS_ALLOWED_KEYS as $key) {
-		[$found, $value] = settingsLeaf($settings, $key);
+	// Each file only applies the keys of its own scope.
+	foreach (SETTINGS_SCOPE_KEYS as $scope => $keys) {
+		$settings = readJsonObjectFile(settingsFilePath($scope));
 
-		if ($found) {
-			setSettingsLeaf($config, $key, $value);
+		foreach ($keys as $key) {
+			[$found, $value] = settingsLeaf($settings, $key);
+
+			if ($found) {
+				setSettingsLeaf($config, $key, $value);
+			}
 		}
 	}
 
