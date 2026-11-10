@@ -17,6 +17,9 @@ reports/
 *.key
 *.pem
 
+# Values saved on the web UI settings page: per host, never in git (settings.example.json shows the shape)
+config/settings.json
+
 # OS
 .DS_Store
 

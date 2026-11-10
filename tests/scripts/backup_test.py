@@ -38,21 +38,43 @@ if [[ ! -d "$FAKE_REMOTE/$remote_path" ]]; then
 	exit 23
 fi
 mkdir -p "$destination"
+# A catch-all exclude after includes (an rsync filter list) copies only the included files.
+includes=()
+exclude_all=""
+for argument in "$@"; do
+	case "$argument" in
+		--include=*) includes+=("${argument#--include=}") ;;
+		--exclude=\*) exclude_all=1 ;;
+	esac
+done
+if [[ -n "$exclude_all" ]]; then
+	for name in "${includes[@]}"; do
+		file="$FAKE_REMOTE/$remote_path/$name"
+		[[ -f "$file" ]] && cp "$file" "$destination/"
+	done
+	exit 0
+fi
 cp -R "$FAKE_REMOTE/$remote_path/." "$destination"
 """
 
 SECRET_NAME = "siteground.env"
 STATE_LINE = '{"image": "a.jpg", "status": "blurred"}\n'
+SETTINGS_LINE = '{"timelapse": {"crf": 30}}\n'
 
 
-def make_remote(root: Path) -> Path:
+def make_remote(root: Path, settings: bool = True) -> Path:
 	remote = root / "remote"
 	files = {
 		"timelapse/models/model.onnx": "model",
 		"timelapse/state/privacy/box/SLSV/2026-11.jsonl": STATE_LINE,
 		"timelapse/videos/Camera/daily/Camera_2026-11-08.mp4": "video",
 		f"timelapse/config/{SECRET_NAME}": "SITEGROUND_PASS=placeholder\n",
+		# Tracked in git, so it must never be saved either.
+		"timelapse/config/config.json": "{}\n",
 	}
+
+	if settings:
+		files["timelapse/config/settings.json"] = SETTINGS_LINE
 
 	for name, content in files.items():
 		path = remote / name
@@ -88,7 +110,9 @@ class Run:
 		]
 
 
-def run_backup(tmp_path, env=None, config_text=None, no_crontab=False, fail=None) -> Run:
+def run_backup(
+	tmp_path, env=None, config_text=None, no_crontab=False, fail=None, settings=True
+) -> Run:
 	tmp_path.mkdir(parents=True, exist_ok=True)
 	bin_dir = tmp_path / "bin"
 	bin_dir.mkdir(exist_ok=True)
@@ -112,7 +136,7 @@ def run_backup(tmp_path, env=None, config_text=None, no_crontab=False, fail=None
 		"PATH": f"{bin_dir}:/usr/bin:/bin",
 		"HOME": str(home),
 		"FAKE_LOG": str(log),
-		"FAKE_REMOTE": str(make_remote(tmp_path)),
+		"FAKE_REMOTE": str(make_remote(tmp_path, settings)),
 		"BACKUP_CONFIG": str(config),
 		"BACKUP_HOST": "alias",
 	}
@@ -143,18 +167,25 @@ def names_below(folder: Path) -> list[str]:
 	return sorted(str(path.relative_to(folder)) for path in folder.rglob("*") if path.is_file())
 
 
-# The default backup: what a new host needs and Git does not hold. Videos are left out.
-def test_models_state_and_crontab_are_saved(tmp_path):
+# The default backup: what a new host needs and Git does not hold (the web UI settings included).
+# Videos are left out.
+def test_models_state_settings_and_crontab_are_saved(tmp_path):
 	run = run_backup(tmp_path)
 
 	assert run.result.returncode == 0
 	assert names_below(run.destination) == [
+		"config/settings.json",
 		"crontab.txt",
 		"models/model.onnx",
 		"state/privacy/box/SLSV/2026-11.jsonl",
 	]
+	assert (run.destination / "config/settings.json").read_text() == SETTINGS_LINE
 	assert (run.destination / "crontab.txt").read_text() == "0 2 * * * example\n"
-	assert run.sources() == ["alias:timelapse/models/", "alias:timelapse/state/"]
+	assert run.sources() == [
+		"alias:timelapse/models/",
+		"alias:timelapse/state/",
+		"alias:timelapse/config/",
+	]
 
 
 # Locks and the run marker would block the new host, and the web job folder is transient.
@@ -185,11 +216,27 @@ def test_videos_are_saved_only_with_the_switch(tmp_path):
 	assert "--exclude=.*" in videos_call
 
 
-# Nothing secret is ever asked for: the upload password lives in config/ on the host.
+# Nothing secret is ever saved: the upload password lives in config/ on the host, next to the
+# settings file, so the config pull is limited to that one file.
 def test_no_secret_is_requested_or_saved(tmp_path):
 	run = run_backup(tmp_path, env={"VIDEOS": "1"})
 
-	assert all("config" not in source for source in run.sources())
+	config_calls = [line for line in run.calls("rsync") if "alias:timelapse/config/" in line]
+
+	assert len(config_calls) == 1
+	assert "--include=settings.json" in config_calls[0]
+	assert "--exclude=*" in config_calls[0]
+	assert config_calls[0].index("--include=settings.json") < config_calls[0].index("--exclude=*")
+	assert SECRET_NAME not in " ".join(names_below(run.destination))
+	assert "config/config.json" not in names_below(run.destination)
+
+
+# A host that never saved settings has no file: that is not a failure.
+def test_the_settings_file_is_optional(tmp_path):
+	run = run_backup(tmp_path, settings=False)
+
+	assert run.result.returncode == 0
+	assert "config/settings.json" not in names_below(run.destination)
 	assert SECRET_NAME not in " ".join(names_below(run.destination))
 
 

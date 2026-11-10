@@ -1,0 +1,47 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Saves the values of the web UI settings page. Unlike the rebuild trigger this is synchronous and
+# takes no run lock: the writer replaces config/settings.json in one atomic step, and a running job
+# has already read its config. The values arrive as ONE JSON argument (the PHP process runner has no
+# stdin), go to the writer on stdin, and never end up on a command line.
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
+
+# Generous for the form (twelve months, two camera lists), small enough to refuse junk early.
+MAX_JSON_BYTES=8192
+
+if [[ $# -ne 2 ]]; then
+	echo "Usage: timelapse-web-settings <expected-mtime> <settings-json>" >&2
+	exit 64
+fi
+
+EXPECTED_MTIME="$1"
+SETTINGS_JSON="$2"
+
+# The settings file's modification time in whole seconds, as the page read it. Digits only, so it
+# can never be taken for an option.
+if [[ ! "$EXPECTED_MTIME" =~ ^[0-9]{1,12}$ ]]; then
+	echo "Invalid modification time." >&2
+	exit 64
+fi
+
+# Counted in bytes, not characters: the locale of a sudo environment varies.
+if (( $(printf '%s' "$SETTINGS_JSON" | wc -c) > MAX_JSON_BYTES )); then
+	echo "The settings are too large." >&2
+	exit 64
+fi
+
+if [[ ! -x "$PYTHON" ]]; then
+	echo "Python for the settings writer is unavailable." >&2
+	exit 69
+fi
+
+cd "$PROJECT_ROOT"
+
+# set -e hands the writer's exit code on: 0 saved, 65 invalid values, 73 changed in the meantime.
+"$PYTHON" -m src.settings_save --expected-mtime "$EXPECTED_MTIME" <<<"$SETTINGS_JSON"

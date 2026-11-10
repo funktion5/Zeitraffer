@@ -149,6 +149,62 @@ def test_only_the_folders_in_the_backup_are_restored(tmp_path):
 	assert not (tmp_path / "project" / "videos").exists()
 
 
+# The colleagues' web UI settings are not in git: a new host gets them back from the backup.
+def test_the_settings_file_is_restored(tmp_path):
+	backup = tmp_path / "backup"
+
+	write(backup / "config" / "settings.json", '{"timelapse": {"crf": 30}}\n')
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert project_files(tmp_path) == ["config/settings.json"]
+	assert (tmp_path / "project" / "config" / "settings.json").read_text() == (
+		'{"timelapse": {"crf": 30}}\n'
+	)
+
+
+# On a host that works, the saved settings are newer than the backup's.
+def test_an_existing_settings_file_is_never_overwritten(tmp_path):
+	backup = tmp_path / "backup"
+
+	write(backup / "config" / "settings.json", '{"timelapse": {"crf": 30}}\n')
+	write(tmp_path / "project" / "config" / "settings.json", '{"timelapse": {"crf": 22}}\n')
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert (tmp_path / "project" / "config" / "settings.json").read_text() == (
+		'{"timelapse": {"crf": 22}}\n'
+	)
+
+
+# Only the settings file comes back from config/: the upload login must never be restored, and an
+# empty config/ folder (a host that never saved settings) restores nothing.
+def test_nothing_but_the_settings_file_is_restored_from_config(tmp_path):
+	backup = tmp_path / "backup"
+
+	write(backup / "config" / "settings.json", "{}\n")
+	write(backup / "config" / "siteground.env", "SITEGROUND_PASS=placeholder\n")
+	write(backup / "config" / "config.json", '{"changed": true}\n')
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert project_files(tmp_path) == ["config/settings.json"]
+
+
+def test_an_empty_config_folder_in_the_backup_restores_nothing(tmp_path):
+	backup = tmp_path / "backup"
+	(backup / "config").mkdir(parents=True)
+
+	result = run_step(tmp_path, backup)
+
+	assert result.returncode == 0
+	assert "nothing restored" in result.stderr
+	assert project_files(tmp_path) == []
+
+
 def test_an_empty_backup_folder_is_reported(tmp_path):
 	backup = tmp_path / "backup"
 	backup.mkdir()
