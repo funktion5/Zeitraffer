@@ -149,9 +149,9 @@ PRIVACY_RULES: dict[str, Rule] = {
 	"privacy.blur.strength": FloatRule(*BLUR_STRENGTH_RANGE),
 	"privacy.blur.padding_ratio": FloatRule(*BLUR_PADDING_RANGE),
 	"privacy.blur.feather": FloatRule(*BLUR_FEATHER_RANGE),
-	# The blur code takes 0 up to BELOW half the image.
-	"privacy.ignore_top_share": FloatRule(*TOP_SHARE_RANGE, high_included=False),
 	# A "*" is one camera name: one value per camera, so one camera never touches another's.
+	# The value for all cameras (privacy.ignore_top_share) stays with config.json: the page sets one
+	# per camera. The blur code takes 0 up to BELOW half the image.
 	"privacy.ignore_top_share_per_camera.*": FloatRule(*TOP_SHARE_RANGE, high_included=False),
 	"privacy.min_person_score.*": FloatRule(*MIN_PERSON_SCORE_RANGE),
 	"privacy.ignore_boxes.*": BoxListRule(),

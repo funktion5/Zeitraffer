@@ -259,7 +259,8 @@ def test_the_privacy_file_applies_blur_values_and_per_camera_maps(tmp_path):
 	privacy = effective(tmp_path)["privacy"]
 
 	assert privacy["blur"] == {"strength": 0.1, "padding_ratio": 0.05, "feather": 0.5}
-	assert privacy["ignore_top_share"] == 0.2
+	# The value for all cameras is not the page's to change: a value in the file is not applied.
+	assert privacy["ignore_top_share"] == 0.333
 	# A camera's own top share sits next to the global one; 0 is a value, not "unset".
 	assert privacy["ignore_top_share_per_camera"] == {"New": 0.1, "Off": 0}
 	# One camera's value never touches another's.

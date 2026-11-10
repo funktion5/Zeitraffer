@@ -100,8 +100,12 @@ $standardOf = static fn(string $key): ?string => ($defaultState["floats"][$key] 
 $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 	$scores = is_array($basePrivacy["min_person_score"] ?? null) ? $basePrivacy["min_person_score"] : [];
 	$boxes = is_array($basePrivacy["ignore_boxes"] ?? null) ? $basePrivacy["ignore_boxes"] : [];
+	$tops = is_array($basePrivacy["ignore_top_share_per_camera"] ?? null) ? $basePrivacy["ignore_top_share_per_camera"] : [];
+	$globalTop = privacyNumberText($basePrivacy["ignore_top_share"] ?? "");
 
 	return [
+		// Its own top share in config.json, else the one every camera gets from there.
+		"top" => isset($tops[$camera]) ? privacyNumberText($tops[$camera]) : ($globalTop !== "" ? $globalTop : "0"),
 		"score" => isset($scores[$camera]) ? privacyNumberText($scores[$camera]) : "0",
 		"boxes" => privacyBoxesForDefaults($boxes[$camera] ?? []),
 	];
@@ -179,21 +183,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				<?php endforeach; ?>
 			</fieldset>
 
-			<fieldset class="settings-group">
-				<legend>Oberer Bildrand</legend>
-				<?php renderSettingsDefaultButton("Oberer Bildrand"); ?>
-				<?php foreach ($floatsOf("top") as $field): ?>
-					<?php renderPrivacyNumber(
-						privacyFieldId($field["key"]),
-						"privacy[floats][" . $field["key"] . "]",
-						$field,
-						$state["floats"][$field["key"]],
-						$standardOf($field["key"]),
-						$fieldErrors[$field["key"]] ?? null,
-					); ?>
-				<?php endforeach; ?>
-			</fieldset>
-
 			<?php foreach ($state["cameras"] as $camera => $cameraState): ?>
 				<?php $defaults = $cameraDefaults((string) $camera); ?>
 				<fieldset class="settings-group privacy-camera" data-camera="<?= settingsHtml((string) $camera) ?>">
@@ -206,6 +195,14 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						$cameraState["score"],
 						$defaults["score"],
 						$fieldErrors["privacy.min_person_score." . $camera] ?? null,
+					); ?>
+					<?php renderPrivacyNumber(
+						"privacy-top-" . $camera,
+						"privacy[top][" . $camera . "]",
+						privacyTopField(),
+						$cameraState["top"],
+						$defaults["top"],
+						$fieldErrors["privacy.ignore_top_share_per_camera." . $camera] ?? null,
 					); ?>
 					<?php renderPrivacyPreview((string) $camera, readPreviewInfo((string) $camera)); ?>
 					<?php renderPrivacyBoxes(
@@ -319,25 +316,25 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			// percent of the picture's own size, so it scales with the picture and a position on it is the
 			// box number by one scale factor. The rows of four numbers stay the real control (and the way
 			// to work without a mouse): the layer only shows them and adds rows from a drag.
-			const topShare = form.querySelector("#privacy-privacy-ignore_top_share");
-			const topRange = form.querySelector(`[data-slider-for="${topShare.id}"]`);
-
-			// The field's own limit: the strip cannot be pulled further than the page would accept.
-			const TOP_SHARE_MAX = Number(topShare.max);
+			// A camera's top share lives in the number field and the slider of its own block: the strip on its
+			// picture reads them, and a drag on the strip's edge writes them. Nothing here is shared between
+			// cameras.
+			const topFieldOf = (section) => section.closest("fieldset").querySelector('input[name^="privacy[top]["]');
+			const topRangeOf = (section) =>
+				section.closest("fieldset").querySelector(`[data-slider-for="${topFieldOf(section).id}"]`);
 
 			// The strip counts only while the field holds a usable number.
-			const currentShare = () => {
-				const value = Number(topShare.value);
+			const currentShare = (section) => {
+				const field = topFieldOf(section);
+				const value = Number(field.value);
 
-				return topShare.value.trim() !== "" && value > 0 && value < 0.5 ? value : 0;
+				return field.value.trim() !== "" && value > 0 && value < 0.5 ? value : 0;
 			};
 
-			// The top share is ONE value for every camera: a drag on any picture writes the same field and
-			// slider, and every picture follows.
-			const setTopShare = (value) => {
-				topShare.value = String(value);
-				topRange.value = String(value);
-				refreshAll();
+			const setTopShare = (section, value) => {
+				topFieldOf(section).value = String(value);
+				topRangeOf(section).value = String(value);
+				redrawSection(section);
 			};
 
 			// Smaller than this (in screen pixels) is a click or a slip of the hand, not a box.
@@ -400,7 +397,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 				const rows = Array.from(containerOf(section).querySelectorAll(".privacy-box-row"));
 				const focused = rows.find((row) => row.contains(document.activeElement));
-				const share = topShare.value.trim() === "" ? 0 : Number(topShare.value);
+				const share = currentShare(section);
 				const shapes = [];
 
 				if (share > 0 && share < 0.5) {
@@ -411,6 +408,16 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					band.append(badge("Oben: wird ignoriert"));
 					shapes.push(band);
 				}
+
+				// The handle on the strip's lower edge, UNDER the boxes: where a box and the handle overlap, the
+				// box is the one that is grabbed (a finger on a small picture cannot be precise). At 0 it waits at
+				// the top, so the strip can be pulled out of nothing. It shows only while editing is on.
+				const handle = document.createElement("div");
+
+				handle.className = "privacy-top-handle";
+				handle.style.top = `max(8px, ${share * 100}%)`;
+				handle.append(badge("Oberer Rand dieser Kamera"));
+				shapes.push(handle);
 
 				rows.forEach((row, index) => {
 					const box = boxOfRow(row);
@@ -430,15 +437,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					shape.append(badge(String(index + 1)));
 					shapes.push(shape);
 				});
-
-				// The handle on the strip's lower edge, on top of everything. At 0 it waits at the top, so the
-				// strip can be pulled out of nothing. It shows only while editing is on (see the CSS).
-				const handle = document.createElement("div");
-
-				handle.className = "privacy-top-handle";
-				handle.style.top = `max(8px, ${currentShare() * 100}%)`;
-				handle.append(badge("Oberer Rand: gilt für alle Kameras"));
-				shapes.push(handle);
 
 				layer.replaceChildren(...shapes);
 			};
@@ -523,7 +521,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 					// The strip's edge: the drag changes the global top share, not a box.
 					if (event.target.closest(".privacy-top-handle") !== null) {
-						gesture = { kind: "strip", start, share: currentShare(), moved: false };
+						gesture = { kind: "strip", start, share: currentShare(section), moved: false };
 
 						return;
 					}
@@ -561,7 +559,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						const share = gesture.share + (now.y - gesture.start.y) / now.height;
 
 						gesture.moved = true;
-						setTopShare(Math.min(Math.max(Math.round(share * 100) / 100, 0), TOP_SHARE_MAX));
+						setTopShare(section, Math.min(Math.max(Math.round(share * 100) / 100, 0), Number(topFieldOf(section).max)));
 
 						return;
 					}
@@ -597,10 +595,10 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						stop();
 
 						if (moved) {
-							status.textContent = `Oberer Rand: ${currentShare().toLocaleString("de-DE")} der Bildhöhe, für alle Kameras. Zum Übernehmen unten auf „Speichern“ drücken.`;
+							status.textContent = `Oberer Rand: ${currentShare(section).toLocaleString("de-DE")} der Bildhöhe, nur für diese Kamera. Zum Übernehmen unten auf „Speichern“ drücken.`;
 						}
 
-						refreshAll();
+						redrawSection(section);
 
 						return;
 					}
@@ -664,7 +662,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				layer.addEventListener("pointercancel", () => {
 					// A cancelled drag of the strip leaves the value as it was before the drag.
 					if (gesture?.kind === "strip") {
-						setTopShare(gesture.share);
+						setTopShare(section, gesture.share);
 					}
 
 					stop();
@@ -730,10 +728,14 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			// The picture follows the fields while they are typed in, and the focused row lights up.
 			form.addEventListener("input", (event) => {
 				const container = event.target.closest(".privacy-boxes");
-
+				const fieldset = event.target.closest(".privacy-camera");
 				// The slider moves the number field without an event of its own.
-				if (event.target === topShare || event.target.dataset.sliderFor === topShare.id) {
-					refreshAll();
+				const isTopControl =
+					event.target.name?.startsWith("privacy[top][") === true ||
+					event.target.dataset.sliderFor?.startsWith("privacy-top-") === true;
+
+				if (isTopControl && fieldset !== null) {
+					redrawSection(fieldset.querySelector("[data-preview-camera]"));
 				} else if (container !== null) {
 					refreshContainer(container);
 				}
@@ -916,8 +918,9 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						}
 					} else if (element.value !== before) {
 						const label = form.querySelector(`label[for="${element.id}"]`).textContent.trim();
+						const camera = element.closest(".privacy-camera")?.dataset.camera;
 
-						changes.push(`${label} ${before} → ${element.value}`);
+						changes.push(`${camera === undefined ? "" : `Kamera ${camera}: `}${label} ${before} → ${element.value}`);
 					}
 				});
 

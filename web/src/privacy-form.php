@@ -17,7 +17,8 @@ function privacyFieldId(string $key): string
 	return "privacy-" . str_replace(".", "-", $key);
 }
 
-// The number controls shared by all blur cameras. "group" says in which fieldset one is shown.
+// The number controls shared by all blur cameras. "group" says in which fieldset one is shown. (The
+// top share is not among them: every blur camera has its own.)
 function privacyFloatFields(): array
 {
 	return [
@@ -57,18 +58,22 @@ function privacyFloatFields(): array
 				"Der Mensch selbst ist immer ganz verpixelt. Das ändert nur, wie der Rand aussieht.",
 			],
 		],
-		[
-			"key" => "privacy.ignore_top_share",
-			"group" => "top",
-			"label" => "Wie viel vom oberen Bildrand wird ignoriert?",
-			"min" => "0",
-			"max" => "0.49",
-			"step" => "0.01",
-			"help" => [
-				"Ganz oben im Bild sind meistens nur Himmel, Dächer oder die Halterung der Kamera. Wenn die Kamera dort einen Menschen zu sehen glaubt, ist das fast immer ein Irrtum.",
-				"Die Zahl sagt, wie viel vom Bild von oben als Irrtums-Zone gilt: 0 = nichts, 0,33 = das obere Drittel. Der Höchstwert ist knapp unter 0,5, also die halbe Höhe.",
-				"Achtung: Was dort erkannt wird, bleibt unverpixelt. Das gilt für alle Kameras.",
-			],
+	];
+}
+
+// The control of one blur camera: how much of its picture's top edge is ignored. A camera's own value
+// replaces the one config.json gives every camera.
+function privacyTopField(): array
+{
+	return [
+		"label" => "Wie viel vom oberen Bildrand wird bei dieser Kamera ignoriert?",
+		"min" => "0",
+		"max" => "0.49",
+		"step" => "0.01",
+		"help" => [
+			"Ganz oben im Bild sind meistens nur Himmel, Dächer oder die Halterung der Kamera. Wenn die Kamera dort einen Menschen zu sehen glaubt, ist das fast immer ein Irrtum.",
+			"Die Zahl sagt, wie viel vom Bild von oben als Irrtums-Zone gilt: 0 = nichts, 0,33 = das obere Drittel. Der Höchstwert ist knapp unter 0,5, also die halbe Höhe. Auf dem Bild unten ist die Zone rot.",
+			"Achtung: Was dort erkannt wird, bleibt unverpixelt. Das gilt nur für diese Kamera.",
 		],
 	];
 }
@@ -165,6 +170,9 @@ function privacyFormState(array $config): array
 	$privacy = is_array($config["privacy"] ?? null) ? $config["privacy"] : [];
 	$scores = is_array($privacy["min_person_score"] ?? null) ? $privacy["min_person_score"] : [];
 	$boxes = is_array($privacy["ignore_boxes"] ?? null) ? $privacy["ignore_boxes"] : [];
+	$tops = is_array($privacy["ignore_top_share_per_camera"] ?? null) ? $privacy["ignore_top_share_per_camera"] : [];
+	// A camera without a value of its own shows the one every camera gets from config.json.
+	$globalTop = privacyNumberText($privacy["ignore_top_share"] ?? "");
 	$floats = [];
 
 	foreach (privacyFloatFields() as $field) {
@@ -179,6 +187,7 @@ function privacyFormState(array $config): array
 		if (preg_match(PRIVACY_CAMERA_KEY_PATTERN, $camera) === 1) {
 			$cameras[$camera] = [
 				"score" => isset($scores[$camera]) ? privacyNumberText($scores[$camera]) : "0",
+				"top" => isset($tops[$camera]) ? privacyNumberText($tops[$camera]) : ($globalTop !== "" ? $globalTop : "0"),
 				"boxes" => privacyBoxesForDisplay($boxes[$camera] ?? []),
 			];
 		}
@@ -194,6 +203,7 @@ function privacyFormStateFromPost(array $post): array
 	$input = is_array($post["privacy"] ?? null) ? $post["privacy"] : [];
 	$typed = is_array($input["floats"] ?? null) ? $input["floats"] : [];
 	$scores = is_array($input["score"] ?? null) ? $input["score"] : [];
+	$tops = is_array($input["top"] ?? null) ? $input["top"] : [];
 	$rows = is_array($input["boxes"] ?? null) ? $input["boxes"] : [];
 	$floats = [];
 
@@ -211,6 +221,7 @@ function privacyFormStateFromPost(array $post): array
 		}
 
 		$score = $scores[$camera] ?? "0";
+		$top = $tops[$camera] ?? "0";
 		$cameraRows = is_array($rows[$camera] ?? null) ? $rows[$camera] : [];
 		$boxes = [];
 
@@ -227,7 +238,11 @@ function privacyFormStateFromPost(array $post): array
 			}
 		}
 
-		$cameras[$camera] = ["score" => is_string($score) ? $score : "0", "boxes" => $boxes];
+		$cameras[$camera] = [
+			"score" => is_string($score) ? $score : "0",
+			"top" => is_string($top) ? $top : "0",
+			"boxes" => $boxes,
+		];
 	}
 
 	return ["blur_cameras" => $blurCameras, "floats" => $floats, "cameras" => $cameras];
@@ -314,9 +329,10 @@ function privacyValuesFromPost(array $post, array $knownCameras): array
 	setSettingsLeaf($values, "privacy.blur_cameras", $blurCameras);
 
 	$scores = is_array($input["score"] ?? null) ? $input["score"] : [];
+	$tops = is_array($input["top"] ?? null) ? $input["top"] : [];
 	$rows = is_array($input["boxes"] ?? null) ? $input["boxes"] : [];
 
-	foreach (array_unique([...array_keys($scores), ...array_keys($rows)]) as $key) {
+	foreach (array_unique([...array_keys($scores), ...array_keys($tops), ...array_keys($rows)]) as $key) {
 		$camera = (string) $key;
 
 		if (!in_array($camera, $knownCameras, true) || preg_match(PRIVACY_CAMERA_KEY_PATTERN, $camera) !== 1) {
@@ -329,6 +345,15 @@ function privacyValuesFromPost(array $post, array $knownCameras): array
 			}
 
 			setSettingsLeaf($values, "privacy.min_person_score." . $camera, privacyNumberValue($scores[$key]));
+		}
+
+		// One value per camera: the writer keeps it only where it differs from the camera's default.
+		if (array_key_exists($key, $tops)) {
+			if (!is_string($tops[$key])) {
+				return [[], [SETTINGS_FORM_INCOMPLETE]];
+			}
+
+			setSettingsLeaf($values, "privacy.ignore_top_share_per_camera." . $camera, privacyNumberValue($tops[$key]));
 		}
 
 		if (array_key_exists($key, $rows)) {
@@ -356,6 +381,10 @@ function privacyErrorTarget(string $key): string
 		return "privacy-boxes-" . substr($key, strlen("privacy.ignore_boxes."));
 	}
 
+	if (str_starts_with($key, "privacy.ignore_top_share_per_camera.")) {
+		return "privacy-top-" . substr($key, strlen("privacy.ignore_top_share_per_camera."));
+	}
+
 	return $key === "privacy.blur_cameras" ? "privacy-blur-cameras" : privacyFieldId($key);
 }
 
@@ -374,6 +403,10 @@ function privacyErrorLabel(string $key): string
 
 	if (str_starts_with($key, "privacy.ignore_boxes.")) {
 		return "Kamera " . substr($key, strlen("privacy.ignore_boxes.")) . ": Rahmen";
+	}
+
+	if (str_starts_with($key, "privacy.ignore_top_share_per_camera.")) {
+		return "Kamera " . substr($key, strlen("privacy.ignore_top_share_per_camera.")) . ": Oberer Bildrand";
 	}
 
 	return "Verpixelte Kameras";
@@ -603,7 +636,7 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 		<div class="privacy-help" data-draw-help hidden>
 			<p>So malst du einen Rahmen: Drücke „Rahmen bearbeiten“. Dann ziehst du mit der Maus oder dem Finger ein Rechteck über die Stelle, die kein Mensch ist. Die Zahlen unten füllen sich von selbst. Du kannst die Zahlen auch selbst eintippen.</p>
 			<p>Einen Rahmen, den es schon gibt, schiebst du mit der Maus oder dem Finger an eine andere Stelle. Er behält seine Größe.</p>
-			<p>Türkise Rechtecke sind Rahmen, die es schon gibt. Der rote Streifen oben ist der obere Bildrand, der ignoriert wird. Seine untere Kante kannst du nach oben oder unten ziehen. Aber Achtung: Der Streifen gilt für alle Kameras. Soll ein Rahmen weg? Dann drücke unten in seiner Zeile auf „Entfernen“.</p>
+			<p>Türkise Rechtecke sind Rahmen, die es schon gibt. Der rote Streifen oben ist der obere Bildrand, der ignoriert wird. Seine untere Kante kannst du nach oben oder unten ziehen. Der Streifen gilt nur für diese Kamera. Soll ein Rahmen weg? Dann drücke unten in seiner Zeile auf „Entfernen“.</p>
 		</div>
 		<p class="privacy-preview-actions">
 			<button type="button" class="settings-reset" data-preview-draw aria-pressed="false" hidden>Rahmen bearbeiten</button>

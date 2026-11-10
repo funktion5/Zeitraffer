@@ -36,16 +36,19 @@ FLOATS = {
 	"privacy.blur.strength": "0.08",
 	"privacy.blur.padding_ratio": "0.05",
 	"privacy.blur.feather": "0.5",
-	"privacy.ignore_top_share": "0.333",
 }
+
+# What the page sends for each blur camera's own top share when nothing was changed: the global
+# value (the writer then stores nothing).
+TOPS ={"BlurTest": "0.333", "Scheunenviertel": "0.333", "SLSV": "0.333"}
 
 # Every control that carries an explanation, by element id.
 EXPLAINED = [
 	"privacy-privacy-blur-strength",
 	"privacy-privacy-blur-padding_ratio",
 	"privacy-privacy-blur-feather",
-	"privacy-privacy-ignore_top_share",
 	"privacy-score-SLSV",
+	"privacy-top-SLSV",
 ]
 
 
@@ -82,7 +85,9 @@ def box_rows(boxes: list) -> dict:
 
 
 # A complete, valid POST (what the browser sends after the confirm dialog), with changes on top.
-def privacy_post(floats=None, cameras=BLUR_CAMERAS, score=None, boxes=None, **extra) -> dict:
+def privacy_post(
+	floats=None, cameras=BLUR_CAMERAS, score=None, boxes=None, top=None, **extra
+) -> dict:
 	base_boxes = BASE["privacy"]["ignore_boxes"]
 	post = {
 		"csrf_token": TOKEN,
@@ -91,6 +96,7 @@ def privacy_post(floats=None, cameras=BLUR_CAMERAS, score=None, boxes=None, **ex
 		"blur_cameras": list(cameras),
 		"privacy": {
 			"floats": {**FLOATS, **(floats or {})},
+			"top": {**TOPS, **(top or {})},
 			"score": {"BlurTest": "0", "Scheunenviertel": "0", "SLSV": "0.35", **(score or {})},
 			"boxes": {
 				"BlurTest": box_rows(base_boxes["BlurTest"]),
@@ -152,7 +158,9 @@ def test_the_page_has_its_groups_and_the_tab_strip(tmp_path):
 	assert "<h1>Einstellungen</h1>" in out
 	assert "<legend>Welche Kameras werden verpixelt?</legend>" in out
 	assert "<legend>Wie wird verpixelt?</legend>" in out
-	assert "<legend>Oberer Bildrand</legend>" in out
+	# The top strip is a per-camera setting now: no group of its own, no field for all cameras.
+	assert "<legend>Oberer Bildrand</legend>" not in out
+	assert "privacy.ignore_top_share]" not in out
 
 	strip = tag_of(out, r'<nav[^>]*class="settings-tabs"[^>]*>.*?</nav>', re.S)
 	current = re.findall(r'<a[^>]*aria-current="page"[^>]*>', strip)
@@ -289,7 +297,6 @@ def test_the_standard_shown_is_what_config_json_holds(tmp_path):
 		"privacy-privacy-blur-strength": privacy["blur"]["strength"],
 		"privacy-privacy-blur-padding_ratio": privacy["blur"]["padding_ratio"],
 		"privacy-privacy-blur-feather": privacy["blur"]["feather"],
-		"privacy-privacy-ignore_top_share": privacy["ignore_top_share"],
 	}
 
 	for element_id, value in floats.items():
@@ -303,6 +310,13 @@ def test_the_standard_shown_is_what_config_json_holds(tmp_path):
 
 		assert f'data-default="{score}"' in tag, camera
 		assert default_boxes_of(out, camera) == privacy.get("ignore_boxes", {}).get(camera, [])
+
+		# A camera's own top share, else the global one that config.json gives every camera.
+		own = privacy.get("ignore_top_share_per_camera", {})
+		top = own.get(camera, privacy["ignore_top_share"])
+		tag = tag_of(out, rf'<input[^>]*id="privacy-top-{camera}"[^>]*>')
+
+		assert f'data-default="{top}"' in tag, camera
 
 	standard = {name for name, (tick, _) in camera_boxes(out).items() if tick == "1"}
 
@@ -319,7 +333,8 @@ def test_every_standard_of_the_real_config_is_valid_for_its_field(tmp_path):
 	out, _ = render(tmp_path)
 	tags = re.findall(r'<input[^>]*type="number"[^>]*data-default="[^"]*"[^>]*>', out)
 
-	assert len(tags) == 4 + len(names)
+	# Three blur values for all cameras, then a score and a top share for each camera.
+	assert len(tags) == 3 + 2 * len(names)
 	for tag in tags:
 		value = float(re.search(r'value="([^"]*)"', tag).group(1))
 		low = float(re.search(r'min="([^"]*)"', tag).group(1))
@@ -349,7 +364,7 @@ def test_the_sliders_are_hidden_from_assistive_technology_and_the_number_field_i
 	out, _ = render(tmp_path)
 	ranges = re.findall(r'<input[^>]*type="range"[^>]*>', out)
 
-	assert len(ranges) == 4 + len(BLUR_CAMERAS)
+	assert len(ranges) == 3 + 2 * len(BLUR_CAMERAS)
 	for tag in ranges:
 		assert 'aria-hidden="true"' in tag
 		assert 'tabindex="-1"' in tag
@@ -380,7 +395,11 @@ def test_a_valid_save_sends_the_privacy_values_to_the_wrapper_and_redirects(tmp_
 		"privacy": {
 			"blur_cameras": ["BlurTest", "Scheunenviertel", "SLSV"],
 			"blur": {"strength": 0.1, "padding_ratio": 0.05, "feather": 0.5},
-			"ignore_top_share": 0.333,
+			"ignore_top_share_per_camera": {
+				"BlurTest": 0.333,
+				"Scheunenviertel": 0.333,
+				"SLSV": 0.333,
+			},
 			"min_person_score": {"BlurTest": 0, "Scheunenviertel": 0, "SLSV": 0.35},
 			"ignore_boxes": {
 				"BlurTest": [[703, 557, 742, 643]],
@@ -436,6 +455,112 @@ def test_numbers_accept_a_decimal_comma_and_text_goes_on_as_text(tmp_path):
 
 	assert blur["strength"] == 0.12
 	assert blur["feather"] == "abc"
+
+
+# A camera's own top share: the red strip on its picture. One field per blur camera, in its block.
+
+
+def top_field(out: str, camera: str) -> str:
+	return tag_of(out, rf'<input[^>]*id="privacy-top-{camera}"[^>]*>')
+
+
+def test_every_blur_camera_has_its_own_top_share_field_in_its_block(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+		field = top_field(out, camera)
+		slider = tag_of(out, rf'<input[^>]*data-slider-for="privacy-top-{camera}"[^>]*>')
+		block = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
+
+		assert f'name="privacy[top][{camera}]"' in field
+		# No value of its own: the field shows the global one, which is also its Standard.
+		assert 'value="0.333"' in field
+		assert 'data-default="0.333"' in field
+		assert 'max="0.49"' in field
+		# A number field with a step would refuse the Standard 0.333 and block the save.
+		assert 'step="any"' in field
+		assert 'max="0.49"' in slider
+		assert f'id="privacy-top-{camera}"' in block
+
+
+def test_a_saved_top_share_is_shown_and_the_standard_stays_the_global_one(tmp_path):
+	prepare(tmp_path, privacy={"privacy": {"ignore_top_share_per_camera": {"SLSV": 0.1}}})
+
+	out, _ = render(tmp_path)
+
+	assert 'value="0.1"' in top_field(out, "SLSV")
+	assert 'data-default="0.333"' in top_field(out, "SLSV")
+	assert 'value="0.333"' in top_field(out, "Scheunenviertel")
+
+
+# IT may give one camera its own value in config.json: that is the camera's Standard.
+def test_a_top_share_in_config_json_is_the_standard_of_that_camera(tmp_path):
+	privacy = {**BASE["privacy"], "ignore_top_share_per_camera": {"SLSV": 0.2}}
+	prepare(tmp_path, config={**BASE, "privacy": privacy})
+
+	out, _ = render(tmp_path)
+
+	assert 'value="0.2"' in top_field(out, "SLSV")
+	assert 'data-default="0.2"' in top_field(out, "SLSV")
+	assert 'data-default="0.333"' in top_field(out, "BlurTest")
+
+
+def test_each_cameras_top_share_is_sent_as_its_own_value(tmp_path):
+	prepare(tmp_path)
+
+	_, args = render(tmp_path, privacy_post(top={"SLSV": "0,1", "BlurTest": "0"}), sudo_out=SAVED)
+	sent = sent_values(args)["privacy"]
+
+	assert sent["ignore_top_share_per_camera"] == {
+		"BlurTest": 0,
+		"Scheunenviertel": 0.333,
+		"SLSV": 0.1,
+	}
+	# The global value is not the page's to send any more: it stays with config.json.
+	assert "ignore_top_share" not in sent
+
+
+def test_a_top_share_that_is_not_a_number_goes_on_as_text(tmp_path):
+	prepare(tmp_path)
+
+	_, args = render(tmp_path, privacy_post(top={"SLSV": "abc"}), sudo_out=SAVED)
+
+	assert sent_values(args)["privacy"]["ignore_top_share_per_camera"]["SLSV"] == "abc"
+
+
+@pytest.mark.parametrize("camera", ["Gamma", "a.b", "../x"])
+def test_a_top_share_for_an_unknown_or_dotted_camera_is_refused(tmp_path, camera):
+	prepare(tmp_path)
+
+	out, args = render(tmp_path, privacy_post(top={camera: "0.1"}))
+
+	assert "Die ausgewählte Kamera ist ungültig." in out
+	assert args == []
+
+
+def test_a_top_share_that_is_not_text_is_refused(tmp_path):
+	prepare(tmp_path)
+
+	out, args = render(tmp_path, privacy_post(top={"SLSV": ["0.1"]}))
+
+	assert "Das Formular war unvollständig." in out
+	assert args == []
+
+
+def test_the_writers_message_for_a_top_share_points_at_that_cameras_field(tmp_path):
+	prepare(tmp_path)
+	errors = ["privacy.ignore_top_share_per_camera.SLSV: muss eine Zahl von 0 bis unter 0.5 sein"]
+	reply = json.dumps({"status": "invalid", "errors": errors, "mtime": 0})
+
+	out, _ = render(tmp_path, privacy_post(top={"SLSV": "0.7"}), sudo_exit=65, sudo_out=reply)
+
+	assert 'href="#privacy-top-SLSV"' in out
+	assert "Kamera SLSV: Oberer Bildrand" in out
+	assert 'id="privacy-top-SLSV-error"' in out
+	# What was typed stays in the field.
+	assert 'value="0.7"' in top_field(out, "SLSV")
 
 
 def test_post_without_a_valid_csrf_token_saves_nothing(tmp_path):
@@ -834,9 +959,10 @@ def test_the_drawing_help_is_hidden_until_the_script_runs_and_names_every_symbol
 	assert "Rahmen bearbeiten" in help_tag
 	# Moving a box by hand is explained too, next to drawing one.
 	assert "schiebst" in help_tag
-	# The strip's edge can be dragged, and that one value is the same for every camera.
+	# The strip's edge can be dragged, and the strip belongs to this camera alone.
 	assert "Kante" in help_tag
-	assert "alle Kameras" in help_tag
+	assert "nur für diese Kamera" in help_tag
+	assert "alle Kameras" not in help_tag
 	assert "Streifen" in help_tag
 	assert "Entfernen" in help_tag
 
@@ -873,9 +999,12 @@ def test_the_script_draws_with_pointer_events_and_keeps_the_layer_out_of_the_acc
 	assert "is-drawing" in script
 	# A box on the picture knows which row it is, so a drag on it can change that row.
 	assert "dataset.row" in script
-	# The strip's handle writes the ONE global top-share field (and its slider), nothing per camera.
+	# The strip's handle writes THIS camera's top-share field (and its slider), nothing global.
 	assert "privacy-top-handle" in script
 	assert "setTopShare" in script
+	assert "ignore_top_share" not in script
+	# The dialog names the camera of a changed number: one label stands in every camera's block.
+	assert 'closest(".privacy-camera")' in script
 	assert "innerHTML =" not in script
 	assert re.search(r"\bvar\b", script) is None
 

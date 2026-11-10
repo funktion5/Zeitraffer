@@ -418,7 +418,6 @@ def base_privacy_submission(paths: Paths) -> dict:
 		"privacy": {
 			"blur_cameras": list(privacy["blur_cameras"]),
 			"blur": dict(privacy["blur"]),
-			"ignore_top_share": privacy["ignore_top_share"],
 			"ignore_top_share_per_camera": {},
 			"min_person_score": dict(privacy["min_person_score"]),
 			"ignore_boxes": {
@@ -505,7 +504,7 @@ def test_a_per_camera_score_is_stored_and_the_base_score_is_not(paths):
 # keeps following the global value if that is changed later. Only a real difference is kept.
 def test_a_per_camera_top_share_equal_to_the_global_one_is_not_stored(paths):
 	submission = base_privacy_submission(paths)
-	global_share = submission["privacy"]["ignore_top_share"]
+	global_share = read_base(paths)["privacy"]["ignore_top_share"]
 	submission["privacy"]["ignore_top_share_per_camera"] = {"SLSV": global_share, "NewCam": 0.2}
 
 	assert save_privacy_values(paths, submission).status == "saved"
@@ -522,7 +521,7 @@ def test_a_per_camera_top_share_of_zero_is_a_real_override(paths):
 
 def test_the_log_names_the_global_value_as_the_old_value_of_a_per_camera_top_share(paths):
 	submission = base_privacy_submission(paths)
-	global_share = submission["privacy"]["ignore_top_share"]
+	global_share = read_base(paths)["privacy"]["ignore_top_share"]
 	submission["privacy"]["ignore_top_share_per_camera"] = {"SLSV": 0.1}
 
 	assert save_privacy_values(paths, submission).status == "saved"
@@ -536,7 +535,6 @@ def test_the_log_names_the_global_value_as_the_old_value_of_a_per_camera_top_sha
 	("path", "value"),
 	[
 		(("blur", "strength"), 0.9),
-		(("ignore_top_share",), 0.5),
 		(("ignore_top_share_per_camera", "SLSV"), 0.5),
 		(("min_person_score", "SLSV"), 0.8),
 		(("ignore_boxes", "SLSV"), [[5, 5, 5, 9]]),

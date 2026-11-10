@@ -44,7 +44,6 @@ const PRIVACY_SETTINGS_ALLOWED_KEYS = [
 	"privacy.blur.strength",
 	"privacy.blur.padding_ratio",
 	"privacy.blur.feather",
-	"privacy.ignore_top_share",
 ];
 
 // Maps keyed by a camera name: every key of the file that is a plain name (no dot, no slash) is

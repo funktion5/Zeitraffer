@@ -45,7 +45,6 @@ PRIVACY_KEYS = {
 	"privacy.blur.strength",
 	"privacy.blur.padding_ratio",
 	"privacy.blur.feather",
-	"privacy.ignore_top_share",
 	"privacy.ignore_top_share_per_camera.*",
 	"privacy.min_person_score.*",
 	"privacy.ignore_boxes.*",
@@ -56,7 +55,6 @@ FLOAT_BOUNDS = [
 	("privacy.blur.strength", 0.05, 0.5, True),
 	("privacy.blur.padding_ratio", 0.05, 1.0, True),
 	("privacy.blur.feather", 0.0, 1.0, True),
-	("privacy.ignore_top_share", 0.0, 0.5, False),
 	("privacy.ignore_top_share_per_camera.SLSV", 0.0, 0.5, False),
 	("privacy.min_person_score.SLSV", 0.0, 0.5, True),
 ]
@@ -517,6 +515,9 @@ def test_per_camera_rules_refuse_other_names(camera):
 		{"privacy": {"min_person_score": 0.3}},
 		{"privacy": {"ignore_boxes": [[1, 1, 2, 2]]}},
 		{"privacy": {"min_person_score": {"SLSV": {"x": 1}}}},
+		# The value for all cameras stays with config.json; the page sets one per camera.
+		{"privacy": {"ignore_top_share": 0.3}},
+		{"privacy": {"ignore_top_share_per_camera": 0.3}},
 	],
 )
 def test_other_privacy_keys_are_refused(submitted):
@@ -530,7 +531,6 @@ def test_other_privacy_keys_are_refused(submitted):
 def test_everything_the_validator_accepts_passes_the_blur_code_checks():
 	privacy = {
 		"blur": {"strength": 0.05, "padding_ratio": 1.0, "feather": 0},
-		"ignore_top_share": 0.49,
 		"ignore_top_share_per_camera": {"A": 0.49, "B": 0},
 		"min_person_score": {"A": 0.5, "B": 0},
 		"ignore_boxes": {"A": [[0, 0, 20000, 20000]], "B": []},
