@@ -310,7 +310,9 @@ def main(argv: list[str] | None = None) -> int:
 
 		return EXIT_NO_FRAME
 
-	print(json.dumps({"status": "ok", **info}))
+	# "status" last: the cache description uses the same key for the kind of frame, and the
+	# reply's "ok" is what the web side checks.
+	print(json.dumps({**info, "status": "ok"}))
 
 	return EXIT_OK
 
