@@ -312,7 +312,7 @@ def blocked_worker(
 # A stop signal reaches only the parent. The job's finally block removes the fetched frames as
 # soon as the exception has left run_isolated_worker, so the worker (and the rsync it started) must
 # already be stopped by then, or it would write into the folder that was just removed.
-def test_a_stop_signal_stops_the_worker_before_the_exception_leaves(tmp_path):
+def test_a_stop_signal_stops_the_worker_before_the_exception_leaves(tmp_path, monkeypatch):
 	pid_file = tmp_path / "pid"
 	previous_handler = signal.getsignal(signal.SIGTERM)
 
@@ -324,8 +324,17 @@ def test_a_stop_signal_stops_the_worker_before_the_exception_leaves(tmp_path):
 		time.sleep(0.2)
 		os.kill(os.getpid(), signal.SIGTERM)
 
+	# The watcher starts only after the worker has been forked. Forking while another thread runs
+	# is what Python 3.12+ warns about (the child could inherit a lock that thread holds), and the
+	# worker is the only thing that needs the watcher to wait.
+	real_start = image_worker_module.Process.start
+
+	def start_then_watch(process):
+		real_start(process)
+		threading.Thread(target=stop_the_parent_when_the_worker_runs, daemon=True).start()
+
 	exit_on_sigterm()
-	threading.Thread(target=stop_the_parent_when_the_worker_runs, daemon=True).start()
+	monkeypatch.setattr(image_worker_module.Process, "start", start_then_watch)
 
 	try:
 		with pytest.raises(SystemExit):
