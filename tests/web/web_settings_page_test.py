@@ -465,13 +465,13 @@ def test_each_group_and_the_bar_have_a_restore_button_that_starts_hidden(tmp_pat
 	assert len(group_buttons) == 6
 	for tag in group_buttons:
 		assert 'type="button"' in tag
-		assert "hidden" in tag.split()
+		assert re.search(r"\shidden[\s>]", tag) is not None
 	assert 'aria-label="Videoqualität: auf Standard zurücksetzen"' in out
 
 	all_button = tag_of(out, r"<button[^>]*data-default-all[^>]*>")
 
 	assert 'type="button"' in all_button
-	assert "hidden" in all_button.split()
+	assert re.search(r"\shidden[\s>]", all_button) is not None
 	assert re.search(r'<p[^>]*id="settings-default-note"[^>]*role="status"', out) is not None
 
 
