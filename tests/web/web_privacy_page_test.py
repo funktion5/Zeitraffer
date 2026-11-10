@@ -215,11 +215,14 @@ def test_the_camera_list_and_the_box_lists_say_their_standard(tmp_path):
 
 
 def test_these_standards_stay_the_config_json_ones_when_something_is_saved(tmp_path):
-	saved = {"privacy": {"blur_cameras": ["Alpha"], "ignore_boxes": {"SLSV": [[1, 1, 2, 2]]}}}
-	prepare(tmp_path, privacy=saved)
+	# SLSV stays on the blur list, so its block is there; only its boxes and the list itself change.
+	saved = {"blur_cameras": ["Alpha", "SLSV"], "ignore_boxes": {"SLSV": [[1, 1, 2, 2]]}}
+	prepare(tmp_path, privacy={"privacy": saved})
 
 	out, _ = render(tmp_path)
 
+	assert "Alpha" in re.findall(r'name="blur_cameras\[\]"\s+value="([^"]+)"\s+checked', out)
+	assert 'name="privacy[boxes][SLSV][0][x0]"' in out
 	assert camera_list_standard(out) == "alle außer Alpha"
 	assert box_standard(out, "SLSV") == "kein Rahmen"
 

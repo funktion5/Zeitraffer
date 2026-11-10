@@ -182,10 +182,17 @@ def test_the_standard_of_a_camera_list_can_be_all_or_none(tmp_path):
 
 # The Standard is what config.json holds: a saved change leaves it as it was.
 def test_the_standard_of_a_camera_list_ignores_what_is_saved(tmp_path):
-	prepare(tmp_path, settings={"ignored_cameras": ["Alpha", "Beta"]})
+	# Beta is switched off on the page; Reolink stays ignored, so all three cameras are still shown.
+	prepare(tmp_path, settings={"ignored_cameras": ["Reolink", "Beta"]})
 
 	out, _ = render(tmp_path)
+	boxes = re.findall(r'name="process_cameras\[\]"\s+value="([^"]+)"(\s+checked)?', out)
 
+	assert [(name, flag.strip()) for name, flag in boxes] == [
+		("Alpha", "checked"),
+		("Beta", ""),
+		("Reolink", ""),
+	]
 	assert standard_of(out, "Kameras") == "alle außer Reolink"
 
 
