@@ -407,6 +407,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					shape.style.top = percent(box.y0, size.height);
 					shape.style.width = percent(box.x1 - box.x0, size.width);
 					shape.style.height = percent(box.y1 - box.y0, size.height);
+					shape.dataset.row = String(index);
 					shape.append(badge(String(index + 1)));
 					shapes.push(shape);
 				});
@@ -444,12 +445,12 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				return Array.from(container.querySelectorAll(".privacy-box-row")).indexOf(row) + 1;
 			};
 
-			// The drag on the layer. It only listens while "Rahmen zeichnen" is on (class is-drawing): off,
-			// the layer lets every touch and click through, so the picture never blocks scrolling.
+			// The gestures on the layer. They only run while editing is on (class is-drawing); off, the layer
+			// lets every touch and click through, so the picture never blocks scrolling. A drag that starts on
+			// a box moves that box, a drag that starts anywhere else draws a new one.
 			const enableDrawing = (section, layer) => {
 				const status = section.querySelector("[data-preview-status]");
-				let start = null;
-				let draft = null;
+				let gesture = null;
 
 				const pointAt = (event) => {
 					const bounds = layer.getBoundingClientRect();
@@ -463,9 +464,20 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				};
 
 				const stop = () => {
-					draft?.remove();
-					draft = null;
-					start = null;
+					gesture?.draft?.remove();
+					gesture = null;
+				};
+
+				// The box at its new place: moved by the drag, exactly as big as before, inside the picture.
+				const movedBox = (box, now, size) => {
+					const width = box.x1 - box.x0;
+					const height = box.y1 - box.y0;
+					const x0 = Math.round(box.x0 + ((now.x - gesture.start.x) * size.width) / now.width);
+					const y0 = Math.round(box.y0 + ((now.y - gesture.start.y) * size.height) / now.height);
+					const left = Math.min(Math.max(x0, 0), Math.max(size.width - width, 0));
+					const top = Math.min(Math.max(y0, 0), Math.max(size.height - height, 0));
+
+					return { x0: left, y0: top, x1: left + width, y1: top + height };
 				};
 
 				layer.addEventListener("pointerdown", (event) => {
@@ -475,18 +487,47 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 					event.preventDefault();
 					layer.setPointerCapture(event.pointerId);
-					start = pointAt(event);
-					draft = document.createElement("div");
+
+					const start = pointAt(event);
+					const grabbed = event.target.closest(".privacy-box-shape[data-row]");
+					const row = grabbed === null
+						? undefined
+						: containerOf(section).querySelectorAll(".privacy-box-row")[Number(grabbed.dataset.row)];
+					const box = row === undefined ? null : boxOfRow(row);
+
+					if (box !== null) {
+						grabbed.classList.add("is-active");
+						gesture = { kind: "move", start, box, row, shape: grabbed };
+
+						return;
+					}
+
+					const draft = document.createElement("div");
+
 					draft.className = "privacy-box-shape is-draft";
 					layer.append(draft);
+					gesture = { kind: "draw", start, draft };
 				});
 
 				layer.addEventListener("pointermove", (event) => {
-					if (start === null) {
+					if (gesture === null) {
 						return;
 					}
 
 					const now = pointAt(event);
+					const size = pictureSize(section);
+
+					// The box follows the pointer on the picture; the row's numbers change when it is let go.
+					if (gesture.kind === "move") {
+						const to = movedBox(gesture.box, now, size);
+
+						gesture.shape.style.left = percent(to.x0, size.width);
+						gesture.shape.style.top = percent(to.y0, size.height);
+
+						return;
+					}
+
+					const { start, draft } = gesture;
 
 					draft.style.left = percent(Math.min(start.x, now.x), now.width);
 					draft.style.top = percent(Math.min(start.y, now.y), now.height);
@@ -495,12 +536,38 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				});
 
 				layer.addEventListener("pointerup", (event) => {
-					if (start === null) {
+					if (gesture === null) {
 						return;
 					}
 
+					const { kind, start, box, row } = gesture;
 					const end = pointAt(event);
 					const size = pictureSize(section);
+					const container = containerOf(section);
+
+					if (kind === "move" && size !== null) {
+						const to = movedBox(box, end, size);
+
+						stop();
+
+						// A click on a box, or a slip that moves it by less than a picture pixel, changes nothing.
+						if (to.x0 !== box.x0 || to.y0 !== box.y0) {
+							const cells = [to.x0, to.y0, to.x1, to.y1];
+
+							row.querySelectorAll("input").forEach((input, position) => {
+								input.value = String(cells[position]);
+							});
+
+							const number = Array.from(container.querySelectorAll(".privacy-box-row")).indexOf(row) + 1;
+
+							status.textContent = `Rahmen ${number} wurde verschoben. Zum Übernehmen unten auf „Speichern“ drücken.`;
+						}
+
+						refreshContainer(container);
+
+						return;
+					}
+
 					const left = Math.min(start.x, end.x);
 					const right = Math.max(start.x, end.x);
 					const top = Math.min(start.y, end.y);
@@ -525,7 +592,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						return;
 					}
 
-					const number = placeBox(containerOf(section), cells);
+					const number = placeBox(container, cells);
 
 					status.textContent = `Rahmen ${number} ist dazugekommen. Zum Übernehmen unten auf „Speichern“ drücken.`;
 				});
@@ -586,8 +653,8 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					button.setAttribute("aria-pressed", String(drawing));
 					layer.classList.toggle("is-drawing", drawing);
 					status.textContent = drawing
-						? "Zeichnen ist an. Ziehe ein Rechteck über das Bild."
-						: "Zeichnen ist aus.";
+						? "Bearbeiten ist an. Ziehe ein Rechteck über das Bild oder schiebe einen Rahmen."
+						: "Bearbeiten ist aus.";
 				});
 			});
 

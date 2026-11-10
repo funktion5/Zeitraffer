@@ -448,8 +448,16 @@ ul {
 	box-shadow: 0 0 0 2px var(--color-text);
 }
 
-.privacy-box-shape.is-draft {
+/* While editing, a box can be grabbed: the pointer says so. */
+.privacy-preview-layer.is-drawing .privacy-box-shape {
+	cursor: move;
+}
+
+/* As specific as the rule above and after it, so the rectangle being drawn keeps its crosshair. */
+.privacy-preview-layer .privacy-box-shape.is-draft {
 	border-style: dashed;
+
+	cursor: crosshair;
 }
 
 .privacy-top-band {

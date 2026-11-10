@@ -602,11 +602,12 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.</p>
 		<?php endif; ?>
 		<div class="privacy-help" data-draw-help hidden>
-			<p>So malst du einen Rahmen: Drücke „Rahmen zeichnen“. Dann ziehst du mit der Maus oder dem Finger ein Rechteck über die Stelle, die kein Mensch ist. Die Zahlen unten füllen sich von selbst. Du kannst die Zahlen auch selbst eintippen.</p>
+			<p>So malst du einen Rahmen: Drücke „Rahmen bearbeiten“. Dann ziehst du mit der Maus oder dem Finger ein Rechteck über die Stelle, die kein Mensch ist. Die Zahlen unten füllen sich von selbst. Du kannst die Zahlen auch selbst eintippen.</p>
+			<p>Einen Rahmen, den es schon gibt, schiebst du mit der Maus oder dem Finger an eine andere Stelle. Er behält seine Größe.</p>
 			<p>Türkise Rechtecke sind Rahmen, die es schon gibt. Der rote Streifen oben ist der obere Bildrand, der ignoriert wird. Soll ein Rahmen weg? Dann drücke unten in seiner Zeile auf „Entfernen“.</p>
 		</div>
 		<p class="privacy-preview-actions">
-			<button type="button" class="settings-reset" data-preview-draw aria-pressed="false" hidden>Rahmen zeichnen</button>
+			<button type="button" class="settings-reset" data-preview-draw aria-pressed="false" hidden>Rahmen bearbeiten</button>
 			<button type="button" class="settings-reset" data-preview-refresh hidden>Vorschau aktualisieren</button>
 			<span class="settings-hint" role="status" data-preview-status></span>
 		</p>

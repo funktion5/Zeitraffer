@@ -764,6 +764,10 @@ def test_the_draw_button_is_a_script_only_toggle(tmp_path):
 		assert 'type="button"' in button
 		assert 'aria-pressed="false"' in button
 		assert re.search(r"\shidden[\s>]", button)
+		# One toggle for drawing and moving: the name says both are on.
+		assert "Rahmen bearbeiten" in tag_of(
+			preview_block(out, camera), r"<button[^>]*data-preview-draw[^>]*>.*?</button>", re.S
+		)
 
 
 def test_the_drawing_help_is_hidden_until_the_script_runs_and_names_every_symbol(tmp_path):
@@ -775,7 +779,9 @@ def test_the_drawing_help_is_hidden_until_the_script_runs_and_names_every_symbol
 
 	assert re.search(r"\shidden[\s>]", help_tag.split(">", 1)[0] + ">")
 	# What is drawn on the picture is explained in words: the rectangles, the strip, the way out.
-	assert "Rahmen zeichnen" in help_tag
+	assert "Rahmen bearbeiten" in help_tag
+	# Moving a box by hand is explained too, next to drawing one.
+	assert "schiebst" in help_tag
 	assert "Streifen" in help_tag
 	assert "Entfernen" in help_tag
 
@@ -810,6 +816,8 @@ def test_the_script_draws_with_pointer_events_and_keeps_the_layer_out_of_the_acc
 	# The layer is decoration for the mouse: the rows are the real, keyboard-operable control.
 	assert 'setAttribute("aria-hidden", "true")' in script
 	assert "is-drawing" in script
+	# A box on the picture knows which row it is, so a drag on it can change that row.
+	assert "dataset.row" in script
 	assert "innerHTML =" not in script
 	assert re.search(r"\bvar\b", script) is None
 
@@ -834,3 +842,14 @@ def test_the_layer_only_catches_the_pointer_while_drawing():
 	assert "touch-action" not in layer
 	assert "pointer-events: auto" in drawing
 	assert "touch-action: none" in drawing
+
+
+# A box can be grabbed only while editing is on, and the pointer says so.
+def test_a_box_shows_the_move_cursor_only_while_editing():
+	css = STYLE.read_text(encoding="utf-8")
+	pattern = r"\.privacy-preview-layer\.is-drawing \.privacy-box-shape\s*\{[^}]*\}"
+	grabbable = tag_of(css, pattern, re.S)
+
+	assert "cursor: move" in grabbable
+	# The rectangle being drawn is not a handle: it keeps the crosshair.
+	assert "cursor: crosshair" in tag_of(css, r"\.privacy-box-shape\.is-draft\s*\{[^}]*\}", re.S)
