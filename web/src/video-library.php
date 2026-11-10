@@ -21,25 +21,9 @@ function projectRoot(): string
 	return dirname(__DIR__, 2);
 }
 
-// The decoded config/config.json. A missing, unreadable or broken file gives an empty array.
-function readProjectConfig(): array
-{
-	$configPath = projectRoot() . "/config/config.json";
-
-	if (!is_file($configPath) || !is_readable($configPath)) {
-		return [];
-	}
-
-	$configContent = file_get_contents($configPath);
-
-	if ($configContent === false) {
-		return [];
-	}
-
-	$config = json_decode($configContent, true);
-
-	return is_array($config) ? $config : [];
-}
+// readProjectConfig() and its helpers: config.json with the saved web UI settings laid over it.
+// Loaded here because they call projectRoot() above.
+require_once __DIR__ . "/project-config.php";
 
 // Only string names count; anything else in a camera list of the config is dropped.
 function cameraNames(mixed $names): array

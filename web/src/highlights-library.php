@@ -58,19 +58,11 @@ function isValidHighlightName(string $name): bool
 	return preg_match('/^[A-Za-z0-9_-][A-Za-z0-9._-]*\.jpg$/', $name) === 1;
 }
 
-// The parsed config.json, or [] when it is missing or not a JSON object.
+// The config the jobs use (config.json with the saved settings over it), or [] when config.json is
+// missing or broken. Kept under its own name because the highlights code and tests call it.
 function readHighlightsConfig(): array
 {
-	$configPath = projectRoot() . "/config/config.json";
-
-	if (!is_file($configPath) || !is_readable($configPath)) {
-		return [];
-	}
-
-	$configContent = file_get_contents($configPath);
-	$config = $configContent === false ? null : json_decode($configContent, true);
-
-	return is_array($config) ? $config : [];
+	return readProjectConfig();
 }
 
 // Today in the cameras' timezone (config location.timezone): PHP itself runs in UTC, which
