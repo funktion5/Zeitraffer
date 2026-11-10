@@ -108,9 +108,7 @@ def test_save_settings_hides_wrapper_failures(tmp_path, exit_code):
 		(73, ""),
 	],
 )
-def test_save_settings_fails_on_a_reply_that_does_not_match_the_exit_code(
-	tmp_path, exit_code, out
-):
+def test_save_settings_fails_on_a_reply_that_does_not_match_the_exit_code(tmp_path, exit_code, out):
 	result, _ = save(tmp_path, exit_code, out)
 
 	assert result["status"] == "failed"
