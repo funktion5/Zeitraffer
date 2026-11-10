@@ -11,6 +11,7 @@ WRAPPER = Path(__file__).resolve().parents[2] / "scripts" / "web" / "timelapse-w
 FAKE_PYTHON = r"""#!/bin/bash
 printf "%s\n" "$@" >"$TIMELAPSE_TEST_ARGS_FILE"
 pwd -P >"$TIMELAPSE_TEST_ARGS_FILE.cwd"
+printf "%s\n" "${TIMELAPSE_STORAGE_BOX-unset}" >"$TIMELAPSE_TEST_ARGS_FILE.box"
 echo "$FAKE_OUTPUT"
 exit "${FAKE_EXIT:-0}"
 """
@@ -41,8 +42,13 @@ def prepare(tmp_path: Path, exit_code: int = 0, output: str = '{"status": "ok"}'
 	fake_timeout.write_text(FAKE_TIMEOUT)
 	fake_timeout.chmod(0o755)
 
+	# sudo hands the wrapper a clean environment, so a box exported in the shell running the tests
+	# must not stand in for what the wrapper sets itself.
+	inherited = dict(os.environ)
+	inherited.pop("TIMELAPSE_STORAGE_BOX", None)
+
 	return {
-		**os.environ,
+		**inherited,
 		"PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
 		"TIMELAPSE_PROJECT_ROOT": str(project_root),
 		"TIMELAPSE_WEB_PYTHON": str(fake_python),
@@ -77,6 +83,25 @@ def test_wrapper_hands_the_camera_to_the_preview_script(tmp_path):
 		"src.privacy.preview",
 		"Strand-Terrassen_2",
 	]
+
+
+# The script reads the frame from the Storage Box, and the frame source finds the box by this
+# variable. sudo resets the environment, so the wrapper has to set it, as the other web wrappers
+# do; without it the script stops with "No frame source configured" and no picture is ever made.
+def test_wrapper_names_the_storage_box_for_the_script(tmp_path):
+	environment = prepare(tmp_path)
+
+	run_wrapper(environment, "SLSV")
+
+	assert (tmp_path / "args.box").read_text().strip() == "storagebox"
+
+
+def test_wrapper_keeps_a_storage_box_that_was_set(tmp_path):
+	environment = {**prepare(tmp_path), "TIMELAPSE_STORAGE_BOX": "other-box:base"}
+
+	run_wrapper(environment, "SLSV")
+
+	assert (tmp_path / "args.box").read_text().strip() == "other-box:base"
 
 
 # A click answers in seconds or not at all: a box that does not answer must not hold a web request

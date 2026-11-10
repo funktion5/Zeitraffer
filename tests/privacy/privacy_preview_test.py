@@ -372,9 +372,15 @@ def test_the_command_line_refuses_a_camera_that_does_not_blur(box, cli, camera):
 	assert not box.previews.exists()
 
 
-def test_the_command_line_reports_a_failure_without_details(box, cli, monkeypatch):
+# A setup error (no frame source configured) is a ValueError: it ends in the same quiet failure,
+# with the reason in the log, not in a traceback the page cannot read.
+@pytest.mark.parametrize(
+	"error",
+	[OSError("secret path /root/x"), ValueError("No frame source")],
+)
+def test_the_command_line_reports_a_failure_without_details(box, cli, monkeypatch, error):
 	def broken(*arguments, **keywords):
-		raise OSError("secret path /root/x")
+		raise error
 
 	monkeypatch.setattr(preview, "build_preview", broken)
 

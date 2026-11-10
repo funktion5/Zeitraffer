@@ -37,6 +37,10 @@ fi
 
 cd "$PROJECT_ROOT"
 
+# sudo hands this wrapper a clean environment, and the frame source finds the Storage Box by this
+# variable (the ssh alias in ~/.ssh/config). Set the same way as in the other web wrappers.
+export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-storagebox}"
+
 # The script's exit code goes on to PHP: 0 picture cached, 66 not a blur camera, 67 no confirmed
 # frame yet, 124 cut off by the time limit, anything else a failure.
 exec timeout "$TIME_LIMIT_SECONDS" "$PYTHON" -m src.privacy.preview "$CAMERA"

@@ -298,8 +298,9 @@ def main(argv: list[str] | None = None) -> int:
 			current_time(config["location"]["timezone"]),
 		)
 
-	# The reason goes to the log, never to the browser.
-	except OSError as error:
+	# The reason goes to the log, never to the browser. A ValueError is a setup error, such as no
+	# frame source configured.
+	except (OSError, ValueError) as error:
 		logger.error(f"[{arguments.camera}] Preview failed: {error}")
 		print(json.dumps({"status": "failed"}))
 
