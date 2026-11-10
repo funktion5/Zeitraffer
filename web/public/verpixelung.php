@@ -299,14 +299,323 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				const remove = event.target.closest("[data-remove-box]");
 
 				if (remove !== null) {
+					const container = remove.closest(".privacy-boxes");
+
 					remove.closest(".privacy-box-row").remove();
+					refreshContainer(container);
 				}
 			});
 			form.querySelectorAll("[data-add-box]").forEach((button) => {
 				button.hidden = false;
 				button.addEventListener("click", () => {
-					addBoxRow(button.closest("fieldset").querySelector(".privacy-boxes"));
+					const container = button.closest("fieldset").querySelector(".privacy-boxes");
+
+					addBoxRow(container);
+					refreshContainer(container);
 				});
+			});
+
+			// The drawing editor on the picture. A layer of plain boxes lies over the picture, placed in
+			// percent of the picture's own size, so it scales with the picture and a position on it is the
+			// box number by one scale factor. The rows of four numbers stay the real control (and the way
+			// to work without a mouse): the layer only shows them and adds rows from a drag.
+			const topShare = form.querySelector("#privacy-privacy-ignore_top_share");
+
+			// Smaller than this (in screen pixels) is a click or a slip of the hand, not a box.
+			const MIN_DRAWN_SIDE = 6;
+
+			const sectionOf = (container) => container.closest("fieldset").querySelector("[data-preview-camera]");
+			const containerOf = (section) => section.closest("fieldset").querySelector(".privacy-boxes");
+			const percent = (part, whole) => `${(part / whole) * 100}%`;
+
+			const pictureSize = (section) => {
+				const width = Number(section.dataset.previewWidth);
+				const height = Number(section.dataset.previewHeight);
+
+				return width > 0 && height > 0 ? { width, height } : null;
+			};
+
+			// A row as a box, or null while it is blank or not a usable box yet.
+			const boxOfRow = (row) => {
+				const inputs = Array.from(row.querySelectorAll("input"));
+
+				if (inputs.some((input) => input.value.trim() === "")) {
+					return null;
+				}
+
+				const [x0, y0, x1, y1] = inputs.map((input) => Number(input.value));
+
+				return [x0, y0, x1, y1].every(Number.isFinite) && x1 > x0 && y1 > y0 ? { x0, y0, x1, y1 } : null;
+			};
+
+			// The rows count 1, 2, 3 ... in the order they stand, also after one was removed or added: a
+			// rectangle on the picture carries the same number.
+			const numberRows = (container) => {
+				container.querySelectorAll(".privacy-box-row").forEach((row, index) => {
+					const number = String(index + 1);
+
+					row.querySelector(".privacy-box-number").textContent = number;
+					row.querySelectorAll("input").forEach((input) => {
+						input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/Rahmen \d+/, `Rahmen ${number}`));
+					});
+				});
+			};
+
+			const badge = (text) => {
+				const label = document.createElement("span");
+
+				label.textContent = text;
+
+				return label;
+			};
+
+			// Everything on the layer comes from the fields: the band from the top-share field, one
+			// rectangle per usable row. The row that has the focus is marked on the picture.
+			const redrawSection = (section) => {
+				const size = pictureSize(section);
+				const layer = layerOf(section);
+
+				if (layer === null || size === null) {
+					return;
+				}
+
+				const rows = Array.from(containerOf(section).querySelectorAll(".privacy-box-row"));
+				const focused = rows.find((row) => row.contains(document.activeElement));
+				const share = topShare.value.trim() === "" ? 0 : Number(topShare.value);
+				const shapes = [];
+
+				if (share > 0 && share < 0.5) {
+					const band = document.createElement("div");
+
+					band.className = "privacy-top-band";
+					band.style.height = `${share * 100}%`;
+					band.append(badge("Oben: wird ignoriert"));
+					shapes.push(band);
+				}
+
+				rows.forEach((row, index) => {
+					const box = boxOfRow(row);
+
+					if (box === null) {
+						return;
+					}
+
+					const shape = document.createElement("div");
+
+					shape.className = row === focused ? "privacy-box-shape is-active" : "privacy-box-shape";
+					shape.style.left = percent(box.x0, size.width);
+					shape.style.top = percent(box.y0, size.height);
+					shape.style.width = percent(box.x1 - box.x0, size.width);
+					shape.style.height = percent(box.y1 - box.y0, size.height);
+					shape.append(badge(String(index + 1)));
+					shapes.push(shape);
+				});
+
+				layer.replaceChildren(...shapes);
+			};
+
+			const refreshContainer = (container) => {
+				numberRows(container);
+				redrawSection(sectionOf(container));
+			};
+
+			const refreshAll = () => {
+				form.querySelectorAll(".privacy-boxes").forEach(refreshContainer);
+			};
+
+			// A drawn rectangle becomes a row: the first blank one, or a new one.
+			const placeBox = (container, cells) => {
+				const rows = Array.from(container.querySelectorAll(".privacy-box-row"));
+				let row = rows.find((candidate) =>
+					Array.from(candidate.querySelectorAll("input")).every((input) => input.value.trim() === ""),
+				);
+
+				if (row === undefined) {
+					addBoxRow(container, cells.map(String));
+					row = container.lastElementChild;
+				} else {
+					row.querySelectorAll("input").forEach((input, position) => {
+						input.value = String(cells[position]);
+					});
+				}
+
+				refreshContainer(container);
+
+				return Array.from(container.querySelectorAll(".privacy-box-row")).indexOf(row) + 1;
+			};
+
+			// The drag on the layer. It only listens while "Rahmen zeichnen" is on (class is-drawing): off,
+			// the layer lets every touch and click through, so the picture never blocks scrolling.
+			const enableDrawing = (section, layer) => {
+				const status = section.querySelector("[data-preview-status]");
+				let start = null;
+				let draft = null;
+
+				const pointAt = (event) => {
+					const bounds = layer.getBoundingClientRect();
+
+					return {
+						x: Math.min(Math.max(event.clientX - bounds.left, 0), bounds.width),
+						y: Math.min(Math.max(event.clientY - bounds.top, 0), bounds.height),
+						width: bounds.width,
+						height: bounds.height,
+					};
+				};
+
+				const stop = () => {
+					draft?.remove();
+					draft = null;
+					start = null;
+				};
+
+				layer.addEventListener("pointerdown", (event) => {
+					if (!layer.classList.contains("is-drawing") || event.button !== 0) {
+						return;
+					}
+
+					event.preventDefault();
+					layer.setPointerCapture(event.pointerId);
+					start = pointAt(event);
+					draft = document.createElement("div");
+					draft.className = "privacy-box-shape is-draft";
+					layer.append(draft);
+				});
+
+				layer.addEventListener("pointermove", (event) => {
+					if (start === null) {
+						return;
+					}
+
+					const now = pointAt(event);
+
+					draft.style.left = percent(Math.min(start.x, now.x), now.width);
+					draft.style.top = percent(Math.min(start.y, now.y), now.height);
+					draft.style.width = percent(Math.abs(now.x - start.x), now.width);
+					draft.style.height = percent(Math.abs(now.y - start.y), now.height);
+				});
+
+				layer.addEventListener("pointerup", (event) => {
+					if (start === null) {
+						return;
+					}
+
+					const end = pointAt(event);
+					const size = pictureSize(section);
+					const left = Math.min(start.x, end.x);
+					const right = Math.max(start.x, end.x);
+					const top = Math.min(start.y, end.y);
+					const bottom = Math.max(start.y, end.y);
+
+					stop();
+
+					if (size === null || right - left < MIN_DRAWN_SIDE || bottom - top < MIN_DRAWN_SIDE) {
+						redrawSection(section);
+
+						return;
+					}
+
+					// Screen pixels to picture pixels: one factor per direction.
+					const scaleX = size.width / end.width;
+					const scaleY = size.height / end.height;
+					const cells = [left * scaleX, top * scaleY, right * scaleX, bottom * scaleY].map(Math.round);
+
+					if (cells[2] <= cells[0] || cells[3] <= cells[1]) {
+						redrawSection(section);
+
+						return;
+					}
+
+					const number = placeBox(containerOf(section), cells);
+
+					status.textContent = `Rahmen ${number} ist dazugekommen. Zum Übernehmen unten auf „Speichern“ drücken.`;
+				});
+
+				layer.addEventListener("pointercancel", () => {
+					stop();
+					redrawSection(section);
+				});
+			};
+
+			// The layer is made when the picture is there, and only once.
+			const layerOf = (section) => {
+				const stage = section.querySelector(".privacy-preview-stage");
+
+				if (stage === null) {
+					return null;
+				}
+
+				let layer = stage.querySelector(".privacy-preview-layer");
+
+				if (layer === null) {
+					layer = document.createElement("div");
+					layer.className = "privacy-preview-layer";
+					// Decoration for the mouse: the rows are the control that works for everyone.
+					layer.setAttribute("aria-hidden", "true");
+					stage.append(layer);
+					enableDrawing(section, layer);
+				}
+
+				return layer;
+			};
+
+			// Shows the drawing tools for a camera that has a picture, and hides them for one without.
+			const prepareSection = (section) => {
+				const hasPicture = section.querySelector(".privacy-preview-stage") !== null;
+
+				section.querySelector("[data-preview-draw]").hidden = !hasPicture;
+				section.querySelector("[data-draw-help]").hidden = !hasPicture;
+
+				if (hasPicture) {
+					refreshContainer(containerOf(section));
+				}
+			};
+
+			form.querySelectorAll("[data-preview-draw]").forEach((button) => {
+				const section = button.closest("[data-preview-camera]");
+				const status = section.querySelector("[data-preview-status]");
+
+				button.addEventListener("click", () => {
+					const layer = layerOf(section);
+
+					if (layer === null) {
+						return;
+					}
+
+					const drawing = button.getAttribute("aria-pressed") !== "true";
+
+					button.setAttribute("aria-pressed", String(drawing));
+					layer.classList.toggle("is-drawing", drawing);
+					status.textContent = drawing
+						? "Zeichnen ist an. Ziehe ein Rechteck über das Bild."
+						: "Zeichnen ist aus.";
+				});
+			});
+
+			// The picture follows the fields while they are typed in, and the focused row lights up.
+			form.addEventListener("input", (event) => {
+				const container = event.target.closest(".privacy-boxes");
+
+				// The slider moves the number field without an event of its own.
+				if (event.target === topShare || event.target.dataset.sliderFor === topShare.id) {
+					refreshAll();
+				} else if (container !== null) {
+					refreshContainer(container);
+				}
+			});
+			form.addEventListener("focusin", (event) => {
+				const container = event.target.closest(".privacy-boxes");
+
+				if (container !== null) {
+					refreshContainer(container);
+				}
+			});
+			form.addEventListener("focusout", (event) => {
+				const container = event.target.closest(".privacy-boxes");
+
+				// The focus is still on the old field while the event runs.
+				if (container !== null) {
+					setTimeout(() => refreshContainer(container), 0);
+				}
 			});
 
 			// The picture of a camera, from what the server answered. Built with the DOM and filled with
@@ -315,9 +624,13 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				let figure = section.querySelector("figure");
 
 				if (figure === null) {
+					const stage = document.createElement("div");
+
+					stage.className = "privacy-preview-stage";
+					stage.append(document.createElement("img"));
 					figure = document.createElement("figure");
 					figure.className = "privacy-preview-figure";
-					figure.append(document.createElement("img"), document.createElement("figcaption"));
+					figure.append(stage, document.createElement("figcaption"));
 					section.querySelector(".privacy-preview-empty")?.remove();
 					section.querySelector(".privacy-help").after(figure);
 				}
@@ -330,7 +643,15 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				image.alt = `Vorschaubild der Kamera ${section.dataset.previewCamera} vom ${picture.takenText} Uhr`;
 				figure.querySelector("figcaption").textContent =
 					`Aufgenommen am ${picture.takenText} Uhr. Bildgröße: ${picture.width} × ${picture.height} Punkte.`;
+
+				// The layer lies over the picture: its size is what the boxes are measured against.
+				section.dataset.previewWidth = String(picture.width);
+				section.dataset.previewHeight = String(picture.height);
+				prepareSection(section);
 			};
+
+			form.querySelectorAll("[data-preview-camera]").forEach(prepareSection);
+			refreshAll();
 
 			// "Vorschau aktualisieren": the form's own token goes along, and nothing of the form's
 			// values: the button saves nothing and the unsaved changes stay as they are. Without
@@ -396,6 +717,8 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 				note.textContent = `${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`;
 				note.hidden = false;
+				// The rows and the top-share field changed without an event the picture listens to.
+				refreshAll();
 			};
 
 			form.querySelectorAll("[data-default-group]").forEach((button) => {
@@ -415,6 +738,8 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			// "Änderungen verwerfen" returns to the loaded values, so the note no longer applies.
 			form.addEventListener("reset", () => {
 				note.hidden = true;
+				// The event runs before the browser puts the values back.
+				setTimeout(refreshAll, 0);
 			});
 
 			// What the dialog lists: everything that differs from what the page loaded with.

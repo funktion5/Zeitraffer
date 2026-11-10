@@ -382,6 +382,18 @@ ul {
 	margin-bottom: 1rem;
 }
 
+/* On a phone the picture is what counts: it gets the whole width of the group instead of a panel
+   of its own, whose padding would take about a fifth of the width. */
+@media (max-width: 40rem) {
+	.privacy-preview {
+		padding: 0;
+
+		background: none;
+		border: 0;
+		box-shadow: none;
+	}
+}
+
 .privacy-preview-figure {
 	margin: 0 0 0.5rem;
 }
@@ -393,6 +405,98 @@ ul {
 
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-small);
+}
+
+/* The frame the boxes are laid over: as wide as the picture, never wider than the page. */
+.privacy-preview-stage {
+	position: relative;
+	width: fit-content;
+	max-width: 100%;
+}
+
+/* The layer lets every click and touch through, so the picture never blocks scrolling on a phone.
+   Only while "Rahmen zeichnen" is on does it take the pointer, and then also the touch. */
+.privacy-preview-layer {
+	position: absolute;
+	inset: 0;
+	overflow: hidden;
+
+	pointer-events: none;
+}
+
+.privacy-preview-layer.is-drawing {
+	outline: 2px dashed var(--color-primary);
+	outline-offset: -2px;
+
+	cursor: crosshair;
+	pointer-events: auto;
+	touch-action: none;
+}
+
+/* Both kinds of area are places where nothing is pixelated: a box, and the strip at the top. */
+.privacy-box-shape {
+	position: absolute;
+	box-sizing: border-box;
+
+	background: rgb(55 183 200 / 18%);
+	border: 2px solid var(--color-primary);
+}
+
+.privacy-box-shape.is-active {
+	background: rgb(55 183 200 / 38%);
+	border-color: var(--color-primary-hover);
+	box-shadow: 0 0 0 2px var(--color-text);
+}
+
+.privacy-box-shape.is-draft {
+	border-style: dashed;
+}
+
+.privacy-top-band {
+	position: absolute;
+	top: 0;
+	left: 0;
+
+	width: 100%;
+	overflow: hidden;
+
+	background: rgb(223 113 113 / 30%);
+	border-bottom: 2px dashed var(--color-danger);
+}
+
+/* A label on the picture stays readable on any photo: a dark chip with light text. */
+.privacy-box-shape span,
+.privacy-top-band span {
+	position: absolute;
+	top: 0;
+	left: 0;
+
+	padding: 0 0.4rem;
+
+	background: rgb(7 21 29 / 75%);
+
+	color: var(--color-text);
+
+	font-size: 0.75rem;
+	line-height: 1.5;
+	white-space: nowrap;
+}
+
+.privacy-box-number {
+	align-self: center;
+	min-width: 1.5rem;
+
+	color: var(--color-text-muted);
+
+	font-weight: 600;
+}
+
+/* A pressed button says "on" by its look as well as by aria-pressed. */
+[data-preview-draw][aria-pressed="true"] {
+	background: var(--color-primary-dark);
+	border-color: var(--color-primary);
+
+	color: var(--color-text);
 }
 
 .privacy-preview-figure figcaption,

@@ -502,6 +502,7 @@ function renderPrivacyBoxRow(string $camera, string $index, string $number, arra
 
 	?>
 	<div class="privacy-box-row">
+		<span class="privacy-box-number" aria-hidden="true"><?= settingsHtml($number) ?></span>
 		<?php foreach ($names as $name => $word): ?>
 			<label>
 				<span><?= settingsHtml($word) ?></span>
@@ -574,7 +575,12 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 	$id = "privacy-preview-" . $camera;
 
 	?>
-	<section class="privacy-preview" data-preview-camera="<?= settingsHtml($camera) ?>" aria-labelledby="<?= settingsHtml($id) ?>-title">
+	<section
+		class="privacy-preview"
+		data-preview-camera="<?= settingsHtml($camera) ?>"
+		<?= $info !== null ? 'data-preview-width="' . (int) $info["width"] . '" data-preview-height="' . (int) $info["height"] . '"' : "" ?>
+		aria-labelledby="<?= settingsHtml($id) ?>-title"
+	>
 		<h3 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h3>
 		<div class="privacy-help">
 			<p>Das ist ein echtes Bild von dieser Kamera. Die Verpixelung hat es schon angeschaut. Menschen darauf sind unkenntlich gemacht.</p>
@@ -582,18 +588,25 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 		</div>
 		<?php if ($info !== null): ?>
 			<figure class="privacy-preview-figure">
-				<img
-					src="<?= settingsHtml(previewUrl($camera, $info["version"])) ?>"
-					width="<?= (int) $info["width"] ?>"
-					height="<?= (int) $info["height"] ?>"
-					alt="<?= settingsHtml("Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr") ?>"
-				>
+				<div class="privacy-preview-stage">
+					<img
+						src="<?= settingsHtml(previewUrl($camera, $info["version"])) ?>"
+						width="<?= (int) $info["width"] ?>"
+						height="<?= (int) $info["height"] ?>"
+						alt="<?= settingsHtml("Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr") ?>"
+					>
+				</div>
 				<figcaption><?= settingsHtml(privacyPreviewCaption($info)) ?></figcaption>
 			</figure>
 		<?php else: ?>
 			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.</p>
 		<?php endif; ?>
+		<div class="privacy-help" data-draw-help hidden>
+			<p>So malst du einen Rahmen: Drücke „Rahmen zeichnen“. Dann ziehst du mit der Maus oder dem Finger ein Rechteck über die Stelle, die kein Mensch ist. Die Zahlen unten füllen sich von selbst. Du kannst die Zahlen auch selbst eintippen.</p>
+			<p>Türkise Rechtecke sind Rahmen, die es schon gibt. Der rote Streifen oben ist der obere Bildrand, der ignoriert wird. Soll ein Rahmen weg? Dann drücke unten in seiner Zeile auf „Entfernen“.</p>
+		</div>
 		<p class="privacy-preview-actions">
+			<button type="button" class="settings-reset" data-preview-draw aria-pressed="false" hidden>Rahmen zeichnen</button>
 			<button type="button" class="settings-reset" data-preview-refresh hidden>Vorschau aktualisieren</button>
 			<span class="settings-hint" role="status" data-preview-status></span>
 		</p>

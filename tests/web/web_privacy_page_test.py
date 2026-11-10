@@ -718,3 +718,119 @@ def test_the_script_asks_for_a_new_picture_with_the_forms_token(tmp_path):
 	assert "textContent" in script
 	assert "innerHTML =" not in script
 	assert 'role="status"' in preview_block(out, "SLSV")
+
+
+# The drawing editor on the picture. Its drag logic is script (the project has no browser test
+# runner, so it is clicked for real in a browser); these tests pin what the server puts in place.
+
+STYLE = Path(__file__).resolve().parents[2] / "web" / "public" / "style.css"
+
+
+# The script turns a rectangle on the picture into box numbers by one scale factor: it needs the
+# picture's own size, and a frame (the stage) to lay its layer over.
+def test_the_picture_sits_in_a_stage_that_carries_its_size(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+
+	out, _ = render(tmp_path)
+	block = preview_block(out, "SLSV")
+	section = tag_of(block, r"<section[^>]*>")
+
+	assert 'data-preview-width="640"' in section
+	assert 'data-preview-height="480"' in section
+	assert re.search(r'<div class="privacy-preview-stage">\s*<img', block)
+
+
+def test_a_camera_without_a_picture_has_no_stage_and_no_size(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	block = preview_block(out, "SLSV")
+
+	assert "privacy-preview-stage" not in block
+	assert "data-preview-width" not in block
+
+
+# Drawing needs a pointer and a script: the button is hidden until the script shows it, and it is a
+# toggle, so the layer only catches the pointer while it is on (a finger can still scroll past).
+def test_the_draw_button_is_a_script_only_toggle(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+		button = tag_of(preview_block(out, camera), r"<button[^>]*data-preview-draw[^>]*>")
+
+		assert 'type="button"' in button
+		assert 'aria-pressed="false"' in button
+		assert re.search(r"\shidden[\s>]", button)
+
+
+def test_the_drawing_help_is_hidden_until_the_script_runs_and_names_every_symbol(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	block = preview_block(out, "SLSV")
+	help_tag = tag_of(block, r"<div[^>]*data-draw-help[^>]*>.*?</div>", re.S)
+
+	assert re.search(r"\shidden[\s>]", help_tag.split(">", 1)[0] + ">")
+	# What is drawn on the picture is explained in words: the rectangles, the strip, the way out.
+	assert "Rahmen zeichnen" in help_tag
+	assert "Streifen" in help_tag
+	assert "Entfernen" in help_tag
+
+
+# A rectangle on the picture is matched to its row by number, so every row shows one.
+def test_every_box_row_shows_its_number(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	rows = re.findall(r'<div class="privacy-box-row">.*?</div>', out, re.S)
+	pattern = r'<span class="privacy-box-number"[^>]*>(.*?)</span>'
+	numbers = [re.search(pattern, row) for row in rows]
+
+	assert rows
+	assert all(number is not None for number in numbers)
+	assert all('aria-hidden="true"' in number.group(0) for number in numbers)
+	# The template the script clones carries the placeholder it fills in.
+	assert "__NUMBER__" in tag_of(out, r"<template data-box-template>.*?</template>", re.S)
+
+
+def test_the_script_draws_with_pointer_events_and_keeps_the_layer_out_of_the_accessibility_tree(
+	tmp_path,
+):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = script_with(out, "data-default-group")
+
+	for event in ("pointerdown", "pointermove", "pointerup", "pointercancel", "setPointerCapture"):
+		assert event in script, event
+
+	# The layer is decoration for the mouse: the rows are the real, keyboard-operable control.
+	assert 'setAttribute("aria-hidden", "true")' in script
+	assert "is-drawing" in script
+	assert "innerHTML =" not in script
+	assert re.search(r"\bvar\b", script) is None
+
+
+# The generic "main section" panel would take about a fifth of a phone's width from the picture.
+def test_the_picture_block_gives_up_its_panel_on_a_phone():
+	css = STYLE.read_text(encoding="utf-8")
+	narrow = tag_of(css, r"@media \(max-width: 40rem\)\s*\{\s*\.privacy-preview\s*\{[^}]*\}", re.S)
+
+	assert "padding: 0" in narrow
+	assert "border: 0" in narrow
+
+
+# Without the toggle the layer must let everything through, or the picture would block scrolling
+# on a phone; only while drawing may it take the touch away from the page.
+def test_the_layer_only_catches_the_pointer_while_drawing():
+	css = STYLE.read_text(encoding="utf-8")
+	layer = tag_of(css, r"\.privacy-preview-layer\s*\{[^}]*\}", re.S)
+	drawing = tag_of(css, r"\.privacy-preview-layer\.is-drawing\s*\{[^}]*\}", re.S)
+
+	assert "pointer-events: none" in layer
+	assert "touch-action" not in layer
+	assert "pointer-events: auto" in drawing
+	assert "touch-action: none" in drawing
