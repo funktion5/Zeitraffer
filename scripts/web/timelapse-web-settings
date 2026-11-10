@@ -12,9 +12,6 @@ set -euo pipefail
 PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
 PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 
-# Generous for the form (twelve months, two camera lists), small enough to refuse junk early.
-MAX_JSON_BYTES=8192
-
 if [[ $# -ne 3 ]]; then
 	echo "Usage: timelapse-web-settings <scope> <expected-mtime> <settings-json>" >&2
 	exit 64
@@ -27,7 +24,12 @@ SETTINGS_JSON="$3"
 # The scope names a settings file (the Allgemein tab or the Verpixelung tab): only the two known names
 # pass, never what arrived.
 case "$SCOPE" in
-	general|privacy)
+	general)
+		MAX_JSON_BYTES=8192
+		;;
+	privacy)
+		# Up to 50 ignore boxes per camera add up, so this tab may send more.
+		MAX_JSON_BYTES=65536
 		;;
 	*)
 		echo "Invalid scope." >&2

@@ -10,6 +10,7 @@ require_once __DIR__ . "/../src/settings-form.php";
 $storage = getStorageUsage();
 // The header marks its own link as the current page.
 $currentPage = "settings";
+$currentTab = "general";
 
 if (!isset($_SESSION["csrf_token"])) {
 	$_SESSION["csrf_token"] = bin2hex(random_bytes(32));
@@ -113,6 +114,8 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 	</header>
 	<main>
 		<h1>Einstellungen</h1>
+
+		<?php require __DIR__ . "/../src/components/settings-tabs.php"; ?>
 
 		<div class="job-instructions settings-intro">
 			<p>Hier lassen sich die Werte ändern, die für alle Kameras gelten. Eine Änderung gilt ab dem nächsten Auftrag, ein gerade laufender Auftrag ist nicht betroffen. Neue Videos nutzen die neue Qualität, bestehende bleiben unverändert.</p>

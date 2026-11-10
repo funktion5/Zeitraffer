@@ -404,6 +404,23 @@ def test_the_header_has_the_settings_link_with_a_hidden_gear_and_marks_its_page(
 	assert '<a href="/highlights.php">Highlights</a>' in out
 
 
+# The two settings pages are tabs of one area: each marks its own tab.
+def test_the_settings_page_has_the_tab_strip_with_its_own_tab_marked(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	strip = re.search(r'<nav[^>]*class="settings-tabs"[^>]*>.*?</nav>', out, re.S)
+
+	assert strip is not None
+	links = re.findall(r'href="(/[a-z]+\.php)"', strip.group(0))
+	current = re.findall(r'<a[^>]*aria-current="page"[^>]*>', strip.group(0))
+
+	assert links == ["/settings.php", "/verpixelung.php"]
+
+	assert len(current) == 1
+	assert 'href="/settings.php"' in current[0]
+
+
 def tag_of(out: str, pattern: str) -> str:
 	match = re.search(pattern, out)
 

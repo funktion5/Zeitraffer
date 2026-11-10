@@ -132,6 +132,25 @@ def test_wrapper_accepts_json_exactly_at_the_size_limit(tmp_path):
 	assert (tmp_path / "args").exists()
 
 
+# The privacy form carries many ignore boxes, so its scope may be larger; the general one is small.
+def test_the_privacy_scope_has_a_larger_size_limit(tmp_path):
+	environment = prepare(tmp_path)
+
+	at_limit = run_wrapper(environment, "privacy", "123", "x" * 65536)
+
+	assert at_limit.returncode == 0
+
+	over = run_wrapper(environment, "privacy", "123", "x" * 65537)
+
+	assert over.returncode == 64
+
+
+def test_the_general_scope_still_refuses_what_only_privacy_may_send(tmp_path):
+	environment = prepare(tmp_path)
+
+	assert run_wrapper(environment, "general", "123", "x" * 8193).returncode == 64
+
+
 @pytest.mark.parametrize(
 	("exit_code", "output"),
 	[

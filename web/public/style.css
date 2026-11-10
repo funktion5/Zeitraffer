@@ -286,6 +286,161 @@ ul {
 }
 
 
+/* The two tabs of the settings area: real links to two pages, each with its own form. */
+.settings-tabs {
+	display: flex;
+	gap: 0.5rem;
+
+	margin-bottom: 1.5rem;
+
+	border-bottom: 1px solid var(--color-border);
+}
+
+.settings-tabs a {
+	padding: 0.6rem 1.1rem;
+
+	border: 1px solid transparent;
+	border-bottom: 0;
+	border-radius: var(--radius-small) var(--radius-small) 0 0;
+
+	color: var(--color-text-muted);
+}
+
+.settings-tabs a[aria-current="page"] {
+	background: var(--color-surface);
+	border-color: var(--color-border);
+
+	color: var(--color-text);
+	font-weight: 600;
+}
+
+.settings-tabs a:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Verpixelung tab                                                            */
+/* -------------------------------------------------------------------------- */
+
+.privacy-slider-row {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 1rem;
+}
+
+.privacy-range {
+	width: min(20rem, 100%);
+
+	accent-color: var(--color-primary);
+}
+
+.privacy-help p {
+	margin: 0 0 0.4rem;
+
+	color: var(--color-text-muted);
+
+	font-size: 0.875rem;
+}
+
+.privacy-important {
+	margin: 0;
+	padding: 0.8rem 1rem;
+
+	background: rgb(223 113 113 / 12%);
+	border: 1px solid var(--color-danger);
+	border-radius: var(--radius-small);
+}
+
+.privacy-important ul {
+	padding-left: 1.2rem;
+
+	list-style: disc;
+}
+
+.privacy-live {
+	margin-left: 0.4rem;
+	padding: 0.05rem 0.5rem;
+
+	border: 1px solid var(--color-success);
+	border-radius: 999px;
+
+	color: var(--color-success);
+
+	font-size: 0.75rem;
+}
+
+.privacy-boxes-title {
+	margin: 0;
+}
+
+.privacy-box-row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: end;
+	gap: 0.75rem;
+
+	margin-bottom: 0.5rem;
+}
+
+.privacy-box-row label {
+	display: grid;
+	gap: 0.2rem;
+
+	font-size: 0.875rem;
+}
+
+.privacy-box-row input {
+	width: 6.5rem;
+	padding: 0.45rem 0.6rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+
+	color: var(--color-text);
+
+	font: inherit;
+}
+
+.privacy-box-row input:focus-visible,
+.privacy-noscript-confirm input:focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
+#privacy-confirm {
+	max-width: 36rem;
+	padding: 1.25rem;
+
+	background: var(--color-surface);
+	border: 1px solid var(--color-border-light);
+	border-radius: var(--radius-medium);
+
+	color: var(--color-text);
+}
+
+#privacy-confirm::backdrop {
+	background: rgb(0 0 0 / 60%);
+}
+
+#privacy-confirm ul {
+	padding-left: 1.2rem;
+
+	list-style: disc;
+}
+
+.privacy-confirm-buttons {
+	display: flex;
+	justify-content: flex-end;
+	gap: 1rem;
+
+	margin-top: 1rem;
+}
+
+
 /* -------------------------------------------------------------------------- */
 /* Storage                                                                    */
 /* -------------------------------------------------------------------------- */
