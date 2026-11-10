@@ -354,7 +354,16 @@ def fake_sudo(tmp_path: Path) -> Path:
 # a file in web/ to (literal, replacement), applied once on the first copy; the assert guards
 # against silent no-op swaps. The session holds token and keeps everything else between calls,
 # so a POST and the GET after it share it. Returns stdout and the arguments fake sudo got.
-def render_page(tmp_path: Path, page: str, swaps: dict, get, post, sudo_exit: int, token: str):
+def render_page(
+	tmp_path: Path,
+	page: str,
+	swaps: dict,
+	get,
+	post,
+	sudo_exit: int,
+	token: str,
+	sudo_out: str = "",
+):
 	site = tmp_path / "web"
 	if not site.exists():
 		shutil.copytree(WEB_SRC.parent, site)
@@ -398,7 +407,7 @@ def render_page(tmp_path: Path, page: str, swaps: dict, get, post, sudo_exit: in
 			**os.environ,
 			"FAKE_SUDO_ARGS": str(args_file),
 			"FAKE_SUDO_EXIT": str(sudo_exit),
-			"FAKE_SUDO_OUT": "",
+			"FAKE_SUDO_OUT": sudo_out,
 			"FAKE_SUDO_ERR": "denied",
 		},
 		check=False,
