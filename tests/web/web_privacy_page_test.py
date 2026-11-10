@@ -186,7 +186,8 @@ def test_cameras_that_already_blur_are_marked_and_the_warning_is_shown(tmp_path)
 	live = re.findall(r'<input[^>]*data-live="1"[^>]*value="([^"]+)"', out)
 	important = tag_of(out, r'<p[^>]*class="privacy-important"[^>]*>.*?</p>', re.S)
 
-	assert sorted(live) == ["BlurTest", "Scheunenviertel", "SLSV"]
+	# sorted() orders by character code ("SL" before "Sc"), so sort the expectation the same way.
+	assert sorted(live) == sorted(["BlurTest", "Scheunenviertel", "SLSV"])
 	assert "Wichtig" in important
 	assert "schon läuft" in important
 
