@@ -12,9 +12,6 @@ require_once __DIR__ . "/preview-runner.php";
 // A camera name as a per-camera KEY: no dot, because a dot separates the parts of a settings key.
 const PRIVACY_CAMERA_KEY_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
 
-// The box rows without a saved box that are always offered, so more can be added without JavaScript.
-const PRIVACY_BLANK_BOX_ROWS = 3;
-
 function privacyFieldId(string $key): string
 {
 	return "privacy-" . str_replace(".", "-", $key);
@@ -523,18 +520,20 @@ function renderPrivacyBoxRow(string $camera, string $index, string $number, arra
 	<?php
 }
 
-// The ignore boxes of one camera: the saved rows, blank rows to add more, and the template and
-// button the script uses to add rows. $defaultBoxes is what the restore button sets back.
+// The ignore boxes of one camera: the saved rows only (no empty rows stand by), a note while there
+// are none, and the template and button the script uses to add rows. $defaultBoxes is what the
+// restore button sets back.
 function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?string $error): void
 {
 	$id = "privacy-boxes-" . $camera;
 	$describedBy = $id . "-help" . ($error !== null ? " " . $id . "-error" : "");
-	$rowCount = count($boxes) + PRIVACY_BLANK_BOX_ROWS;
+	$rowCount = count($boxes);
 
 	?>
 	<div class="settings-field privacy-boxes-field">
 		<h3 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)</h3>
 		<?php renderPrivacyHelp($id, privacyBoxHelp()); ?>
+		<p class="privacy-boxes-empty" <?= $boxes === [] ? "" : "hidden" ?>>Für diese Kamera ist noch kein Rahmen gesetzt.</p>
 		<div
 			class="privacy-boxes"
 			id="<?= settingsHtml($id) ?>"

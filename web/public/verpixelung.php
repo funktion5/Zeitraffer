@@ -417,6 +417,9 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 			const refreshContainer = (container) => {
 				numberRows(container);
+				// The note under the heading is there exactly while no row is.
+				container.closest(".privacy-boxes-field").querySelector(".privacy-boxes-empty").hidden =
+					container.querySelector(".privacy-box-row") !== null;
 				redrawSection(sectionOf(container));
 			};
 
@@ -776,10 +779,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					JSON.parse(container.dataset.defaultBoxes).forEach((box) => {
 						addBoxRow(container, box.map(String));
 					});
-
-					for (let blank = 0; blank < 3; blank += 1) {
-						addBoxRow(container);
-					}
 				});
 
 				note.textContent = `${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`;

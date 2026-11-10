@@ -490,8 +490,35 @@ ul {
 	white-space: nowrap;
 }
 
+/* "Entfernen" deletes the row, so it is red like the app's other delete buttons. The generic small
+   button is pinned to the top of a flex row; here it has to stand level with the inputs. */
+.privacy-box-row .privacy-box-remove {
+	align-self: flex-end;
+	height: 2.4rem;
+	padding-block: 0;
+
+	border-color: var(--color-danger);
+
+	color: var(--color-danger);
+}
+
+.privacy-box-row .privacy-box-remove:hover {
+	background: rgb(223 113 113 / 12%);
+}
+
+.privacy-boxes-empty {
+	margin: 0;
+
+	color: var(--color-text-muted);
+
+	font-size: 0.875rem;
+}
+
 .privacy-box-number {
-	align-self: center;
+	display: grid;
+	place-items: center;
+	align-self: flex-end;
+	height: 2.4rem;
 	min-width: 1.5rem;
 
 	color: var(--color-text-muted);
@@ -541,9 +568,12 @@ ul {
 	font-size: 0.875rem;
 }
 
+/* The row's inputs, its number and its button are all this high and stand on the same line, so they
+   read as one row. */
 .privacy-box-row input {
 	width: 6.5rem;
-	padding: 0.45rem 0.6rem;
+	height: 2.4rem;
+	padding: 0 0.6rem;
 
 	background: var(--color-surface-light);
 	border: 1px solid var(--color-border);

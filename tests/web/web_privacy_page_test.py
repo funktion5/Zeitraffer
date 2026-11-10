@@ -218,11 +218,63 @@ def test_every_blur_camera_has_its_score_and_its_boxes(tmp_path):
 	first = tag_of(out, r'<input[^>]*name="privacy\[boxes\]\[BlurTest\]\[0\]\[x0\]"[^>]*>')
 
 	assert 'value="703"' in first
-	# The saved boxes, then blank rows to add more without JavaScript.
+	# Exactly the saved boxes: no empty rows stand by.
 	assert 'name="privacy[boxes][Scheunenviertel][1][y1]"' in out
-	assert 'name="privacy[boxes][Scheunenviertel][4][x0]"' in out
-	assert 'name="privacy[boxes][Scheunenviertel][5][x0]"' not in out
+	assert 'name="privacy[boxes][Scheunenviertel][2][x0]"' not in out
 	assert default_boxes_of(out, "Scheunenviertel") == [[1, 2, 3, 4], [5, 6, 7, 8]]
+
+
+def box_rows_of(out: str, camera: str) -> list:
+	pattern = rf'<div[^>]*id="privacy-boxes-{camera}"[^>]*>.*?(?=</div>\s*<template)'
+	container = tag_of(out, pattern, re.S)
+
+	return re.findall(r'<div class="privacy-box-row">', container)
+
+
+# New boxes come from "Rahmen hinzufügen" or from the picture, so no empty row is rendered.
+def test_no_empty_rows_are_offered(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	assert len(box_rows_of(out, "Scheunenviertel")) == 2
+	assert len(box_rows_of(out, "BlurTest")) == 1
+	assert box_rows_of(out, "SLSV") == []
+
+	# A row the script adds takes the next free index, after the saved ones.
+	container = tag_of(out, r'<div[^>]*id="privacy-boxes-Scheunenviertel"[^>]*>')
+
+	assert 'data-next-index="2"' in container
+	assert 'data-next-index="0"' in tag_of(out, r'<div[^>]*id="privacy-boxes-SLSV"[^>]*>')
+
+
+# Without a row the page says so, instead of leaving an empty space under the heading.
+def test_a_camera_without_boxes_says_so(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	notes = {
+		camera: tag_of(
+			tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S),
+			r'<p[^>]*class="privacy-boxes-empty"[^>]*>',
+		)
+		for camera in ("BlurTest", "Scheunenviertel", "SLSV")
+	}
+
+	assert not re.search(r"\shidden[\s>]", notes["SLSV"])
+	assert re.search(r"\shidden[\s>]", notes["BlurTest"])
+	assert re.search(r"\shidden[\s>]", notes["Scheunenviertel"])
+
+
+def test_restoring_defaults_does_not_add_empty_rows_back(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = script_with(out, "data-default-group")
+
+	assert "for (let blank" not in script
+	# The note under the heading follows the rows, so it shows again after the last one is removed.
+	assert "privacy-boxes-empty" in script
 
 
 # The Standard is the live setting: render against the REAL config and compare with the file.
@@ -829,6 +881,40 @@ def test_the_picture_block_gives_up_its_panel_on_a_phone():
 
 	assert "padding: 0" in narrow
 	assert "border: 0" in narrow
+
+
+# "Entfernen" is a deletion, so it is red like the app's other delete buttons (the text still says
+# what it does: colour is not the only sign), and it stands level with the inputs of its row.
+def test_the_remove_button_is_red_and_level_with_its_inputs():
+	css = STYLE.read_text(encoding="utf-8")
+	rule = tag_of(css, r"\.privacy-box-row \.privacy-box-remove\s*\{[^}]*\}", re.S)
+	hover = tag_of(css, r"\.privacy-box-row \.privacy-box-remove:hover\s*\{[^}]*\}", re.S)
+
+	assert "border-color: var(--color-danger)" in rule
+	assert "color: var(--color-danger)" in rule
+	assert "rgb(223 113 113" in hover
+	# The generic small button is pinned to the top of a flex row: here it must sit on the bottom
+	# line with the inputs, or it looks shifted up next to them.
+	assert "align-self: flex-end" in rule
+
+
+# The row's inputs, its button and its number share one height, so they line up in one row.
+def test_the_row_items_share_one_height():
+	css = STYLE.read_text(encoding="utf-8")
+	heights = re.findall(
+		r"(\.privacy-box-row input|\.privacy-box-row \.privacy-box-remove|\.privacy-box-number)"
+		r"\s*\{[^}]*?(?<![\w-])height:\s*([^;]+);",
+		css,
+		re.S,
+	)
+
+	assert {selector for selector, _ in heights} == {
+		".privacy-box-row input",
+		".privacy-box-row .privacy-box-remove",
+		".privacy-box-number",
+	}
+	assert len({value for _, value in heights}) == 1
+	assert "align-self: flex-end" in tag_of(css, r"\.privacy-box-number\s*\{[^}]*\}", re.S)
 
 
 # Without the toggle the layer must let everything through, or the picture would block scrolling
