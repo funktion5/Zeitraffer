@@ -186,6 +186,44 @@ def test_the_camera_list_shows_listed_ignored_and_blur_cameras(tmp_path):
 	}
 
 
+# The lists say their Standard in words too: the cameras that blur, and the number of boxes of each
+# camera. It is what config.json holds, whatever is saved on top.
+def camera_list_standard(out: str) -> str:
+	match = re.search(r'id="privacy-blur-cameras".*?Standard: ([^<]*)</span>', out, re.S)
+
+	assert match is not None
+
+	return match.group(1)
+
+
+def box_standard(out: str, camera: str) -> str:
+	block = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
+
+	return re.search(r"privacy-boxes-field.*?Standard: ([^<]*)</span>", block, re.S).group(1)
+
+
+def test_the_camera_list_and_the_box_lists_say_their_standard(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	# Known: Alpha and the three that blur; one is off, so it is named.
+	assert camera_list_standard(out) == "alle außer Alpha"
+	assert box_standard(out, "BlurTest") == "1 Rahmen"
+	assert box_standard(out, "Scheunenviertel") == "2 Rahmen"
+	assert box_standard(out, "SLSV") == "kein Rahmen"
+
+
+def test_these_standards_stay_the_config_json_ones_when_something_is_saved(tmp_path):
+	saved = {"privacy": {"blur_cameras": ["Alpha"], "ignore_boxes": {"SLSV": [[1, 1, 2, 2]]}}}
+	prepare(tmp_path, privacy=saved)
+
+	out, _ = render(tmp_path)
+
+	assert camera_list_standard(out) == "alle außer Alpha"
+	assert box_standard(out, "SLSV") == "kein Rahmen"
+
+
 def test_cameras_that_already_blur_are_marked_and_the_warning_is_shown(tmp_path):
 	prepare(tmp_path)
 

@@ -94,6 +94,16 @@ function privacyScoreField(): array
 	];
 }
 
+// How many boxes a camera has, in words, for the Standard line.
+function privacyBoxCountText(int $count): string
+{
+	return match ($count) {
+		0 => "kein Rahmen",
+		1 => "1 Rahmen",
+		default => $count . " Rahmen",
+	};
+}
+
 function privacyBoxHelp(): array
 {
 	return [
@@ -521,6 +531,7 @@ function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $bas
 			</label>
 		<?php endforeach; ?>
 	</div>
+	<span class="settings-default">Standard: <?= settingsHtml(settingsCameraListText($knownCameras, $baseList)) ?></span>
 	<?php
 }
 
@@ -565,6 +576,7 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 	?>
 	<div class="settings-field privacy-boxes-field">
 		<h3 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)</h3>
+		<span class="settings-default">Standard: <?= settingsHtml(privacyBoxCountText(count($defaultBoxes))) ?></span>
 		<?php renderPrivacyHelp($id, privacyBoxHelp()); ?>
 		<p class="privacy-boxes-empty" <?= $boxes === [] ? "" : "hidden" ?>>Für diese Kamera ist noch kein Rahmen gesetzt.</p>
 		<div

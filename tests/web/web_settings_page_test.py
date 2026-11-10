@@ -147,6 +147,48 @@ def test_the_cameras_are_the_listed_ones_plus_the_ignored_ones(tmp_path):
 	assert 'name="flagger_cameras[]"' in out
 
 
+def standard_of(out: str, legend: str) -> str:
+	fieldset = re.search(rf"<legend>{legend}</legend>.*?</fieldset>", out, re.S)
+
+	assert fieldset is not None, legend
+
+	pattern = r'<span class="settings-default">Standard: ([^<]*)</span>'
+
+	return re.search(pattern, fieldset.group(0)).group(1)
+
+
+# A list of cameras says its Standard in words, so nobody has to compare ticks with a file: all of
+# them, "all but" the few that are off, the few that are on, or none.
+def test_each_camera_list_says_what_its_standard_is(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	# Known: Alpha, Beta and the ignored Reolink. Two of three are on, so the off one is named.
+	assert standard_of(out, "Kameras") == "alle außer Reolink"
+	# One of three is on: the camera that is on is named.
+	assert standard_of(out, r"Highlights \(Flagger\)") == "Alpha"
+
+
+def test_the_standard_of_a_camera_list_can_be_all_or_none(tmp_path):
+	config = {**BASE, "ignored_cameras": [], "flagger": {"cameras": [], "retention_days": 30}}
+	prepare(tmp_path, config=config)
+
+	out, _ = render(tmp_path)
+
+	assert standard_of(out, "Kameras") == "alle Kameras"
+	assert standard_of(out, r"Highlights \(Flagger\)") == "keine"
+
+
+# The Standard is what config.json holds: a saved change leaves it as it was.
+def test_the_standard_of_a_camera_list_ignores_what_is_saved(tmp_path):
+	prepare(tmp_path, settings={"ignored_cameras": ["Alpha", "Beta"]})
+
+	out, _ = render(tmp_path)
+
+	assert standard_of(out, "Kameras") == "alle außer Reolink"
+
+
 def test_a_camera_name_that_is_not_a_plain_name_is_never_shown(tmp_path):
 	config = {**BASE, "ignored_cameras": ["<b>x</b>", "../etc"]}
 	prepare(tmp_path, config=config)
