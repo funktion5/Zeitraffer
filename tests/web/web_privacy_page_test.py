@@ -740,8 +740,8 @@ def test_the_restore_buttons_exist_per_section_and_for_everything(tmp_path):
 	out, _ = render(tmp_path)
 	group_buttons = re.findall(r"<button[^>]*data-default-group[^>]*>", out)
 
-	# Cameras, blur values, top share, and one per blur camera.
-	assert len(group_buttons) == 3 + len(BLUR_CAMERAS)
+	# The camera list, the blur values, and one per blur camera (its block holds its top share too).
+	assert len(group_buttons) == 2 + len(BLUR_CAMERAS)
 	for tag in group_buttons:
 		assert 'type="button"' in tag
 		assert re.search(r"\shidden[\s>]", tag) is not None
