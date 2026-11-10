@@ -402,3 +402,93 @@ def test_the_header_has_the_settings_link_with_a_hidden_gear_and_marks_its_page(
 	# The other links stay where they were.
 	assert '<a href="/">Kameras</a>' in out
 	assert '<a href="/highlights.php">Highlights</a>' in out
+
+
+def tag_of(out: str, pattern: str) -> str:
+	match = re.search(pattern, out)
+
+	assert match is not None, pattern
+
+	return match.group(0)
+
+
+# name -> (the Standard tick, ticked now) for one list of camera boxes.
+def camera_boxes(out: str, name: str) -> dict:
+	boxes = {}
+
+	for tag in re.findall(rf'<input[^>]*name="{name}\[\]"[^>]*>', out):
+		value = re.search(r'value="([^"]+)"', tag).group(1)
+		standard = re.search(r'data-default-checked="([01])"', tag).group(1)
+		boxes[value] = (standard, re.search(r"\schecked\b", tag) is not None)
+
+	return boxes
+
+
+# The restore buttons fill the fields with the config.json value, whatever is saved.
+def test_every_field_carries_its_standard_for_the_restore_buttons(tmp_path):
+	prepare(tmp_path, settings={"timelapse": {"crf": 30}, "log_retention_days": 14})
+
+	out, _ = render(tmp_path)
+
+	for key, standard in SCALARS.items():
+		field_id = "setting-" + key.replace(".", "-")
+		tag = tag_of(out, rf'<input[^>]*id="{field_id}"[^>]*>')
+
+		assert f'data-default="{standard}"' in tag, key
+
+
+def test_a_field_without_a_standard_has_nothing_to_restore(tmp_path):
+	config = {key: value for key, value in BASE.items() if key != "log_retention_days"}
+	prepare(tmp_path, config=config)
+
+	out, _ = render(tmp_path)
+
+	assert "data-default" not in tag_of(out, r'<input[^>]*id="setting-log_retention_days"[^>]*>')
+
+
+def test_the_camera_boxes_carry_the_standard_ticks(tmp_path):
+	prepare(tmp_path, settings={"ignored_cameras": ["Beta"], "flagger": {"cameras": ["Beta"]}})
+
+	out, _ = render(tmp_path)
+
+	# The Standard is config.json (Reolink ignored, Alpha flagged); then what is saved.
+	assert camera_boxes(out, "process_cameras") == {"Alpha": ("1", True), "Beta": ("1", False)}
+	assert camera_boxes(out, "flagger_cameras") == {"Alpha": ("1", False), "Beta": ("0", True)}
+
+
+def test_each_group_and_the_bar_have_a_restore_button_that_starts_hidden(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	group_buttons = re.findall(r"<button[^>]*data-default-group[^>]*>", out)
+
+	assert len(group_buttons) == 6
+	for tag in group_buttons:
+		assert 'type="button"' in tag
+		assert "hidden" in tag.split()
+	assert 'aria-label="Videoqualität: auf Standard zurücksetzen"' in out
+
+	all_button = tag_of(out, r"<button[^>]*data-default-all[^>]*>")
+
+	assert 'type="button"' in all_button
+	assert "hidden" in all_button.split()
+	assert re.search(r'<p[^>]*id="settings-default-note"[^>]*role="status"', out) is not None
+
+
+# Restoring only fills the fields: the one Save button stores them, the script never submits.
+def test_the_restore_script_fills_fields_and_never_submits(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	scripts = [
+		script
+		for script in re.findall(r"<script[^>]*>(.*?)</script>", out, re.S)
+		if "data-default-group" in script
+	]
+
+	assert len(scripts) == 1
+	assert 'querySelectorAll("[data-default]")' in scripts[0]
+	assert 'querySelectorAll("[data-default-checked]")' in scripts[0]
+	assert re.search(r"\bvar\b", scripts[0]) is None
+	assert ".submit(" not in scripts[0]
+	assert "requestSubmit" not in scripts[0]

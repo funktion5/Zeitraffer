@@ -330,6 +330,7 @@ function renderSettingsField(array $field, array $state, array $baseConfig, arra
 			id="<?= settingsHtml($id) ?>"
 			name="settings[<?= settingsHtml($key) ?>]"
 			value="<?= settingsHtml($state["fields"][$key] ?? "") ?>"
+			<?= $hasDefault && (is_int($default) || is_string($default)) ? 'data-default="' . settingsHtml((string) $default) . '"' : "" ?>
 			<?php if ($field["type"] === "number"): ?>
 				min="<?= (int) $field["min"] ?>" max="<?= (int) $field["max"] ?>" step="1" inputmode="numeric"
 			<?php endif; ?>
@@ -350,8 +351,25 @@ function renderSettingsField(array $field, array $state, array $baseConfig, arra
 	<?php
 }
 
-// A list of camera checkboxes (name = the form field, e.g. "process_cameras").
-function renderSettingsCameraBoxes(string $name, array $knownCameras, array $ticked): void
+// The button of one group. A script fills the group's fields with their Standard (it never saves);
+// it starts hidden and the script shows it, so without JavaScript nothing is offered that does
+// nothing. The label names the group for screen readers and still contains the visible text.
+function renderSettingsDefaultButton(string $legend): void
+{
+	?>
+	<button
+		type="button"
+		class="settings-default-button"
+		data-default-group
+		hidden
+		aria-label="<?= settingsHtml($legend) ?>: auf Standard zurücksetzen"
+	>Auf Standard zurücksetzen</button>
+	<?php
+}
+
+// A list of camera checkboxes (name = the form field, e.g. "process_cameras"). $standardTicked is
+// the config.json state that the restore buttons set the boxes back to.
+function renderSettingsCameraBoxes(string $name, array $knownCameras, array $ticked, array $standardTicked): void
 {
 	?>
 	<div class="settings-cameras">
@@ -359,6 +377,7 @@ function renderSettingsCameraBoxes(string $name, array $knownCameras, array $tic
 			<label>
 				<input
 					type="checkbox"
+					data-default-checked="<?= in_array($camera, $standardTicked, true) ? "1" : "0" ?>"
 					name="<?= settingsHtml($name) ?>[]"
 					value="<?= settingsHtml($camera) ?>"
 					<?= in_array($camera, $ticked, true) ? "checked" : "" ?>

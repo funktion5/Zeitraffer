@@ -20,6 +20,8 @@ $csrfToken = $_SESSION["csrf_token"];
 $knownCameras = settingsKnownCameras();
 $baseConfig = readBaseConfig();
 $state = settingsFormState(readProjectConfig(), $knownCameras);
+// What the restore buttons go back to: the same form state, from config.json alone.
+$defaultState = settingsFormState($baseConfig, $knownCameras);
 $savedMtime = readSettingsMtime();
 // What the page hands back on save. After a refusal because the file changed it stays the OLD
 // value, so a second try without reloading is refused again.
@@ -139,6 +141,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Videoqualität</legend>
+				<?php renderSettingsDefaultButton("Videoqualität"); ?>
 				<?php foreach ($fieldsOf("quality") as $field): ?>
 					<?php renderSettingsField($field, $state, $baseConfig, $fieldErrors); ?>
 				<?php endforeach; ?>
@@ -146,14 +149,16 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Kameras</legend>
+				<?php renderSettingsDefaultButton("Kameras"); ?>
 				<p class="settings-hint">Angehakte Kameras werden nachts verarbeitet. Eine abgewählte Kamera wird nicht mehr gebaut und verschwindet sofort aus der Kameraliste dieser Weboberfläche. Eine wieder angehakte Kamera erscheint dort, und hier, nach dem nächsten Nachtlauf wieder. Mindestens eine Kamera muss angehakt bleiben.</p>
-				<?php renderSettingsCameraBoxes("process_cameras", $knownCameras, $state["processed"]); ?>
+				<?php renderSettingsCameraBoxes("process_cameras", $knownCameras, $state["processed"], $defaultState["processed"]); ?>
 			</fieldset>
 
 			<fieldset class="settings-group">
 				<legend>Highlights (Flagger)</legend>
+				<?php renderSettingsDefaultButton("Highlights (Flagger)"); ?>
 				<p class="settings-hint">Kameras, auf denen nach Flugzeugen, Vögeln und Drachen gesucht wird.</p>
-				<?php renderSettingsCameraBoxes("flagger_cameras", $knownCameras, $state["flagger"]); ?>
+				<?php renderSettingsCameraBoxes("flagger_cameras", $knownCameras, $state["flagger"], $defaultState["flagger"]); ?>
 				<?php foreach ($fieldsOf("flagger") as $field): ?>
 					<?php renderSettingsField($field, $state, $baseConfig, $fieldErrors); ?>
 				<?php endforeach; ?>
@@ -161,6 +166,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Zeitfenster und Abdeckung</legend>
+				<?php renderSettingsDefaultButton("Zeitfenster und Abdeckung"); ?>
 				<?php foreach ($fieldsOf("daylight") as $field): ?>
 					<?php renderSettingsField($field, $state, $baseConfig, $fieldErrors); ?>
 				<?php endforeach; ?>
@@ -168,6 +174,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Tageslicht-Puffer je Monat (automatische Videos, Minuten)</legend>
+				<?php renderSettingsDefaultButton("Tageslicht-Puffer je Monat"); ?>
 				<p class="settings-hint">Wie viele Minuten vor Sonnenaufgang und nach Sonnenuntergang noch Bilder verwendet werden.</p>
 				<div class="settings-months">
 					<?php foreach ($fieldsOf("months") as $field): ?>
@@ -178,20 +185,66 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Protokolle</legend>
+				<?php renderSettingsDefaultButton("Protokolle"); ?>
 				<?php foreach ($fieldsOf("logs") as $field): ?>
 					<?php renderSettingsField($field, $state, $baseConfig, $fieldErrors); ?>
 				<?php endforeach; ?>
 			</fieldset>
+
+			<p class="settings-hint" id="settings-default-note" role="status" hidden></p>
 
 			<div class="settings-bar">
 				<p class="settings-saved">
 					<?= $lastSaved !== "" ? "Zuletzt gespeichert: " . settingsHtml($lastSaved) : "Noch nicht auf dieser Seite gespeichert." ?>
 				</p>
 				<button type="reset" class="settings-reset">Änderungen verwerfen</button>
+				<button type="button" class="settings-reset" data-default-all hidden>Alles auf Standard</button>
 				<button type="submit" name="confirm" value="yes">Speichern</button>
 			</div>
 		</form>
 	</main>
+
+	<script>
+		(() => {
+			const form = document.querySelector(".settings-form");
+			const note = document.querySelector("#settings-default-note");
+
+			// Fills the fields of one scope with their Standard (the config.json value). Nothing is
+			// saved: the Save button stores it, and a value equal to the Standard drops its override.
+			const restoreDefaults = (scope, what) => {
+				scope.querySelectorAll("[data-default]").forEach((input) => {
+					input.value = input.dataset.default;
+				});
+
+				scope.querySelectorAll("[data-default-checked]").forEach((input) => {
+					input.checked = input.dataset.defaultChecked === "1";
+				});
+
+				note.textContent = `${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`;
+				note.hidden = false;
+			};
+
+			// Without JavaScript the buttons stay hidden: they would do nothing.
+			form.querySelectorAll("[data-default-group]").forEach((button) => {
+				const fieldset = button.closest("fieldset");
+
+				button.hidden = false;
+				button.addEventListener("click", () => {
+					restoreDefaults(fieldset, fieldset.querySelector("legend").textContent);
+				});
+			});
+
+			const allButton = form.querySelector("[data-default-all]");
+
+			allButton.hidden = false;
+			allButton.addEventListener("click", () => restoreDefaults(form, "Alle Abschnitte"));
+
+			// "Änderungen verwerfen" returns to the loaded values, so the note no longer applies.
+			form.addEventListener("reset", () => {
+				note.hidden = true;
+			});
+		})();
+	</script>
 
 	<?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
 </body>

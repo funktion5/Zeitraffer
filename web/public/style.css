@@ -196,6 +196,7 @@ ul {
 
 .settings-field input:focus-visible,
 .settings-cameras input:focus-visible,
+.settings-default-button:focus-visible,
 .settings-bar button:focus-visible {
 	outline: 2px solid var(--color-primary);
 	outline-offset: 2px;
@@ -268,10 +269,20 @@ ul {
 	margin-right: auto;
 }
 
-.settings-reset {
+.settings-reset,
+.settings-default-button {
 	background: transparent;
 	border-color: var(--color-border-light);
 	color: var(--color-text);
+}
+
+.settings-default-button {
+	align-self: flex-start;
+
+	padding: 0.4rem 0.8rem;
+
+	font-size: 0.875rem;
+	font-weight: 400;
 }
 
 
