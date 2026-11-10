@@ -12,8 +12,8 @@ import src.config as config_module
 from src.config import PROJECT_ROOT
 from src.logger import logger
 from src.settings import (
-	ALLOWED_KEYS_BY_SCOPE,
 	SCOPES,
+	flatten_leaves,
 	get_leaf,
 	load_valid_settings,
 	set_leaf,
@@ -55,16 +55,18 @@ def _normalize(value: object) -> object:
 
 # Only what differs from config.json is stored. A value set back to the base value disappears from
 # the file, so an edit of config.json made later still reaches that key.
-def _overrides(base: dict, clean: dict, keys: tuple[str, ...]) -> dict:
+def _overrides(base: dict, clean: dict) -> dict:
 	overrides: dict = {}
 
-	for key in keys:
-		value = get_leaf(clean, key, _MISSING)
+	# The validated submission is walked, not a fixed key list: per-camera keys have no fixed names.
+	for key, value in flatten_leaves(clean).items():
+		base_value = get_leaf(base, key, _MISSING)
 
-		if value is _MISSING:
+		# An empty list where the base has nothing (a camera without ignore boxes) changes nothing.
+		if base_value is _MISSING and value == []:
 			continue
 
-		if _normalize(value) != _normalize(get_leaf(base, key, _MISSING)):
+		if _normalize(value) != _normalize(base_value):
 			set_leaf(overrides, key, _normalize(value))
 
 	return overrides
@@ -104,7 +106,7 @@ def _render(value: object) -> str:
 def _log_changes(log_path: Path, base: dict, before: dict, after: dict, scope: str) -> None:
 	changes = []
 
-	for key in ALLOWED_KEYS_BY_SCOPE[scope]:
+	for key in sorted(set(flatten_leaves(before)) | set(flatten_leaves(after))):
 		old = _effective(base, before, key)
 		new = _effective(base, after, key)
 
@@ -157,7 +159,7 @@ def save_settings(
 		base = json.load(file)
 
 	before = load_valid_settings(settings_path, scope)
-	after = _overrides(base, clean, ALLOWED_KEYS_BY_SCOPE[scope])
+	after = _overrides(base, clean)
 
 	_write_atomically(settings_path, after)
 	_log_changes(log_path, base, before, after, scope)

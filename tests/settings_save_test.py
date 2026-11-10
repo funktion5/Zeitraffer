@@ -408,3 +408,147 @@ def test_main_saves_the_privacy_scope_to_its_own_file(monkeypatch, paths, capsys
 def test_main_refuses_an_unknown_scope(monkeypatch, paths):
 	with pytest.raises(SystemExit):
 		run_main(monkeypatch, paths, "{}", 0, scope="other")
+
+
+# The privacy values: decimals, per-camera maps and box lists, stored as differences like the rest.
+def base_privacy_submission(paths: Paths) -> dict:
+	privacy = read_base(paths)["privacy"]
+
+	return {
+		"privacy": {
+			"blur_cameras": list(privacy["blur_cameras"]),
+			"blur": dict(privacy["blur"]),
+			"ignore_top_share": privacy["ignore_top_share"],
+			"min_person_score": dict(privacy["min_person_score"]),
+			"ignore_boxes": {
+				camera: [list(box) for box in boxes]
+				for camera, boxes in privacy["ignore_boxes"].items()
+			},
+		}
+	}
+
+
+def save_privacy_values(paths: Paths, submitted: dict, expected_mtime: int = 0):
+	return settings_save.save_settings(
+		submitted,
+		expected_mtime,
+		scope="privacy",
+		config_path=paths.config,
+		settings_path=privacy_file(paths),
+		log_path=paths.log,
+	)
+
+
+def stored_privacy(paths: Paths) -> dict:
+	return json.loads(privacy_file(paths).read_text(encoding="utf-8"))
+
+
+def test_the_unchanged_privacy_values_are_not_stored(paths):
+	result = save_privacy_values(paths, base_privacy_submission(paths))
+
+	assert result.status == "saved"
+	assert stored_privacy(paths) == {}
+
+
+def test_a_changed_blur_value_is_stored_alone(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["blur"]["strength"] = 0.1
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {"privacy": {"blur": {"strength": 0.1}}}
+
+
+def test_only_the_changed_cameras_boxes_are_stored(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["ignore_boxes"]["SLSV"] = [[10, 10, 20, 20]]
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {"privacy": {"ignore_boxes": {"SLSV": [[10, 10, 20, 20]]}}}
+
+
+def test_clearing_a_cameras_boxes_is_an_override(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["ignore_boxes"]["Scheunenviertel"] = []
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {"privacy": {"ignore_boxes": {"Scheunenviertel": []}}}
+
+
+def test_boxes_in_another_order_are_not_an_override(paths):
+	submission = base_privacy_submission(paths)
+	boxes = submission["privacy"]["ignore_boxes"]["Scheunenviertel"]
+	submission["privacy"]["ignore_boxes"]["Scheunenviertel"] = list(reversed(boxes))
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {}
+
+
+def test_a_new_camera_without_boxes_stores_nothing(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["ignore_boxes"]["NewCam"] = []
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {}
+
+
+def test_a_per_camera_score_is_stored_and_the_base_score_is_not(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["min_person_score"]["NewCam"] = 0.3
+
+	assert save_privacy_values(paths, submission).status == "saved"
+	assert stored_privacy(paths) == {"privacy": {"min_person_score": {"NewCam": 0.3}}}
+
+
+@pytest.mark.parametrize(
+	("path", "value"),
+	[
+		(("blur", "strength"), 0.9),
+		(("ignore_top_share",), 0.5),
+		(("min_person_score", "SLSV"), 0.8),
+		(("ignore_boxes", "SLSV"), [[5, 5, 5, 9]]),
+	],
+)
+def test_invalid_privacy_values_save_nothing(paths, path, value):
+	submission = base_privacy_submission(paths)
+	target = submission["privacy"]
+
+	for part in path[:-1]:
+		target = target[part]
+
+	target[path[-1]] = value
+
+	result = save_privacy_values(paths, submission)
+
+	assert result.status == "invalid"
+	assert not privacy_file(paths).exists()
+
+
+# What decides WHAT gets blurred stays with IT: these keys are refused on the page.
+@pytest.mark.parametrize(
+	"extra",
+	[
+		{"skip_labels": {"SLSV": ["vehicle"]}},
+		{"detector_command": ["python", "evil.py"]},
+	],
+)
+def test_privacy_keys_that_stay_with_it_are_refused(paths, extra):
+	submission = base_privacy_submission(paths)
+	submission["privacy"].update(extra)
+
+	result = save_privacy_values(paths, submission)
+
+	assert result.status == "invalid"
+	assert not privacy_file(paths).exists()
+
+
+def test_the_log_line_names_per_camera_keys_with_old_and_new_values(paths):
+	submission = base_privacy_submission(paths)
+	submission["privacy"]["ignore_boxes"]["SLSV"] = [[10, 10, 20, 20]]
+	submission["privacy"]["min_person_score"]["SLSV"] = 0.4
+
+	save_privacy_values(paths, submission)
+
+	line = paths.log.read_text(encoding="utf-8").splitlines()[0]
+
+	assert "privacy.ignore_boxes.SLSV: unset -> [[10, 10, 20, 20]]" in line
+	assert "privacy.min_person_score.SLSV: 0.35 -> 0.4" in line

@@ -41,11 +41,28 @@ const SETTINGS_ALLOWED_KEYS = [
 // this list with the Python one.
 const PRIVACY_SETTINGS_ALLOWED_KEYS = [
 	"privacy.blur_cameras",
+	"privacy.blur.strength",
+	"privacy.blur.padding_ratio",
+	"privacy.blur.feather",
+	"privacy.ignore_top_share",
+];
+
+// Maps keyed by a camera name: every key of the file that is a plain name (no dot, no slash) is
+// applied, one camera at a time, so one camera's value never touches another's. Python spells these
+// "<prefix>.*", and the same test compares both lists.
+const PRIVACY_SETTINGS_ALLOWED_MAPS = [
+	"privacy.min_person_score",
+	"privacy.ignore_boxes",
 ];
 
 const SETTINGS_SCOPE_KEYS = [
 	"general" => SETTINGS_ALLOWED_KEYS,
 	"privacy" => PRIVACY_SETTINGS_ALLOWED_KEYS,
+];
+
+const SETTINGS_SCOPE_MAPS = [
+	"general" => [],
+	"privacy" => PRIVACY_SETTINGS_ALLOWED_MAPS,
 ];
 
 // A JSON file as an array. A missing, unreadable or broken file, or one that holds no array or
@@ -150,6 +167,23 @@ function readProjectConfig(): array
 
 			if ($found) {
 				setSettingsLeaf($config, $key, $value);
+			}
+		}
+
+		foreach (SETTINGS_SCOPE_MAPS[$scope] as $prefix) {
+			[$found, $map] = settingsLeaf($settings, $prefix);
+
+			// A list instead of an object holds no camera names: Python drops it too.
+			if (!$found || !is_array($map) || array_is_list($map)) {
+				continue;
+			}
+
+			foreach ($map as $camera => $value) {
+				$name = (string) $camera;
+
+				if (preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]*$/D', $name) === 1) {
+					setSettingsLeaf($config, $prefix . "." . $name, $value);
+				}
 			}
 		}
 	}

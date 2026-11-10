@@ -3,6 +3,15 @@ import json
 import pytest
 
 import src.config as config_module
+from src.privacy.anonymize import (
+	BLUR_FEATHER_RANGE,
+	BLUR_PADDING_RANGE,
+	BLUR_STRENGTH_RANGE,
+	MIN_PERSON_SCORE_RANGE,
+	TOP_SHARE_RANGE,
+	parse_blur_settings,
+	parse_drop_rules,
+)
 from src.settings import (
 	ALLOWED_KEYS,
 	ALLOWED_KEYS_BY_SCOPE,
@@ -29,6 +38,55 @@ INT_BOUNDS = [
 ]
 
 NON_INT_KEYS = {"ignored_cameras", "flagger.cameras", "interval_window.target_time"}
+
+# The privacy scope: fixed keys, and two maps keyed by a camera name ("*").
+PRIVACY_KEYS = {
+	"privacy.blur_cameras",
+	"privacy.blur.strength",
+	"privacy.blur.padding_ratio",
+	"privacy.blur.feather",
+	"privacy.ignore_top_share",
+	"privacy.min_person_score.*",
+	"privacy.ignore_boxes.*",
+}
+
+# (key, lowest, highest, is the highest itself allowed?): the limits the blur code enforces.
+FLOAT_BOUNDS = [
+	("privacy.blur.strength", 0.05, 0.5, True),
+	("privacy.blur.padding_ratio", 0.05, 1.0, True),
+	("privacy.blur.feather", 0.0, 1.0, True),
+	("privacy.ignore_top_share", 0.0, 0.5, False),
+	("privacy.min_person_score.SLSV", 0.0, 0.5, True),
+]
+
+GOOD_BOX_LISTS = [
+	[],
+	[[0, 0, 1, 1]],
+	[[703, 557, 742, 643], [1676, 636, 1720, 736]],
+	[[0, 0, 20000, 20000]],
+	[[index, index, index + 1, index + 1] for index in range(50)],
+]
+
+BAD_BOX_LISTS = [
+	"box",
+	{"a": 1},
+	None,
+	[None],
+	[[1, 2, 3]],
+	[[1, 2, 3, 4, 5]],
+	[[1.0, 2, 3, 4]],
+	[[True, 0, 2, 2]],
+	[["1", 2, 3, 4]],
+	[[-1, 0, 5, 5]],
+	[[5, 0, 5, 5]],
+	[[6, 0, 5, 5]],
+	[[0, 5, 5, 5]],
+	[[0, 6, 5, 5]],
+	[[0, 0, 20001, 5]],
+	[[0, 0, 5, 20001]],
+	[[[1, 2, 3, 4]]],
+	[[1, 2, 3, 4]] * 51,
+]
 
 
 # The submitted and stored shape is nested: "timelapse.crf" is {"timelapse": {"crf": ...}}.
@@ -287,7 +345,7 @@ def test_tests_never_read_a_real_privacy_settings_file():
 
 def test_scopes_have_their_own_allowlists():
 	assert ALLOWED_KEYS_BY_SCOPE["general"] == ALLOWED_KEYS
-	assert ALLOWED_KEYS_BY_SCOPE["privacy"] == ("privacy.blur_cameras",)
+	assert set(ALLOWED_KEYS_BY_SCOPE["privacy"]) == PRIVACY_KEYS
 	assert not set(ALLOWED_KEYS_BY_SCOPE["general"]) & set(ALLOWED_KEYS_BY_SCOPE["privacy"])
 
 
@@ -357,3 +415,149 @@ def test_settings_path_for_follows_the_patched_paths(tmp_path, monkeypatch):
 
 	assert config_module.settings_path_for("general") == tmp_path / "general.json"
 	assert config_module.settings_path_for("privacy") == tmp_path / "privacy.json"
+
+
+# The page's explanations and sliders quote these limits: if the blur code ever changes them, this
+# test says the page has to follow.
+def test_the_ranges_are_the_ones_the_blur_code_enforces():
+	assert BLUR_STRENGTH_RANGE == (0.05, 0.5)
+	assert BLUR_PADDING_RANGE == (0.05, 1.0)
+	assert BLUR_FEATHER_RANGE == (0.0, 1.0)
+	assert TOP_SHARE_RANGE == (0.0, 0.5)
+	assert MIN_PERSON_SCORE_RANGE == (0.0, 0.5)
+
+
+@pytest.mark.parametrize(("key", "low", "high", "high_included"), FLOAT_BOUNDS)
+def test_float_rules_accept_their_bounds_and_values_between(key, low, high, high_included):
+	inside = [low, (low + high) / 2, high if high_included else high - 0.001]
+
+	for value in inside:
+		clean, errors = validate_settings(nest(key, value), "privacy")
+
+		assert errors == []
+		assert clean == nest(key, value)
+
+
+@pytest.mark.parametrize(("key", "low", "high", "high_included"), FLOAT_BOUNDS)
+def test_float_rules_reject_values_outside_their_bounds(key, low, high, high_included):
+	outside = [low - 0.001, high + 0.001, *([] if high_included else [high])]
+
+	for value in outside:
+		clean, errors = validate_settings(nest(key, value), "privacy")
+
+		assert clean == {}
+		assert len(errors) == 1
+		assert errors[0].startswith(key)
+
+
+@pytest.mark.parametrize(
+	"value",
+	[True, False, "0.1", None, [0.1], {"a": 1}, float("nan"), float("inf"), float("-inf")],
+)
+def test_float_rules_reject_wrong_types_and_non_finite_numbers(value):
+	clean, errors = validate_settings(nest("privacy.blur.strength", value), "privacy")
+
+	assert clean == {}
+	assert errors[0].startswith("privacy.blur.strength")
+
+
+def test_float_rules_accept_whole_numbers():
+	for key, value in (("privacy.blur.feather", 0), ("privacy.blur.feather", 1)):
+		clean, errors = validate_settings(nest(key, value), "privacy")
+
+		assert errors == []
+		assert clean == nest(key, value)
+
+
+@pytest.mark.parametrize("boxes", GOOD_BOX_LISTS)
+def test_ignore_boxes_accepts_valid_lists(boxes):
+	clean, errors = validate_settings(nest("privacy.ignore_boxes.SLSV", boxes), "privacy")
+
+	assert errors == []
+	assert clean == nest("privacy.ignore_boxes.SLSV", boxes)
+
+
+@pytest.mark.parametrize("boxes", BAD_BOX_LISTS)
+def test_ignore_boxes_rejects_invalid_lists(boxes):
+	clean, errors = validate_settings(nest("privacy.ignore_boxes.SLSV", boxes), "privacy")
+
+	assert clean == {}
+	assert len(errors) == 1
+	assert errors[0].startswith("privacy.ignore_boxes.SLSV")
+
+
+@pytest.mark.parametrize("camera", ["SLSV", "Alter-Winkel-Promenade", "a_b", "Cam1", "1"])
+def test_per_camera_rules_accept_plain_camera_names(camera):
+	submitted = {"privacy": {"min_person_score": {camera: 0.3}, "ignore_boxes": {camera: []}}}
+
+	clean, errors = validate_settings(submitted, "privacy")
+
+	assert errors == []
+	assert clean == submitted
+
+
+# A dot is the path separator, so a name with one cannot carry per-camera values.
+@pytest.mark.parametrize("camera", ["a.b", "../x", "-x", "a b", "", ".hidden", "ä", "a/b"])
+def test_per_camera_rules_refuse_other_names(camera):
+	clean, errors = validate_settings({"privacy": {"ignore_boxes": {camera: []}}}, "privacy")
+
+	assert clean == {}
+	assert len(errors) == 1
+
+
+@pytest.mark.parametrize(
+	"submitted",
+	[
+		{"privacy": {"skip_labels": {"SLSV": ["vehicle"]}}},
+		{"privacy": {"detector_command": ["x"]}},
+		{"privacy": {"blur": {"other": 1}}},
+		{"privacy": {"unknown": 1}},
+		{"privacy": {"min_person_score": 0.3}},
+		{"privacy": {"ignore_boxes": [[1, 1, 2, 2]]}},
+		{"privacy": {"min_person_score": {"SLSV": {"x": 1}}}},
+	],
+)
+def test_other_privacy_keys_are_refused(submitted):
+	clean, errors = validate_settings(submitted, "privacy")
+
+	assert clean == {}
+	assert errors
+
+
+# What the page accepts must never stop the nightly blur run: the blur code's own checks pass.
+def test_everything_the_validator_accepts_passes_the_blur_code_checks():
+	privacy = {
+		"blur": {"strength": 0.05, "padding_ratio": 1.0, "feather": 0},
+		"ignore_top_share": 0.49,
+		"min_person_score": {"A": 0.5, "B": 0},
+		"ignore_boxes": {"A": [[0, 0, 20000, 20000]], "B": []},
+	}
+
+	clean, errors = validate_settings({"privacy": privacy}, "privacy")
+
+	assert errors == []
+
+	parse_blur_settings(clean["privacy"]["blur"])
+	parse_drop_rules(clean["privacy"])
+
+
+def test_load_config_with_privacy_overrides_passes_the_blur_code_checks(tmp_path, monkeypatch):
+	base = json.loads(config_module.CONFIG_PATH.read_text(encoding="utf-8"))["privacy"]
+	overrides = {
+		"privacy": {
+			"blur": {"strength": 0.1},
+			"min_person_score": {"NewCam": 0.3},
+			"ignore_boxes": {"NewCam": [[1, 1, 9, 9]]},
+		}
+	}
+	patch_files(tmp_path, monkeypatch, None, overrides)
+
+	privacy = config_module.load_config()["privacy"]
+
+	assert privacy["blur"] == {**base["blur"], "strength": 0.1}
+	# One camera's value never touches another's.
+	assert privacy["min_person_score"] == {**base["min_person_score"], "NewCam": 0.3}
+	assert privacy["ignore_boxes"] == {**base["ignore_boxes"], "NewCam": [[1, 1, 9, 9]]}
+
+	parse_blur_settings(privacy["blur"])
+	parse_drop_rules(privacy)

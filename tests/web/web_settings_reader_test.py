@@ -221,8 +221,72 @@ def test_a_missing_privacy_file_has_time_zero(tmp_path):
 	assert php(tmp_path, 'echo json_encode(readSettingsMtime("privacy"));') == 0
 
 
-def test_php_privacy_key_list_equals_the_python_allowlist(tmp_path):
-	keys = php(tmp_path, "echo json_encode(PRIVACY_SETTINGS_ALLOWED_KEYS);")
+def test_php_privacy_key_lists_equal_the_python_allowlist(tmp_path):
+	leaves, maps = php(
+		tmp_path,
+		"echo json_encode([PRIVACY_SETTINGS_ALLOWED_KEYS, PRIVACY_SETTINGS_ALLOWED_MAPS]);",
+	)
+	keys = [*leaves, *(f"{prefix}.*" for prefix in maps)]
 
 	assert len(keys) == len(set(keys))
 	assert sorted(keys) == sorted(ALLOWED_KEYS_BY_SCOPE["privacy"])
+
+
+PRIVACY_BASE = {
+	**BASE,
+	"privacy": {
+		"blur_cameras": ["Blur"],
+		"blur": {"strength": 0.08, "padding_ratio": 0.05, "feather": 0.5},
+		"ignore_top_share": 0.333,
+		"min_person_score": {"SLSV": 0.35},
+		"ignore_boxes": {"A": [[1, 1, 2, 2]]},
+	},
+}
+
+
+def test_the_privacy_file_applies_blur_values_and_per_camera_maps(tmp_path):
+	overrides = {
+		"privacy": {
+			"blur": {"strength": 0.1},
+			"ignore_top_share": 0.2,
+			"min_person_score": {"New": 0.3},
+			"ignore_boxes": {"A": [], "New": [[3, 3, 9, 9]]},
+		}
+	}
+	write_config(tmp_path, PRIVACY_BASE, privacy=overrides)
+
+	privacy = effective(tmp_path)["privacy"]
+
+	assert privacy["blur"] == {"strength": 0.1, "padding_ratio": 0.05, "feather": 0.5}
+	assert privacy["ignore_top_share"] == 0.2
+	# One camera's value never touches another's.
+	assert privacy["min_person_score"] == {"SLSV": 0.35, "New": 0.3}
+	assert privacy["ignore_boxes"] == {"A": [], "New": [[3, 3, 9, 9]]}
+
+
+def test_php_ignores_per_camera_keys_that_are_not_plain_names(tmp_path):
+	overrides = {"privacy": {"min_person_score": {"a.b": 0.3, "../x": 0.3, "-x": 0.3, "ok": 0.3}}}
+	write_config(tmp_path, PRIVACY_BASE, privacy=overrides)
+
+	assert effective(tmp_path)["privacy"]["min_person_score"] == {"SLSV": 0.35, "ok": 0.3}
+
+
+@pytest.mark.parametrize(
+	"overrides",
+	[
+		{"privacy": {"min_person_score": 0.3, "ignore_boxes": "x"}},
+		{"privacy": {"min_person_score": [0.3], "ignore_boxes": [[1, 1, 2, 2]]}},
+		{"privacy": {"min_person_score": None, "ignore_boxes": {}}},
+	],
+)
+def test_a_privacy_map_that_is_not_an_object_changes_nothing(tmp_path, overrides):
+	write_config(tmp_path, PRIVACY_BASE, privacy=overrides)
+
+	assert effective(tmp_path) == PRIVACY_BASE
+
+
+def test_the_general_file_does_not_apply_per_camera_privacy_maps(tmp_path):
+	settings = {"privacy": {"ignore_boxes": {"New": [[1, 1, 2, 2]]}}}
+	write_config(tmp_path, PRIVACY_BASE, settings=settings)
+
+	assert effective(tmp_path)["privacy"]["ignore_boxes"] == {"A": [[1, 1, 2, 2]]}

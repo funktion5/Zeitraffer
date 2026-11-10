@@ -5,10 +5,26 @@ from pathlib import Path
 
 from src.logger import logger
 
+# The limits the blur code enforces, taken from there so that nothing the page accepts can stop the
+# nightly blur run (it raises a PrivacyCheckError for anything outside them).
+from src.privacy.anonymize import (
+	BLUR_FEATHER_RANGE,
+	BLUR_PADDING_RANGE,
+	BLUR_STRENGTH_RANGE,
+	MIN_PERSON_SCORE_RANGE,
+	TOP_SHARE_RANGE,
+)
+
 # The same plain-name pattern the storage listing and the web pages apply: a camera name ends up in
 # file paths. fullmatch, because "$" would accept a trailing newline.
 CAMERA_NAME_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 TIME_OF_DAY_PATTERN = re.compile(r"([01]\d|2[0-3]):[0-5]\d")
+# A camera name as a settings KEY: no dot, because the dot separates the parts of a key path.
+CAMERA_KEY_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]*")
+
+# Sanity limits for ignore boxes (pixel coordinates of a camera image).
+BOX_COORDINATE_MAX = 20000
+BOXES_PER_CAMERA_MAX = 50
 
 
 @dataclass(frozen=True)
@@ -47,7 +63,60 @@ class TimeOfDayRule:
 		return isinstance(value, str) and TIME_OF_DAY_PATTERN.fullmatch(value) is not None
 
 
-Rule = IntRule | CameraNamesRule | TimeOfDayRule
+@dataclass(frozen=True)
+class FloatRule:
+	low: float
+	high: float
+	# The top-share limit is "below 0.5", not "up to 0.5".
+	high_included: bool = True
+
+	@property
+	def description(self) -> str:
+		upper = "bis" if self.high_included else "bis unter"
+
+		return f"muss eine Zahl von {self.low:g} {upper} {self.high:g} sein"
+
+	def accepts(self, value: object) -> bool:
+		# bool is a subclass of int. NaN and infinity fail the comparisons below.
+		if isinstance(value, bool) or not isinstance(value, (int, float)):
+			return False
+
+		if self.high_included:
+			return self.low <= value <= self.high
+
+		return self.low <= value < self.high
+
+
+def _is_box(box: object) -> bool:
+	if not isinstance(box, list) or len(box) != 4:
+		return False
+
+	for coordinate in box:
+		if isinstance(coordinate, bool) or not isinstance(coordinate, int):
+			return False
+
+		if not 0 <= coordinate <= BOX_COORDINATE_MAX:
+			return False
+
+	# The same shape the blur code requires: x1 right of x0 and y1 below y0.
+	return box[2] > box[0] and box[3] > box[1]
+
+
+@dataclass(frozen=True)
+class BoxListRule:
+	description = (
+		f"muss eine Liste von höchstens {BOXES_PER_CAMERA_MAX} Rahmen [x0, y0, x1, y1] sein"
+	)
+
+	def accepts(self, value: object) -> bool:
+		return (
+			isinstance(value, list)
+			and len(value) <= BOXES_PER_CAMERA_MAX
+			and all(_is_box(box) for box in value)
+		)
+
+
+Rule = IntRule | CameraNamesRule | TimeOfDayRule | FloatRule | BoxListRule
 
 _DAYLIGHT_BUFFER = IntRule(0, 240)
 
@@ -77,6 +146,14 @@ ALLOWED_KEYS: tuple[str, ...] = tuple(GENERAL_RULES)
 # with their own rule types.
 PRIVACY_RULES: dict[str, Rule] = {
 	"privacy.blur_cameras": CameraNamesRule(),
+	"privacy.blur.strength": FloatRule(*BLUR_STRENGTH_RANGE),
+	"privacy.blur.padding_ratio": FloatRule(*BLUR_PADDING_RANGE),
+	"privacy.blur.feather": FloatRule(*BLUR_FEATHER_RANGE),
+	# The blur code takes 0 up to BELOW half the image.
+	"privacy.ignore_top_share": FloatRule(*TOP_SHARE_RANGE, high_included=False),
+	# A "*" is one camera name: one value per camera, so one camera never touches another's.
+	"privacy.min_person_score.*": FloatRule(*MIN_PERSON_SCORE_RANGE),
+	"privacy.ignore_boxes.*": BoxListRule(),
 }
 
 SCOPES: dict[str, dict[str, Rule]] = {"general": GENERAL_RULES, "privacy": PRIVACY_RULES}
@@ -108,6 +185,37 @@ def get_leaf(source: dict, dotted_key: str, default: object = None) -> object:
 	return node
 
 
+# The leaves of a nested dict as {dotted key: value}. A dict is a branch; a list, a number or a text
+# is a leaf.
+def flatten_leaves(nested: dict, prefix: str = "") -> dict[str, object]:
+	leaves: dict[str, object] = {}
+
+	for key, value in nested.items():
+		path = f"{prefix}.{key}" if prefix else str(key)
+
+		if isinstance(value, dict):
+			leaves.update(flatten_leaves(value, path))
+		else:
+			leaves[path] = value
+
+	return leaves
+
+
+# The rule of a key path: an exact key, or "<prefix>.*" for a plain camera name below the prefix.
+def _rule_for(rules: dict[str, Rule], path: str) -> Rule | None:
+	rule = rules.get(path)
+
+	if rule is not None:
+		return rule
+
+	prefix, _, camera = path.rpartition(".")
+
+	if prefix and CAMERA_KEY_PATTERN.fullmatch(camera):
+		return rules.get(f"{prefix}.*")
+
+	return None
+
+
 # Checks a submitted or stored settings object, nested like config.json. Returns the leaves that
 # passed (nested again) and one German message per rejected leaf, each starting with its dotted
 # key. A leaf is the value at an allowlisted key; a dict anywhere else is walked into, so a key
@@ -123,13 +231,12 @@ def validate_settings(raw: object, scope: str = "general") -> tuple[dict, list[s
 	def walk(node: dict, prefix: str) -> None:
 		for key, value in node.items():
 			path = f"{prefix}.{key}" if prefix else str(key)
+			rule = _rule_for(rules, path)
 
 			# A dot inside a key would let "timelapse.crf" skip the nesting.
 			if "." in str(key):
 				errors.append(f"{path}: nicht änderbar")
-			elif path in rules:
-				rule = rules[path]
-
+			elif rule is not None:
 				if rule.accepts(value):
 					set_leaf(clean, path, value)
 				else:
