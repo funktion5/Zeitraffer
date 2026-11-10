@@ -63,13 +63,15 @@ class BlurSettings:
 
 
 # Boxes to drop before blurring: known false positives per camera, labels a camera never needs
-# blurred, weak person boxes per camera and the global top band.
+# blurred, weak person boxes per camera and the top band (one value for all cameras, which a
+# camera's own value replaces).
 @dataclass(frozen=True)
 class DropRules:
 	top_share: float = 0.0
 	ignore_boxes: dict[str, list[list[int]]] = field(default_factory=dict)
 	skip_labels: dict[str, list[str]] = field(default_factory=dict)
 	min_person_score: dict[str, float] = field(default_factory=dict)
+	top_share_by_camera: dict[str, float] = field(default_factory=dict)
 
 
 # One blurred area: the even-aligned crop plus the shape whose alpha fades towards its edge.
@@ -209,6 +211,7 @@ def run_detector(
 # enough to matter: a box mostly up there is a false positive (Scheunenviertel 2026-08-16: the
 # mount's hook, twice). Applied when blurring, so cached detections stay valid.
 # privacy.ignore_top_share sets the part (1/3 decided with Julius 2026-10-16); 0 switches it off.
+# privacy.ignore_top_share_per_camera gives one camera a value of its own instead.
 def split_top_band(boxes: list[Box], height: int, share: float) -> tuple[list[Box], list[Box]]:
 	limit = height * share
 	kept: list[Box] = []
@@ -253,21 +256,38 @@ def filter_boxes(
 		or (box.label == "person" and box.score < min_score)
 		or any(box_overlap(box, r) >= MIN_IGNORE_OVERLAP for r in references)
 	]
-	kept, top = split_top_band([box for box in boxes if box not in known], height, rules.top_share)
+	top_share = rules.top_share_by_camera.get(camera, rules.top_share)
+	kept, top = split_top_band([box for box in boxes if box not in known], height, top_share)
 
 	return kept, known + top
+
+
+def _is_top_share(value: object) -> bool:
+	return (
+		not isinstance(value, bool)
+		and isinstance(value, (int, float))
+		and TOP_SHARE_RANGE[0] <= value < TOP_SHARE_RANGE[1]
+	)
 
 
 # Checked when a run starts: a typo here would silently drop real people, so it stops the run.
 def parse_drop_rules(privacy: dict) -> DropRules:
 	top_share = privacy.get("ignore_top_share", 0.0)
 
-	if (
-		isinstance(top_share, bool)
-		or not isinstance(top_share, (int, float))
-		or not TOP_SHARE_RANGE[0] <= top_share < TOP_SHARE_RANGE[1]
-	):
+	if not _is_top_share(top_share):
 		raise PrivacyCheckError("privacy.ignore_top_share must be a number from 0 to below 0.5.")
+
+	top_share_by_camera = privacy.get("ignore_top_share_per_camera") or {}
+
+	if not isinstance(top_share_by_camera, dict):
+		raise PrivacyCheckError("privacy.ignore_top_share_per_camera must map cameras to numbers.")
+
+	for camera, share in top_share_by_camera.items():
+		if not _is_top_share(share):
+			raise PrivacyCheckError(
+				f"privacy.ignore_top_share_per_camera for {camera} "
+				"must be a number from 0 to below 0.5."
+			)
 
 	ignore_boxes = privacy.get("ignore_boxes") or {}
 
@@ -320,6 +340,7 @@ def parse_drop_rules(privacy: dict) -> DropRules:
 		ignore_boxes=ignore_boxes,
 		skip_labels=skip_labels,
 		min_person_score={camera: float(score) for camera, score in min_person_score.items()},
+		top_share_by_camera={camera: float(share) for camera, share in top_share_by_camera.items()},
 	)
 
 

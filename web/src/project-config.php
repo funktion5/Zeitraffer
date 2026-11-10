@@ -53,6 +53,7 @@ const PRIVACY_SETTINGS_ALLOWED_KEYS = [
 const PRIVACY_SETTINGS_ALLOWED_MAPS = [
 	"privacy.min_person_score",
 	"privacy.ignore_boxes",
+	"privacy.ignore_top_share_per_camera",
 ];
 
 const SETTINGS_SCOPE_KEYS = [

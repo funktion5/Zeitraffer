@@ -580,6 +580,26 @@ def test_filter_boxes_drops_known_false_positives_and_the_top_band() -> None:
 	assert privacy.filter_boxes([sign], 1080, rules, "Other")[0] == [sign]
 
 
+# A camera's own top share replaces the global one for that camera only, and 0 switches the band off
+# there. The frame is 1080 px high; the mount box is mostly (74 %) inside the top third, the low
+# box not at all.
+def test_filter_boxes_uses_the_cameras_own_top_share() -> None:
+	mount = Box(x0=1545, y0=20, x1=1918, y1=480, score=0.35)
+	low = Box(x0=100, y0=400, x1=140, y1=500, score=0.9)
+	rules = privacy.DropRules(
+		top_share=1 / 3,
+		top_share_by_camera={"Narrow": 0.1, "Off": 0.0, "Wide": 0.45},
+	)
+
+	# No value of its own: the global third decides.
+	assert privacy.filter_boxes([mount, low], 1080, rules, "Other") == ([low], [mount])
+	# A narrower band keeps the mount (19 % inside), a switched-off band keeps everything.
+	assert privacy.filter_boxes([mount, low], 1080, rules, "Narrow") == ([mount, low], [])
+	assert privacy.filter_boxes([mount, low], 1080, rules, "Off") == ([mount, low], [])
+	# A wider band also takes the low box (86 % inside 0.45 of 1080 = 486 px).
+	assert privacy.filter_boxes([mount, low], 1080, rules, "Wide") == ([], [mount, low])
+
+
 # SLSV: boats on wheeled trailers are found as vehicles, and plate search runs inside them.
 def test_filter_boxes_skips_the_camera_s_listed_labels_only() -> None:
 	boat = Box(x0=100, y0=600, x1=400, y1=800, score=0.5, label="vehicle")
@@ -629,6 +649,19 @@ def test_parse_drop_rules_accepts_the_production_shape() -> None:
 	assert privacy.parse_drop_rules({}) == privacy.DropRules()
 
 
+# A camera's own top share: a map of camera to number, with the same limits as the global one.
+def test_parse_drop_rules_reads_the_per_camera_top_share() -> None:
+	rules = privacy.parse_drop_rules(
+		{"ignore_top_share": 0.333, "ignore_top_share_per_camera": {"A": 0.1, "B": 0, "C": 0.49}}
+	)
+
+	assert rules.top_share == 0.333
+	assert rules.top_share_by_camera == {"A": 0.1, "B": 0.0, "C": 0.49}
+	assert all(isinstance(share, float) for share in rules.top_share_by_camera.values())
+	# Without the key every camera follows the global value.
+	assert privacy.parse_drop_rules({"ignore_top_share": 0.2}).top_share_by_camera == {}
+
+
 # Each of these would silently drop real people instead of stopping the run.
 @pytest.mark.parametrize(
 	"privacy_section",
@@ -638,6 +671,14 @@ def test_parse_drop_rules_accepts_the_production_shape() -> None:
 		{"ignore_top_share": -0.1},
 		{"ignore_top_share": True},
 		{"ignore_top_share": "0.3"},
+		{"ignore_top_share_per_camera": 0.3},
+		{"ignore_top_share_per_camera": [0.1]},
+		{"ignore_top_share_per_camera": {"C": 0.5}},
+		{"ignore_top_share_per_camera": {"C": 3.33}},
+		{"ignore_top_share_per_camera": {"C": -0.1}},
+		{"ignore_top_share_per_camera": {"C": True}},
+		{"ignore_top_share_per_camera": {"C": "0.3"}},
+		{"ignore_top_share_per_camera": {"C": None}},
 		{"ignore_boxes": [[1, 2, 3, 4]]},
 		{"ignore_boxes": {"C": [[1, 2, 3]]}},
 		{"ignore_boxes": {"C": [[3, 2, 1, 4]]}},

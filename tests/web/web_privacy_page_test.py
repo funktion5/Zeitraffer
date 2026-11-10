@@ -834,6 +834,9 @@ def test_the_drawing_help_is_hidden_until_the_script_runs_and_names_every_symbol
 	assert "Rahmen bearbeiten" in help_tag
 	# Moving a box by hand is explained too, next to drawing one.
 	assert "schiebst" in help_tag
+	# The strip's edge can be dragged, and that one value is the same for every camera.
+	assert "Kante" in help_tag
+	assert "alle Kameras" in help_tag
 	assert "Streifen" in help_tag
 	assert "Entfernen" in help_tag
 
@@ -870,6 +873,9 @@ def test_the_script_draws_with_pointer_events_and_keeps_the_layer_out_of_the_acc
 	assert "is-drawing" in script
 	# A box on the picture knows which row it is, so a drag on it can change that row.
 	assert "dataset.row" in script
+	# The strip's handle writes the ONE global top-share field (and its slider), nothing per camera.
+	assert "privacy-top-handle" in script
+	assert "setTopShare" in script
 	assert "innerHTML =" not in script
 	assert re.search(r"\bvar\b", script) is None
 
@@ -928,6 +934,18 @@ def test_the_layer_only_catches_the_pointer_while_drawing():
 	assert "touch-action" not in layer
 	assert "pointer-events: auto" in drawing
 	assert "touch-action: none" in drawing
+
+
+# The strip's handle exists on the picture only while editing is on; its pointer says "up and down".
+def test_the_strip_handle_shows_only_while_editing():
+	css = STYLE.read_text(encoding="utf-8")
+	pattern = r"\.privacy-preview-layer\.is-drawing \.privacy-top-handle\s*\{[^}]*\}"
+	idle = tag_of(css, r"\.privacy-top-handle\s*\{[^}]*\}", re.S)
+	editing = tag_of(css, pattern, re.S)
+
+	assert "display: none" in idle
+	assert "display: block" in editing
+	assert "cursor: ns-resize" in editing
 
 
 # A box can be grabbed only while editing is on, and the pointer says so.

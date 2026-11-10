@@ -13,6 +13,7 @@ from src.config import PROJECT_ROOT
 from src.logger import logger
 from src.settings import (
 	SCOPES,
+	base_leaf,
 	flatten_leaves,
 	get_leaf,
 	load_valid_settings,
@@ -60,7 +61,7 @@ def _overrides(base: dict, clean: dict) -> dict:
 
 	# The validated submission is walked, not a fixed key list: per-camera keys have no fixed names.
 	for key, value in flatten_leaves(clean).items():
-		base_value = get_leaf(base, key, _MISSING)
+		base_value = base_leaf(base, key, _MISSING)
 
 		# An empty list where the base has nothing (a camera without ignore boxes) changes nothing.
 		if base_value is _MISSING and value == []:
@@ -94,7 +95,7 @@ def _write_atomically(destination: Path, content: dict) -> None:
 def _effective(base: dict, overrides: dict, key: str) -> object:
 	value = get_leaf(overrides, key, _MISSING)
 
-	return value if value is not _MISSING else get_leaf(base, key, _MISSING)
+	return value if value is not _MISSING else base_leaf(base, key, _MISSING)
 
 
 def _render(value: object) -> str:

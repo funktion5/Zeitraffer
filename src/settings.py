@@ -152,6 +152,7 @@ PRIVACY_RULES: dict[str, Rule] = {
 	# The blur code takes 0 up to BELOW half the image.
 	"privacy.ignore_top_share": FloatRule(*TOP_SHARE_RANGE, high_included=False),
 	# A "*" is one camera name: one value per camera, so one camera never touches another's.
+	"privacy.ignore_top_share_per_camera.*": FloatRule(*TOP_SHARE_RANGE, high_included=False),
 	"privacy.min_person_score.*": FloatRule(*MIN_PERSON_SCORE_RANGE),
 	"privacy.ignore_boxes.*": BoxListRule(),
 }
@@ -183,6 +184,29 @@ def get_leaf(source: dict, dotted_key: str, default: object = None) -> object:
 		node = node[part]
 
 	return node
+
+
+# Where config.json has no value for a camera under one of these prefixes, the camera's default is
+# another key: a top share of its own that equals the global one changes nothing, so it is no
+# override (and the camera keeps following the global value if that is changed later).
+DEFAULT_FROM: dict[str, str] = {
+	"privacy.ignore_top_share_per_camera": "privacy.ignore_top_share",
+}
+
+_ABSENT = object()
+
+
+# The value config.json gives a key: its own, else the default named in DEFAULT_FROM, else the
+# default argument.
+def base_leaf(base: dict, dotted_key: str, default: object = None) -> object:
+	value = get_leaf(base, dotted_key, _ABSENT)
+
+	if value is not _ABSENT:
+		return value
+
+	source = DEFAULT_FROM.get(dotted_key.rpartition(".")[0])
+
+	return get_leaf(base, source, default) if source else default
 
 
 # The leaves of a nested dict as {dotted key: value}. A dict is a branch; a list, a number or a text

@@ -472,9 +472,40 @@ ul {
 	border-bottom: 2px dashed var(--color-danger);
 }
 
+/* The grab zone on the strip's lower edge: a band across the picture, centred on the edge, with the
+   edge drawn as a solid line. It is there only while editing is on. */
+.privacy-top-handle {
+	display: none;
+	position: absolute;
+	left: 0;
+
+	width: 100%;
+	height: 16px;
+
+	transform: translateY(-50%);
+}
+
+.privacy-top-handle::before {
+	content: "";
+
+	position: absolute;
+	top: 50%;
+	right: 0;
+	left: 0;
+
+	border-top: 3px solid var(--color-danger);
+}
+
+.privacy-preview-layer.is-drawing .privacy-top-handle {
+	display: block;
+
+	cursor: ns-resize;
+}
+
 /* A label on the picture stays readable on any photo: a dark chip with light text. */
 .privacy-box-shape span,
-.privacy-top-band span {
+.privacy-top-band span,
+.privacy-top-handle span {
 	position: absolute;
 	top: 0;
 	left: 0;
@@ -488,6 +519,14 @@ ul {
 	font-size: 0.75rem;
 	line-height: 1.5;
 	white-space: nowrap;
+}
+
+/* The handle's chip sits in the middle of the edge, so it does not cover the first box on the left. */
+.privacy-top-handle span {
+	top: 50%;
+	left: 50%;
+
+	transform: translate(-50%, -50%);
 }
 
 /* "Entfernen" deletes the row, so it is red like the app's other delete buttons. The generic small

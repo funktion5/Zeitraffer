@@ -320,6 +320,25 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			// box number by one scale factor. The rows of four numbers stay the real control (and the way
 			// to work without a mouse): the layer only shows them and adds rows from a drag.
 			const topShare = form.querySelector("#privacy-privacy-ignore_top_share");
+			const topRange = form.querySelector(`[data-slider-for="${topShare.id}"]`);
+
+			// The field's own limit: the strip cannot be pulled further than the page would accept.
+			const TOP_SHARE_MAX = Number(topShare.max);
+
+			// The strip counts only while the field holds a usable number.
+			const currentShare = () => {
+				const value = Number(topShare.value);
+
+				return topShare.value.trim() !== "" && value > 0 && value < 0.5 ? value : 0;
+			};
+
+			// The top share is ONE value for every camera: a drag on any picture writes the same field and
+			// slider, and every picture follows.
+			const setTopShare = (value) => {
+				topShare.value = String(value);
+				topRange.value = String(value);
+				refreshAll();
+			};
 
 			// Smaller than this (in screen pixels) is a click or a slip of the hand, not a box.
 			const MIN_DRAWN_SIDE = 6;
@@ -412,6 +431,15 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					shapes.push(shape);
 				});
 
+				// The handle on the strip's lower edge, on top of everything. At 0 it waits at the top, so the
+				// strip can be pulled out of nothing. It shows only while editing is on (see the CSS).
+				const handle = document.createElement("div");
+
+				handle.className = "privacy-top-handle";
+				handle.style.top = `max(8px, ${currentShare() * 100}%)`;
+				handle.append(badge("Oberer Rand: gilt für alle Kameras"));
+				shapes.push(handle);
+
 				layer.replaceChildren(...shapes);
 			};
 
@@ -492,6 +520,14 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					layer.setPointerCapture(event.pointerId);
 
 					const start = pointAt(event);
+
+					// The strip's edge: the drag changes the global top share, not a box.
+					if (event.target.closest(".privacy-top-handle") !== null) {
+						gesture = { kind: "strip", start, share: currentShare(), moved: false };
+
+						return;
+					}
+
 					const grabbed = event.target.closest(".privacy-box-shape[data-row]");
 					const row = grabbed === null
 						? undefined
@@ -520,6 +556,16 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					const now = pointAt(event);
 					const size = pictureSize(section);
 
+					// The pointer's way down the picture, as a share of its height, from where the edge was.
+					if (gesture.kind === "strip") {
+						const share = gesture.share + (now.y - gesture.start.y) / now.height;
+
+						gesture.moved = true;
+						setTopShare(Math.min(Math.max(Math.round(share * 100) / 100, 0), TOP_SHARE_MAX));
+
+						return;
+					}
+
 					// The box follows the pointer on the picture; the row's numbers change when it is let go.
 					if (gesture.kind === "move") {
 						const to = movedBox(gesture.box, now, size);
@@ -544,6 +590,21 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					}
 
 					const { kind, start, box, row } = gesture;
+
+					if (kind === "strip") {
+						const moved = gesture.moved;
+
+						stop();
+
+						if (moved) {
+							status.textContent = `Oberer Rand: ${currentShare().toLocaleString("de-DE")} der Bildhöhe, für alle Kameras. Zum Übernehmen unten auf „Speichern“ drücken.`;
+						}
+
+						refreshAll();
+
+						return;
+					}
+
 					const end = pointAt(event);
 					const size = pictureSize(section);
 					const container = containerOf(section);
@@ -601,6 +662,11 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				});
 
 				layer.addEventListener("pointercancel", () => {
+					// A cancelled drag of the strip leaves the value as it was before the drag.
+					if (gesture?.kind === "strip") {
+						setTopShare(gesture.share);
+					}
+
 					stop();
 					redrawSection(section);
 				});
