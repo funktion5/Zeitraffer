@@ -21,3 +21,12 @@ def nonexistent_camera_root(monkeypatch):
 	import src.images as images_module
 
 	monkeypatch.setattr(images_module, "CAMERA_ROOT", Path("/nonexistent-camera-root"))
+
+
+# A config/settings.json on the machine running the tests (a developer's copy, or the VPS) must
+# never change a result: load_config() reads it, so every test gets a nonexistent one.
+@pytest.fixture(autouse=True)
+def no_real_settings_file(monkeypatch, tmp_path):
+	import src.config as config_module
+
+	monkeypatch.setattr(config_module, "SETTINGS_PATH", tmp_path / "no-settings.json")

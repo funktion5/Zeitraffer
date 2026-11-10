@@ -12,6 +12,7 @@ from src.privacy.box_writer import check_camera_name
 
 
 EXPECTED_ROOT_KEYS = {
+	"_note",
 	"location",
 	"daylight_buffer_minutes",
 	"automatic_daylight_buffer_minutes",
@@ -266,6 +267,17 @@ def test_production_config_has_expected_structure():
 	config = config_module.load_config()
 
 	assert_valid_config_structure(config)
+
+
+# IT edits config.json by hand: its first key must say that settings.json can override it.
+def test_config_json_starts_with_the_settings_note():
+	with config_module.CONFIG_PATH.open("r", encoding="utf-8") as config_file:
+		config = json.load(config_file)
+
+	assert next(iter(config)) == "_note"
+	assert isinstance(config["_note"], str)
+	assert "settings.json" in config["_note"]
+	assert "Einstellungen" in config["_note"]
 
 
 # Loading a custom configuration path must return that file's contents.

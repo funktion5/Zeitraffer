@@ -1,4 +1,5 @@
 {
+  "_note": "Keys that can be changed on the web UI page Einstellungen are stored in config/settings.json, and a value there overrides this file. Change those keys on that page, not here. Which keys: docs/konfiguration.md.",
   "location": {
     "latitude": 52.472,
     "longitude": 9.333,
