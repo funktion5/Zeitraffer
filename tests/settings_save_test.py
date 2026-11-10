@@ -509,9 +509,7 @@ def test_a_per_camera_top_share_equal_to_the_global_one_is_not_stored(paths):
 	submission["privacy"]["ignore_top_share_per_camera"] = {"SLSV": global_share, "NewCam": 0.2}
 
 	assert save_privacy_values(paths, submission).status == "saved"
-	assert stored_privacy(paths) == {
-		"privacy": {"ignore_top_share_per_camera": {"NewCam": 0.2}}
-	}
+	assert stored_privacy(paths) == {"privacy": {"ignore_top_share_per_camera": {"NewCam": 0.2}}}
 
 
 def test_a_per_camera_top_share_of_zero_is_a_real_override(paths):
