@@ -41,9 +41,11 @@ groups, a "last saved" line, a reset button, one Save). The changes go to a sepa
 | | `min_coverage_days.monthly`, `yearly` | monthly 1 to 31, yearly 1 to 366 |
 | Logs | `log_retention_days` | whole number 1 to 365 |
 
-NOT changeable, on purpose: everything under `privacy` (which cameras are blurred, ignore boxes, detector
-command) because it is a data-protection decision; `location`; `timelapse.ffmpeg_threads` and
-`image_scan_stall_timeout_seconds` (a wrong value can overload the 2-core VPS or stall jobs).
+NOT changeable on the general tab, on purpose: `location`; `timelapse.ffmpeg_threads` and
+`image_scan_stall_timeout_seconds` (a wrong value can overload the 2-core VPS or stall jobs). The `privacy`
+block was off limits here too, but on 2026-11-10 Julius and a colleague decided otherwise: the blur
+settings get their own tab "Verpixelung" with its own file and its own save, see
+`2026-11-10-blur-settings.md` (which replaces this rule for `privacy`).
 
 ## How it works
 
