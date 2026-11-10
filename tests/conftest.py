@@ -11,6 +11,13 @@ os.environ.pop("TIMELAPSE_X264_CRF", None)
 # the shell must never turn a test that forgot to patch the source into a run against the real box.
 os.environ.pop("TIMELAPSE_STORAGE_BOX", None)
 os.environ.pop("TIMELAPSE_FRAME_SOURCE", None)
+# numpy and cv2 start BLAS thread pools the moment they are imported, and pytest imports them while
+# collecting the flagger and privacy tests. Python 3.12+ then warns at every fork of the isolated
+# worker tests ("multi-threaded, use of fork() may lead to deadlocks"). The tests only use tiny
+# arrays, so one BLAS thread is plenty. This has to run before the first import of numpy or cv2,
+# which is why it sits here: pytest loads this file before it collects any test module.
+os.environ["OPENBLAS_NUM_THREADS"] = "1"
+os.environ["OMP_NUM_THREADS"] = "1"
 
 
 # Job tests stub the image finders but still build a frame source for their cleanup. The old
