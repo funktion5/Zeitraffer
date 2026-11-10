@@ -1,0 +1,316 @@
+import io
+import json
+import os
+import stat
+from typing import NamedTuple
+
+import pytest
+
+import src.config as config_module
+import src.settings_save as settings_save
+from src.settings import ALLOWED_KEYS, get_leaf, set_leaf
+
+
+# An arbitrary but fixed modification time, so "the file changed since the page loaded" is exact.
+FILE_TIME = 1_700_000_000
+
+
+class Paths(NamedTuple):
+	config: object
+	settings: object
+	log: object
+
+
+# A copy of the real config.json next to a settings file and a log folder, like the project layout.
+@pytest.fixture
+def paths(tmp_path):
+	config_folder = tmp_path / "config"
+	logs_folder = tmp_path / "logs"
+	config_folder.mkdir()
+	logs_folder.mkdir()
+
+	config_path = config_folder / "config.json"
+	config_path.write_text(config_module.CONFIG_PATH.read_text(encoding="utf-8"), encoding="utf-8")
+
+	return Paths(config_path, config_folder / "settings.json", logs_folder / "settings.log")
+
+
+def read_base(paths: Paths) -> dict:
+	return json.loads(paths.config.read_text(encoding="utf-8"))
+
+
+# What the form submits: every allowed leaf, at its value in config.json.
+def base_submission(paths: Paths) -> dict:
+	base = read_base(paths)
+	submission: dict = {}
+
+	for key in ALLOWED_KEYS:
+		set_leaf(submission, key, get_leaf(base, key))
+
+	return submission
+
+
+def write_settings(paths: Paths, content: dict) -> None:
+	paths.settings.write_text(json.dumps(content), encoding="utf-8")
+	os.utime(paths.settings, (FILE_TIME, FILE_TIME))
+
+
+def save(paths: Paths, submitted: object, expected_mtime: int = 0):
+	return settings_save.save_settings(
+		submitted,
+		expected_mtime,
+		config_path=paths.config,
+		settings_path=paths.settings,
+		log_path=paths.log,
+	)
+
+
+def stored(paths: Paths) -> dict:
+	return json.loads(paths.settings.read_text(encoding="utf-8"))
+
+
+def test_save_stores_only_values_that_differ_from_config_json(paths):
+	base = read_base(paths)
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 30
+	submission["ignored_cameras"] = [*base["ignored_cameras"], "Alpha"]
+
+	result = save(paths, submission)
+
+	assert result.status == "saved"
+	assert result.errors == ()
+	assert stored(paths) == {
+		"timelapse": {"crf": 30},
+		"ignored_cameras": sorted([*base["ignored_cameras"], "Alpha"]),
+	}
+	assert result.mtime == int(paths.settings.stat().st_mtime)
+
+
+def test_a_list_in_another_order_is_not_an_override(paths):
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = list(reversed(submission["ignored_cameras"]))
+
+	assert save(paths, submission).status == "saved"
+	assert stored(paths) == {}
+
+
+def test_saving_the_base_value_again_removes_the_override(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	submission = base_submission(paths)
+
+	result = save(paths, submission, expected_mtime=FILE_TIME)
+
+	assert result.status == "saved"
+	assert stored(paths) == {}
+
+
+def test_a_submission_replaces_the_whole_file(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}, "log_retention_days": 7})
+	submission = base_submission(paths)
+	submission["log_retention_days"] = 7
+
+	assert save(paths, submission, expected_mtime=FILE_TIME).status == "saved"
+	assert stored(paths) == {"log_retention_days": 7}
+
+
+def test_invalid_values_save_nothing(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	before = paths.settings.read_bytes()
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 99
+
+	result = save(paths, submission, expected_mtime=FILE_TIME)
+
+	assert result.status == "invalid"
+	assert result.errors[0].startswith("timelapse.crf")
+	assert paths.settings.read_bytes() == before
+
+
+def test_invalid_values_do_not_create_a_file(paths):
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 99
+
+	assert save(paths, submission).status == "invalid"
+	assert not paths.settings.exists()
+
+
+@pytest.mark.parametrize(
+	("group", "content"),
+	[("privacy", {"blur_cameras": []}), ("location", {"timezone": "UTC"})],
+)
+def test_keys_outside_the_allowlist_save_nothing(paths, group, content):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	before = paths.settings.read_bytes()
+	submission = base_submission(paths)
+	submission[group] = content
+
+	result = save(paths, submission, expected_mtime=FILE_TIME)
+
+	assert result.status == "invalid"
+	assert result.errors[0].startswith(f"{group}.")
+	assert paths.settings.read_bytes() == before
+
+
+@pytest.mark.parametrize("key", ["ignored_cameras", "flagger.cameras"])
+def test_path_like_camera_names_save_nothing(paths, key):
+	submission = base_submission(paths)
+	set_leaf(submission, key, ["../etc"])
+
+	result = save(paths, submission)
+
+	assert result.status == "invalid"
+	assert not paths.settings.exists()
+
+
+def test_a_stale_page_is_refused(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	before = paths.settings.read_bytes()
+
+	result = save(paths, base_submission(paths), expected_mtime=FILE_TIME - 5)
+
+	assert result.status == "stale"
+	assert result.mtime == FILE_TIME
+	assert paths.settings.read_bytes() == before
+
+
+def test_a_page_loaded_without_a_file_saves_with_time_zero(paths):
+	assert save(paths, base_submission(paths), expected_mtime=0).status == "saved"
+
+
+def test_a_page_loaded_without_a_file_is_stale_once_a_file_exists(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+
+	assert save(paths, base_submission(paths), expected_mtime=0).status == "stale"
+
+
+def test_a_stale_save_creates_no_file(paths):
+	assert save(paths, base_submission(paths), expected_mtime=5).status == "stale"
+	assert not paths.settings.exists()
+
+
+def test_saved_file_is_world_readable_and_leaves_no_temp_file(paths):
+	save(paths, base_submission(paths))
+
+	assert stat.S_IMODE(paths.settings.stat().st_mode) == 0o644
+	assert sorted(entry.name for entry in paths.settings.parent.iterdir()) == [
+		"config.json",
+		"settings.json",
+	]
+
+
+def test_a_failing_rename_keeps_the_old_file(paths, monkeypatch):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	before = paths.settings.read_bytes()
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 31
+
+	def fail(*arguments):
+		raise OSError("disk full")
+
+	with monkeypatch.context() as patch:
+		patch.setattr(settings_save.os, "replace", fail)
+
+		with pytest.raises(OSError):
+			save(paths, submission, expected_mtime=FILE_TIME)
+
+	assert paths.settings.read_bytes() == before
+	assert sorted(entry.name for entry in paths.settings.parent.iterdir()) == [
+		"config.json",
+		"settings.json",
+	]
+
+
+def test_log_line_names_changed_keys_with_old_and_new_values(paths):
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 30
+
+	save(paths, submission)
+
+	lines = paths.log.read_text(encoding="utf-8").splitlines()
+
+	assert len(lines) == 1
+	assert "timelapse.crf: 28 -> 30" in lines[0]
+	assert stat.S_IMODE(paths.log.stat().st_mode) == 0o600
+
+
+def test_log_line_is_added_for_every_save_and_names_only_what_changed(paths):
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 30
+	first = save(paths, submission)
+	submission["log_retention_days"] = 7
+	save(paths, submission, expected_mtime=first.mtime)
+
+	lines = paths.log.read_text(encoding="utf-8").splitlines()
+
+	assert len(lines) == 2
+	assert "log_retention_days: 30 -> 7" in lines[1]
+	assert "timelapse.crf" not in lines[1]
+
+
+def test_a_log_that_cannot_be_written_does_not_fail_the_save(paths, tmp_path):
+	result = settings_save.save_settings(
+		base_submission(paths),
+		0,
+		config_path=paths.config,
+		settings_path=paths.settings,
+		log_path=tmp_path / "missing-folder" / "settings.log",
+	)
+
+	assert result.status == "saved"
+	assert paths.settings.exists()
+
+
+def run_main(monkeypatch, paths, text, expected_mtime):
+	monkeypatch.setattr(config_module, "CONFIG_PATH", paths.config)
+	monkeypatch.setattr(config_module, "SETTINGS_PATH", paths.settings)
+	monkeypatch.setattr(settings_save, "SETTINGS_LOG_PATH", paths.log)
+
+	return settings_save.main(["--expected-mtime", str(expected_mtime)], io.StringIO(text))
+
+
+def test_main_saved_exits_zero_and_prints_one_json_line(monkeypatch, paths, capsys):
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 30
+
+	code = run_main(monkeypatch, paths, json.dumps(submission), 0)
+	lines = capsys.readouterr().out.splitlines()
+
+	assert code == 0
+	assert len(lines) == 1
+	assert json.loads(lines[0]) == {
+		"status": "saved",
+		"errors": [],
+		"mtime": int(paths.settings.stat().st_mtime),
+	}
+
+
+def test_main_invalid_values_exit_65_with_the_errors(monkeypatch, paths, capsys):
+	submission = base_submission(paths)
+	submission["timelapse"]["crf"] = 99
+
+	code = run_main(monkeypatch, paths, json.dumps(submission), 0)
+	reply = json.loads(capsys.readouterr().out)
+
+	assert code == 65
+	assert reply["status"] == "invalid"
+	assert reply["errors"][0].startswith("timelapse.crf")
+
+
+def test_main_unparsable_json_exits_65(monkeypatch, paths, capsys):
+	code = run_main(monkeypatch, paths, "{not json", 0)
+	reply = json.loads(capsys.readouterr().out)
+
+	assert code == 65
+	assert reply["errors"] == ["Ungültige Eingabe"]
+	assert not paths.settings.exists()
+
+
+def test_main_stale_page_exits_73(monkeypatch, paths, capsys):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+
+	code = run_main(monkeypatch, paths, json.dumps(base_submission(paths)), 7)
+	reply = json.loads(capsys.readouterr().out)
+
+	assert code == 73
+	assert reply["status"] == "stale"
+	assert reply["mtime"] == FILE_TIME

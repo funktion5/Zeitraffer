@@ -1,0 +1,182 @@
+import argparse
+import json
+import os
+import sys
+import tempfile
+from dataclasses import dataclass
+from datetime import datetime
+from pathlib import Path
+from typing import TextIO
+
+import src.config as config_module
+from src.config import PROJECT_ROOT
+from src.logger import logger
+from src.settings import ALLOWED_KEYS, get_leaf, load_valid_settings, set_leaf, validate_settings
+
+# Private to the account the writer runs as: the web server user never reads it.
+SETTINGS_LOG_PATH = PROJECT_ROOT / "logs" / "settings.log"
+
+# Exit codes of "python -m src.settings_save"; the web wrapper hands them on to PHP.
+EXIT_SAVED = 0
+EXIT_INVALID = 65
+EXIT_STALE = 73
+
+# "No value" must stay distinguishable from a value of None or [].
+_MISSING = object()
+
+
+@dataclass(frozen=True)
+class SaveResult:
+	status: str  # "saved", "invalid" or "stale"
+	errors: tuple[str, ...]
+	# The settings file's modification time in whole seconds, 0 when there is no file.
+	mtime: int
+
+
+def current_mtime(path: Path) -> int:
+	try:
+		return int(path.stat().st_mtime)
+
+	except FileNotFoundError:
+		return 0
+
+
+# Lists compare as sets would: the order of ticked cameras carries no meaning.
+def _normalize(value: object) -> object:
+	return sorted(value) if isinstance(value, list) else value
+
+
+# Only what differs from config.json is stored. A value set back to the base value disappears from
+# the file, so an edit of config.json made later still reaches that key.
+def _overrides(base: dict, clean: dict) -> dict:
+	overrides: dict = {}
+
+	for key in ALLOWED_KEYS:
+		value = get_leaf(clean, key, _MISSING)
+
+		if value is _MISSING:
+			continue
+
+		if _normalize(value) != _normalize(get_leaf(base, key, _MISSING)):
+			set_leaf(overrides, key, _normalize(value))
+
+	return overrides
+
+
+# The temporary file lives in the settings folder so the rename stays on one filesystem; the web
+# server user has to read the result, and mkstemp creates the file private.
+def _write_atomically(destination: Path, content: dict) -> None:
+	descriptor, temporary = tempfile.mkstemp(dir=destination.parent, prefix=f".{destination.name}.")
+
+	try:
+		with os.fdopen(descriptor, "w", encoding="utf-8") as file:
+			json.dump(content, file, indent=2, sort_keys=True)
+			file.write("\n")
+
+		os.chmod(temporary, 0o644)
+		os.replace(temporary, destination)
+
+	except BaseException:
+		Path(temporary).unlink(missing_ok=True)
+
+		raise
+
+
+def _effective(base: dict, overrides: dict, key: str) -> object:
+	value = get_leaf(overrides, key, _MISSING)
+
+	return value if value is not _MISSING else get_leaf(base, key, _MISSING)
+
+
+def _render(value: object) -> str:
+	return "unset" if value is _MISSING else json.dumps(value)
+
+
+# One line per save: when, and which keys went from which value to which. No address, no user agent.
+# The save is already done at this point, so a log that cannot be written must not fail it.
+def _log_changes(log_path: Path, base: dict, before: dict, after: dict) -> None:
+	changes = []
+
+	for key in ALLOWED_KEYS:
+		old = _effective(base, before, key)
+		new = _effective(base, after, key)
+
+		if _normalize(old) != _normalize(new):
+			changes.append(f"{key}: {_render(old)} -> {_render(new)}")
+
+	stamp = datetime.now().astimezone().isoformat(timespec="seconds")
+	line = f"{stamp} {'; '.join(changes) if changes else 'no changes'}\n"
+
+	try:
+		descriptor = os.open(log_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+
+		with os.fdopen(descriptor, "a", encoding="utf-8") as file:
+			file.write(line)
+
+	except OSError as error:
+		logger.warning(f"Settings log not written: {error}")
+
+
+# Saves the complete set of the form's values. Order matters: invalid input is refused before the
+# stale check, and nothing is written for either. The submission replaces the whole file, so a
+# leaf the form no longer sends loses its override. None for a path means the module constant,
+# read at call time so tests can patch it. Two saves in the same second can slip past the stale
+# check (the time is whole seconds); with a handful of colleagues that is accepted.
+def save_settings(
+	submitted: object,
+	expected_mtime: int,
+	*,
+	config_path: Path | None = None,
+	settings_path: Path | None = None,
+	log_path: Path | None = None,
+) -> SaveResult:
+	config_path = config_path if config_path is not None else config_module.CONFIG_PATH
+	settings_path = settings_path if settings_path is not None else config_module.SETTINGS_PATH
+	log_path = log_path if log_path is not None else SETTINGS_LOG_PATH
+
+	clean, errors = validate_settings(submitted)
+	mtime = current_mtime(settings_path)
+
+	if errors:
+		return SaveResult("invalid", tuple(errors), mtime)
+
+	if expected_mtime != mtime:
+		return SaveResult("stale", (), mtime)
+
+	with config_path.open("r", encoding="utf-8") as file:
+		base = json.load(file)
+
+	before = load_valid_settings(settings_path)
+	after = _overrides(base, clean)
+
+	_write_atomically(settings_path, after)
+	_log_changes(log_path, base, before, after)
+
+	return SaveResult("saved", (), current_mtime(settings_path))
+
+
+# Reads one JSON document from stdin (the complete form values) and answers with one JSON line.
+# Unparsable input is treated like any other invalid submission.
+def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
+	parser = argparse.ArgumentParser(description="Save the values of the web UI settings page.")
+	parser.add_argument("--expected-mtime", type=int, required=True)
+	arguments = parser.parse_args(argv)
+
+	text = (stdin if stdin is not None else sys.stdin).read()
+
+	try:
+		submitted = json.loads(text)
+
+	except ValueError:
+		submitted = None
+
+	result = save_settings(submitted, arguments.expected_mtime)
+	reply = {"status": result.status, "errors": list(result.errors), "mtime": result.mtime}
+
+	print(json.dumps(reply))
+
+	return {"saved": EXIT_SAVED, "invalid": EXIT_INVALID, "stale": EXIT_STALE}[result.status]
+
+
+if __name__ == "__main__":
+	sys.exit(main())

@@ -73,13 +73,26 @@ RULES: dict[str, Rule] = {
 ALLOWED_KEYS: tuple[str, ...] = tuple(RULES)
 
 
-def _set_leaf(target: dict, dotted_key: str, value: object) -> None:
+def set_leaf(target: dict, dotted_key: str, value: object) -> None:
 	*parents, leaf = dotted_key.split(".")
 
 	for part in parents:
 		target = target.setdefault(part, {})
 
 	target[leaf] = value
+
+
+# The value at a dotted key of a nested dict, or the default when any part of the path is missing.
+def get_leaf(source: dict, dotted_key: str, default: object = None) -> object:
+	node: object = source
+
+	for part in dotted_key.split("."):
+		if not isinstance(node, dict) or part not in node:
+			return default
+
+		node = node[part]
+
+	return node
 
 
 # Checks a submitted or stored settings object, nested like config.json. Returns the leaves that
@@ -104,7 +117,7 @@ def validate_settings(raw: object) -> tuple[dict, list[str]]:
 				rule = RULES[path]
 
 				if rule.accepts(value):
-					_set_leaf(clean, path, value)
+					set_leaf(clean, path, value)
 				else:
 					errors.append(f"{path}: {rule.description}")
 			elif isinstance(value, dict):
