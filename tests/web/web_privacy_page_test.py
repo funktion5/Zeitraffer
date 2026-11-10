@@ -605,3 +605,116 @@ def test_the_confirm_dialog_and_its_no_javascript_tick_box_exist(tmp_path):
 	assert "confirm_privacy" in script
 	# The save button is a plain submit: the dialog is the script's job.
 	assert 'name="confirm"' not in out
+
+
+# The preview picture in each camera's block (the cache is written by the wrapper's script).
+
+JPEG = b"\xff\xd8\xff\xc0\x00\x08\x08\x01\xe0\x02\x80\x00\xff\xd9"
+
+
+def cache_preview(tmp_path: Path, camera: str, picture: bool = True, **info) -> None:
+	folder = tmp_path / "state" / "web-jobs" / "previews"
+	folder.mkdir(parents=True, exist_ok=True)
+
+	if picture:
+		(folder / f"{camera}.jpg").write_bytes(JPEG)
+
+	data = {
+		"image": "20261109T120000.jpg",
+		"status": "blurred",
+		"width": 640,
+		"height": 480,
+		"taken": "2026-11-09T12:00:00+01:00",
+		**info,
+	}
+	(folder / f"{camera}.json").write_text(json.dumps(data))
+
+
+def preview_block(out: str, camera: str) -> str:
+	fieldset = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
+
+	return tag_of(fieldset, r'<section[^>]*class="privacy-preview"[^>]*>.*?</section>', re.S)
+
+
+def test_a_cached_preview_is_shown_in_its_camera_block(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+
+	out, _ = render(tmp_path)
+	block = preview_block(out, "SLSV")
+	image = tag_of(block, r"<img[^>]*>")
+
+	assert re.search(r'src="/preview\.php\?camera=SLSV&amp;v=\d+"', image)
+	# The size is in the markup, so the page does not jump when the picture arrives.
+	assert 'width="640"' in image
+	assert 'height="480"' in image
+	assert "SLSV" in re.search(r'alt="([^"]*)"', image).group(1)
+	assert "09.11.2026, 12:00" in re.search(r'alt="([^"]*)"', image).group(1)
+	assert "09.11.2026, 12:00 Uhr" in block
+	assert "640 × 480" in block
+
+
+def test_a_camera_without_a_preview_says_so_and_shows_no_picture(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+
+	out, _ = render(tmp_path)
+	block = preview_block(out, "Scheunenviertel")
+
+	assert "<img" not in block
+	assert "noch kein Bild" in block
+
+
+# A description without its picture (or the other way round) would be a broken image: not shown.
+def test_a_damaged_cache_shows_no_picture(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV", picture=False)
+
+	out, _ = render(tmp_path)
+
+	assert "<img" not in preview_block(out, "SLSV")
+
+
+# The only picture of the page is the preview; nothing else in it may load an image.
+def test_only_blur_cameras_with_a_cache_load_a_picture(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+	cache_preview(tmp_path, "Alpha")
+
+	out, _ = render(tmp_path)
+	version = int((tmp_path / "state" / "web-jobs" / "previews" / "SLSV.jpg").stat().st_mtime)
+
+	assert re.findall(r'<img[^>]*src="([^"]*)"', out) == [
+		f"/preview.php?camera=SLSV&amp;v={version}"
+	]
+
+
+# The refresh button belongs to the picture, not to the form: it sends nothing and saves nothing.
+def test_the_refresh_button_is_script_only_and_carries_no_field(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+		block = preview_block(out, camera)
+		button = tag_of(block, r"<button[^>]*data-preview-refresh[^>]*>")
+
+		assert 'type="button"' in button
+		assert re.search(r"\shidden[\s>]", button)
+		assert re.search(r"\sname=", block) is None
+		assert f'data-preview-camera="{camera}"' in block
+
+
+def test_the_script_asks_for_a_new_picture_with_the_forms_token(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = script_with(out, "data-default-group")
+
+	assert "/preview-refresh.php" in script
+	assert "data-preview-refresh" in script
+	assert "csrf_token" in script
+	# What the server answers is shown as text, never as markup.
+	assert "textContent" in script
+	assert "innerHTML =" not in script
+	assert 'role="status"' in preview_block(out, "SLSV")

@@ -1,0 +1,42 @@
+#!/bin/bash
+
+set -euo pipefail
+
+# Caches a fresh preview picture of one blur camera for the Verpixelung page. The web server user
+# cannot reach the Storage Box, so this runs as the run user (sudo -u) and fetches one confirmed
+# frame through the frame source. Like the settings wrapper it is synchronous and takes no run
+# lock: it only reads the box, and the cache file is replaced in one atomic step.
+
+# Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
+# sudo does not always reset HOME to the target user's home.
+PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f6)/timelapse}"
+PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
+
+# A box that does not answer must not hold the web request (and an Apache worker) for minutes. The
+# script tries each fetch once, so this only catches a connection that hangs.
+TIME_LIMIT_SECONDS=90
+
+if [[ $# -ne 1 ]]; then
+	echo "Usage: timelapse-web-preview <camera>" >&2
+	exit 64
+fi
+
+CAMERA="$1"
+
+# Only plain names, the pattern of the per-camera settings keys: the name ends up in a file name
+# and is the value of a script argument. This also covers an empty name, "/", "." and "..".
+if [[ ! "$CAMERA" =~ ^[A-Za-z0-9][A-Za-z0-9_-]*$ ]]; then
+	echo "Invalid camera name." >&2
+	exit 64
+fi
+
+if [[ ! -x "$PYTHON" ]] || ! command -v timeout >/dev/null; then
+	echo "Python or timeout for the preview script is unavailable." >&2
+	exit 69
+fi
+
+cd "$PROJECT_ROOT"
+
+# The script's exit code goes on to PHP: 0 picture cached, 66 not a blur camera, 67 no confirmed
+# frame yet, 124 cut off by the time limit, anything else a failure.
+exec timeout "$TIME_LIMIT_SECONDS" "$PYTHON" -m src.privacy.preview "$CAMERA"

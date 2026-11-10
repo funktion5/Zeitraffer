@@ -148,6 +148,16 @@ camera removed or an ignore box added without the confirm dialog (or its no-Java
   then "clean". The editor does not depend on a false detection being visible.
 - The dialog on EVERY Verpixelung save, not only when the camera list changes.
 - At most 50 ignore boxes per camera and coordinates up to 20000, as sanity limits.
+- The preview (Task 4): the button asks the server synchronously (one frame takes seconds), not through a
+  background job. The fetch is tried once, with no retry waits, and the wrapper stops the run after 90 s, so a
+  box that does not answer cannot hold a web request for minutes.
+- The preview frame must be the bytes the blur job recorded: a "blurred" frame is checked against
+  `blurred_sha256`, a "clean" one against `original_sha256`; a frame that differs (rewritten since) is skipped
+  and the next candidate is taken, at most three. A night frame has no recorded bytes and is the last resort.
+- Only the state of the last days is read (today and the two days before, as the nightly round does), so a
+  camera the job has not touched for longer has no preview until its next round.
+- "Vorschau aktualisieren" needs JavaScript and is hidden without it: a full page reload would throw away the
+  unsaved edits of the form, so the button asks in the background and changes only the picture.
 
 ## Open for Julius
 

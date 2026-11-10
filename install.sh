@@ -291,6 +291,7 @@ step_web_bridge() {
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete" /usr/local/sbin/timelapse-web-delete
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-delete-highlight" /usr/local/sbin/timelapse-web-delete-highlight
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-settings" /usr/local/sbin/timelapse-web-settings
+	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-preview" /usr/local/sbin/timelapse-web-preview
 	sudo install -d -o root -g root -m 755 /usr/local/libexec
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker" /usr/local/libexec/timelapse-web-worker
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-worker-rebuild" /usr/local/libexec/timelapse-web-worker-rebuild
@@ -309,6 +310,7 @@ www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-publish *
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
 www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-settings *
+www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-preview *
 EOF
 	sudo visudo -cf "$sudoers" >/dev/null || fail "The generated sudoers file does not parse: not installing it."
 	sudo install -o root -g root -m 440 "$sudoers" /etc/sudoers.d/timelapse-web
@@ -420,6 +422,8 @@ step_verify() {
 	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: highlight delete rule active" \
 		|| warn "sudoers: highlight delete rule missing for www-data."
+	grep -q "timelapse-web-preview" <<<"$sudo_rules" \
+		&& echo "sudoers: preview rule active" || warn "sudoers: preview rule missing for www-data."
 
 	# The nightly upload to the website reads its FTP login from here. Only the names are tested,
 	# the values are never printed.

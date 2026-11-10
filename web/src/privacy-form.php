@@ -7,6 +7,7 @@ declare(strict_types=1);
 // src/settings.py, through the writer, takes its limits from the blur code and is the one validator.
 
 require_once __DIR__ . "/settings-form.php";
+require_once __DIR__ . "/preview-runner.php";
 
 // A camera name as a per-camera KEY: no dot, because a dot separates the parts of a settings key.
 const PRIVACY_CAMERA_KEY_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
@@ -555,5 +556,47 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 			<p class="field-error" id="<?= settingsHtml($id) ?>-error"><?= settingsHtml($error) ?></p>
 		<?php endif; ?>
 	</div>
+	<?php
+}
+
+// The text under a preview picture; the script builds the same sentence for a picture it loads.
+function privacyPreviewCaption(array $info): string
+{
+	return "Aufgenommen am " . $info["takenText"] . " Uhr. Bildgröße: "
+		. $info["width"] . " × " . $info["height"] . " Punkte.";
+}
+
+// The picture of one blur camera, so the ignore boxes can be placed by eye. $info is what
+// readPreviewInfo() found (null: no picture yet). The button is shown by the script and sends
+// nothing with the form: it asks preview-refresh.php for a fresh picture and shows it.
+function renderPrivacyPreview(string $camera, ?array $info): void
+{
+	$id = "privacy-preview-" . $camera;
+
+	?>
+	<section class="privacy-preview" data-preview-camera="<?= settingsHtml($camera) ?>" aria-labelledby="<?= settingsHtml($id) ?>-title">
+		<h3 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h3>
+		<div class="privacy-help">
+			<p>Das ist ein echtes Bild von dieser Kamera. Die Verpixelung hat es schon angeschaut. Menschen darauf sind unkenntlich gemacht.</p>
+			<p>Das Bild zeigt dir, wo ein Rahmen liegen soll. Die Zahlen eines Rahmens sind Punkte im Bild: von links nach rechts und von oben nach unten.</p>
+		</div>
+		<?php if ($info !== null): ?>
+			<figure class="privacy-preview-figure">
+				<img
+					src="<?= settingsHtml(previewUrl($camera, $info["version"])) ?>"
+					width="<?= (int) $info["width"] ?>"
+					height="<?= (int) $info["height"] ?>"
+					alt="<?= settingsHtml("Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr") ?>"
+				>
+				<figcaption><?= settingsHtml(privacyPreviewCaption($info)) ?></figcaption>
+			</figure>
+		<?php else: ?>
+			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.</p>
+		<?php endif; ?>
+		<p class="privacy-preview-actions">
+			<button type="button" class="settings-reset" data-preview-refresh hidden>Vorschau aktualisieren</button>
+			<span class="settings-hint" role="status" data-preview-status></span>
+		</p>
+	</section>
 	<?php
 }

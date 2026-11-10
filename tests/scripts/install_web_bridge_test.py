@@ -31,6 +31,28 @@ def test_the_settings_wrapper_has_its_own_sudoers_rule():
 	assert "www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-settings *" in step
 
 
+def test_the_preview_wrapper_is_installed_root_owned():
+	step = step_text("step_web_bridge")
+
+	assert (
+		'sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-preview" '
+		"/usr/local/sbin/timelapse-web-preview"
+	) in step
+
+
+def test_the_preview_wrapper_has_its_own_sudoers_rule():
+	step = step_text("step_web_bridge")
+
+	assert "www-data ALL=(${RUN_USER}) NOPASSWD: /usr/local/sbin/timelapse-web-preview *" in step
+
+
+# The verification step reports every sudoers rule the web pages depend on.
+def test_the_verification_checks_the_preview_rule():
+	step = step_text("step_verify")
+
+	assert 'grep -q "timelapse-web-preview" <<<"$sudo_rules"' in step
+
+
 # The pages show the saved values, so the web server user has to read the file; it must not be
 # closed with the other files in config/ (the upload login among them).
 def test_the_web_server_user_can_read_the_settings_file():

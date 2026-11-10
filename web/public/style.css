@@ -376,6 +376,43 @@ ul {
 	margin: 0;
 }
 
+/* The camera's picture: its size is in the markup, so it keeps its shape while it loads, and it
+   shrinks to the width of the page without ever being cut off. */
+.privacy-preview {
+	margin-bottom: 1rem;
+}
+
+.privacy-preview-figure {
+	margin: 0 0 0.5rem;
+}
+
+.privacy-preview-figure img {
+	display: block;
+	max-width: 100%;
+	height: auto;
+
+	border: 1px solid var(--color-border);
+	border-radius: var(--radius-small);
+}
+
+.privacy-preview-figure figcaption,
+.privacy-preview-empty {
+	margin: 0.3rem 0 0;
+
+	color: var(--color-text-muted);
+
+	font-size: 0.875rem;
+}
+
+.privacy-preview-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 1rem;
+
+	margin: 0;
+}
+
 .privacy-box-row {
 	display: flex;
 	flex-wrap: wrap;

@@ -207,6 +207,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						$defaults["score"],
 						$fieldErrors["privacy.min_person_score." . $camera] ?? null,
 					); ?>
+					<?php renderPrivacyPreview((string) $camera, readPreviewInfo((string) $camera)); ?>
 					<?php renderPrivacyBoxes(
 						(string) $camera,
 						$cameraState["boxes"],
@@ -305,6 +306,67 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				button.hidden = false;
 				button.addEventListener("click", () => {
 					addBoxRow(button.closest("fieldset").querySelector(".privacy-boxes"));
+				});
+			});
+
+			// The picture of a camera, from what the server answered. Built with the DOM and filled with
+			// textContent: the answer is shown as text, never as markup.
+			const showPicture = (section, picture) => {
+				let figure = section.querySelector("figure");
+
+				if (figure === null) {
+					figure = document.createElement("figure");
+					figure.className = "privacy-preview-figure";
+					figure.append(document.createElement("img"), document.createElement("figcaption"));
+					section.querySelector(".privacy-preview-empty")?.remove();
+					section.querySelector(".privacy-help").after(figure);
+				}
+
+				const image = figure.querySelector("img");
+
+				image.src = picture.url;
+				image.width = picture.width;
+				image.height = picture.height;
+				image.alt = `Vorschaubild der Kamera ${section.dataset.previewCamera} vom ${picture.takenText} Uhr`;
+				figure.querySelector("figcaption").textContent =
+					`Aufgenommen am ${picture.takenText} Uhr. Bildgröße: ${picture.width} × ${picture.height} Punkte.`;
+			};
+
+			// "Vorschau aktualisieren": the form's own token goes along, and nothing of the form's
+			// values: the button saves nothing and the unsaved changes stay as they are. Without
+			// JavaScript the button stays hidden, because it would do nothing.
+			const token = form.querySelector('input[name="csrf_token"]').value;
+
+			form.querySelectorAll("[data-preview-refresh]").forEach((button) => {
+				const section = button.closest("[data-preview-camera]");
+				const status = section.querySelector("[data-preview-status]");
+
+				button.hidden = false;
+				button.addEventListener("click", async () => {
+					button.disabled = true;
+					status.textContent = "Das Bild wird geholt. Das dauert einen Moment …";
+
+					try {
+						const response = await fetch("/preview-refresh.php", {
+							method: "POST",
+							headers: { Accept: "application/json" },
+							body: new URLSearchParams({
+								csrf_token: token,
+								camera: section.dataset.previewCamera,
+							}),
+						});
+						const reply = await response.json();
+
+						if (reply.status === "ok") {
+							showPicture(section, reply.picture);
+						}
+
+						status.textContent = reply.message;
+					} catch {
+						status.textContent = "Das Bild konnte nicht geholt werden. Bitte später noch einmal versuchen.";
+					} finally {
+						button.disabled = false;
+					}
 				});
 			});
 
