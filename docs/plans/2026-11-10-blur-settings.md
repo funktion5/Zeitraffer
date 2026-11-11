@@ -1,8 +1,8 @@
 # Blur (Verpixelung) settings tab
 
-Status: DRAFT design, 2026-11-10. Not approved, nothing built. It extends
-`2026-11-10-settings-page.md` and REPLACES its rule that the `privacy` block is never changeable on the
-page. Julius and a colleague decided on 2026-11-10 that the people who use the web UI may change the blur
+Status: BUILT 2026-11-10 (build order tasks 1-5 and the per-camera top strip, see "Built since this
+draft" at the end); the docs (task 6) are still open. It extends `2026-11-10-settings-page.md` and
+REPLACES its rule that the `privacy` block is never changeable on the page. Julius and a colleague decided on 2026-11-10 that the people who use the web UI may change the blur
 settings themselves: "the people here know what they do".
 
 ## Why
@@ -39,7 +39,7 @@ the page, and to fix false detections by drawing on a preview picture of the cam
 | `privacy.blur.strength` | number 0.05 to 0.5: size of the pixel blocks, bigger = coarser = stronger |
 | `privacy.blur.padding_ratio` | number 0.05 to 1.0: how far the blur reaches around a person, per side |
 | `privacy.blur.feather` | number 0 to 1: how much of that margin fades softly (the person's own box is always fully blurred) |
-| `privacy.ignore_top_share` | number from 0 up to below 0.5, GLOBAL: a detection mostly in the top band is dropped, 0 = off |
+| `privacy.ignore_top_share_per_camera.<camera>` | number from 0 up to below 0.5 per camera: a detection mostly in the top band is dropped, 0 = off. It REPLACES the global `privacy.ignore_top_share` for that camera (see "Built since this draft"); the global value stays in `config.json` as the IT default and is NOT on the page |
 | `privacy.min_person_score.<camera>` | number 0 to 0.5 per camera: persons scoring below it are NOT blurred (higher = fewer blurred; the detector already ignores everything under 0.25) |
 | `privacy.ignore_boxes.<camera>` | list of boxes `[x0, y0, x1, y1]`, whole numbers, x1 > x0, y1 > y0: a detection that overlaps a box with an intersection over union of at least 0.5 is dropped |
 
@@ -158,6 +158,26 @@ camera removed or an ignore box added without the confirm dialog (or its no-Java
   camera the job has not touched for longer has no preview until its next round.
 - "Vorschau aktualisieren" needs JavaScript and is hidden without it: a full page reload would throw away the
   unsaved edits of the form, so the button asks in the background and changes only the picture.
+
+## Built since this draft (2026-11-10)
+
+- **Top strip per camera.** The strip drops ANY detection with more than half its height inside the top
+  band, whatever its size; an ignore box only drops a detection that overlaps it by at least 50 % (intersection
+  over union). So a box cannot replace the strip. Julius chose a strip per camera: the key
+  `privacy.ignore_top_share_per_camera.<camera>` replaces the global value for one camera (0 = off there), the
+  writer does not store a value equal to the camera's default, the global stays with IT in `config.json`.
+- **Editor on the preview.** The toggle "Rahmen bearbeiten": a drag draws a box, a drag on a box moves it (same
+  size, kept inside the picture), a drag on the lower edge of the red strip changes that camera's top share. The
+  number rows stay the keyboard way; there are no empty standby rows, new boxes come from the picture or from
+  "Rahmen hinzufügen". Checked with trusted mouse, keyboard and touch input in headless Chrome.
+- **Standard lines.** Every control shows its Standard from `config.json`, the camera lists and each camera's
+  box list included ("alle außer X", the names, "keine", "2 Rahmen").
+- **Preview details.** Frames come only from the blur job's confirmed state and must be the bytes it recorded
+  (hash check); the wrapper needs `TIMELAPSE_STORAGE_BOX` like the other wrappers.
+
+Still open: the docs (task 6), a review pass for over-engineering (12 findings listed in the session notes),
+and the optional extras (a lock on the preview wrapper, showing only blurred frames, an independent security
+review of the tab).
 
 ## Open for Julius
 
