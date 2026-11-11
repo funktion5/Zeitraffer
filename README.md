@@ -175,6 +175,7 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | den Code und die Ordner verstehen | [docs/architektur.md](docs/architektur.md) |
 | Einstellungen ändern (die Seite „Einstellungen“, `config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) und [docs/weboberflaeche.md](docs/weboberflaeche.md#einstellungen) |
 | einen Server von Grund auf installieren | [docs/installation.md](docs/installation.md) und [docs/vps.md](docs/vps.md) |
+| die Weboberfläche auf dem eigenen Rechner ausprobieren, ohne den Server anzufassen | [docs/docker-web.md](docs/docker-web.md) |
 
 ## Was noch fehlt
 
