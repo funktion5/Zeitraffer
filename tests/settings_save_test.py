@@ -340,8 +340,7 @@ def test_a_clash_is_reported_even_when_the_page_is_also_out_of_date(paths):
 	assert stored(paths) == {"timelapse": {"crf": 30}}
 
 
-# A clash that config.json itself holds (a hand edit) is refused too, with the same message: the
-# flagger cannot start either way, and the page tells the colleague what to untick.
+# A clash already in config.json (a hand edit) is refused too, with the same message.
 def test_a_clash_already_in_config_json_is_refused_on_the_next_save(paths):
 	camera = flagger_camera(paths)
 	base = read_base(paths)

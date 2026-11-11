@@ -128,10 +128,9 @@ def _log_changes(log_path: Path, base: dict, before: dict, after: dict, scope: s
 		logger.warning(f"Settings log not written: {error}")
 
 
-# The values are valid one by one, but some only work together. The flagger raises, for ALL its
-# cameras, when one of them is ignored (an ignored camera is not processed), so the combination is
-# refused here, judged on what would be in force: config.json with the submission on top. The
-# message is plain German and names no key, because the page shows it as a message of its own.
+# Valid one by one, but not together: the flagger fails for ALL cameras if one of its cameras is
+# ignored. Judged on config.json plus the submission. The message names no key, the page shows it
+# as it is.
 def _cross_field_errors(base: dict, clean: dict, scope: str) -> list[str]:
 	if scope != "general":
 		return []

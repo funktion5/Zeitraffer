@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from web_php_test import SUDO_PATH, fake_sudo, render_page
+from web_php_test import SUDO_PATH, fake_sudo, read_scripts, render_page
 
 TOKEN = "test-token"
 FILE_TIME = 1_700_000_000
@@ -168,8 +168,8 @@ def test_the_tolerance_runs_from_one_to_120_minutes(tmp_path):
 	assert 'max="120"' in field
 
 
-# The slider only helps the mouse (the time field is the real control), so it starts hidden and the
-# script shows it. It counts minutes since midnight: 10:00 = 600, 14:00 = 840.
+# The slider only helps the mouse (the time field is the real control): hidden until the script
+# shows it. It counts minutes since midnight: 10:00 = 600, 14:00 = 840.
 def test_the_target_time_has_a_helper_slider_in_minutes(tmp_path):
 	prepare(tmp_path)
 
@@ -220,20 +220,13 @@ def test_the_coverage_fields_have_a_helper_slider_in_days(tmp_path, key, high):
 def test_the_page_script_keeps_the_slider_and_the_time_field_in_step(tmp_path):
 	prepare(tmp_path)
 
-	out, _ = render(tmp_path)
+	script = read_scripts("settings-common.js")
 
-	scripts = [
-		script
-		for script in re.findall(r"<script[^>]*>(.*?)</script>", out, re.S)
-		if "data-default-group" in script
-	]
-
-	assert len(scripts) == 1
-	assert 'querySelectorAll("[data-slider-for]")' in scripts[0]
+	assert 'querySelectorAll("[data-slider-for]")' in script
 	# Only a time slider counts in minutes; a number slider copies the number.
-	assert 'field.type === "time"' in scripts[0]
+	assert 'field.type === "time"' in script
 	# A restored Standard moves no slider by itself: the script has to announce the change.
-	assert 'dispatchEvent(new Event("input"))' in scripts[0]
+	assert 'dispatchEvent(new Event("input"))' in script
 
 
 def test_the_saved_time_is_handed_back_and_shown(tmp_path):
@@ -520,8 +513,8 @@ def test_invalid_values_are_shown_next_to_their_field_with_what_was_typed(tmp_pa
 	assert 'value="99"' in out
 
 
-# A message about two lists together (a flagger camera that is ignored) belongs to no single field:
-# it stands in the summary as plain words, with the ticks the colleague set still in place.
+# A message about two lists belongs to no single field: it stands in the summary, and the ticks
+# stay as the colleague set them.
 def test_a_message_that_names_no_field_stands_in_the_summary_only(tmp_path):
 	prepare(tmp_path)
 	message = (
@@ -689,16 +682,27 @@ def test_each_group_and_the_bar_have_a_restore_button_that_starts_hidden(tmp_pat
 def test_the_restore_script_fills_fields_and_never_submits(tmp_path):
 	prepare(tmp_path)
 
+	script = read_scripts("settings-common.js")
+
+	assert 'querySelectorAll("[data-default]")' in script
+	assert 'querySelectorAll("[data-default-checked]")' in script
+	assert re.search(r"\bvar\b", script) is None
+	assert ".submit(" not in script
+	assert "requestSubmit" not in script
+	# The shared file looks only below the form, never at the whole document.
+	assert "document.querySelectorAll" not in script
+
+
+# The page loads the shared script by a versioned address and starts it with one line.
+def test_the_page_loads_the_shared_script_and_starts_it(tmp_path):
+	prepare(tmp_path)
+
 	out, _ = render(tmp_path)
-	scripts = [
-		script
-		for script in re.findall(r"<script[^>]*>(.*?)</script>", out, re.S)
-		if "data-default-group" in script
+	inline = [
+		body.strip()
+		for attributes, body in re.findall(r"<script([^>]*)>(.*?)</script>", out, re.S)
+		if "src=" not in attributes
 	]
 
-	assert len(scripts) == 1
-	assert 'querySelectorAll("[data-default]")' in scripts[0]
-	assert 'querySelectorAll("[data-default-checked]")' in scripts[0]
-	assert re.search(r"\bvar\b", scripts[0]) is None
-	assert ".submit(" not in scripts[0]
-	assert "requestSubmit" not in scripts[0]
+	assert re.findall(r'<script src="/([\w.-]+)\?v=\d+"></script>', out) == ["settings-common.js"]
+	assert 'SettingsForm.init(document.querySelector(".settings-form"));' in inline

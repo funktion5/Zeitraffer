@@ -355,8 +355,10 @@ timelapse/
 │   │   ├── preview-refresh.php
 │   │   ├── preview.php
 │   │   ├── running-job.php
+│   │   ├── settings-common.js   (Skript, das beide Einstellungs-Reiter teilen)
 │   │   ├── settings.php
 │   │   ├── style.css
+│   │   ├── verpixelung.js   (Skript des Reiters „Verpixelung“, mit dem Zeichen-Editor)
 │   │   └── verpixelung.php
 │   └── src/
 │       ├── components/

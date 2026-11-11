@@ -238,8 +238,8 @@ function privacyFormStateFromPost(array $post): array
 	return ["blur_cameras" => $blurCameras, "floats" => $floats, "cameras" => $cameras];
 }
 
-// The four cells of a row of the form, in the order of the box, as trimmed texts. Null when the row
-// is not a row or a cell is missing or not text.
+// The four cells of a posted row as trimmed texts, or null if the row is no row or a cell is not
+// text.
 function privacyRowCells(mixed $row): ?array
 {
 	if (!is_array($row)) {

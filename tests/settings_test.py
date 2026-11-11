@@ -173,14 +173,13 @@ def test_validate_rejects_a_submission_that_is_not_an_object(raw):
 	assert validate_settings(raw) == ({}, ["Ungültige Eingabe"])
 
 
-# Nobody's form is this deep, but a crafted request or a hand-edited file must be refused like any
-# other invalid input, not end in a traceback (and, for the file, not stop the night run).
+# A crafted request or a hand-edited file must be refused like any invalid input, not end in a
+# traceback (for the file: not stop the night run).
 def deeply_nested(depth: int) -> str:
 	return '{"a":' * depth + "1" + "}" * depth
 
 
-# Built in a loop, not parsed: how deep json.loads can read depends on the Python version (src/ has
-# to run on 3.11 as well), and this test is about the validator's own walk.
+# Built in a loop: json.loads' depth limit varies with the Python version (src/ runs on 3.11 too).
 def test_validate_refuses_a_submission_too_deep_to_walk():
 	raw: object = 1
 

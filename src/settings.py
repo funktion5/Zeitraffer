@@ -143,13 +143,12 @@ GENERAL_RULES: dict[str, Rule] = {
 	"flagger.retention_days": IntRule(MIN_RETENTION_DAYS, 365),
 	"daylight_buffer_minutes": _DAYLIGHT_BUFFER,
 	**{f"automatic_daylight_buffer_minutes.{month}": _DAYLIGHT_BUFFER for month in range(1, 13)},
-	# The noon picture is a daylight picture: a target between 10:00 and 14:00 and a tolerance of at
-	# most 120 minutes keep the whole window in daylight in every month and inside one calendar day
-	# (the window code rejects one that crosses midnight, and a tolerance below 1).
+	# A daylight picture: a target of 10:00-14:00 with at most 120 minutes keeps the window in
+	# daylight and inside one day.
 	"interval_window.target_time": TimeOfDayRule("10:00", "14:00"),
 	"interval_window.tolerance_minutes": IntRule(1, 120),
-	# The jobs raise for more days than their window has: 30 for a month, 365 for a year without a
-	# 29 February. The page stops at those, so a leap year's 366th day is not on offer.
+	# More days than the window has makes the job raise: 30 for a month, 365 for a year (a leap
+	# year has 366).
 	"min_coverage_days.monthly": IntRule(1, 30),
 	"min_coverage_days.yearly": IntRule(1, 365),
 	"log_retention_days": IntRule(1, 365),

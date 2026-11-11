@@ -33,8 +33,7 @@ from src.privacy import blur_box
 BLUR_STATE_ROOT = blur_box.DEFAULT_STATE_ROOT
 PREVIEW_ROOT = PROJECT_ROOT / "state" / "web-jobs" / "previews"
 
-# In the order of the choice: a frame that shows blurring is the most useful picture to draw on, a
-# clean one the next best. Both went through the detector. A night frame did not, so it is left out.
+# Best first. Both kinds went through the detector; a night frame did not, so it is left out.
 KINDS = ("blurred", "clean")
 
 # The bytes the blur job judged, by kind: the blurred copy it wrote, or the untouched original it
@@ -71,9 +70,8 @@ def _preference(candidate: Candidate) -> tuple[int, int, float, str]:
 	)
 
 
-# The frames the job has judged, best first. Anything it has not finished may still show a person,
-# and a night frame was never looked at, so neither is a candidate. A name without a readable time
-# cannot be placed on a day.
+# Judged frames, best first. Unfinished and night frames may show a person, so they are no
+# candidates; nor is a name without a readable time.
 def rank_candidates(processed: dict[str, dict], timezone: str) -> list[Candidate]:
 	candidates = []
 
@@ -87,9 +85,8 @@ def rank_candidates(processed: dict[str, dict], timezone: str) -> list[Candidate
 	return sorted(candidates, key=_preference)
 
 
-# What gets published must be a complete JPEG that is the very bytes the job judged. A frame without
-# a recorded hash (an old state line) is accepted: it is confirmed all the same. Whether the web
-# server can show it is the web side's check, which reads the picture's size.
+# Must be a complete JPEG with the bytes the job judged. A frame without a recorded hash (an old
+# state line) is accepted.
 def _is_judged_frame(path: Path, candidate: Candidate) -> bool:
 	if not blur_box.is_complete_jpeg(path):
 		return False

@@ -184,8 +184,8 @@ def test_the_cached_info_is_read_and_validated(tmp_path):
 	assert info["takenText"] == "09.11.2026, 12:00"
 
 
-# The size is the picture's own. A description with a size of its own (one from before the script
-# stopped writing it, or a wrong one) cannot make the page lie about the picture.
+# The size is the picture's own: an old description may still carry one, and a wrong one must not
+# make the page lie.
 def test_the_size_is_read_from_the_picture_not_from_the_description(tmp_path):
 	cache(tmp_path, picture=JPEG_800X600, info={"width": 1, "height": 1})
 

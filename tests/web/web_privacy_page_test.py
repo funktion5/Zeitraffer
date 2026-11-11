@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 import src.config as config_module
-from web_php_test import SUDO_PATH, fake_sudo, render_page
+from web_php_test import SUDO_PATH, fake_sudo, read_scripts, render_page
 
 TOKEN = "test-token"
 FILE_TIME = 1_700_000_000
@@ -123,13 +123,46 @@ def tag_of(out: str, pattern: str, flags: int = 0) -> str:
 	return match.group(0)
 
 
+# The page's scripts are files: the tests read them. The marker says what the caller expects.
 def script_with(out: str, marker: str) -> str:
-	scripts = re.findall(r"<script[^>]*>(.*?)</script>", out, re.S)
-	matching = [script for script in scripts if marker in script]
+	script = read_scripts("settings-common.js", "verpixelung.js")
 
-	assert len(matching) == 1, marker
+	assert marker in script, marker
 
-	return matching[0]
+	return script
+
+
+# Scripts load by address with a version that changes with the file, so a deploy never meets an
+# old one: the shared one first, then its own. Nothing of the page's code stays inline.
+def test_the_page_loads_its_scripts_as_versioned_files(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	inline = [
+		body
+		for attributes, body in re.findall(r"<script([^>]*)>(.*?)</script>", out, re.S)
+		if "src=" not in attributes
+	]
+
+	assert re.findall(r'<script src="/([\w.-]+)\?v=\d+"></script>', out) == [
+		"settings-common.js",
+		"verpixelung.js",
+	]
+	assert not any("data-default-group" in body or "privacy-confirm" in body for body in inline)
+
+
+# The shared parts live in one file; this page's script keeps only what is its own.
+def test_this_pages_script_hands_its_own_parts_to_the_shared_one(tmp_path):
+	own = read_scripts("verpixelung.js")
+
+	assert "SettingsForm.init(form," in own
+	assert "onRestore" in own
+	assert "onReset" in own
+	# Nothing of the shared parts is written twice.
+	assert "data-default-group" not in own
+	assert "data-default-all" not in own
+	assert "restoreDefaults" not in own
+	assert 'querySelectorAll("[data-slider-for]")' not in own
 
 
 def camera_boxes(out: str) -> dict:
@@ -769,8 +802,7 @@ def test_the_camera_list_points_at_no_error_when_there_is_none(tmp_path):
 	assert 'id="privacy-blur-cameras-error"' not in out
 
 
-# Every camera has the same two blocks. A heading list (screen reader) shows only the headings, so
-# each one must say whose it is; the name is read, not shown (the fieldset's legend shows it).
+# A heading list shows only headings, so each must say whose it is (the name is read, not shown).
 def test_each_block_heading_names_its_camera_for_screen_readers(tmp_path):
 	prepare(tmp_path)
 	cache_preview(tmp_path, "SLSV")
@@ -888,9 +920,8 @@ def test_the_confirm_dialog_and_its_no_javascript_tick_box_exist(tmp_path):
 	assert 'name="confirm"' not in out
 
 
-# After a save the browser may bring this page back from its back-forward cache (Back button) with
-# the script's state intact: the confirmation flag and the hidden "yes" field. Left alone, the next
-# Save would go out without the dialog, so the script forgets both whenever the page is shown.
+# Back may restore the page from the cache with the confirmation still set, so the next Save would
+# skip the dialog: the script forgets it whenever the page is shown.
 def test_the_script_forgets_the_confirmation_when_the_page_is_shown_again(tmp_path):
 	prepare(tmp_path)
 
@@ -1014,8 +1045,7 @@ def test_the_script_asks_for_a_new_picture_with_the_forms_token(tmp_path):
 	assert 'role="status"' in preview_block(out, "SLSV")
 
 
-# The alternative text and the caption are worded once, on the server. The answer to a refresh
-# carries them finished, so the script has no copy of the sentences to keep in step.
+# The alt text and caption are worded once, on the server; the script only shows them.
 def test_the_script_shows_the_servers_sentences_and_has_none_of_its_own(tmp_path):
 	prepare(tmp_path)
 
@@ -1035,9 +1065,8 @@ def test_the_script_shows_the_servers_sentences_and_has_none_of_its_own(tmp_path
 STYLE = Path(__file__).resolve().parents[2] / "web" / "public" / "style.css"
 
 
-# The script turns a rectangle on the picture into box numbers by one scale factor: it needs the
-# picture's own size, and a frame (the stage) to lay its layer over. The picture's width and height
-# attributes are the one place the page keeps that size, and the script reads it from there.
+# The script needs the picture's size and a frame (the stage) to lay its layer over. The image's
+# width and height attributes are the one place the page keeps the size.
 def test_the_picture_sits_in_a_stage_and_its_size_is_kept_only_on_the_image(tmp_path):
 	prepare(tmp_path)
 	cache_preview(tmp_path, "SLSV")

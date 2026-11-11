@@ -5,10 +5,8 @@ declare(strict_types=1);
 require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/preview-runner.php";
 
-// The cached preview picture of a blur camera, as a JPEG and nothing else. The name is a plain
-// name, the camera is on the blur list, and the file is the one the preview script wrote, and only
-// when the page would show it too (a judged frame with a valid description): the request never names
-// a path.
+// The cached preview picture of a blur camera, as a JPEG and nothing else. Plain name, camera on the
+// blur list, and only a picture the page would show too: the request never names a path.
 
 function respondWithoutPicture(int $statusCode): never
 {

@@ -44,6 +44,8 @@ web/public/camera.php              Player, Bibliothek, Formulare (historisches V
 web/public/highlights.php          Highlights-Seite (Bilder des Flaggers, Löschen)
 web/public/settings.php            Einstellungen, Reiter „Allgemein“
 web/public/verpixelung.php         Einstellungen, Reiter „Verpixelung“ (Vorschaubild, Zeichen-Editor, Bestätigungsdialog)
+web/public/settings-common.js      Skript, das beide Einstellungs-Reiter teilen: Regler, „Auf Standard zurücksetzen“, „Änderungen verwerfen“
+web/public/verpixelung.js          Skript des Reiters „Verpixelung“: Rahmenzeilen, Zeichen-Editor, „Vorschau aktualisieren“, Bestätigungsdialog
 web/public/preview.php             liefert das zwischengespeicherte Vorschaubild einer Blur-Kamera (nur JPEG)
 web/public/preview-refresh.php     „Vorschau aktualisieren“: holt ein neues Bild, antwortet mit JSON
 web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung und Ergebniszeilen)
@@ -63,7 +65,7 @@ web/src/highlights-library.php     Lesen und Prüfen der Flagger-Berichte
 web/src/highlight-delete.php       Aufruf des Lösch-Wrappers für Highlight-Bilder
 web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger, Löschen, Einstellungen, Vorschau) und das Lesen der einen JSON-Zeile eines Wrappers
 web/src/project-config.php         liest config.json mit den beiden Einstellungsdateien darüber (dieselben Werte wie die Aufträge)
-web/src/settings-form.php          Felder des Reiters „Allgemein“ und die Umrechnung zwischen Formular und Werten
+web/src/settings-form.php          Felder des Reiters „Allgemein“, die Umrechnung zwischen Formular und Werten und `assetUrl()` (Adresse eines Skripts mit der Änderungszeit der Datei als Version)
 web/src/privacy-form.php           dasselbe für „Verpixelung“, mit den Erklärtexten
 web/src/settings-runner.php        Aufruf des Speicher-Wrappers
 web/src/preview-runner.php         Aufruf des Vorschau-Wrappers, Lesen und Prüfen des Zwischenspeichers

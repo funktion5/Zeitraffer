@@ -19,8 +19,8 @@ const PREVIEW_CAMERA_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
 const PREVIEW_MAX_DIMENSION = 20000;
 const PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 
-// The kinds of frame the script may publish (its "status" in the .json file). A night frame is not
-// one of them: the blur job records it without running the detector, so it is a raw frame.
+// The kinds of frame the script may publish ("status" in the .json file). Not "night": the blur
+// job records it without running the detector.
 const PREVIEW_KINDS = ["blurred", "clean"];
 
 const PREVIEW_OK_MESSAGE = "Das Bild wurde aktualisiert.";
@@ -56,10 +56,9 @@ function previewUrl(string $camera, int $version): string
 	return "/preview.php?camera=" . rawurlencode($camera) . "&v=" . $version;
 }
 
-// The size of a cached picture, read from the picture itself: [width, height], or null when the file
-// is not a JPEG of a plausible size. getimagesize() also knows GIF, PNG and more, so the type is
-// checked. It complains (a notice) about a cut-off or damaged file, which is exactly what this
-// answers with null, so the notice is dropped here instead of reaching the page.
+// [width, height] of a cached JPEG, read from the picture itself, or null. getimagesize() also
+// reads GIF, PNG and more, so the type is checked; it raises a notice for a damaged file, which
+// null already answers, so the notice is dropped here.
 function previewPictureSize(string $path): ?array
 {
 	set_error_handler(static fn(): bool => true);
@@ -109,8 +108,8 @@ function previewPicturePath(string $camera): ?string
 	return previewPictureSize($path) === null ? null : $path;
 }
 
-// What the page needs to show the picture: size (the picture's own), kind of frame, when it was taken
-// and a version. Null unless the picture AND its description are both there and plausible.
+// What the page needs to show the picture. Null unless the picture AND its description are
+// both there and plausible.
 function readPreviewInfo(string $camera): ?array
 {
 	$picture = previewPicturePath($camera);
@@ -154,18 +153,16 @@ function readPreviewInfo(string $camera): ?array
 	];
 }
 
-// The cached picture of a camera if, and only if, the page would show it: the picture is a JPEG of a
-// plausible size AND its description is valid and names a frame the blur job judged. preview.php
-// serves only this. Checking the picture alone is not enough: a night frame cached before night frames
-// were excluded stays on disk when a refresh finds nothing newer, and its description says so.
+// The picture only if the page would show it too: a JPEG of a plausible size with a valid
+// description naming a judged frame. A night frame cached earlier stays on disk when a refresh
+// finds nothing newer, and its description says so.
 function previewServablePath(string $camera): ?string
 {
 	return readPreviewInfo($camera) === null ? null : previewPicturePath($camera);
 }
 
-// The sentences that go with a picture: its alternative text and the line under it. They are worded
-// here, once, for the page and for the answer to "Vorschau aktualisieren", so the script only shows
-// what the server says. $info is what readPreviewInfo() found.
+// Alt text and caption are worded once, here, for the page and for the refresh answer: the script
+// only shows them.
 function previewAltText(string $camera, array $info): string
 {
 	return "Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr";

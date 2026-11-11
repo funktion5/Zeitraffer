@@ -109,10 +109,9 @@ def test_a_picture_the_blur_job_judged_is_served(tmp_path, server, kind):
 	assert body == JPEG
 
 
-# The page shows a picture only when its description is valid and names a judged frame, and the
-# endpoint must agree. A night frame (the blur job records it without running the detector) cached
-# before night frames were excluded stays on disk when a refresh finds no candidate: it must not be
-# fetchable by its address, from an old tab or the browser history.
+# The endpoint serves only what the page would show. A night frame cached before night frames were
+# excluded stays on disk when a refresh finds nothing newer: it must not be fetchable by its
+# address (old tab, browser history).
 @pytest.mark.parametrize(
 	"info",
 	[{"status": "night"}, {"status": "mystery"}, {"status": 5}, {"taken": "yesterday"}, False],

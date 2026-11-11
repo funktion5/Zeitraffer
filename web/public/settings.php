@@ -207,81 +207,8 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 		</form>
 	</main>
 
-	<script>
-		(() => {
-			const form = document.querySelector(".settings-form");
-			const note = document.querySelector("#settings-default-note");
-
-			// Fills the fields of one scope with their Standard (the config.json value). Nothing is
-			// saved: the Save button stores it, and a value equal to the Standard drops its override.
-			const restoreDefaults = (scope, what) => {
-				scope.querySelectorAll("[data-default]").forEach((input) => {
-					input.value = input.dataset.default;
-					// A script sets no "input" event by itself: announce it, so a slider follows.
-					input.dispatchEvent(new Event("input"));
-				});
-
-				scope.querySelectorAll("[data-default-checked]").forEach((input) => {
-					input.checked = input.dataset.defaultChecked === "1";
-				});
-
-				note.textContent = `${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`;
-				note.hidden = false;
-			};
-
-			// A slider only helps the mouse: the field is the real control, so both follow each other.
-			// The slider of a time field counts minutes since midnight, the slider of a number field the
-			// number itself.
-			const toMinutes = (text) => {
-				const [hours, minutes] = text.split(":").map(Number);
-
-				return hours * 60 + minutes;
-			};
-			const toClock = (total) =>
-				`${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
-
-			const syncSlider = (range) => {
-				const field = form.querySelector(`#${range.dataset.sliderFor}`);
-
-				if (field.value !== "") {
-					range.value = field.type === "time" ? String(toMinutes(field.value)) : field.value;
-				}
-			};
-
-			form.querySelectorAll("[data-slider-for]").forEach((range) => {
-				const field = form.querySelector(`#${range.dataset.sliderFor}`);
-
-				range.hidden = false;
-				range.addEventListener("input", () => {
-					field.value = field.type === "time" ? toClock(Number(range.value)) : range.value;
-				});
-				field.addEventListener("input", () => syncSlider(range));
-				syncSlider(range);
-			});
-
-			// Without JavaScript the buttons stay hidden: they would do nothing.
-			form.querySelectorAll("[data-default-group]").forEach((button) => {
-				const fieldset = button.closest("fieldset");
-
-				button.hidden = false;
-				button.addEventListener("click", () => {
-					restoreDefaults(fieldset, fieldset.querySelector("legend").textContent);
-				});
-			});
-
-			const allButton = form.querySelector("[data-default-all]");
-
-			allButton.hidden = false;
-			allButton.addEventListener("click", () => restoreDefaults(form, "Alle Abschnitte"));
-
-			// "Änderungen verwerfen" returns to the loaded values, so the note no longer applies.
-			form.addEventListener("reset", () => {
-				note.hidden = true;
-				// The fields go back to their loaded values after this event, so look then.
-				setTimeout(() => form.querySelectorAll("[data-slider-for]").forEach(syncSlider), 0);
-			});
-		})();
-	</script>
+	<script src="<?= settingsHtml(assetUrl("settings-common.js")) ?>"></script>
+	<script>SettingsForm.init(document.querySelector(".settings-form"));</script>
 
 	<?php require __DIR__ . "/../src/components/job-watcher.php"; ?>
 </body>

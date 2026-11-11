@@ -22,6 +22,15 @@ const SETTINGS_MONTH_NAMES = [
 	12 => "Dezember",
 ];
 
+// Address of a file in web/public with its mtime as the version, so a browser never keeps an old
+// script.
+function assetUrl(string $name): string
+{
+	$modified = filemtime(dirname(__DIR__) . "/public/" . $name);
+
+	return "/" . $name . "?v=" . ($modified === false ? 0 : $modified);
+}
+
 function settingsHtml(string $text): string
 {
 	return htmlspecialchars($text, ENT_QUOTES, "UTF-8");

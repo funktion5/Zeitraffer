@@ -87,8 +87,8 @@ def names_of(candidates) -> list[str]:
 	return [candidate.name for candidate in candidates]
 
 
-# The order of the choice: a frame that shows blurring first, then a clean one. A night frame is
-# never a candidate: the job records it without running the detector, so it is a raw frame.
+# Blurred first, then clean. A night frame is never a candidate: the job records it without
+# running the detector.
 def test_a_blurred_frame_beats_a_clean_one_and_a_night_frame_is_never_a_candidate():
 	ranked = rank_candidates(
 		processed_of(
