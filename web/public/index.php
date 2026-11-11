@@ -31,18 +31,11 @@ $videoStorage = getVideoStorage();
 			<?php else: ?>
 				<ul>
 					<?php foreach ($cameras as $cameraName): ?>
-						<?php
-						// This camera's videos as a share of everything under videos/.
-						$bytes = $videoStorage["cameras"][$cameraName]["total"] ?? 0;
-						$share = $videoStorage["total"] > 0 ? round($bytes / $videoStorage["total"] * 100, 1) : 0.0;
-						?>
+						<?php $bytes = $videoStorage["cameras"][$cameraName]["total"] ?? 0; ?>
 						<li>
 							<a class="camera-link" href="/camera.php?camera=<?= rawurlencode($cameraName) ?>">
 									<?= htmlspecialchars($cameraName, ENT_QUOTES, "UTF-8") ?>
-								<span class="camera-storage">
-									<?= $bytes > 0 ? formatBytes($bytes) . " · " . number_format($share, 1) . " %" : "keine Videos" ?>
-									<span class="camera-share" aria-hidden="true"><span style="width: <?= $share ?>%"></span></span>
-								</span>
+								<span class="camera-size"><?= $bytes > 0 ? formatBytes($bytes) . " Videos" : "keine Videos" ?></span>
 							</a>
 						</li>
 						<?php endforeach; ?>

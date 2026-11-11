@@ -30,30 +30,29 @@ def row_of(out: str, camera: str) -> str:
 	return out[start : out.index("</a>", start)]
 
 
-def test_every_camera_shows_its_size_and_share_of_all_videos(tmp_path):
+def test_every_camera_shows_its_video_size_in_plain_words(tmp_path):
 	out = render(tmp_path, {"A": 300, "B": 100})
 
-	assert "300.0 B" in row_of(out, "A")
-	assert "75.0 %" in row_of(out, "A")
-	assert "100.0 B" in row_of(out, "B")
-	assert "25.0 %" in row_of(out, "B")
+	assert "300.0 B Videos" in row_of(out, "A")
+	assert "100.0 B Videos" in row_of(out, "B")
 
 
-def test_the_bar_is_as_wide_as_the_share(tmp_path):
+# A bar or a percent next to the disk ring reads as "this camera filled X % of the disk".
+def test_a_row_shows_no_percent_and_no_bar(tmp_path):
 	out = render(tmp_path, {"A": 300, "B": 100})
 
-	assert 'style="width: 75%"' in row_of(out, "A")
-	assert 'style="width: 25%"' in row_of(out, "B")
+	assert "%" not in row_of(out, "A")
+	assert "camera-share" not in out
 
 
-def test_a_camera_without_videos_says_so_and_has_an_empty_bar(tmp_path):
+def test_a_camera_without_videos_says_so(tmp_path):
 	out = render(tmp_path, {"A": 300, "B": 0})
 
 	assert "keine Videos" in row_of(out, "B")
-	assert 'style="width: 0%"' in row_of(out, "B")
+	assert "0.0 B Videos" not in row_of(out, "B")
 
 
-def test_no_videos_at_all_does_not_divide_by_zero(tmp_path):
+def test_no_videos_at_all_says_so_for_every_camera(tmp_path):
 	out = render(tmp_path, {"A": 0})
 
 	assert "keine Videos" in row_of(out, "A")
