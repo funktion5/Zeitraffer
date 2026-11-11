@@ -16,7 +16,7 @@ PHP reads the merged config through one shared reader and posts the form to the 
 **Tech Stack:** Python 3.11-compatible (CI runs 3.13), plain PHP behind Apache, bash wrapper, pytest. No new
 dependency.
 
-**Spec:** `docs/plans/2026-11-10-settings-page.md`
+**Spec:** `docs/plans/done/2026-11-10-settings-page.md`
 
 ## Global Constraints
 
