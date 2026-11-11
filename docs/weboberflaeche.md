@@ -6,9 +6,9 @@ Was die Weboberfläche kann, welche Dateien dazugehören und wie ein Video-Auftr
 ## Aktueller Funktionsumfang
 
 Die Startseite listet die Kameras aus der Kameraliste `state/web-jobs/cameras.json` auf, die der
-Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
+Nachtlauf schreibt, jede mit der Größe ihrer Videos ([Speicheranzeige](#speicheranzeige)). Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner (`daily`/`weekly`/`monthly`/`yearly` in Formularwerten, URLs und der CLI) bleiben davon unberührt. Die Kameraseite bietet:
 
-- Anzeige von gesamtem, verwendetem und freiem Speicherplatz des Dateisystems von `videos/`
+- Speicheranzeige im Header (auf jeder Seite): ein Ring mit der Aufteilung des Platzes, gesamter, belegter und freier Speicher des Dateisystems von `videos/`, die Größe der Videos und eine Warnung, wenn es eng wird. Aufbau: [Speicheranzeige](#speicheranzeige)
 - Liste **Automatische Videos** aus `videos/<camera>/<job>/`: Täglich die letzten 7,
   Wöchentlich/Monatlich/Jährlich jeweils das neueste. Nur ansehen und herunterladen, kein
   Löschen (die Aufräumregel entfernt sie); die Auswahl trägt `source=auto` in der URL, weil
@@ -30,7 +30,7 @@ Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner 
 
 Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](flagger.md) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](highlights-seite.md).
 
-Die Seite **Einstellungen** (Link mit Zahnrad ganz rechts im Header) hat zwei Reiter, **Allgemein** und **Verpixelung**. Dort ändern die Kolleginnen und Kollegen eine festgelegte Auswahl der Werte aus `config/config.json`, ohne die Datei anzufassen. Aufbau, Grenzen und Ablauf: [Einstellungen](#einstellungen).
+Die Seite **Einstellungen** (Link mit Zahnrad ganz rechts im Header) hat zwei Reiter, **Allgemein** und **Verpixelung**. Dort ändern die Kolleginnen und Kollegen eine festgelegte Auswahl der Werte aus `config/config.json`, ohne die Datei anzufassen. Aufbau, Grenzen und Ablauf: [Einstellungen](#einstellungen). Über den Reitern steht auf beiden Seiten das Feld **Speicher** mit zwei Ringen und einer Liste: [Speicheranzeige](#speicheranzeige).
 
 Beide Listen lesen nur die vier Job-Ordner (`daily`, `weekly`, `monthly`, `yearly`); `highlights/` und `manual-runs/` erscheinen also nie als Job. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Gelöscht werden können nur manuelle Videos: das Löschen prüft gegen die Liste der manuellen Videos, der Lösch-Wrapper lehnt automatische ab. Eine Status-Datei-Bereinigung ist nicht implementiert.
 
@@ -39,23 +39,25 @@ Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und bl
 ## Webdateien
 
 ```text
-web/public/index.php               Kameraübersicht
+web/public/index.php               Kameraübersicht, je Kamera die Größe ihrer Videos
 web/public/camera.php              Player, Bibliothek, Formulare (historisches Video, Neu erstellen, Upload) und Status-Polling
 web/public/highlights.php          Highlights-Seite (Bilder des Flaggers, Löschen)
 web/public/settings.php            Einstellungen, Reiter „Allgemein“
 web/public/verpixelung.php         Einstellungen, Reiter „Verpixelung“ (Vorschaubild, Zeichen-Editor, Bestätigungsdialog)
 web/public/settings-common.js      Skript, das beide Einstellungs-Reiter teilen: Regler, „Auf Standard zurücksetzen“, „Änderungen verwerfen“
 web/public/verpixelung.js          Skript des Reiters „Verpixelung“: Rahmenzeilen, Zeichen-Editor, „Vorschau aktualisieren“, Bestätigungsdialog
+web/public/storage-ring.js         Skript des Feldes „Speicher“: das sofortige Textfeld über einem Bogen der Ringe
 web/public/preview.php             liefert das zwischengespeicherte Vorschaubild einer Blur-Kamera (nur JPEG)
 web/public/preview-refresh.php     „Vorschau aktualisieren“: holt ein neues Bild, antwortet mit JSON
 web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung und Ergebniszeilen)
 web/public/running-job.php         read-only JSON: läuft gerade irgendein Web-Auftrag? (Hinweisstreifen auf jeder Seite)
 web/public/style.css               Darstellung und responsives Layout
-web/src/components/header.php      gemeinsamer Header, Speicheranzeige und Hinweisstreifen „Auftrag läuft“
+web/src/components/header.php      gemeinsamer Header, Speicherring mit Warnstufe und Hinweisstreifen „Auftrag läuft“
+web/src/components/storage-panel.php  das Feld „Speicher“ über den Einstellungs-Reitern: zwei Ringe und die Liste
 web/src/components/job-watcher.php gemeinsamer Abschlussdialog (mit Ergebniszeilen), seitenübergreifendes Polling
 web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog, löscht im Hintergrund
 web/src/components/settings-tabs.php  Reiterleiste „Allgemein | Verpixelung“
-web/src/video-library.php          Kamera-, Video- und Speicherermittlung, Vorschau der Dateien für den Upload
+web/src/video-library.php          Kamera-, Video- und Speicherermittlung (Größen, Aufteilung, Warnstufe, Teile der Ringe), Vorschau der Dateien für den Upload
 web/src/job-runner.php             Aufruf des fest installierten Triggers
 web/src/rebuild-runner.php         Aufruf des Triggers zum Neuerstellen der automatischen Videos
 web/src/publish-runner.php         Aufruf des Triggers für den Upload einer Kamera
@@ -205,6 +207,60 @@ Die Ausgabe des Skripts bleibt in einer privaten temporären Datei und im Protok
 
 Der Trigger nimmt dieselbe Laufsperre wie alle anderen Aufträge: Während eines Uploads läuft kein Video-Auftrag und umgekehrt. Beide Wrapper-Paare (Neuerstellen und Upload) installiert `./install.sh` im Schritt `web_bridge` samt sudoers-Regeln; von Hand: [Installation – Wrapper installieren](installation.md#wrapper-installieren).
 
+## Speicheranzeige
+
+Der Speicher wird an drei Stellen gezeigt. Gemessen werden nur Dateigrößen; alle Zahlen kommen aus
+`web/src/video-library.php`.
+
+**Was gemessen wird.** `getVideoStorage()` zählt die Dateien unter `videos/<Kamera>/` und teilt sie je Kamera
+in vier Gruppen: **automatische Videos** (`daily`, `weekly`, `monthly`, `yearly`), **manuelle Videos**
+(`manual-runs/`), **Highlight-Bilder** (`highlights/`) und **Übriges** (alles andere im Kameraordner). Jeder
+Kameraordner zählt, auch die Kameras aus `ignored_cameras`: Sie füllen die Platte trotzdem. Nicht gezählt
+werden Symlinks, lose Dateien neben den Kameraordnern, versteckte Ordner und nicht lesbare Unterordner. Die
+Bilder der Kameras auf der Storage Box gehören nicht dazu. „Gesamt“, „Belegt“ und „Verfügbar“ sind das
+Dateisystem, auf dem `videos/` liegt: Auf dem VPS ist das die ganze Platte, nicht nur die Videos (Stand der
+Messung: rund 2,8 GB Videos auf einer 38-GB-Platte). Ein Durchlauf kostet nichts Merkliches: ein `du` über
+589 Dateien dauerte auf dem VPS wenige Millisekunden, deshalb gibt es keinen Zwischenspeicher.
+
+**Header (jede Seite).** Ein Ring und vier Felder: **Gesamt**, **Belegt**, **Verfügbar** und **Davon Videos**
+(nur echte Videos: automatische plus manuelle; die Highlight-Bilder haben einen eigenen Teil im Ring). Der Ring
+besteht aus fünf Bögen in dieser Reihenfolge: automatische Videos, manuelle Videos, Highlight-Bilder,
+Übriges (System, Modelle, Protokolle) und Frei. Ein Teil ohne Inhalt bekommt keinen Bogen. Fährt man mit der
+Maus über einen Bogen, erscheint **sofort** ein Textfeld mit dem Namen, der Größe und dem Anteil. Das ist
+reines CSS (`:has()`), weil das eingebaute Titel-Tooltip des Browsers erst nach einer Verzögerung kommt. Für
+Screenreader trägt der Ring ein `aria-label` mit allen Teilen. Die **Warnstufe** (`storageLevel()`): ab 80 %
+Belegt färbt sich die Zahl im Ring amber und daneben steht „Speicher wird knapp“, ab 90 % rot mit „Speicher
+fast voll“. Die Farbe allein genügt nie, der Text steht immer dabei.
+
+**Kameraliste (Startseite).** Jede Kamera trägt eine Kapsel, zum Beispiel „519.0 MB Videos“, oder „keine
+Videos“. Bewusst kein Balken und kein Prozentwert: Neben dem Ring läse man ihn als Anteil an der Platte.
+
+**Feld „Speicher“ (beide Einstellungs-Reiter).** Es steht unter der Überschrift „Einstellungen“ und über den
+Reitern (`web/src/components/storage-panel.php`). Links zwei Ringe nebeneinander, rechts die Liste:
+
+- **„Der ganze Speicher“:** die Kameras, Übriges und Frei, zusammen die ganze Platte. Auf dem VPS sind die
+  Kameras darin nur dünne Linien, weil die Videos nur einen kleinen Teil der Platte belegen.
+- **„Nur die Videos“:** nur die Kameras, jede ein eigenes Stück. Dieser Ring ist der bunte; die Mitte nennt
+  die Gesamtgröße der Kameraordner, also auch mit den Highlight-Bildern (anders als „Davon Videos“ im Header,
+  das nur echte Videos zählt).
+- **Die Liste** nennt jeden Teil mit Farbpunkt und Größe, ohne Prozentspalte: Die beiden Ringe haben
+  verschiedene Grundlagen, die in einer Spalte nicht nebeneinander stehen sollen.
+- **Die Prozentwerte** stehen nur im Textfeld über einem Bogen und nennen ihre Grundlage: „% des Speichers“
+  beim ganzen Ring, „% der Videos“ beim Videoring. Das Textfeld kommt von `web/public/storage-ring.js`
+  (ein Skript und ein Feld für alle Bögen, gelesen aus `data-tip`).
+- **Farben:** Die sechs größten Kameras haben je eine feste Farbe (`--chart-1` bis `--chart-6`, in
+  `style.css`), in beiden Ringen dieselbe. Alle weiteren werden zu „Weitere Kameras (n)“ (`--chart-7`); bleibt
+  nur eine übrig, steht sie mit Namen da.
+- **Schmale Fenster:** Unter etwa 56 rem Breite rutscht die Liste unter die Ringe.
+
+Die Teile berechnen `storageCameraParts()` (Kameras, Übriges, Frei; Summe immer die ganze Platte),
+`storageVideoParts()` (nur die Kameras, je als Anteil der Videos) und `storageArcs()` (die Bögen: ein Kreis
+mit `pathLength="100"`, eine Strichlänge ist also ein Prozent).
+
+**Grenzen.** Das Textfeld erscheint nur mit der Maus, nicht per Tastatur; Screenreader bekommen das Label des
+Rings und die Liste. Im Docker-Testsystem zeigt die Anzeige die virtuelle Platte von Docker Desktop, nicht den
+freien Platz des Rechners ([docker-web.md](docker-web.md)).
+
 ## Einstellungen
 
 Zwei Reiter, jeder eine eigene Seite mit eigenem Formular, eigenem Speichern-Knopf und eigener Datei. Eine Speicherung im einen Reiter kann den anderen deshalb weder überschreiben noch veraltet machen. Die IT ändert weiter `config/config.json`; was auf der Seite einstellbar ist und was nicht, legt `src/settings.py` fest ([konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche)).
@@ -311,6 +367,9 @@ Wrapper, PHP-Helfer und Status-Endpunkt werden mit pytest geprüft (benötigt `p
 python3 -m pytest tests/web
 ```
 
+Die ganze Suite läuft auch im Docker-Testsystem, das den Webteil des VPS nachbaut (Debian 13, Apache, PHP 8.4,
+Python 3.13): [docker-web.md](docker-web.md#die-tests-im-container-laufen-lassen).
+
 - `web_status_test.py`: atomare Statuswechsel, ungültige Job-IDs, gemeinsamer Lock, Trigger-Validierung, erfolgreiche Videoveröffentlichung, fehlgeschlagene Jobs und die Fehlergrund-Datei `.reason` des Workers
 - `web_status_endpoint_test.py`: JSON-Antworten von `job-status.php`, inklusive Übersetzung bekannter Fehlergründe und `failed` für einen Auftrag ohne `.pid` nach einer Minute, sowie `running-job.php` (läuft irgendein Web-Auftrag: lebender Worker, tote Prozesse, frischer Start ohne PID, fremde Dateien im Ordner), sowie die Ergebniszeilen (`results`), wenn eine `.result`-Datei da ist
 - `web_delete_test.py`: Lösch-Wrapper, u. a. Pfad-Traversal, Dateityp, Symlinks und dass automatische Videos unangetastet bleiben
@@ -321,9 +380,13 @@ python3 -m pytest tests/web
 - `web_settings_reader_test.py`, `web_settings_runner_test.py`, `web_settings_wrapper_test.py`: das gemeinsame Lesen der Config (Schlüssellisten wie in `src/settings.py`), der Aufruf des Wrappers (Antworten und Exit-Codes) und der Wrapper selbst
 - `web_preview_endpoint_test.py`, `web_preview_runner_test.py`, `web_preview_wrapper_test.py`: `preview.php` und `preview-refresh.php` (Statuscodes, Token, Antwort), das Lesen des Zwischenspeichers (Größe aus dem Bild, beschädigte Bilder) und der Vorschau-Wrapper
 - `web_publish_test.py`: Trigger und Worker des Uploads (genau zwei Argumente, `--run`, Ergebniszeile, `failed` ohne Ergebniszeile, privates Protokoll, und dass der FTP-Zugang nie in die Statusdateien gelangt)
+- `web_storage_test.py`: das Messen von `videos/` (vier Gruppen je Kamera, Symlinks, lose Dateien und versteckte Ordner außen vor, ausgeblendete Kameras zählen), die Warnstufen bei 80 % und 90 %, die Teile des Header-Rings und die Teile für das Feld „Speicher“ (Summe immer die ganze Platte, einzelne Restkamera mit Namen, eine Farbe je Teil, der Ring der Videos)
+- `web_header_test.py`: der Header als Ganzes: ein Bogen je Teil mit den richtigen Strichlängen, ein Textfeld je Bogen, Warntexte nur ab 80 % und 90 %, das Feld „Davon Videos“
+- `web_storage_panel_test.py`: das Feld „Speicher“: beide Ringe, die Liste ohne Prozentspalte, die Textfelder mit ihrer Grundlage („des Speichers“, „der Videos“), gleiche Farbe je Kamera in beiden Ringen, mehr als sechs Kameras, das Skript als Struktur; dazu je ein Test in den beiden Einstellungs-Seitentests, dass es über den Reitern steht
+- `web_index_page_test.py`: die Kapsel je Kamera („keine Videos“, kein Prozentwert, kein Balken)
 
 Die Tests der Highlights-Seite stehen in [highlights-seite.md](highlights-seite.md#dateien-und-tests).
 
 Die Python-Seite der Einstellungen prüfen `tests/settings_test.py` (Regeln und Grenzen), `tests/settings_save_test.py` (Schreiber: nur Abweichungen, atomar, veraltete Seite, Protokoll) und `tests/privacy/privacy_preview_test.py` (Auswahl und Prüfung des Vorschaubilds).
 
-Nicht automatisiert getestet sind die Speicheranzeige (`getStorageUsage`) und das JavaScript der Seiten (die Zeichen-Gesten sind in einem echten Browser geprüft; die Tests prüfen, was der Server dafür bereitstellt).
+Nicht automatisiert getestet ist das JavaScript der Seiten (die Zeichen-Gesten des Editors und das Textfeld über den Bögen von `storage-ring.js` sind in einem echten Browser geprüft; die Tests prüfen, was der Server dafür bereitstellt, und lesen das Skript nur als Struktur). Ebenso nicht automatisiert: wie die Ringe und Farben aussehen; das wurde im Browser angesehen.
