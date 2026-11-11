@@ -60,10 +60,25 @@ Der Container zeigt **immer den Stand, der auf dem Rechner ausgecheckt ist**: Zw
 Gespeicherte Einstellungen landen in `config/settings.json` und `config/settings-privacy.json` im eigenen
 Ordner (wie auf dem VPS, von git ignoriert). Wer sie zurücksetzen will, löscht diese Dateien.
 
+## Die Tests im Container laufen lassen
+
+Der Container hat dieselbe Umgebung wie der VPS (Debian 13, Python 3.13, PHP, FFmpeg, die Pakete aus
+`requirements.txt`). Tests, die auf dem Mac nur wegen macOS-Unterschieden scheitern, laufen dort. Im Ordner
+`docker/zeitraffer-web`:
+
+```
+docker compose exec -u zeitraffer web bash -c "cd ~/timelapse && .venv/bin/python3 -m pytest"
+```
+
+Eingebunden sind `tests`, `src`, `web`, `scripts`, `config`, `pyproject.toml`, `requirements.txt`, `install.sh`
+und `backup.sh`: das, was die Tests lesen. Nicht dabei sind `docs/`, `models/` und `sandbox/`; der eine Test, der
+das Erkennungsmodell und die Beispielbilder braucht (`tests/flagger/flagger_acceptance_test.py`), überspringt sich
+selbst. Ruff geht ebenso: `.venv/bin/ruff check .`.
+
 ## Warum es so gebaut ist
 
 - **Die Ordner werden einzeln eingebunden** (`web`, `src`, `scripts`, `tests`, `config`, `pyproject.toml`,
-  `requirements.txt`), nicht das ganze Repo. Der Grund: Docker Desktop zeigt eingebundene Dateien im Container
+  `requirements.txt`, `install.sh`, `backup.sh`), nicht das ganze Repo. Der Grund: Docker Desktop zeigt eingebundene Dateien im Container
   als Eigentum von root, und `projectRunUser()` in `web/src/process-runner.php` startet die Wrapper als
   **Eigentümer des Projektordners** und verweigert root. Deshalb ist `/home/zeitraffer/timelapse` ein echter
   Ordner des Kontos `zeitraffer`.
