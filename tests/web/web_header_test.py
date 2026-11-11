@@ -80,14 +80,41 @@ def test_an_empty_part_gets_no_arc(tmp_path):
 	assert "storage-arc-automatic" in out
 
 
-# Hovering an arc shows what it is: its own title, with the size and the share.
-def test_every_arc_says_what_it_is_when_hovered(tmp_path):
+# Hovering an arc shows what it is: a tooltip box with the size and the share, which the CSS shows
+# at once. A native title tooltip would come back with the browser's delay, so there is none.
+def test_every_arc_has_a_tooltip_box_saying_what_it_is(tmp_path):
 	out = render_header(tmp_path, storage())
 
-	assert "<title>Automatische Videos: 3.0 GB (10.0 %)</title>" in out
-	assert "<title>Manuelle Videos: 1.0 GB (5.0 %)</title>" in out
-	assert "<title>Sonstiges (System, Modelle, Logs, Highlights): 5.0 GB (25.0 %)</title>" in out
-	assert "<title>Frei: 20.0 GB (60.0 %)</title>" in out
+	for key, text in (
+		("automatic", "Automatische Videos: 3.0 GB (10.0 %)"),
+		("manual", "Manuelle Videos: 1.0 GB (5.0 %)"),
+		("other", "Sonstiges (System, Modelle, Logs, Highlights): 5.0 GB (25.0 %)"),
+		("free", "Frei: 20.0 GB (60.0 %)"),
+	):
+		assert (
+			f'<span class="storage-tip storage-tip-{key}" aria-hidden="true">{text}</span>' in out
+		)
+
+	assert "<title>" not in out
+
+
+def test_an_empty_part_gets_no_tooltip_box(tmp_path):
+	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 30.0, 60.0)))
+
+	assert "storage-tip-manual" not in out
+
+
+# The tooltip of an arc is shown by hovering THAT arc and no other: one rule per arc.
+def test_the_style_shows_a_tooltip_only_for_the_hovered_arc(tmp_path):
+	css = (WEB_SRC.parent / "public" / "style.css").read_text(encoding="utf-8")
+
+	for key in ("automatic", "manual", "other", "free"):
+		assert f".storage-chart:has(.storage-arc-{key}:hover) .storage-tip-{key}" in css
+
+	# No delay: shown by display, not by a transition or animation.
+	tip_rule = css[css.index(".storage-tip {") : css.index("}", css.index(".storage-tip {"))]
+	assert "transition" not in tip_rule
+	assert "animation" not in tip_rule
 
 
 # Screen readers get the same four statements in one label: a title alone is hover-only.
@@ -99,6 +126,15 @@ def test_the_ring_has_one_label_with_all_parts(tmp_path):
 	assert label is not None
 	assert "Automatische Videos: 3.0 GB" in label.group(1)
 	assert "Frei: 20.0 GB" in label.group(1)
+
+
+# The tooltip boxes are spans too: a bare ".storage-chart span" rule would move them like the label.
+def test_the_percentage_label_has_its_own_class_apart_from_the_tooltips(tmp_path):
+	out = render_header(tmp_path, storage())
+	css = (WEB_SRC.parent / "public" / "style.css").read_text(encoding="utf-8")
+
+	assert '<span class="storage-percent">' in out
+	assert ".storage-chart span" not in css
 
 
 def test_the_videos_box_shows_the_total_and_no_legend(tmp_path):

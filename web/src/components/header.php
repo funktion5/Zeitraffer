@@ -12,8 +12,9 @@ declare(strict_types=1);
 
 	<?php if ($storage !== null): ?>
 		<?php
-		// The ring is four arcs of one circle drawn with pathLength 100, so a dash length is a percent;
-		// each arc carries its own title for the hover. Empty parts are left out. An unknown level
+		// The ring is four arcs of one circle drawn with pathLength 100, so a dash length is a percent.
+		// Each arc has a tooltip box that the CSS shows while that arc is hovered (the browser's own
+		// title tooltip only appears after a delay). Empty parts are left out. An unknown level
 		// counts as "ok".
 		$parts = array_column($storage["segments"], null, "key");
 		$names = [
@@ -50,13 +51,14 @@ declare(strict_types=1);
 								cx="36" cy="36" r="31" pathLength="100"
 								stroke-dasharray="<?= $arc["percent"] ?> <?= round(100 - $arc["percent"], 1) ?>"
 								stroke-dashoffset="<?= $arc["start"] > 0 ? -$arc["start"] : 0 ?>"
-							>
-								<title><?= htmlspecialchars($arc["label"], ENT_QUOTES, "UTF-8") ?></title>
-							</circle>
+							/>
 						<?php endforeach; ?>
 					</g>
 				</svg>
-				<span>
+				<?php foreach ($arcs as $arc): ?>
+					<span class="storage-tip storage-tip-<?= $arc["key"] ?>" aria-hidden="true"><?= htmlspecialchars($arc["label"], ENT_QUOTES, "UTF-8") ?></span>
+				<?php endforeach; ?>
+				<span class="storage-percent">
 					<?= htmlspecialchars(
 						(string) $storage["usedPercent"],
 						ENT_QUOTES,

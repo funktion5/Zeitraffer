@@ -696,7 +696,7 @@ ul {
 	height: 100%;
 }
 
-/* Hovering one arc shows its own title; the four colours are automatic, manual, the rest, free. */
+/* The four colours are automatic videos, manual videos, the rest, free. */
 .storage-arc {
 	fill: none;
 	stroke-width: 10;
@@ -718,7 +718,7 @@ ul {
 	stroke: var(--color-surface-light);
 }
 
-.storage-chart span {
+.storage-chart .storage-percent {
 	position: relative;
 	z-index: 1;
 
@@ -759,13 +759,43 @@ ul {
 	font-weight: 600;
 }
 
+/* Shown the moment one arc is hovered, no delay; the ring's aria-label says the same in words. */
+.storage-tip {
+	display: none;
+
+	position: absolute;
+	top: calc(100% + 0.4rem);
+	left: 0;
+	z-index: 10;
+
+	padding: 0.35rem 0.65rem;
+
+	background: var(--color-surface-light);
+	border: 1px solid var(--color-border-light);
+	border-radius: var(--radius-small);
+	box-shadow: var(--shadow-small);
+
+	color: var(--color-text);
+	font-size: 0.8rem;
+	white-space: nowrap;
+
+	pointer-events: none;
+}
+
+.storage-chart:has(.storage-arc-automatic:hover) .storage-tip-automatic,
+.storage-chart:has(.storage-arc-manual:hover) .storage-tip-manual,
+.storage-chart:has(.storage-arc-other:hover) .storage-tip-other,
+.storage-chart:has(.storage-arc-free:hover) .storage-tip-free {
+	display: block;
+}
+
 /* The level is also said in words (.storage-warning); the colour only supports it. */
-.storage-overview[data-level="warn"] .storage-chart span,
+.storage-overview[data-level="warn"] .storage-chart .storage-percent,
 .storage-overview[data-level="warn"] .storage-warning {
 	color: var(--color-warning);
 }
 
-.storage-overview[data-level="critical"] .storage-chart span,
+.storage-overview[data-level="critical"] .storage-chart .storage-percent,
 .storage-overview[data-level="critical"] .storage-warning {
 	color: var(--color-danger);
 }
