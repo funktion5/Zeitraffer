@@ -12,7 +12,7 @@ declare(strict_types=1);
 
 	<?php if ($storage !== null): ?>
 		<?php
-		// The ring is four arcs of one circle drawn with pathLength 100, so a dash length is a percent.
+		// The ring is five arcs of one circle drawn with pathLength 100, so a dash length is a percent.
 		// Each arc has a tooltip box that the CSS shows while that arc is hovered (the browser's own
 		// title tooltip only appears after a delay). Empty parts are left out. An unknown level
 		// counts as "ok".
@@ -20,7 +20,8 @@ declare(strict_types=1);
 		$names = [
 			"automatic" => "Automatische Videos",
 			"manual" => "Manuelle Videos",
-			"other" => "Sonstiges (System, Modelle, Logs, Highlights)",
+			"highlights" => "Highlight-Bilder",
+			"other" => "Sonstiges (System, Modelle, Logs)",
 			"free" => "Frei",
 		];
 		$arcs = [];

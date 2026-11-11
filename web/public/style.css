@@ -22,6 +22,7 @@
 	--color-danger: #df7171;
 	--color-warning: #e3b341;
 	--color-manual: #a995e8;
+	--color-highlight: #e07ab8;
 
 	--radius-small: 6px;
 	--radius-medium: 10px;
@@ -696,7 +697,7 @@ ul {
 	height: 100%;
 }
 
-/* The four colours are automatic videos, manual videos, the rest, free. */
+/* The five colours are automatic videos, manual videos, highlight pictures, the rest, free. */
 .storage-arc {
 	fill: none;
 	stroke-width: 10;
@@ -708,6 +709,10 @@ ul {
 
 .storage-arc-manual {
 	stroke: var(--color-manual);
+}
+
+.storage-arc-highlights {
+	stroke: var(--color-highlight);
 }
 
 .storage-arc-other {
@@ -784,6 +789,7 @@ ul {
 
 .storage-chart:has(.storage-arc-automatic:hover) .storage-tip-automatic,
 .storage-chart:has(.storage-arc-manual:hover) .storage-tip-manual,
+.storage-chart:has(.storage-arc-highlights:hover) .storage-tip-highlights,
 .storage-chart:has(.storage-arc-other:hover) .storage-tip-other,
 .storage-chart:has(.storage-arc-free:hover) .storage-tip-free {
 	display: block;

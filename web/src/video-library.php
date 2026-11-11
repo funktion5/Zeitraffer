@@ -342,13 +342,20 @@ function directoryBytes(string $directory): int
 	return $bytes;
 }
 
-// Size of videos/ per camera, split into the automatic videos, the manual ones and the rest
-// (highlight pictures, anything else). Every camera folder counts, ignored cameras too: the disk
-// is filled by what lies on it.
+// Size of videos/ per camera, split into the automatic videos, the manual ones, the highlight
+// pictures and the rest (anything else in the folder). Every camera folder counts, ignored cameras
+// too: the disk is filled by what lies on it.
 function getVideoStorage(): array
 {
 	$videoRoot = projectRoot() . "/videos";
-	$storage = ["cameras" => [], "automatic" => 0, "manual" => 0, "other" => 0, "total" => 0];
+	$storage = [
+		"cameras" => [],
+		"automatic" => 0,
+		"manual" => 0,
+		"highlights" => 0,
+		"other" => 0,
+		"total" => 0,
+	];
 	$entries = is_dir($videoRoot) ? scandir($videoRoot) : false;
 
 	if ($entries === false) {
@@ -369,18 +376,22 @@ function getVideoStorage(): array
 		}
 
 		$manual = directoryBytes($directory . "/manual-runs");
+		$highlights = directoryBytes($directory . "/highlights");
 		$total = directoryBytes($directory);
+		$other = $total - $automatic - $manual - $highlights;
 
 		$storage["cameras"][$entry] = [
 			"automatic" => $automatic,
 			"manual" => $manual,
-			"other" => $total - $automatic - $manual,
+			"highlights" => $highlights,
+			"other" => $other,
 			"total" => $total,
 		];
 
 		$storage["automatic"] += $automatic;
 		$storage["manual"] += $manual;
-		$storage["other"] += $total - $automatic - $manual;
+		$storage["highlights"] += $highlights;
+		$storage["other"] += $other;
 		$storage["total"] += $total;
 	}
 
@@ -396,20 +407,26 @@ function storageLevel(float $usedPercent): string
 	return $usedPercent >= STORAGE_WARN_PERCENT ? "warn" : "ok";
 }
 
-// The disk as four parts for the small donut: automatic videos, manual videos, the rest of the
-// used space (system, models, logs, highlights) and the free space. File sizes and disk figures are
-// read at different moments, so the rest is clamped at 0 and the free part takes what is left.
-function storageSegments(float $total, float $available, int $automatic, int $manual): array
-{
+// The disk as five parts for the small donut: automatic videos, manual videos, highlight pictures,
+// the rest of the used space (system, models, logs) and the free space. File sizes and disk figures
+// are read at different moments, so the rest is clamped at 0 and the free part takes what is left.
+function storageSegments(
+	float $total,
+	float $available,
+	int $automatic,
+	int $manual,
+	int $highlights,
+): array {
 	$used = max(0.0, $total - $available);
-	$other = max(0, (int) round($used) - $automatic - $manual);
-	$free = max(0, (int) round($total) - $automatic - $manual - $other);
+	$other = max(0, (int) round($used) - $automatic - $manual - $highlights);
+	$free = max(0, (int) round($total) - $automatic - $manual - $highlights - $other);
 
 	$percentOf = static fn(int $bytes): float => $total > 0 ? round($bytes / $total * 100, 1) : 0.0;
 
 	return [
 		["key" => "automatic", "bytes" => $automatic, "percent" => $percentOf($automatic)],
 		["key" => "manual", "bytes" => $manual, "percent" => $percentOf($manual)],
+		["key" => "highlights", "bytes" => $highlights, "percent" => $percentOf($highlights)],
 		["key" => "other", "bytes" => $other, "percent" => $percentOf($other)],
 		["key" => "free", "bytes" => $free, "percent" => $percentOf($free)],
 	];
@@ -440,8 +457,14 @@ function getStorageUsage(): ?array
 		"available" => formatBytes($available),
 		"usedPercent" => round($usedPercent, 1),
 		"level" => storageLevel($usedPercent),
-		"videos" => formatBytes($videos["total"]),
-		"segments" => storageSegments($total, $available, $videos["automatic"], $videos["manual"]),
+		"videos" => formatBytes($videos["automatic"] + $videos["manual"]),
+		"segments" => storageSegments(
+			$total,
+			$available,
+			$videos["automatic"],
+			$videos["manual"],
+			$videos["highlights"],
+		),
 	];
 }
 

@@ -6,9 +6,9 @@ from pathlib import Path
 from web_php_test import WEB_SRC
 
 
-def storage(level: str = "ok", percents=(10.0, 5.0, 25.0, 60.0)) -> dict:
-	keys = ("automatic", "manual", "other", "free")
-	byte_sizes = (3 * 1024**3, 1024**3, 5 * 1024**3, 20 * 1024**3)
+def storage(level: str = "ok", percents=(10.0, 5.0, 2.0, 23.0, 60.0)) -> dict:
+	keys = ("automatic", "manual", "highlights", "other", "free")
+	byte_sizes = (3 * 1024**3, 1024**3, 512 * 1024**2, 5 * 1024**3, 20 * 1024**3)
 
 	return {
 		"total": "38.0 GB",
@@ -47,14 +47,15 @@ def render_header(tmp_path: Path, data: dict | None) -> str:
 	return result.stdout
 
 
-# The ring is four arcs of one circle (pathLength 100: a dash length is a percent).
+# The ring is five arcs of one circle (pathLength 100: a dash length is a percent).
 def test_the_ring_draws_one_arc_per_part(tmp_path):
 	out = render_header(tmp_path, storage())
 
 	for key, dash, offset in (
 		("automatic", "10 90", "0"),
 		("manual", "5 95", "-10"),
-		("other", "25 75", "-15"),
+		("highlights", "2 98", "-15"),
+		("other", "23 77", "-17"),
 		("free", "60 40", "-40"),
 	):
 		arc = re.search(rf'<circle\s+class="storage-arc storage-arc-{key}"[^>]*>', out)
@@ -65,7 +66,7 @@ def test_the_ring_draws_one_arc_per_part(tmp_path):
 
 
 def test_the_ring_arcs_do_not_show_float_noise(tmp_path):
-	out = render_header(tmp_path, storage(percents=(0.1, 0.2, 0.0, 99.7)))
+	out = render_header(tmp_path, storage(percents=(0.1, 0.2, 0.0, 0.0, 99.7)))
 
 	assert 'stroke-dasharray="0.2 99.8"' in out
 	assert 'stroke-dashoffset="-0.1"' in out
@@ -74,7 +75,7 @@ def test_the_ring_arcs_do_not_show_float_noise(tmp_path):
 
 
 def test_an_empty_part_gets_no_arc(tmp_path):
-	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 30.0, 60.0)))
+	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 0.0, 30.0, 60.0)))
 
 	assert "storage-arc-manual" not in out
 	assert "storage-arc-automatic" in out
@@ -88,7 +89,8 @@ def test_every_arc_has_a_tooltip_box_saying_what_it_is(tmp_path):
 	for key, text in (
 		("automatic", "Automatische Videos: 3.0 GB (10.0 %)"),
 		("manual", "Manuelle Videos: 1.0 GB (5.0 %)"),
-		("other", "Sonstiges (System, Modelle, Logs, Highlights): 5.0 GB (25.0 %)"),
+		("highlights", "Highlight-Bilder: 512.0 MB (2.0 %)"),
+		("other", "Sonstiges (System, Modelle, Logs): 5.0 GB (23.0 %)"),
 		("free", "Frei: 20.0 GB (60.0 %)"),
 	):
 		assert (
@@ -99,7 +101,7 @@ def test_every_arc_has_a_tooltip_box_saying_what_it_is(tmp_path):
 
 
 def test_an_empty_part_gets_no_tooltip_box(tmp_path):
-	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 30.0, 60.0)))
+	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 0.0, 30.0, 60.0)))
 
 	assert "storage-tip-manual" not in out
 
@@ -108,7 +110,7 @@ def test_an_empty_part_gets_no_tooltip_box(tmp_path):
 def test_the_style_shows_a_tooltip_only_for_the_hovered_arc(tmp_path):
 	css = (WEB_SRC.parent / "public" / "style.css").read_text(encoding="utf-8")
 
-	for key in ("automatic", "manual", "other", "free"):
+	for key in ("automatic", "manual", "highlights", "other", "free"):
 		assert f".storage-chart:has(.storage-arc-{key}:hover) .storage-tip-{key}" in css
 
 	# No delay: shown by display, not by a transition or animation.
@@ -117,7 +119,7 @@ def test_the_style_shows_a_tooltip_only_for_the_hovered_arc(tmp_path):
 	assert "animation" not in tip_rule
 
 
-# Screen readers get the same four statements in one label: a title alone is hover-only.
+# Screen readers get the same statements in one label: a title alone is hover-only.
 def test_the_ring_has_one_label_with_all_parts(tmp_path):
 	out = render_header(tmp_path, storage())
 
