@@ -328,6 +328,53 @@ def test_the_check_uses_the_flagger_list_in_force_when_the_form_does_not_send_on
 	assert not paths.settings.exists()
 
 
+# Invalid input is refused before the page's age is looked at, the clash included.
+def test_a_clash_is_reported_even_when_the_page_is_also_out_of_date(paths):
+	write_settings(paths, {"timelapse": {"crf": 30}})
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], flagger_camera(paths)]
+
+	result = save(paths, submission, expected_mtime=1)
+
+	assert result.status == "invalid"
+	assert stored(paths) == {"timelapse": {"crf": 30}}
+
+
+# A clash that config.json itself holds (a hand edit) is refused too, with the same message: the
+# flagger cannot start either way, and the page tells the colleague what to untick.
+def test_a_clash_already_in_config_json_is_refused_on_the_next_save(paths):
+	camera = flagger_camera(paths)
+	base = read_base(paths)
+	base["ignored_cameras"] = [*base["ignored_cameras"], camera]
+	paths.config.write_text(json.dumps(base), encoding="utf-8")
+
+	result = save(paths, {"timelapse": {"crf": 30}})
+
+	assert result.status == "invalid"
+	assert camera in result.errors[0]
+	assert not paths.settings.exists()
+
+
+# Without a readable config.json there is nothing to compare against. Invalid input is still refused
+# as invalid; a valid save fails loudly, as it always did, and writes nothing.
+def test_invalid_input_is_still_refused_as_invalid_when_config_json_cannot_be_read(paths):
+	paths.config.write_text("{not json", encoding="utf-8")
+
+	result = save(paths, {"timelapse": {"crf": 99}})
+
+	assert result.status == "invalid"
+	assert result.errors[0].startswith("timelapse.crf")
+
+
+def test_a_valid_save_fails_loudly_when_config_json_cannot_be_read(paths):
+	paths.config.write_text("{not json", encoding="utf-8")
+
+	with pytest.raises(ValueError, match="config.json"):
+		save(paths, {"timelapse": {"crf": 30}})
+
+	assert not paths.settings.exists()
+
+
 def test_the_flagger_check_is_listed_with_other_errors_not_instead_of_them(paths):
 	submission = base_submission(paths)
 	submission["ignored_cameras"] = [*submission["ignored_cameras"], flagger_camera(paths)]

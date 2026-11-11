@@ -569,7 +569,7 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 
 	?>
 	<div class="settings-field privacy-boxes-field">
-		<h2 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)</h2>
+		<h2 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)<span class="visually-hidden">, Kamera <?= settingsHtml($camera) ?></span></h2>
 		<span class="settings-default">Standard: <?= settingsHtml(privacyBoxCountText(count($defaultBoxes))) ?></span>
 		<?php renderPrivacyHelp($id, privacyBoxHelp()); ?>
 		<p class="privacy-boxes-empty" <?= $boxes === [] ? "" : "hidden" ?>>Für diese Kamera ist noch kein Rahmen gesetzt.</p>
@@ -611,7 +611,7 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 		data-preview-camera="<?= settingsHtml($camera) ?>"
 		aria-labelledby="<?= settingsHtml($id) ?>-title"
 	>
-		<h2 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h2>
+		<h2 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera<span class="visually-hidden"> <?= settingsHtml($camera) ?></span></h2>
 		<div class="privacy-help">
 			<p>Das ist ein echtes Bild von dieser Kamera. Die Verpixelung hat es schon angeschaut. Menschen darauf sind unkenntlich gemacht.</p>
 			<p>Das Bild zeigt dir, wo ein Rahmen liegen soll. Die Zahlen eines Rahmens sind Punkte im Bild: von links nach rechts und von oben nach unten.</p>

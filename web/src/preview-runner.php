@@ -154,6 +154,15 @@ function readPreviewInfo(string $camera): ?array
 	];
 }
 
+// The cached picture of a camera if, and only if, the page would show it: the picture is a JPEG of a
+// plausible size AND its description is valid and names a frame the blur job judged. preview.php
+// serves only this. Checking the picture alone is not enough: a night frame cached before night frames
+// were excluded stays on disk when a refresh finds nothing newer, and its description says so.
+function previewServablePath(string $camera): ?string
+{
+	return readPreviewInfo($camera) === null ? null : previewPicturePath($camera);
+}
+
 // The sentences that go with a picture: its alternative text and the line under it. They are worded
 // here, once, for the page and for the answer to "Vorschau aktualisieren", so the script only shows
 // what the server says. $info is what readPreviewInfo() found.

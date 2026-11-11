@@ -179,8 +179,13 @@ def deeply_nested(depth: int) -> str:
 	return '{"a":' * depth + "1" + "}" * depth
 
 
+# Built in a loop, not parsed: how deep json.loads can read depends on the Python version (src/ has
+# to run on 3.11 as well), and this test is about the validator's own walk.
 def test_validate_refuses_a_submission_too_deep_to_walk():
-	raw = json.loads(deeply_nested(2000))
+	raw: object = 1
+
+	for _ in range(2000):
+		raw = {"a": raw}
 
 	assert validate_settings(raw) == ({}, ["Ungültige Eingabe"])
 

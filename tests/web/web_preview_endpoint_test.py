@@ -20,7 +20,9 @@ JPEG = b"\xff\xd8\xff\xc0\x00\x08\x08\x01\xe0\x02\x80\x00\xff\xd9"
 CONFIG = {"privacy": {"blur_cameras": ["SLSV", "Scheunenviertel"]}}
 
 
-def prepare(tmp_path: Path, config=CONFIG, picture: bytes | None = JPEG, camera="SLSV") -> Path:
+def prepare(
+	tmp_path: Path, config=CONFIG, picture: bytes | None = JPEG, camera="SLSV", info=None
+) -> Path:
 	(tmp_path / "config").mkdir(parents=True, exist_ok=True)
 	(tmp_path / "config" / "config.json").write_text(json.dumps(config))
 	folder = tmp_path / "state" / "web-jobs" / "previews"
@@ -28,15 +30,16 @@ def prepare(tmp_path: Path, config=CONFIG, picture: bytes | None = JPEG, camera=
 
 	if picture is not None:
 		(folder / f"{camera}.jpg").write_bytes(picture)
-		(folder / f"{camera}.json").write_text(
-			json.dumps(
-				{
-					"image": "20261109T120000.jpg",
-					"status": "blurred",
-					"taken": "2026-11-09T12:00:00+01:00",
-				}
-			)
-		)
+
+		# info=False: a picture without its description; a dict changes single fields of it.
+		if info is not False:
+			description = {
+				"image": "20261109T120000.jpg",
+				"status": "blurred",
+				"taken": "2026-11-09T12:00:00+01:00",
+				**(info or {}),
+			}
+			(folder / f"{camera}.json").write_text(json.dumps(description))
 
 	return folder
 
@@ -94,6 +97,34 @@ def test_the_picture_is_served_as_a_jpeg(tmp_path, server):
 	assert body == JPEG
 	assert headers["Content-Type"] == "image/jpeg"
 	assert headers["Content-Length"] == str(len(JPEG))
+
+
+@pytest.mark.parametrize("kind", ["blurred", "clean"])
+def test_a_picture_the_blur_job_judged_is_served(tmp_path, server, kind):
+	prepare(tmp_path, info={"status": kind})
+
+	status, _, body = fetch(server, "/preview.php?camera=SLSV")
+
+	assert status == 200
+	assert body == JPEG
+
+
+# The page shows a picture only when its description is valid and names a judged frame, and the
+# endpoint must agree. A night frame (the blur job records it without running the detector) cached
+# before night frames were excluded stays on disk when a refresh finds no candidate: it must not be
+# fetchable by its address, from an old tab or the browser history.
+@pytest.mark.parametrize(
+	"info",
+	[{"status": "night"}, {"status": "mystery"}, {"status": 5}, {"taken": "yesterday"}, False],
+	ids=["night", "unknown-kind", "kind-not-text", "bad-date", "no-description"],
+)
+def test_a_picture_the_page_would_not_show_is_not_served_either(tmp_path, server, info):
+	prepare(tmp_path, info=info)
+
+	status, _, body = fetch(server, "/preview.php?camera=SLSV")
+
+	assert status == 404
+	assert JPEG not in body
 
 
 # The picture is a camera image: only this user's browser may keep it, and only after asking again.

@@ -6,8 +6,9 @@ require_once __DIR__ . "/../src/video-library.php";
 require_once __DIR__ . "/../src/preview-runner.php";
 
 // The cached preview picture of a blur camera, as a JPEG and nothing else. The name is a plain
-// name, the camera is on the blur list, and the file is the one the preview script wrote: the
-// request never names a path.
+// name, the camera is on the blur list, and the file is the one the preview script wrote, and only
+// when the page would show it too (a judged frame with a valid description): the request never names
+// a path.
 
 function respondWithoutPicture(int $statusCode): never
 {
@@ -36,7 +37,7 @@ if (!isBlurCamera(readProjectConfig(), $camera)) {
 	respondWithoutPicture(404);
 }
 
-$path = previewPicturePath($camera);
+$path = previewServablePath($camera);
 $size = $path === null ? false : filesize($path);
 
 if ($path === null || $size === false) {

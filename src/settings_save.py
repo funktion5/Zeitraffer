@@ -150,6 +150,16 @@ def _cross_field_errors(base: dict, clean: dict, scope: str) -> list[str]:
 	]
 
 
+# config.json as the writer compares against it, or None when it cannot be read.
+def _read_base(config_path: Path) -> dict | None:
+	try:
+		with config_path.open("r", encoding="utf-8") as file:
+			return json.load(file)
+
+	except (OSError, ValueError):
+		return None
+
+
 # Saves the complete set of the form's values. Order matters: invalid input is refused before the
 # stale check, and nothing is written for either. The submission replaces the whole file, so a
 # leaf the form no longer sends loses its override. None for a path means the module constant,
@@ -173,16 +183,21 @@ def save_settings(
 	clean, errors = validate_settings(submitted, scope)
 	mtime = current_mtime(settings_path)
 
-	with config_path.open("r", encoding="utf-8") as file:
-		base = json.load(file)
+	base = _read_base(config_path)
 
-	errors = [*errors, *_cross_field_errors(base, clean, scope)]
+	# Without a readable config.json the cross-field check has nothing to judge. Invalid input is
+	# still refused as invalid; a valid save stops below.
+	if base is not None:
+		errors = [*errors, *_cross_field_errors(base, clean, scope)]
 
 	if errors:
 		return SaveResult("invalid", tuple(errors), mtime)
 
 	if expected_mtime != mtime:
 		return SaveResult("stale", (), mtime)
+
+	if base is None:
+		raise ValueError(f"{config_path.name} cannot be read, nothing was saved.")
 
 	before = load_valid_settings(settings_path, scope)
 	after = _overrides(base, clean)

@@ -769,6 +769,28 @@ def test_the_camera_list_points_at_no_error_when_there_is_none(tmp_path):
 	assert 'id="privacy-blur-cameras-error"' not in out
 
 
+# Every camera has the same two blocks. A heading list (screen reader) shows only the headings, so
+# each one must say whose it is; the name is read, not shown (the fieldset's legend shows it).
+def test_each_block_heading_names_its_camera_for_screen_readers(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+
+	out, _ = render(tmp_path)
+	spoken = []
+
+	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+		fieldset = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
+		titles = re.findall(r'<h2[^>]*class="privacy-boxes-title"[^>]*>(.*?)</h2>', fieldset, re.S)
+
+		assert len(titles) == 2
+		for title in titles:
+			assert re.search(r'<span class="visually-hidden">[^<]*' + camera + "</span>", title)
+			spoken.append(re.sub(r"<[^>]+>", "", title))
+
+	# A heading list can tell all six apart.
+	assert len(set(spoken)) == len(spoken) == 6
+
+
 # The page title is the first-level heading and no heading skips a level (WCAG 1.3.1): the blocks
 # inside a camera's fieldset are second-level headings.
 def test_the_headings_never_skip_a_level(tmp_path):
