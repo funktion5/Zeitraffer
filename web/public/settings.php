@@ -115,6 +115,8 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 	<main>
 		<h1>Einstellungen</h1>
 
+		<?php require __DIR__ . "/../src/components/storage-panel.php"; ?>
+
 		<?php require __DIR__ . "/../src/components/settings-tabs.php"; ?>
 
 		<div class="job-instructions settings-intro">
@@ -208,6 +210,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 	</main>
 
 	<script src="<?= settingsHtml(assetUrl("settings-common.js")) ?>"></script>
+	<script src="<?= settingsHtml(assetUrl("storage-ring.js")) ?>"></script>
 	<script>SettingsForm.init(document.querySelector(".settings-form"));</script>
 
 	<?php require __DIR__ . "/../src/components/job-watcher.php"; ?>

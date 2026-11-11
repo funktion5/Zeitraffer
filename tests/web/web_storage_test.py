@@ -134,3 +134,112 @@ def test_storage_usage_reports_level_and_segments(tmp_path):
 	# "Davon Videos" counts the videos only: highlight pictures have a part of their own.
 	assert result["videos"] == "14.0 B"
 	assert {"total", "used", "available", "usedPercent"} <= set(result)
+
+
+# The big donut: a disk of 1000 bytes with 600 free. The segments are what storageSegments() gives:
+# the cameras' videos are inside them, so they add up to the whole disk.
+def camera_parts(
+	tmp_path: Path,
+	sizes: dict,
+	free: int = 600,
+	maximum: int = 6,
+	in_segments: int | None = None,
+	videos_only: bool = False,
+) -> list:
+	# in_segments: the video bytes the segments saw, when the folders have grown since.
+	videos = sum(sizes.values()) if in_segments is None else in_segments
+	segments = [
+		{"key": "automatic", "bytes": videos, "percent": 0},
+		{"key": "other", "bytes": max(0, 1000 - free - videos), "percent": 0},
+		{"key": "free", "bytes": free, "percent": 0},
+	]
+	cameras = {name: {"total": size} for name, size in sizes.items()}
+	segments_php = f"json_decode({json.dumps(json.dumps(segments))}, true)"
+	cameras_php = f"json_decode({json.dumps(json.dumps(cameras))}, true)"
+	parts_php = (
+		f"storageCameraParts({segments_php},"
+		f' ["cameras" => {cameras_php}, "total" => {sum(sizes.values())}], {maximum})'
+	)
+	code = (
+		f"echo json_encode({'storageVideoParts(' + parts_php + ')' if videos_only else parts_php});"
+	)
+
+	return videos_library(tmp_path, code)
+
+
+def test_camera_parts_list_the_cameras_biggest_first_then_the_rest_of_the_disk(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 80, "C": 20})
+
+	assert [(part["label"], part["bytes"], part["percent"]) for part in result] == [
+		("B", 80, 8.0),
+		("A", 50, 5.0),
+		("C", 20, 2.0),
+		("Sonstiges (System, Modelle, Logs)", 250, 25.0),
+		("Frei", 600, 60.0),
+	]
+
+
+def test_camera_parts_lump_the_smallest_cameras_together(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 30, "C": 20, "D": 10}, maximum=2)
+
+	assert [(part["label"], part["bytes"]) for part in result[:3]] == [
+		("A", 50),
+		("B", 30),
+		("Weitere Kameras (2)", 30),
+	]
+
+
+def test_camera_parts_leave_out_cameras_and_parts_without_bytes(tmp_path):
+	result = camera_parts(tmp_path, {"A": 100, "B": 0}, free=900)
+
+	assert [part["label"] for part in result] == ["A", "Frei"]
+
+
+# The folders are measured a moment after the disk: they can be bigger than the segments say.
+def test_camera_parts_always_add_up_to_the_whole_disk(tmp_path):
+	result = camera_parts(tmp_path, {"A": 600, "B": 300}, free=200, in_segments=700)
+
+	assert sum(part["bytes"] for part in result) == 1000
+	assert "Sonstiges (System, Modelle, Logs)" not in [part["label"] for part in result]
+
+
+def test_camera_parts_give_every_part_its_own_colour(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 80, "C": 20, "D": 10, "E": 5, "F": 4, "G": 3})
+
+	colours = [part["color"] for part in result]
+
+	assert len(set(colours)) == len(colours)
+
+
+def test_camera_parts_say_what_kind_of_part_each_one_is(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 30, "C": 20, "D": 10}, maximum=2)
+
+	assert [part["kind"] for part in result] == ["camera", "camera", "more", "other", "free"]
+
+
+# The donut of the videos only: just the cameras, each as a share of all videos.
+def test_video_parts_are_only_the_cameras_as_a_share_of_the_videos(tmp_path):
+	result = camera_parts(tmp_path, {"A": 300, "B": 100}, videos_only=True)
+
+	assert [(part["label"], part["bytes"], part["videoPercent"]) for part in result] == [
+		("A", 300, 75.0),
+		("B", 100, 25.0),
+	]
+
+
+def test_video_parts_include_the_lumped_cameras_but_not_the_disk_parts(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 30, "C": 20}, maximum=1, videos_only=True)
+
+	assert [part["label"] for part in result] == ["A", "Weitere Kameras (2)"]
+
+
+def test_video_parts_without_any_videos_are_empty(tmp_path):
+	assert camera_parts(tmp_path, {}, videos_only=True) == []
+
+
+# "Weitere Kameras (1)" would hide a camera's name for nothing: one left over is shown as itself.
+def test_a_single_camera_over_the_limit_is_shown_by_name(tmp_path):
+	result = camera_parts(tmp_path, {"A": 50, "B": 30, "C": 20}, maximum=2)
+
+	assert [part["label"] for part in result[:3]] == ["A", "B", "C"]
+	assert "more" not in [part["kind"] for part in result]

@@ -432,6 +432,111 @@ function storageSegments(
 	];
 }
 
+// The disk as one part per camera for the big donut on the settings pages: the biggest cameras
+// first (at most $maxCameras), the smaller ones lumped together (a lump of one camera is shown by
+// name instead), then the rest of the used space and the free space. The parts add up to the whole disk; parts without bytes are left out.
+function storageCameraParts(array $segments, array $videoStorage, int $maxCameras = 6): array
+{
+	$bytesOf = array_column($segments, "bytes", "key");
+	$total = (int) array_sum($bytesOf);
+
+	$cameras = array_filter(
+		array_map(static fn(array $camera): int => $camera["total"], $videoStorage["cameras"]),
+		static fn(int $bytes): bool => $bytes > 0,
+	);
+	$names = array_keys($cameras);
+	usort($names, static fn($a, $b): int => $cameras[$b] <=> $cameras[$a] ?: strcmp((string) $a, (string) $b));
+
+	$parts = [];
+
+	if (count($names) === $maxCameras + 1) {
+		$maxCameras++;
+	}
+
+	foreach (array_slice($names, 0, $maxCameras) as $index => $name) {
+		$parts[] = [
+			"kind" => "camera",
+			"label" => (string) $name,
+			"bytes" => $cameras[$name],
+			"color" => "var(--chart-" . ($index + 1) . ")",
+		];
+	}
+
+	$rest = array_slice($names, $maxCameras);
+
+	if ($rest !== []) {
+		$parts[] = [
+			"kind" => "more",
+			"label" => "Weitere Kameras (" . count($rest) . ")",
+			"bytes" => array_sum(array_map(static fn($name): int => $cameras[$name], $rest)),
+			"color" => "var(--chart-7)",
+		];
+	}
+
+	// File sizes and disk figures are read at different moments: the rest is clamped at 0 and the
+	// free part takes what is left, so the parts always add up to the disk.
+	$shown = (int) array_sum(array_column($parts, "bytes"));
+	$other = max(0, $total - (int) ($bytesOf["free"] ?? 0) - $shown);
+	$free = max(0, $total - $shown - $other);
+
+	$parts[] = [
+		"kind" => "other",
+		"label" => "Sonstiges (System, Modelle, Logs)",
+		"bytes" => $other,
+		"color" => "var(--color-border-light)",
+	];
+	$parts[] = ["kind" => "free", "label" => "Frei", "bytes" => $free, "color" => "var(--color-surface-light)"];
+
+	$parts = array_values(array_filter($parts, static fn(array $part): bool => $part["bytes"] > 0));
+
+	return array_map(
+		static fn(array $part): array => $part + [
+			"percent" => $total > 0 ? round($part["bytes"] / $total * 100, 1) : 0.0,
+		],
+		$parts,
+	);
+}
+
+// The parts that are videos (the cameras and the lumped rest), each as a share of all videos: for
+// the donut of the videos only.
+function storageVideoParts(array $parts): array
+{
+	$videos = array_values(array_filter(
+		$parts,
+		static fn(array $part): bool => in_array($part["kind"], ["camera", "more"], true),
+	));
+	$total = array_sum(array_column($videos, "bytes"));
+
+	return array_map(
+		static fn(array $part): array => $part + [
+			"videoPercent" => $total > 0 ? round($part["bytes"] / $total * 100, 1) : 0.0,
+		],
+		$videos,
+	);
+}
+
+// The arcs of one donut: a circle of pathLength 100, so a dash length is a percent. $of names what the
+// percent is a share of ("des Speichers", "der Videos"): the two donuts have different bases.
+function storageArcs(array $parts, string $percentKey, string $of): array
+{
+	$arcs = [];
+	$start = 0.0;
+
+	foreach ($parts as $part) {
+		$percent = (float) $part[$percentKey];
+		$arcs[] = [
+			"color" => $part["color"],
+			"percent" => $percent,
+			"start" => round($start, 1),
+			"tip" => $part["label"] . ": " . formatBytes($part["bytes"])
+				. " (" . number_format($percent, 1) . " % " . $of . ")",
+		];
+		$start += $percent;
+	}
+
+	return $arcs;
+}
+
 function getStorageUsage(): ?array
 {
 	$videoRoot = projectRoot() . "/videos";

@@ -703,5 +703,18 @@ def test_the_page_loads_the_shared_script_and_starts_it(tmp_path):
 		if "src=" not in attributes
 	]
 
-	assert re.findall(r'<script src="/([\w.-]+)\?v=\d+"></script>', out) == ["settings-common.js"]
+	assert re.findall(r'<script src="/([\w.-]+)\?v=\d+"></script>', out) == [
+		"settings-common.js",
+		"storage-ring.js",
+	]
 	assert 'SettingsForm.init(document.querySelector(".settings-form"));' in inline
+
+
+# The storage panel is the "bigger header": it sits above the tabs of the settings area.
+def test_the_storage_panel_sits_above_the_tabs(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	assert "storage-panel" in out
+	assert out.index("storage-panel") < out.index("settings-tabs")

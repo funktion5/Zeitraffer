@@ -147,6 +147,7 @@ def test_the_page_loads_its_scripts_as_versioned_files(tmp_path):
 	assert re.findall(r'<script src="/([\w.-]+)\?v=\d+"></script>', out) == [
 		"settings-common.js",
 		"verpixelung.js",
+		"storage-ring.js",
 	]
 	assert not any("data-default-group" in body or "privacy-confirm" in body for body in inline)
 
@@ -1262,3 +1263,13 @@ def test_the_strip_handle_shows_only_while_editing():
 	assert "display: none" in idle
 	assert "display: block" in editing
 	assert "cursor: ns-resize" in editing
+
+
+# The storage panel is the "bigger header": it sits above the tabs of the settings area.
+def test_the_storage_panel_sits_above_the_tabs(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	assert "storage-panel" in out
+	assert out.index("storage-panel") < out.index("settings-tabs")
