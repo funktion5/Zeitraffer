@@ -742,6 +742,47 @@ def test_invalid_values_are_shown_next_to_their_controls_with_what_was_typed(tmp
 	assert 'value="9"' in out
 
 
+# The error about the camera list must reach someone who tabs through the boxes, and the link in the
+# summary must have a target that can take the focus.
+def test_a_camera_list_error_is_tied_to_the_list_and_can_take_the_focus(tmp_path):
+	prepare(tmp_path)
+	errors = ["privacy.blur_cameras: muss eine Liste von Kameranamen sein"]
+	reply = json.dumps({"status": "invalid", "errors": errors, "mtime": 0})
+
+	out, _ = render(tmp_path, privacy_post(), sudo_exit=65, sudo_out=reply)
+	group = tag_of(out, r'<div[^>]*id="privacy-blur-cameras"[^>]*>')
+
+	assert 'id="privacy-blur-cameras-error"' in out
+	assert 'href="#privacy-blur-cameras"' in out
+	assert 'role="group"' in group
+	assert 'aria-describedby="privacy-blur-cameras-error"' in group
+	assert 'tabindex="-1"' in group
+
+
+def test_the_camera_list_points_at_no_error_when_there_is_none(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	group = tag_of(out, r'<div[^>]*id="privacy-blur-cameras"[^>]*>')
+
+	assert "aria-describedby" not in group
+	assert 'id="privacy-blur-cameras-error"' not in out
+
+
+# The page title is the first-level heading and no heading skips a level (WCAG 1.3.1): the blocks
+# inside a camera's fieldset are second-level headings.
+def test_the_headings_never_skip_a_level(tmp_path):
+	prepare(tmp_path)
+	cache_preview(tmp_path, "SLSV")
+
+	out, _ = render(tmp_path)
+	levels = re.findall(r"<h([1-6])[\s>]", out)
+
+	assert levels[0] == "1"
+	assert set(levels) <= {"1", "2"}
+	assert "<h3" not in out
+
+
 def test_a_page_that_is_out_of_date_is_refused_and_stays_so(tmp_path):
 	prepare(tmp_path, privacy={})
 	stale = '{"status": "stale", "errors": [], "mtime": 999}'
@@ -823,6 +864,21 @@ def test_the_confirm_dialog_and_its_no_javascript_tick_box_exist(tmp_path):
 	assert "confirm_privacy" in script
 	# The save button is a plain submit: the dialog is the script's job.
 	assert 'name="confirm"' not in out
+
+
+# After a save the browser may bring this page back from its back-forward cache (Back button) with
+# the script's state intact: the confirmation flag and the hidden "yes" field. Left alone, the next
+# Save would go out without the dialog, so the script forgets both whenever the page is shown.
+def test_the_script_forgets_the_confirmation_when_the_page_is_shown_again(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = script_with(out, "privacy-confirm")
+	handler = re.search(r'addEventListener\("pageshow".*?\}\);', script, re.S)
+
+	assert handler is not None
+	assert "delete form.dataset.confirmed" in handler.group(0)
+	assert 'input[name="confirm_privacy"][type="hidden"]' in handler.group(0)
 
 
 # The preview picture in each camera's block (the cache is written by the wrapper's script).

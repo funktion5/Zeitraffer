@@ -497,11 +497,16 @@ function renderPrivacyNumber(
 }
 
 // The blur camera list. A camera that already blurs (config.json) is marked, so nobody takes its
-// tick away by accident.
-function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $baseList): void
+// tick away by accident. With an error the group points at it, and it can take the focus, so the
+// link in the summary has somewhere to go.
+function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $baseList, bool $hasError = false): void
 {
 	?>
-	<div class="settings-cameras" id="privacy-blur-cameras">
+	<div
+		class="settings-cameras"
+		id="privacy-blur-cameras"
+		<?= $hasError ? 'role="group" aria-describedby="privacy-blur-cameras-error" tabindex="-1"' : "" ?>
+	>
 		<?php foreach ($knownCameras as $camera): ?>
 			<?php $live = in_array($camera, $baseList, true); ?>
 			<label>
@@ -564,7 +569,7 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 
 	?>
 	<div class="settings-field privacy-boxes-field">
-		<h3 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)</h3>
+		<h2 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)</h2>
 		<span class="settings-default">Standard: <?= settingsHtml(privacyBoxCountText(count($defaultBoxes))) ?></span>
 		<?php renderPrivacyHelp($id, privacyBoxHelp()); ?>
 		<p class="privacy-boxes-empty" <?= $boxes === [] ? "" : "hidden" ?>>Für diese Kamera ist noch kein Rahmen gesetzt.</p>
@@ -606,7 +611,7 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 		data-preview-camera="<?= settingsHtml($camera) ?>"
 		aria-labelledby="<?= settingsHtml($id) ?>-title"
 	>
-		<h3 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h3>
+		<h2 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h2>
 		<div class="privacy-help">
 			<p>Das ist ein echtes Bild von dieser Kamera. Die Verpixelung hat es schon angeschaut. Menschen darauf sind unkenntlich gemacht.</p>
 			<p>Das Bild zeigt dir, wo ein Rahmen liegen soll. Die Zahlen eines Rahmens sind Punkte im Bild: von links nach rechts und von oben nach unten.</p>

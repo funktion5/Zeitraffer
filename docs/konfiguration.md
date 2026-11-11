@@ -95,7 +95,8 @@ bis 14:00 und eine Toleranz von 1 bis 120 Minuten wählbar (Tageslicht, Fenster 
 
 `min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
 Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
-bis zur Fensterlänge (30 bzw. 365, mit 29. Februar im Zeitraum 366).
+bis zur Fensterlänge (30 bzw. 365, mit 29. Februar im Zeitraum 366); mehr lässt den Auftrag abbrechen.
+Die Weboberfläche bietet höchstens 30 und 365 an, damit der Wert in jedem Jahr passt.
 
 `image_scan_stall_timeout_seconds` (Sekunden): Meldet der Bildscan einer Kamera so lange keinen
 Fortschritt, wird er abgebrochen und die Kamera übersprungen. Gemessen wird Stillstand, nicht
@@ -155,13 +156,13 @@ Bereich `general` (Reiter Allgemein):
 | `timelapse.crf` | ganze Zahl 18–35 (die Umgebungsvariable `TIMELAPSE_X264_CRF` erlaubt 0–51) |
 | `timelapse.daily_framerate`, `monthly_framerate`, `yearly_framerate` | je 1–60 |
 | `ignored_cameras` | Liste einfacher Kameranamen |
-| `flagger.cameras` | Liste einfacher Kameranamen |
-| `flagger.retention_days` | 1–365 |
+| `flagger.cameras` | Liste einfacher Kameranamen, ohne eine in `ignored_cameras` stehende (der Flagger startet sonst für keine Kamera) |
+| `flagger.retention_days` | 7–365 (mindestens die Woche, die der Flagger verlangt) |
 | `daylight_buffer_minutes` | 0–240 |
 | `automatic_daylight_buffer_minutes.1` bis `.12` | je 0–240 |
 | `interval_window.target_time` | `HH:MM` von 10:00 bis 14:00 |
 | `interval_window.tolerance_minutes` | 1–120 |
-| `min_coverage_days.monthly`, `.yearly` | 1–31; 1–366 |
+| `min_coverage_days.monthly`, `.yearly` | 1–30; 1–365 |
 | `log_retention_days` | 1–365 |
 
 Bereich `privacy` (Reiter Verpixelung); die Grenzen sind die des Verpixelungs-Codes selbst

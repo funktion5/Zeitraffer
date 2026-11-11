@@ -3,6 +3,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from src.flagger.settings import MIN_RETENTION_DAYS
 from src.logger import logger
 
 # The limits the blur code enforces, taken from there so that nothing the page accepts can stop the
@@ -138,7 +139,8 @@ GENERAL_RULES: dict[str, Rule] = {
 	"timelapse.yearly_framerate": IntRule(1, 60),
 	"ignored_cameras": CameraNamesRule(),
 	"flagger.cameras": CameraNamesRule(),
-	"flagger.retention_days": IntRule(1, 365),
+	# The flagger's own minimum: it refuses to start with fewer days.
+	"flagger.retention_days": IntRule(MIN_RETENTION_DAYS, 365),
 	"daylight_buffer_minutes": _DAYLIGHT_BUFFER,
 	**{f"automatic_daylight_buffer_minutes.{month}": _DAYLIGHT_BUFFER for month in range(1, 13)},
 	# The noon picture is a daylight picture: a target between 10:00 and 14:00 and a tolerance of at
@@ -146,8 +148,10 @@ GENERAL_RULES: dict[str, Rule] = {
 	# (the window code rejects one that crosses midnight, and a tolerance below 1).
 	"interval_window.target_time": TimeOfDayRule("10:00", "14:00"),
 	"interval_window.tolerance_minutes": IntRule(1, 120),
-	"min_coverage_days.monthly": IntRule(1, 31),
-	"min_coverage_days.yearly": IntRule(1, 366),
+	# The jobs raise for more days than their window has: 30 for a month, 365 for a year without a
+	# 29 February. The page stops at those, so a leap year's 366th day is not on offer.
+	"min_coverage_days.monthly": IntRule(1, 30),
+	"min_coverage_days.yearly": IntRule(1, 365),
 	"log_retention_days": IntRule(1, 365),
 }
 
@@ -282,7 +286,12 @@ def validate_settings(raw: object, scope: str = "general") -> tuple[dict, list[s
 			else:
 				errors.append(f"{path}: nicht änderbar")
 
-	walk(raw, "")
+	# Nested far deeper than any form: refused like any other invalid input, not a traceback.
+	try:
+		walk(raw, "")
+
+	except RecursionError:
+		return {}, ["Ungültige Eingabe"]
 
 	return clean, errors
 
@@ -311,7 +320,8 @@ def read_settings_file(path: Path) -> dict:
 	except FileNotFoundError:
 		return {}
 
-	except (OSError, ValueError) as error:
+	# RecursionError: a file nested deeper than json can read.
+	except (OSError, ValueError, RecursionError) as error:
 		logger.warning(f"Settings file ignored ({path.name}): {error}")
 
 		return {}

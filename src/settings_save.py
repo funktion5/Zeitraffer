@@ -17,6 +17,7 @@ from src.settings import (
 	flatten_leaves,
 	get_leaf,
 	load_valid_settings,
+	merge_settings,
 	set_leaf,
 	validate_settings,
 )
@@ -127,6 +128,28 @@ def _log_changes(log_path: Path, base: dict, before: dict, after: dict, scope: s
 		logger.warning(f"Settings log not written: {error}")
 
 
+# The values are valid one by one, but some only work together. The flagger raises, for ALL its
+# cameras, when one of them is ignored (an ignored camera is not processed), so the combination is
+# refused here, judged on what would be in force: config.json with the submission on top. The
+# message is plain German and names no key, because the page shows it as a message of its own.
+def _cross_field_errors(base: dict, clean: dict, scope: str) -> list[str]:
+	if scope != "general":
+		return []
+
+	effective = merge_settings(base, clean)
+	ignored = set(effective.get("ignored_cameras") or [])
+	flagger = effective.get("flagger") or {}
+	clashing = [camera for camera in flagger.get("cameras") or [] if camera in ignored]
+
+	if not clashing:
+		return []
+
+	return [
+		"Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: "
+		f"{', '.join(clashing)}. Bitte auch dort abwählen."
+	]
+
+
 # Saves the complete set of the form's values. Order matters: invalid input is refused before the
 # stale check, and nothing is written for either. The submission replaces the whole file, so a
 # leaf the form no longer sends loses its override. None for a path means the module constant,
@@ -150,14 +173,16 @@ def save_settings(
 	clean, errors = validate_settings(submitted, scope)
 	mtime = current_mtime(settings_path)
 
+	with config_path.open("r", encoding="utf-8") as file:
+		base = json.load(file)
+
+	errors = [*errors, *_cross_field_errors(base, clean, scope)]
+
 	if errors:
 		return SaveResult("invalid", tuple(errors), mtime)
 
 	if expected_mtime != mtime:
 		return SaveResult("stale", (), mtime)
-
-	with config_path.open("r", encoding="utf-8") as file:
-		base = json.load(file)
 
 	before = load_valid_settings(settings_path, scope)
 	after = _overrides(base, clean)
@@ -181,7 +206,8 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
 	try:
 		submitted = json.loads(text)
 
-	except ValueError:
+	# RecursionError: text nested deeper than json can read.
+	except (ValueError, RecursionError):
 		submitted = None
 
 	result = save_settings(submitted, arguments.expected_mtime, scope=arguments.scope)

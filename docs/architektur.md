@@ -193,8 +193,8 @@ Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dai
 - `blur_job.py`: Verpixelung der Bilder eines von Hand gestarteten Videos vor dem Videobau
   (`blur_job_frames`); nutzt `blur_box` und `box_writer` und passt deren Altersgrenze und Anzahl der
   Sicherungen an die Bilder des Videos an
-- `preview.py`: das Vorschaubild der Seite „Verpixelung“: wählt ein Bild, das der Box-Job bestätigt hat,
-  holt es mit der Bildquelle, prüft die Prüfsumme und legt es unter `state/web-jobs/previews/` ab; läuft
+- `preview.py`: das Vorschaubild der Seite „Verpixelung“: wählt ein Bild, das der Box-Job geprüft hat
+  (verpixelt oder sauber, nie ein Nachtbild), holt es mit der Bildquelle, prüft die Prüfsumme und legt es unter `state/web-jobs/previews/` ab; läuft
   als `python3 -m src.privacy.preview` hinter dem Wrapper `timelapse-web-preview`
 - `blur_gate.py`: die Sperre der automatischen Videos von Blur-Kameras (Daily, Monthly, Yearly): nur
   Bilder, die der Box-Job bestätigt hat (`blurred`, `clean`, `night`), liest den Status auf der

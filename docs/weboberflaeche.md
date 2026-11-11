@@ -225,16 +225,16 @@ Für beide Reiter gilt:
 | Videoqualität | `timelapse.crf` | ganze Zahl 18–35 |
 | | `timelapse.daily_framerate`, `monthly_framerate`, `yearly_framerate` | je 1–60 |
 | Kameras | `ignored_cameras` (je Kamera ein Haken; abgewählt = nicht verarbeitet) | Kameranamen, mindestens eine angehakt |
-| Highlights | `flagger.cameras` (je Kamera ein Haken), `flagger.retention_days` | Kameranamen; 1–365 |
+| Highlights | `flagger.cameras` (je Kamera ein Haken), `flagger.retention_days` | Kameranamen, keine unter „Kameras“ abgewählte; 7–365 (der Flagger startet mit weniger als einer Woche nicht) |
 | Zeitfenster und Abdeckung | `daylight_buffer_minutes` | 0–240 |
 | | `interval_window.target_time` (Mittagsbild: Zielzeit) | `10:00` bis `14:00`, Regler in 15-Minuten-Schritten |
 | | `interval_window.tolerance_minutes` (± Minuten) | 1–120 |
-| | `min_coverage_days.monthly`, `yearly` | 1–31; 1–366 |
+| | `min_coverage_days.monthly`, `yearly` | 1–30; 1–365 (mehr Tage, als das Fenster hat, lässt den Auftrag abbrechen; das 366. Tag eines Schaltjahrs ist deshalb nicht wählbar) |
 | Tageslicht-Puffer je Monat | `automatic_daylight_buffer_minutes` (zwölf Felder) | je 0–240 |
 | Protokolle | `log_retention_days` | 1–365 |
 
 - **Zielzeit und Abweichung:** Das Mittagsbild ist ein Tageslichtbild. Mit einer Zielzeit zwischen 10:00 und 14:00 und höchstens 120 Minuten Abweichung bleibt das Fenster in jedem Monat bei Tageslicht und innerhalb eines Kalendertags (die Fensterlogik lehnt ein Fenster über Mitternacht und eine Abweichung unter 1 ab). Neben dem Zeitfeld steht ein Regler, der erst mit JavaScript erscheint; das Zeitfeld bleibt die eigentliche Eingabe. `sunset` und andere Zeiten gibt es nur in `config.json` und per CLI.
-- **Kameras:** Eine abgewählte Kamera verschwindet sofort aus der Kameraliste der Weboberfläche (die Seiten lesen die zusammengeführte Config) und wird nachts nicht mehr gebaut. **Achtung:** Sie muss dann auch unter „Highlights“ abgewählt werden. Der Flagger sucht seine Kameras unter den nicht ignorierten; steht dort eine ignorierte, startet er für alle Kameras nicht (`Requested cameras not found`). Die Seite verhindert diese Kombination bisher nicht. Wieder angehakt erscheint sie in der Kameraliste und hier nach dem nächsten Nachtlauf, denn die Liste schreibt der Nachtlauf (`state/web-jobs/cameras.json`) und die Weboberfläche hat keinen Zugriff auf die Box. Die Liste der Seite besteht aus dieser Kameraliste plus den bereits ignorierten Namen.
+- **Kameras:** Eine abgewählte Kamera verschwindet sofort aus der Kameraliste der Weboberfläche (die Seiten lesen die zusammengeführte Config) und wird nachts nicht mehr gebaut. Sie muss dann auch unter „Highlights“ abgewählt werden: Der Flagger sucht seine Kameras unter den nicht ignorierten, und steht dort eine ignorierte, startet er für alle Kameras nicht (`Requested cameras not found`). Deshalb speichert die Seite diese Kombination nicht und meldet „Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: <Kamera>. Bitte auch dort abwählen.“ Wieder angehakt erscheint sie in der Kameraliste und hier nach dem nächsten Nachtlauf, denn die Liste schreibt der Nachtlauf (`state/web-jobs/cameras.json`) und die Weboberfläche hat keinen Zugriff auf die Box. Die Liste der Seite besteht aus dieser Kameraliste plus den bereits ignorierten Namen.
 - **Nicht einstellbar,** mit Absicht: `location`, `timelapse.ffmpeg_threads` und `image_scan_stall_timeout_seconds` (falsche Werte können den VPS überlasten oder Aufträge hängen lassen). Die Verpixelung hat ihren eigenen Reiter.
 
 ### Reiter „Verpixelung“ (`/verpixelung.php`)
@@ -251,16 +251,18 @@ Die Seite ist eine Datenschutz-Einstellung und fragt deshalb vor jedem Speichern
 
 Jedes Feld hat unter sich eine kurze Erklärung in einfachem Deutsch. Das Zahlenfeld ist die eigentliche Eingabe (Tastatur, Screenreader); der Regler daneben hilft nur der Maus und erscheint erst mit JavaScript. Ein Streifen oben und Rahmen sind zwei verschiedene Regeln: Der Streifen verwirft jeden Fund, der überwiegend in ihm liegt, ein Rahmen nur einen, der ihn zu mindestens 50 % überdeckt. Ein Rahmen kann den Streifen also nicht ersetzen.
 
-**Vorschaubild und Editor.** Unter dem Wert für den Rand zeigt jeder Block ein echtes Bild der Kamera. Es ist immer ein Bild, das der Box-Job schon geprüft hat (verpixelt, sauber oder Nacht), nie ein Rohbild. „Vorschau aktualisieren“ (nur mit JavaScript) holt ein neues; die Seite lädt dabei nicht neu, ungespeicherte Änderungen bleiben. Der Schalter „Rahmen bearbeiten“ macht das Bild zur Zeichenfläche:
+**Vorschaubild und Editor.** Unter dem Wert für den Rand zeigt jeder Block ein echtes Bild der Kamera. Es ist immer ein Bild, das der Box-Job schon geprüft hat (verpixelt oder sauber), nie ein Rohbild: Nachtbilder schlägt der Box-Job ohne Erkennung vor, sie kommen deshalb nie in Frage. „Vorschau aktualisieren“ (nur mit JavaScript) holt ein neues; die Seite lädt dabei nicht neu, ungespeicherte Änderungen bleiben. Der Schalter „Rahmen bearbeiten“ macht das Bild zur Zeichenfläche:
 
 - ein Rechteck aufziehen legt einen Rahmen an (die Zahlen der Zeile füllen sich),
 - ein Rahmen lässt sich verschieben (Größe bleibt, er bleibt im Bild),
 - die untere Kante des roten Streifens oben lässt sich ziehen und ändert den Rand dieser Kamera,
 - „Rahmen hinzufügen“ und „Entfernen“ in den Zeilen gehen auch ohne Maus; es stehen keine leeren Reserve-Zeilen da.
 
-Ausgeschaltet lässt die Ebene jede Berührung durch, das Bild blockiert das Scrollen also nicht. Die Zeilen mit den Zahlen bleiben der Weg ohne Maus. Hat eine Kamera noch kein geprüftes Bild (neue Kamera: erst nach der ersten verpixelten Nacht), steht dort nur ein Hinweis, die Zahlenzeilen funktionieren trotzdem.
+Ausgeschaltet lässt die Ebene jede Berührung durch, das Bild blockiert das Scrollen also nicht. Die Zeilen mit den Zahlen bleiben der Weg ohne Maus. Hat eine Kamera noch kein geprüftes Bild (neue Kamera: erst nach der ersten verpixelten Nacht; auch ein Tag, an dem nur Nachtbilder vorliegen, zählt nicht), steht dort nur ein Hinweis, die Zahlenzeilen funktionieren trotzdem.
 
-**Bestätigung.** „Speichern“ öffnet einen Dialog, der in Worten aufzählt, was sich ändert; ändert sich die Kameraliste, steht sie zusätzlich in einem „Wichtig!“-Block. Erst „Ja, speichern“ sendet das Formular mit `confirm_privacy=yes`. Ohne JavaScript ersetzt ein Kästchen den Dialog. Der Server nimmt nur genau `yes` an, jeder andere Wert, auch ein Array, wird abgelehnt.
+**Bestätigung.** „Speichern“ öffnet einen Dialog, der in Worten aufzählt, was sich ändert; ändert sich die Kameraliste, steht sie zusätzlich in einem „Wichtig!“-Block. Erst „Ja, speichern“ sendet das Formular mit `confirm_privacy=yes`. Ohne JavaScript ersetzt ein Kästchen den Dialog. Der Server nimmt nur genau `yes` an, jeder andere Wert, auch ein Array, wird abgelehnt. Kommt die Seite nach einer Speicherung über „Zurück“ aus dem Zwischenspeicher des Browsers wieder, vergisst das Skript die Bestätigung, der nächste Klick auf „Speichern“ öffnet den Dialog also erneut.
+
+Grenze: PHP nimmt je Formular höchstens `max_input_vars` Werte an (Standard 1000). Jeder Rahmen belegt vier, bei rund 240 Zeilen über alle Kameras reicht das nicht mehr, die Speicherung scheitert dann mit „Bitte die Änderungen bestätigen.“, weil die Bestätigung als letztes Feld abgeschnitten wird. Abhilfe: `max_input_vars` in der PHP-Konfiguration von Apache erhöhen.
 
 Ablauf des Speicherns (beide Reiter):
 
@@ -290,7 +292,7 @@ timelapse-web-preview
   → Exit 0 Bild zwischengespeichert, 66 keine Blur-Kamera, 67 noch kein geprüftes Bild, 124 Zeitlimit
 ```
 
-Der Webserver-Benutzer erreicht die Storage Box nicht, deshalb holt das Skript das Bild als Projektbenutzer mit der Bildquelle (`src/frame_source.py`) und legt es in `state/web-jobs/previews/<Kamera>.jpg` ab, dazu `<Kamera>.json` mit Bildname, Art und Aufnahmezeit. Gewählt wird unter den Bildern der letzten Tage, die der Box-Job bestätigt hat: zuerst „verpixelt“, dann „sauber“, ein Nachtbild nur zuletzt, der neueste Tag, dort das Bild nächst der Mittagszeit. Das Bild muss genau die Bytes sein, die der Job festgehalten hat (Prüfsumme); stimmt es nicht, kommt der nächste Kandidat, höchstens drei. Die Bildgröße steht nicht in der JSON-Datei: PHP liest sie aus dem Bild selbst (`getimagesize()`, nur JPEG, Seiten von 1 bis 20 000 Punkten). Ein beschädigtes Bild gilt als „kein Bild“.
+Der Webserver-Benutzer erreicht die Storage Box nicht, deshalb holt das Skript das Bild als Projektbenutzer mit der Bildquelle (`src/frame_source.py`) und legt es in `state/web-jobs/previews/<Kamera>.jpg` ab, dazu `<Kamera>.json` mit Bildname, Art und Aufnahmezeit. Gewählt wird unter den Bildern der letzten Tage, die der Box-Job bestätigt hat: zuerst „verpixelt“, dann „sauber“ (nie ein Nachtbild: der Box-Job notiert es ohne Erkennung), der neueste Tag, dort das Bild nächst der Mittagszeit. Das Bild muss genau die Bytes sein, die der Job festgehalten hat (Prüfsumme); stimmt es nicht, kommt der nächste Kandidat, höchstens drei. Die Bildgröße steht nicht in der JSON-Datei: PHP liest sie aus dem Bild selbst (`getimagesize()`, nur JPEG, Seiten von 1 bis 20 000 Punkten). Ein beschädigtes Bild gilt als „kein Bild“.
 
 `preview.php?camera=<Name>` liefert das Bild: einfacher Name, Kamera aus der Blur-Liste, kein Symlink, Größe 4 Byte bis 32 MiB, JPEG-Typ; sonst 404. Die Antwort trägt `Cache-Control: private, no-cache`, die Adresse eine Version, damit ein altes Bild nie aus dem Zwischenspeicher des Browsers erscheint. Der Wrapper endet nach höchstens 90 Sekunden, damit eine Box, die nicht antwortet, keine Webanfrage minutenlang festhält.
 

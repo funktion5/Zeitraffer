@@ -1,8 +1,10 @@
 """The preview picture of the web UI's Verpixelung page: one frame of a blur camera.
 
 The page lets colleagues draw ignore boxes on a real picture of the camera. The picture is never a
-raw frame the blur job has not seen: only a frame the box blur job has confirmed (blurred, clean or
-night) is a candidate, and it is shown only if the bytes on the box are the ones the job recorded.
+raw frame the blur job has not seen: only a frame the box blur job has judged (blurred or clean) is
+a candidate. A night frame is recorded without running the detector, so it is never shown. A frame
+is shown only if the bytes on the box are the ones the job recorded.
+
 The frame is fetched with the frame source (this module starts no ssh itself), checked, and cached
 under state/web-jobs/previews/ with a short description, where the web server user can read it. The
 web server reads the picture's size from the picture itself. It cannot reach the Storage Box, so the
@@ -31,12 +33,12 @@ from src.privacy import blur_box
 BLUR_STATE_ROOT = blur_box.DEFAULT_STATE_ROOT
 PREVIEW_ROOT = PROJECT_ROOT / "state" / "web-jobs" / "previews"
 
-# In the order of the choice: a frame that shows blurring is the most useful picture to draw on,
-# a clean one the next best, and a night frame is only the last resort.
-KINDS = ("blurred", "clean", "night")
+# In the order of the choice: a frame that shows blurring is the most useful picture to draw on, a
+# clean one the next best. Both went through the detector. A night frame did not, so it is left out.
+KINDS = ("blurred", "clean")
 
 # The bytes the blur job judged, by kind: the blurred copy it wrote, or the untouched original it
-# found clean. A night frame is never judged, so it has none.
+# found clean.
 JUDGED_HASH_FIELD = {"blurred": "blurred_sha256", "clean": "original_sha256"}
 
 # A box that answers slowly must not be asked about the whole backlog.
@@ -69,8 +71,9 @@ def _preference(candidate: Candidate) -> tuple[int, int, float, str]:
 	)
 
 
-# The frames the job has confirmed, best first. Anything it has not finished may still show a
-# person, so it is no candidate; a name without a readable time cannot be placed on a day.
+# The frames the job has judged, best first. Anything it has not finished may still show a person,
+# and a night frame was never looked at, so neither is a candidate. A name without a readable time
+# cannot be placed on a day.
 def rank_candidates(processed: dict[str, dict], timezone: str) -> list[Candidate]:
 	candidates = []
 
@@ -149,7 +152,7 @@ def _publish(
 	return info
 
 
-# The preview of one camera: the best frame the job has confirmed that can still be shown. None when
+# The preview of one camera: the best frame the job has judged that can still be shown. None when
 # there is none; an older preview then stays as it is. The fetched copy is dropped in every case:
 # a frame source may hold a cache of fetched frames.
 def build_preview(

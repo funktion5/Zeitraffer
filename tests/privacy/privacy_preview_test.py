@@ -21,7 +21,7 @@ from src.privacy.preview import (
 )
 
 # The preview picture of the Verpixelung page: ONE frame of a blur camera that the box blur job has
-# confirmed (blurred, clean or night), fetched with the frame source and cached for the web server.
+# judged (blurred or clean), fetched with the frame source and cached for the web server.
 #   rank_candidates(processed, timezone) -> best frame first
 #   build_preview(camera, config, state_root, preview_root, now) -> info dict, or None
 
@@ -87,8 +87,9 @@ def names_of(candidates) -> list[str]:
 	return [candidate.name for candidate in candidates]
 
 
-# The order of the choice: a frame that shows blurring first, then a clean one, a night frame last.
-def test_a_blurred_frame_beats_a_clean_one_and_a_clean_one_beats_night():
+# The order of the choice: a frame that shows blurring first, then a clean one. A night frame is
+# never a candidate: the job records it without running the detector, so it is a raw frame.
+def test_a_blurred_frame_beats_a_clean_one_and_a_night_frame_is_never_a_candidate():
 	ranked = rank_candidates(
 		processed_of(
 			("20261109T120000.jpg", "night"),
@@ -98,7 +99,7 @@ def test_a_blurred_frame_beats_a_clean_one_and_a_clean_one_beats_night():
 		TIMEZONE,
 	)
 
-	assert names_of(ranked) == ["20261109T120200.jpg", "20261109T120100.jpg", "20261109T120000.jpg"]
+	assert names_of(ranked) == ["20261109T120200.jpg", "20261109T120100.jpg"]
 
 
 # Within a kind the newest day wins, and on that day the frame nearest midday.
@@ -131,6 +132,7 @@ def test_only_confirmed_frames_with_a_readable_time_are_candidates():
 			("20261109T100200.jpg", "mystery"),
 			("no-time-in-this-name.jpg", "blurred"),
 			("20261109T100300.jpg", "clean"),
+			("20261109T100400.jpg", "night"),
 		),
 		TIMEZONE,
 	)
@@ -192,10 +194,22 @@ def test_a_camera_without_any_state_has_no_preview(box):
 	assert not box.previews.exists()
 
 
-def test_a_night_frame_is_the_last_resort(box):
+# A night frame was never run through the detector: showing it would show an unchecked raw frame.
+def test_a_night_frame_is_never_shown_and_there_is_then_no_preview(box):
 	box.add("20261109T230000.jpg", "night")
 
-	assert box.build()["status"] == "night"
+	assert box.build() is None
+	assert not box.previews.exists()
+
+
+def test_an_older_judged_frame_is_taken_instead_of_a_newer_night_frame(box):
+	box.add("20261108T120000.jpg", "clean")
+	box.add("20261109T230000.jpg", "night")
+
+	info = box.build()
+
+	assert info["image"] == "20261108T120000.jpg"
+	assert info["status"] == "clean"
 
 
 # The state names the bytes it judged. A frame on the box that is something else (rewritten since)

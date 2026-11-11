@@ -215,6 +215,8 @@ def test_there_is_no_info_without_a_cache(tmp_path):
 		# PHP complains about this one (a notice): the page must show no preview and no error text.
 		{"picture": b"\xff\xd8\x8e\xff"},
 		{"info": {"status": "mystery"}},
+		# A night frame was never judged by the detector: never shown.
+		{"info": {"status": "night"}},
 		{"info": {"taken": "yesterday"}},
 		{"info": {"taken": 5}},
 	],

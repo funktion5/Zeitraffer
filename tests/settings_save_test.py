@@ -270,6 +270,75 @@ def run_main(monkeypatch, paths, text, expected_mtime, scope="general"):
 	return settings_save.main(arguments, io.StringIO(text))
 
 
+# The flagger refuses to start for ALL cameras when one of its cameras is ignored (ignored cameras
+# are not processed). The page must never save that combination.
+def flagger_camera(paths: Paths) -> str:
+	return read_base(paths)["flagger"]["cameras"][0]
+
+
+def test_save_refuses_a_flagger_camera_that_is_also_ignored(paths):
+	camera = flagger_camera(paths)
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], camera]
+
+	result = save(paths, submission)
+
+	assert result.status == "invalid"
+	assert len(result.errors) == 1
+	assert camera in result.errors[0]
+	assert not paths.settings.exists()
+
+
+# The message is for colleagues and names no setting key, so the page shows it as a plain message.
+def test_the_flagger_message_names_the_cameras_in_words_without_a_key(paths):
+	cameras = read_base(paths)["flagger"]["cameras"][:2]
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], *cameras]
+
+	message = save(paths, submission).errors[0]
+
+	assert all(camera in message for camera in cameras)
+	assert "Highlights" in message
+	assert not message.startswith(("flagger.", "ignored_cameras"))
+
+
+def test_save_accepts_an_ignored_camera_that_is_not_a_flagger_camera(paths):
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], "Some-Other-Camera"]
+
+	assert save(paths, submission).status == "saved"
+
+
+def test_save_accepts_an_ignored_camera_that_also_left_the_flagger_list(paths):
+	camera = flagger_camera(paths)
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], camera]
+	submission["flagger"]["cameras"] = [c for c in submission["flagger"]["cameras"] if c != camera]
+
+	assert save(paths, submission).status == "saved"
+
+
+# Not every leaf has to be sent: the check looks at what would be in force, config.json included.
+def test_the_check_uses_the_flagger_list_in_force_when_the_form_does_not_send_one(paths):
+	submission = {"ignored_cameras": [flagger_camera(paths)]}
+
+	result = save(paths, submission)
+
+	assert result.status == "invalid"
+	assert not paths.settings.exists()
+
+
+def test_the_flagger_check_is_listed_with_other_errors_not_instead_of_them(paths):
+	submission = base_submission(paths)
+	submission["ignored_cameras"] = [*submission["ignored_cameras"], flagger_camera(paths)]
+	submission["timelapse"]["crf"] = 99
+
+	errors = save(paths, submission).errors
+
+	assert len(errors) == 2
+	assert any(error.startswith("timelapse.crf") for error in errors)
+
+
 def test_main_saved_exits_zero_and_prints_one_json_line(monkeypatch, paths, capsys):
 	submission = base_submission(paths)
 	submission["timelapse"]["crf"] = 30
@@ -300,6 +369,16 @@ def test_main_invalid_values_exit_65_with_the_errors(monkeypatch, paths, capsys)
 
 def test_main_unparsable_json_exits_65(monkeypatch, paths, capsys):
 	code = run_main(monkeypatch, paths, "{not json", 0)
+	reply = json.loads(capsys.readouterr().out)
+
+	assert code == 65
+	assert reply["errors"] == ["Ungültige Eingabe"]
+	assert not paths.settings.exists()
+
+
+@pytest.mark.parametrize("depth", [2000, 12000])
+def test_main_json_nested_too_deep_exits_65(monkeypatch, paths, capsys, depth):
+	code = run_main(monkeypatch, paths, '{"a":' * depth + "1" + "}" * depth, 0)
 	reply = json.loads(capsys.readouterr().out)
 
 	assert code == 65

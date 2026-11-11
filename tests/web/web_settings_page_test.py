@@ -130,6 +130,31 @@ def test_the_target_time_is_limited_to_daylight(tmp_path):
 	assert "Standard: 12:00" in out
 
 
+# The flagger refuses to start with less than a week of retention.
+def test_the_flagger_retention_starts_at_its_own_minimum(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	field = tag_of(out, r'<input\s+type="number"\s+id="setting-flagger-retention_days"[^>]*>')
+
+	assert 'min="7"' in field
+	assert 'max="365"' in field
+
+
+# The jobs raise for more days than their window has (30; 365 in a year without a 29 February).
+def test_the_coverage_fields_stop_at_the_shortest_window(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	monthly = tag_of(out, r'<input\s+type="number"\s+id="setting-min_coverage_days-monthly"[^>]*>')
+	yearly = tag_of(out, r'<input\s+type="number"\s+id="setting-min_coverage_days-yearly"[^>]*>')
+
+	assert 'min="1"' in monthly
+	assert 'max="30"' in monthly
+	assert 'min="1"' in yearly
+	assert 'max="365"' in yearly
+
+
 def test_the_tolerance_runs_from_one_to_120_minutes(tmp_path):
 	prepare(tmp_path)
 
@@ -466,6 +491,28 @@ def test_invalid_values_are_shown_next_to_their_field_with_what_was_typed(tmp_pa
 	assert 'aria-describedby="setting-timelapse-crf-hint setting-timelapse-crf-error"' in out
 	# The typed value is still in the field, not the saved one.
 	assert 'value="99"' in out
+
+
+# A message about two lists together (a flagger camera that is ignored) belongs to no single field:
+# it stands in the summary as plain words, with the ticks the colleague set still in place.
+def test_a_message_that_names_no_field_stands_in_the_summary_only(tmp_path):
+	prepare(tmp_path)
+	message = (
+		"Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: Alpha. "
+		"Bitte auch dort abwählen."
+	)
+	reply = json.dumps({"status": "invalid", "errors": [message], "mtime": 0})
+
+	out, _ = render(
+		tmp_path, form_post(processed=("Beta",), flagger=("Alpha",)), sudo_exit=65, sudo_out=reply
+	)
+
+	assert 'id="settings-problems"' in out
+	assert message in out
+	assert 'class="field-error"' not in out
+	# What was ticked stays ticked, so the colleague only has to change the one box.
+	assert camera_boxes(out, "flagger_cameras")["Alpha"][1] is True
+	assert camera_boxes(out, "process_cameras")["Alpha"][1] is False
 
 
 def test_a_page_that_is_out_of_date_is_refused_and_stays_so(tmp_path):

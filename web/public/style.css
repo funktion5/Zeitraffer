@@ -372,8 +372,14 @@ ul {
 	font-size: 0.75rem;
 }
 
+/* A second-level heading inside a camera's fieldset, shown as small as the third-level one it replaced.
+   It is no panel title, so it gets none of the underline the generic "section h2" rule gives one. */
 .privacy-boxes-title {
 	margin: 0;
+	padding: 0;
+	border: 0;
+	font-size: 1rem;
+	color: var(--color-text-muted);
 }
 
 /* The camera's picture: its size is in the markup, so it keeps its shape while it loads, and it

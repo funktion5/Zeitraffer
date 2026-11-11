@@ -160,7 +160,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				<?php if (isset($fieldErrors["privacy.blur_cameras"])): ?>
 					<p class="field-error" id="privacy-blur-cameras-error"><?= settingsHtml($fieldErrors["privacy.blur_cameras"]) ?></p>
 				<?php endif; ?>
-				<?php renderPrivacyCameraBoxes($knownCameras, $state["blur_cameras"], $baseBlurCameras); ?>
+				<?php renderPrivacyCameraBoxes($knownCameras, $state["blur_cameras"], $baseBlurCameras, isset($fieldErrors["privacy.blur_cameras"])); ?>
 			</fieldset>
 
 			<fieldset class="settings-group">
@@ -972,6 +972,13 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				form.dataset.confirmed = "yes";
 				dialog.close();
 				form.submit();
+			});
+
+			// After a save, Back may bring this page back from the browser's cache with the confirmation
+			// still set: the next Save would skip the dialog. Forget it whenever the page is shown.
+			window.addEventListener("pageshow", () => {
+				delete form.dataset.confirmed;
+				form.querySelector('input[name="confirm_privacy"][type="hidden"]')?.remove();
 			});
 		})();
 	</script>

@@ -28,14 +28,17 @@ INT_BOUNDS = [
 	("timelapse.daily_framerate", 1, 60),
 	("timelapse.monthly_framerate", 1, 60),
 	("timelapse.yearly_framerate", 1, 60),
-	("flagger.retention_days", 1, 365),
+	# At least 7, the flagger's own minimum: it refuses to start with fewer days.
+	("flagger.retention_days", 7, 365),
 	("daylight_buffer_minutes", 0, 240),
 	*[(f"automatic_daylight_buffer_minutes.{month}", 0, 240) for month in range(1, 13)],
 	# At least 1: the interval window rejects 0. At most 120: with the target between 10:00 and
 	# 14:00 the whole window then stays in daylight, also in December.
 	("interval_window.tolerance_minutes", 1, 120),
-	("min_coverage_days.monthly", 1, 31),
-	("min_coverage_days.yearly", 1, 366),
+	# Never above the shortest window the job checks them against (30 days; 365, a year without a
+	# 29 February): the job raises for anything higher.
+	("min_coverage_days.monthly", 1, 30),
+	("min_coverage_days.yearly", 1, 365),
 	("log_retention_days", 1, 365),
 ]
 
@@ -168,6 +171,34 @@ def test_validate_rejects_keys_outside_the_allowlist(submitted, key):
 @pytest.mark.parametrize("raw", [[1], "crf", None, 30])
 def test_validate_rejects_a_submission_that_is_not_an_object(raw):
 	assert validate_settings(raw) == ({}, ["Ungültige Eingabe"])
+
+
+# Nobody's form is this deep, but a crafted request or a hand-edited file must be refused like any
+# other invalid input, not end in a traceback (and, for the file, not stop the night run).
+def deeply_nested(depth: int) -> str:
+	return '{"a":' * depth + "1" + "}" * depth
+
+
+def test_validate_refuses_a_submission_too_deep_to_walk():
+	raw = json.loads(deeply_nested(2000))
+
+	assert validate_settings(raw) == ({}, ["Ungültige Eingabe"])
+
+
+def test_read_settings_file_ignores_a_file_json_cannot_read(tmp_path):
+	path = tmp_path / "deep.json"
+	path.write_text(deeply_nested(12000), encoding="utf-8")
+
+	assert read_settings_file(path) == {}
+
+
+# Loading must never raise, whichever way the file is too deep: it can stop the night run otherwise.
+@pytest.mark.parametrize("depth", [2000, 12000])
+def test_load_valid_settings_survives_a_file_nested_too_deep(tmp_path, depth):
+	path = tmp_path / "deep.json"
+	path.write_text(deeply_nested(depth), encoding="utf-8")
+
+	assert load_valid_settings(path) == {}
 
 
 def test_validate_keeps_valid_values_next_to_invalid_ones():

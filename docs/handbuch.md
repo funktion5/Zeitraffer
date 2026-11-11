@@ -682,6 +682,7 @@ zeigen; Details im Apache-Fehlerprotokoll.
 | „Die Einstellungen wurden inzwischen geändert, bitte Seite neu laden.“ | Jemand anderes hat im selben Reiter gespeichert, seit die Seite geladen wurde | Seite neu laden, die eigene Änderung erneut eintragen |
 | Meldung mit dem Namen eines Feldes (Wert „muss …“) | Wert außerhalb der Grenzen; nichts wurde gespeichert | Wert korrigieren; die Grenzen stehen in der Meldung und in [konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche) |
 | „Mindestens eine Kamera muss angehakt bleiben.“ | Alle Kameras abgewählt | mindestens eine ankreuzen |
+| „Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: …“ | Eine Kamera ist nicht mehr zur Verarbeitung angehakt, aber noch für die Highlights; der Flagger würde für alle Kameras nicht mehr starten | die Kamera unter „Highlights“ ebenfalls abwählen |
 | „Die Einstellungen konnten nicht gespeichert werden.“ | der Wrapper lief nicht oder scheiterte | siehe unten |
 | „Bitte die Änderungen bestätigen.“ (Verpixelung) | der Bestätigungsdialog wurde umgangen oder das Kästchen ohne JavaScript fehlt | erneut speichern und im Dialog „Ja, speichern“ wählen |
 
@@ -706,7 +707,7 @@ wurde, zeigt `logs/settings.log` (eine Zeile je Speicherung, mit altem und neuem
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera bestätigt, etwa bei einer neu angehakten Kamera | nach der nächsten Nacht erneut versuchen; die Zahlenzeilen für Rahmen gehen auch ohne Bild |
+| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera geprüft (Nachtbilder zählen nicht, die notiert sie ohne Erkennung), etwa bei einer neu angehakten Kamera | nach der nächsten Nacht erneut versuchen; die Zahlenzeilen für Rahmen gehen auch ohne Bild |
 | „Diese Kamera wird nicht verpixelt.“ | Die Kamera steht nicht in der gespeicherten Liste der Verpixelungs-Kameras | erst speichern, dann aktualisieren |
 | „Die Speicherbox hat nicht rechtzeitig geantwortet.“ | Der Wrapper hat nach 90 Sekunden abgebrochen | später erneut; Verbindung zur Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)) |
 | „Das Bild konnte nicht geholt werden.“ | Wrapper fehlt oder scheiterte, die Box antwortet nicht, oder das Bild ist beschädigt | Apache-Fehlerprotokoll: `Preview wrapper failed with exit code <N>`; `sudo -l -U www-data` muss `timelapse-web-preview` zeigen; im Anwendungsprotokoll `Preview failed` oder `not fit to show` |
@@ -818,7 +819,8 @@ verworfen, die übrigen 7 waren echte Personen neben der Kette.
 | Meldung | Ursache | Lösung |
 |---|---|---|
 | `Skipped: ...` | Sperre belegt | später erneut starten |
-| `Flagger not started: ...` mit unbekannter oder ignorierter Kamera | Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`. Das passiert auch, wenn auf der Seite „Einstellungen“ eine Kamera unter „Kameras“ abgewählt wird, aber unter „Highlights“ angehakt bleibt: Dann startet der Flagger für **alle** Kameras nicht | die Kamera unter „Highlights“ abwählen bzw. die Config korrigieren |
+| `Flagger not started: ...` mit unbekannter oder ignorierter Kamera | Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`; dann startet der Flagger für **alle** Kameras nicht. Die Seite „Einstellungen“ speichert diese Kombination nicht, sie entsteht nur durch Handarbeit in einer Datei | die Kamera aus `flagger.cameras` oder aus `ignored_cameras` nehmen (in `config.json`, `config/settings.json` oder auf der Seite) |
+| `Flagger not started: flagger.retention_days must be at least 7` | Wert unter einer Woche, von Hand eingetragen; die Seite lässt weniger als 7 nicht zu | Wert auf mindestens 7 setzen |
 | `[<Kamera>] no images for <Datum> - nothing written` | keine Tagesbilder | wie [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
 | gelöschtes Highlight ist wieder da | der Tag wurde neu geprüft, der Ordner ersetzt | erneut löschen |
 

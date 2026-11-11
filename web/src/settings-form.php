@@ -82,7 +82,7 @@ function settingsScalarFields(): array
 			"group" => "flagger",
 			"label" => "Highlights aufbewahren (Tage)",
 			"type" => "number",
-			"min" => 1,
+			"min" => 7,
 			"max" => 365,
 		],
 		[
@@ -117,7 +117,7 @@ function settingsScalarFields(): array
 			"label" => "Monatsvideo: mindestens so viele Tage mit Bildern",
 			"type" => "number",
 			"min" => 1,
-			"max" => 31,
+			"max" => 30,
 		],
 		[
 			"key" => "min_coverage_days.yearly",
@@ -125,7 +125,7 @@ function settingsScalarFields(): array
 			"label" => "Jahresvideo: mindestens so viele Tage mit Bildern",
 			"type" => "number",
 			"min" => 1,
-			"max" => 366,
+			"max" => 365,
 		],
 		[
 			"key" => "log_retention_days",

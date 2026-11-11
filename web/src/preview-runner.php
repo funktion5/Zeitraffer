@@ -19,8 +19,9 @@ const PREVIEW_CAMERA_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
 const PREVIEW_MAX_DIMENSION = 20000;
 const PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 
-// The kinds of frame the script may publish (its "status" in the .json file).
-const PREVIEW_KINDS = ["blurred", "clean", "night"];
+// The kinds of frame the script may publish (its "status" in the .json file). A night frame is not
+// one of them: the blur job records it without running the detector, so it is a raw frame.
+const PREVIEW_KINDS = ["blurred", "clean"];
 
 const PREVIEW_OK_MESSAGE = "Das Bild wurde aktualisiert.";
 const PREVIEW_NONE_MESSAGE = "Für diese Kamera gibt es noch kein geprüftes Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.";

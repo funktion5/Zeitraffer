@@ -90,7 +90,8 @@ images blurred afterwards; already pixelated images stay as they are.
 - The web server user cannot reach the Storage Box. A root-owned wrapper (`timelapse-web-preview <camera>`, same
   pattern as the others) runs a small Python script as the run user. It picks a frame the box job has CONFIRMED
   (the blur state lists them): a daylight frame nearest midday, one that shows blurring first, then a clean
-  one, a night frame only as a last resort. A camera with no confirmed frame at all gets no preview and
+  one; a night frame never (changed 2026-11-11: the job records it without running the detector, so it
+  is a raw frame). A camera with no judged frame at all gets no preview and
   shows the number rows only,
   fetches it with the existing frame source, and writes `state/web-jobs/previews/<camera>.jpg` plus a small
   JSON file that says which frame it is (since 2026-11-11 without a size: PHP reads the size from the
@@ -156,7 +157,7 @@ camera removed or an ignore box added without the confirm dialog (or its no-Java
   box that does not answer cannot hold a web request for minutes.
 - The preview frame must be the bytes the blur job recorded: a "blurred" frame is checked against
   `blurred_sha256`, a "clean" one against `original_sha256`; a frame that differs (rewritten since) is skipped
-  and the next candidate is taken, at most three. A night frame has no recorded bytes and is the last resort.
+  and the next candidate is taken, at most three. A night frame has no recorded bytes and was never judged, so it is no candidate (since 2026-11-11).
 - Only the state of the last days is read (today and the two days before, as the nightly round does), so a
   camera the job has not touched for longer has no preview until its next round.
 - "Vorschau aktualisieren" needs JavaScript and is hidden without it: a full page reload would throw away the
