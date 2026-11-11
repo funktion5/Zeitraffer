@@ -278,10 +278,10 @@ Im Zweifel bleibt das Bild **unverändert**. Der Schreibcode erzwingt:
   ab, damit ein Netzwerkfehler nie als „noch keine Sicherung da" gelesen wird.
 - Jeder Schreibschritt wird danach per SHA-256 geprüft.
 
-Tests sichern das zusätzlich ab: Nur `box_writer.py`, `storage_filter.py` und `frame_source.py`
-dürfen `ssh`, `scp` oder `rsync` starten. `storage_filter.py` darf keine Schreibbefehle enthalten,
-und `frame_source.py` holt per `rsync` nur von der Box in einen lokalen Ordner (ohne `--delete`
-oder `--remove-…`).
+Tests sichern das zusätzlich ab: Nur `box_writer.py`, `storage_box.py` (hält den ssh-Aufruf) und
+`frame_source.py` dürfen `ssh`, `scp` oder `rsync` starten. `storage_box.py` und `storage_filter.py`
+(das die Befehle baut) dürfen keine Schreibbefehle enthalten, und `frame_source.py` holt per `rsync`
+nur von der Box in einen lokalen Ordner (ohne `--delete` oder `--remove-…`).
 
 ## Statusdatei
 

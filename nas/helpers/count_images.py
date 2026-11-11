@@ -34,7 +34,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.images import extract_date  # noqa: E402
-from src.storage_filter import get_storage_box, list_camera_files  # noqa: E402
+from src.storage_box import get_storage_box  # noqa: E402
+from src.storage_filter import list_camera_files  # noqa: E402
 
 TARS = "tars.csv"
 IMAGES = "images.csv"

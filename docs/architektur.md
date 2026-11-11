@@ -230,11 +230,17 @@ Verwaltet den persistenten Marker `state/run-in-progress` für den vollständige
 Tägliches Bildfenster für Monthly und Yearly: Mitte als Uhrzeit oder Sonnenuntergang (über
 `astral`), plus/minus Toleranz, ohne Mitternachtsüberschreitung.
 
+### `src/storage_box.py`
+
+Die Storage Box: ihr Name aus der Umgebung (`TIMELAPSE_STORAGE_BOX`), ein lesender Befehl über ssh
+(`StorageBox.run`) und das Lesen einer `ls -l`-Ausgabe. Das Modul importiert nichts aus dem Projekt,
+damit Bildquelle, Speicherfilter, Bilder und Verpixelung es ohne Importschleife nutzen können.
+
 ### `src/storage_filter.py`
 
 Speicherfilter ([werkzeuge.md](werkzeuge.md)): listet leere und doppelte Bilder per `ls` und
-`sha256sum` direkt auf der Storage Box, ohne Bilder über das Netz zu lesen. Seine Box-Anbindung
-(`StorageBox`) nutzen auch die Bildquelle (`src/frame_source.py`) und die Verpixelung.
+`sha256sum` direkt auf der Storage Box, ohne Bilder über das Netz zu lesen. Die Box-Anbindung
+(`StorageBox`, siehe oben) nutzen auch die Bildquelle (`src/frame_source.py`) und die Verpixelung.
 
 ### `web/`
 
@@ -337,6 +343,7 @@ timelapse/
 │   ├── settings.py
 │   ├── settings_save.py
 │   ├── solar.py
+│   ├── storage_box.py
 │   ├── storage_filter.py
 │   ├── video.py
 │   └── yearly_selection.py

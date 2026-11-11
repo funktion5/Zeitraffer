@@ -9,13 +9,11 @@ import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import Protocol
 
 from src.config import PROJECT_ROOT
 from src.logger import logger
-
-if TYPE_CHECKING:
-	from src.storage_filter import StorageBox
+from src.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
 
 # One ssh listing sends no progress ticks, and the isolated worker running it is killed after
 # image_scan_stall_timeout_seconds (60 in config.json) without one. This timeout has to fire first,
@@ -271,7 +269,7 @@ class LocalFrameSource:
 # this machine and removed again by release().
 @dataclass(frozen=True)
 class SshFrameSource:
-	box: "StorageBox"
+	box: StorageBox
 	cache_root: Path
 	# release() only ever deletes strictly inside this folder, see _guarded_root.
 	temp_root: Path = PROJECT_ROOT / "temp"
@@ -289,9 +287,6 @@ class SshFrameSource:
 		return sorted(_skip_unsafe(cameras, is_safe_camera, "camera listing"))
 
 	def list_names(self, camera: str) -> list[str]:
-		# Imported here: storage_filter imports src.images, which imports this module.
-		from src.storage_filter import parse_ls_output
-
 		checked_camera(camera)
 		output = self._ls(self.box.camera_directory(camera), f"listing for camera {camera}")
 
@@ -484,9 +479,6 @@ def _default_source_kind(camera_root: Path | None) -> str:
 	if camera_root is not None:
 		return "local"
 
-	# Imported here: storage_filter imports src.images, which imports this module.
-	from src.storage_filter import STORAGE_BOX_ENV
-
 	if os.environ.get(STORAGE_BOX_ENV, "").strip():
 		return "ssh"
 
@@ -510,9 +502,6 @@ def build_frame_source(camera_root: Path | None, project_root: Path) -> FrameSou
 		return LocalFrameSource(camera_root)
 
 	if kind == "ssh":
-		# Imported here: storage_filter imports src.images, which imports this module.
-		from src.storage_filter import get_storage_box
-
 		return SshFrameSource(
 			get_storage_box(), frame_cache_root(project_root), project_root / "temp"
 		)

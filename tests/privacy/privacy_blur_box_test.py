@@ -14,7 +14,8 @@ import src.privacy.blur_box as blur_box
 from src.privacy.anonymize import BlurSettings, DropRules, PrivacyCheckError
 from src.privacy.blur_box import Daylight
 from src.privacy.box_writer import BoxWriter
-from src.storage_filter import StorageBox, acquire_run_lock
+from src.storage_box import StorageBox
+from src.storage_filter import acquire_run_lock
 
 REMOTE = "user@box.example"
 CAMERA = "Test-Camera"

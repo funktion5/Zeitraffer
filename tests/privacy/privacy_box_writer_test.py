@@ -636,7 +636,8 @@ def test_default_clock_is_timezone_aware(box: FakeBox) -> None:
 # Python file that starts ssh/scp/sftp/rsync must be listed here as read-only or pull-only and is
 # checked for write commands.
 WRITER_MODULE = "src/privacy/box_writer.py"
-READ_ONLY_SSH_MODULES = {"src/storage_filter.py"}
+# storage_box.py holds the ssh call; storage_filter.py builds the read-only commands it sends.
+READ_ONLY_SSH_MODULES = {"src/storage_box.py", "src/storage_filter.py"}
 # May start rsync, but only to pull FROM the box into a local folder; frame_source_test proves the
 # direction of the command. Every other command that can write stays forbidden for these.
 PULL_ONLY_SSH_MODULES = {"src/frame_source.py"}

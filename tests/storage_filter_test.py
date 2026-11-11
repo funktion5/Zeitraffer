@@ -12,16 +12,14 @@ from privacy_fakes import run_in
 
 import src.images as images_module
 import src.storage_filter as storage_filter_module
+from src.storage_box import STORAGE_BOX_ENV, StorageBox
 from src.storage_filter import (
-	StorageBox,
 	acquire_run_lock,
 	find_deletion_candidates,
-	get_storage_box,
 	hash_camera_files,
 	list_camera_files,
 	list_images_for_dates,
 	parse_arguments,
-	parse_ls_output,
 	write_report,
 )
 
@@ -32,7 +30,7 @@ BOX = StorageBox(remote="user@box", base_directory="")
 # A developer shell may export the setting; the box tests must not see it.
 @pytest.fixture(autouse=True)
 def no_storage_box_environment(monkeypatch):
-	monkeypatch.delenv(storage_filter_module.STORAGE_BOX_ENV, raising=False)
+	monkeypatch.delenv(STORAGE_BOX_ENV, raising=False)
 
 
 # Run the storage box's commands locally with tmp_path as its home directory,
@@ -55,77 +53,6 @@ def _write(camera_path: Path, name: str, content: bytes) -> Path:
 # as a mount shows it: a host without a mount has no such path.
 def on_box(path: Path) -> Path:
 	return Path(path.parent.name) / path.name
-
-
-def test_ls_output_keeps_regular_files_with_sizes():
-	output = (
-		"total 12\n"
-		"-rw-r--r-- 1 u1 1108 157852 Aug 17 15:00 cam_250101_120000.jpg\n"
-		"-rw-r--r-- 1 u1 1108      0 Aug 17  2024 cam_250101_121500.jpg\n"
-		"-rw-r--r-- 1 u1 1108     42 Aug 17 15:00 name with spaces.jpg\n"
-		"drwxr-xr-x 2 u1 1108   4096 Aug 17 15:00 archive\n"
-		"lrwxrwxrwx 1 u1 1108     10 Aug 17 15:00 link.jpg -> other.jpg\n"
-	)
-
-	assert parse_ls_output(output) == {
-		"cam_250101_120000.jpg": 157852,
-		"cam_250101_121500.jpg": 0,
-		"name with spaces.jpg": 42,
-	}
-
-
-def test_storage_box_comes_from_the_environment(monkeypatch):
-	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box")
-
-	assert get_storage_box() == StorageBox("box", "")
-
-
-def test_storage_box_environment_accepts_a_base_directory(monkeypatch):
-	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, "box:archive/cams")
-
-	assert get_storage_box() == StorageBox("box", "archive/cams")
-
-
-def test_storage_box_environment_without_alias_is_an_error(monkeypatch):
-	monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, ":archive")
-
-	with pytest.raises(OSError, match="ssh alias"):
-		get_storage_box()
-
-
-# There is no mount to fall back to: the error names the variable to set.
-@pytest.mark.parametrize("value", [None, "", "  "])
-def test_missing_storage_box_setting_is_an_error(monkeypatch, value):
-	if value is not None:
-		monkeypatch.setenv(storage_filter_module.STORAGE_BOX_ENV, value)
-
-	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
-		get_storage_box()
-
-
-# The box no longer depends on the camera folder: a mount-like /proc/mounts line is never read.
-def test_storage_box_ignores_the_camera_folder(monkeypatch):
-	monkeypatch.setattr(images_module, "CAMERA_ROOT", Path("/mnt/cameras"))
-
-	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
-		get_storage_box()
-
-
-def test_commands_run_over_ssh_with_strict_host_checking(monkeypatch):
-	calls = []
-
-	def fake_run(command, **kwargs):
-		calls.append(command)
-		return subprocess.CompletedProcess(command, 0, stdout="")
-
-	monkeypatch.setattr(storage_filter_module.subprocess, "run", fake_run)
-
-	StorageBox("user@box", "base/").run("ls -l 'base/Cam'", timeout_seconds=5)
-
-	assert calls[0][0] == "ssh"
-	assert calls[0][-2:] == ["user@box", "ls -l 'base/Cam'"]
-	assert "StrictHostKeyChecking=yes" in calls[0]
-	assert StorageBox("user@box", "base/").camera_directory("Cam") == "base/Cam"
 
 
 def test_listing_and_hashing_handle_awkward_names(local_box):
@@ -346,7 +273,7 @@ def test_main_names_the_setting_when_there_is_no_storage_box(monkeypatch, caplog
 	with pytest.raises(OSError, match="No storage box found"):
 		storage_filter_module.main(["--cameras", "Cam"])
 
-	assert storage_filter_module.STORAGE_BOX_ENV in caplog.text
+	assert STORAGE_BOX_ENV in caplog.text
 	assert "SSHFS" not in caplog.text
 
 
@@ -356,7 +283,7 @@ def test_main_asks_for_the_storage_box_before_it_lists_cameras(monkeypatch, capl
 	monkeypatch.setattr(storage_filter_module, "cleanup_old_logs", lambda retention_days: None)
 	monkeypatch.setattr(images_module, "CAMERA_ROOT", None)
 
-	with pytest.raises(OSError, match=storage_filter_module.STORAGE_BOX_ENV):
+	with pytest.raises(OSError, match=STORAGE_BOX_ENV):
 		storage_filter_module.main(["--all-cameras"])
 
 	assert "Storage filter has no storage box" in caplog.text

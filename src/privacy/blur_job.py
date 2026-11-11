@@ -17,7 +17,8 @@ from src.logger import logger
 from src.privacy import blur_box
 from src.privacy.anonymize import PrivacyCheckError, parse_blur_settings, parse_drop_rules
 from src.privacy.box_writer import DEFAULT_MAX_IMAGE_AGE, BoxWriter
-from src.storage_filter import acquire_run_lock, get_storage_box
+from src.storage_box import get_storage_box
+from src.storage_filter import acquire_run_lock
 
 # The box blur job's state; tests point it at a temporary folder.
 BLUR_STATE_ROOT = blur_box.DEFAULT_STATE_ROOT

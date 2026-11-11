@@ -47,12 +47,8 @@ from src.privacy.box_writer import (
 	BoxWriteRefused,
 )
 from src.solar import get_sun_times
-from src.storage_filter import (
-	StorageBox,
-	acquire_run_lock,
-	get_storage_box,
-	list_images_for_dates,
-)
+from src.storage_box import StorageBox, get_storage_box
+from src.storage_filter import acquire_run_lock, list_images_for_dates
 
 DEFAULT_STATE_ROOT = PROJECT_ROOT / "state" / "privacy" / "box"
 WORK_ROOT = PROJECT_ROOT / "temp" / "blur-box"

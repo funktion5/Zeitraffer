@@ -29,7 +29,7 @@ from src.frame_source import (
 	create_frame_cache,
 	release_leftovers,
 )
-from src.storage_filter import StorageBox
+from src.storage_box import StorageBox
 
 
 def test_frame_fetch_error_is_an_oserror():
