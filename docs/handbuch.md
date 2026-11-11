@@ -57,7 +57,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Zwischendateien | `temp/` |
 | Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
 | Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
-| Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
+| Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen), `timelapse-web-settings` (Einstellungen speichern), `timelapse-web-preview` (Vorschaubild einer Verpixelungs-Kamera holen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
@@ -183,7 +183,8 @@ Kamera wählen, Videotyp und Zieldatum (vorbelegt: gestern) eintragen, „Video 
 Auftrag fertig ist, bleibt der Button gesperrt; das Ergebnis meldet ein Fenster, bei einem
 Fehlschlag mit dem Grund, sofern bekannt. Der Auftrag schreibt in dasselbe Protokoll wie der
 entsprechende Befehl. Auf der Kameraseite stehen auch die nächtlichen Videos zum Ansehen und
-Herunterladen (Liste „Automatische Videos“, ohne Löschen). Siehe
+Herunterladen (Liste „Automatische Videos“, ohne Löschen). Die Seite „Einstellungen“ ändert einen
+Teil der Werte aus `config.json` ohne Handarbeit (Reiter „Allgemein“ und „Verpixelung“). Siehe
 [weboberflaeche.md](weboberflaeche.md).
 
 ### Highlights-Flagger
@@ -672,6 +673,48 @@ zeigen; Details im Apache-Fehlerprotokoll.
 
 **Lösung:** Seite neu laden und erneut absenden.
 
+### Einstellungen lassen sich nicht speichern
+
+**Symptom:** Auf der Seite „Einstellungen“ bleibt die Speicherung aus, mit einer Meldung oben.
+
+| Meldung | Ursache | Lösung |
+|---|---|---|
+| „Die Einstellungen wurden inzwischen geändert, bitte Seite neu laden.“ | Jemand anderes hat im selben Reiter gespeichert, seit die Seite geladen wurde | Seite neu laden, die eigene Änderung erneut eintragen |
+| Meldung mit dem Namen eines Feldes (Wert „muss …“) | Wert außerhalb der Grenzen; nichts wurde gespeichert | Wert korrigieren; die Grenzen stehen in der Meldung und in [konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche) |
+| „Mindestens eine Kamera muss angehakt bleiben.“ | Alle Kameras abgewählt | mindestens eine ankreuzen |
+| „Die Einstellungen konnten nicht gespeichert werden.“ | der Wrapper lief nicht oder scheiterte | siehe unten |
+| „Bitte die Änderungen bestätigen.“ (Verpixelung) | der Bestätigungsdialog wurde umgangen oder das Kästchen ohne JavaScript fehlt | erneut speichern und im Dialog „Ja, speichern“ wählen |
+
+**Prüfen (letzte Meldung):** `sudo -l -U www-data` muss `timelapse-web-settings` zeigen; im
+Apache-Fehlerprotokoll steht `Settings wrapper failed with exit code <N>`. Exit 64: falsche Eingabe oder
+zu großer Text, 69: die Python-Umgebung unter `~/timelapse/.venv` fehlt, 65 und 73 sind die beiden
+Fälle oben. Schlägt auch das Schreiben fehl, prüfen, ob der Projektbenutzer in `config/` schreiben darf.
+
+**Lösung:** Wrapper und sudoers-Zeile nach [Installation](installation.md#wrapper-installieren) ergänzen
+bzw. mit `./install.sh web_bridge` neu installieren (nur wenn kein Auftrag läuft).
+
+**Gespeichert, aber ohne Wirkung:** Die Werte gelten ab dem **nächsten** Auftrag; ein laufender hat seine
+Config schon gelesen. Für eine Verpixelungs-Kamera greifen Streifen, Schwellen und Rahmen nur auf Bilder,
+die danach verpixelt werden. Ein Wert, den jemand in `config.json` geändert hat, wirkt nicht, solange
+derselbe Schlüssel in `config/settings.json` oder `config/settings-privacy.json` steht: dort gewinnt die
+Einstellungsdatei. Auf der Seite zurücksetzen oder den Schlüssel aus der Datei löschen. Was gespeichert
+wurde, zeigt `logs/settings.log` (eine Zeile je Speicherung, mit altem und neuem Wert).
+
+### Das Vorschaubild fehlt oder lässt sich nicht aktualisieren
+
+**Symptom:** Im Reiter „Verpixelung“ steht bei einer Kamera kein Bild, oder „Vorschau aktualisieren“ meldet einen Fehler.
+
+| Meldung | Ursache | Lösung |
+|---|---|---|
+| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera bestätigt, etwa bei einer neu angehakten Kamera | nach der nächsten Nacht erneut versuchen; die Zahlenzeilen für Rahmen gehen auch ohne Bild |
+| „Diese Kamera wird nicht verpixelt.“ | Die Kamera steht nicht in der gespeicherten Liste der Verpixelungs-Kameras | erst speichern, dann aktualisieren |
+| „Die Speicherbox hat nicht rechtzeitig geantwortet.“ | Der Wrapper hat nach 90 Sekunden abgebrochen | später erneut; Verbindung zur Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)) |
+| „Das Bild konnte nicht geholt werden.“ | Wrapper fehlt oder scheiterte, die Box antwortet nicht, oder das Bild ist beschädigt | Apache-Fehlerprotokoll: `Preview wrapper failed with exit code <N>`; `sudo -l -U www-data` muss `timelapse-web-preview` zeigen; im Anwendungsprotokoll `Preview failed` oder `not fit to show` |
+
+Ein Bild, das PHP nicht als JPEG mit sinnvoller Größe lesen kann, wird nie angezeigt; dann steht dort der
+Hinweis „noch kein Bild“, bis ein Bild geholt werden kann. Das Bild ist immer eins, das die Verpixelung schon
+geprüft hat, nie ein Rohbild.
+
 ### Änderungen an einem Wrapper wirken nicht
 
 **Ursache:** Apache ruft die installierten Kopien unter `/usr/local/` auf, nicht `scripts/`.
@@ -720,8 +763,10 @@ fernen Objekten. Einzelne Fehltreffer sind normal.
 
 - Flagger: Feststehende Objekte filtert er selbst. Schwellen und den Filter für feststehende Objekte
   in `src/flagger/groups.py` nur mit echten Beispielbildern ändern ([flagger.md](flagger.md)).
-- Verpixelung: bekannte Fehlerkennungen über `ignore_boxes`, `ignore_top_share`, `skip_labels` und
-  `min_person_score` in der Config ausschließen
+- Verpixelung: bekannte Fehlerkennungen ausschließen, am bequemsten auf der Weboberfläche im Reiter
+  „Verpixelung“ (Rahmen auf dem Kamerabild ziehen, oberen Rand und Mindest-Sicherheit je Kamera
+  einstellen); von Hand über `ignore_boxes`, `ignore_top_share`, `skip_labels` und
+  `min_person_score` in der Config
   ([verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
 
 ### Ein feststehendes Objekt wird immer wieder verpixelt
@@ -740,8 +785,11 @@ grep -h '"status": "blurred"' state/privacy/box/<Kamera>/*.jsonl | head -3
 
 Jede Box ist `[x0, y0, x1, y1, Sicherheit, Label]` in Pixeln des Originalbilds.
 
-**Lösung:** Die wiederkehrenden Stellen als `ignore_boxes` der Kamera in `config/config.json`
-eintragen. Wirkt ab dem nächsten Lauf, ohne Neustart. Vorher prüfen, dass keine echte Person
+**Lösung:** Die wiederkehrenden Stellen als `ignore_boxes` der Kamera eintragen: auf der Weboberfläche im
+Reiter „Verpixelung“ mit „Rahmen bearbeiten“ ein Rechteck über die Stelle ziehen und speichern
+([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp)), oder von Hand in
+`config/config.json`. Wirkt ab dem nächsten Lauf, ohne Neustart; auf der Seite eingetragene Rahmen stehen
+in `config/settings-privacy.json`. Vorher prüfen, dass keine echte Person
 mitfällt: eine Box wird verworfen, wenn sie eine Ignorierfläche zu mindestens 50 % überlappt.
 
 **Mit Claude (empfohlen):** In einer Claude-Sitzung im Projekt etwa so beauftragen:
@@ -770,7 +818,7 @@ verworfen, die übrigen 7 waren echte Personen neben der Kette.
 | Meldung | Ursache | Lösung |
 |---|---|---|
 | `Skipped: ...` | Sperre belegt | später erneut starten |
-| `Flagger not started: ...` mit unbekannter oder ignorierter Kamera | Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras` | Config korrigieren |
+| `Flagger not started: ...` mit unbekannter oder ignorierter Kamera | Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`. Das passiert auch, wenn auf der Seite „Einstellungen“ eine Kamera unter „Kameras“ abgewählt wird, aber unter „Highlights“ angehakt bleibt: Dann startet der Flagger für **alle** Kameras nicht | die Kamera unter „Highlights“ abwählen bzw. die Config korrigieren |
 | `[<Kamera>] no images for <Datum> - nothing written` | keine Tagesbilder | wie [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
 | gelöschtes Highlight ist wieder da | der Tag wurde neu geprüft, der Ordner ersetzt | erneut löschen |
 

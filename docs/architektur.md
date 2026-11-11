@@ -100,6 +100,24 @@ Schreibt die Kameraliste der Weboberfläche nach `state/web-jobs/cameras.json`, 
 Webserver-Benutzer weder einen ssh-Schlüssel hat noch die Box selbst abfragt. Der Nachtlauf und
 `python3 -m src.camera_list` aktualisieren sie.
 
+### `src/config.py`, `src/settings.py` und `src/settings_save.py`
+
+`load_config()` liest `config/config.json` und legt darüber die gültigen Werte der beiden
+Einstellungsdateien der Weboberfläche, `config/settings.json` und `config/settings-privacy.json`
+([konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche)). Eine kaputte Einstellungsdatei
+stoppt nichts, sie wird mit einer Warnung ignoriert; eine kaputte `config.json` stoppt den Lauf.
+
+- `settings.py`: die einzige Liste dessen, was auf der Seite „Einstellungen“ änderbar ist, mit Regel
+  und Grenzen je Schlüssel (Zahlen, Kameralisten, Uhrzeit, Dezimalzahlen, Rahmenlisten, ein Wert je
+  Kamera über `<Präfix>.*`). Die Grenzen der Verpixelung kommen aus `privacy/anonymize.py`, damit
+  nichts gespeichert werden kann, was den Nachtlauf abbrechen ließe. Sie prüft und mischt, schreibt aber nichts.
+- `settings_save.py`: der Schreiber hinter dem Wrapper `timelapse-web-settings`. Er prüft zuerst,
+  vergleicht dann die Änderungszeit der Datei (veraltete Seite), speichert nur Abweichungen von
+  `config.json` atomar und hängt eine Zeile an `logs/settings.log` an.
+
+Die Seiten lesen dieselbe zusammengeführte Config über `web/src/project-config.php`; ein Test
+vergleicht ihre Schlüsselnamen mit der Python-Liste.
+
 ### `src/image_worker.py`
 
 Gemeinsame Infrastruktur für isolierte Worker-Prozesse.
@@ -175,6 +193,9 @@ Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dai
 - `blur_job.py`: Verpixelung der Bilder eines von Hand gestarteten Videos vor dem Videobau
   (`blur_job_frames`); nutzt `blur_box` und `box_writer` und passt deren Altersgrenze und Anzahl der
   Sicherungen an die Bilder des Videos an
+- `preview.py`: das Vorschaubild der Seite „Verpixelung“: wählt ein Bild, das der Box-Job bestätigt hat,
+  holt es mit der Bildquelle, prüft die Prüfsumme und legt es unter `state/web-jobs/previews/` ab; läuft
+  als `python3 -m src.privacy.preview` hinter dem Wrapper `timelapse-web-preview`
 - `blur_gate.py`: die Sperre der automatischen Videos von Blur-Kameras (Daily, Monthly, Yearly): nur
   Bilder, die der Box-Job bestätigt hat (`blurred`, `clean`, `night`), liest den Status auf der
   Seite des Monats jedes Bildes und schreibt nichts
@@ -228,6 +249,7 @@ timelapse/
 ├── archive/   (stillgelegt: Raspberry Pi, Container-Test, Staging; siehe archive/README.md)
 ├── config/
 │   ├── config.json
+│   ├── settings.example.json   (Form der Einstellungsdateien; settings.json und settings-privacy.json entstehen auf dem Host)
 │   └── siteground.env.example   (Vorlage für die Zugangsdaten des Uploads)
 ├── docker/
 │   ├── docker-compose.yml
@@ -264,8 +286,10 @@ timelapse/
 │   ├── web/   (Wrapper der Weboberfläche, installiert unter /usr/local/)
 │   │   ├── timelapse-web-delete
 │   │   ├── timelapse-web-delete-highlight
+│   │   ├── timelapse-web-preview
 │   │   ├── timelapse-web-publish
 │   │   ├── timelapse-web-rebuild
+│   │   ├── timelapse-web-settings
 │   │   ├── timelapse-web-status.sh
 │   │   ├── timelapse-web-trigger
 │   │   ├── timelapse-web-worker
@@ -297,7 +321,8 @@ timelapse/
 │   │   ├── blur_gate.py
 │   │   ├── blur_job.py
 │   │   ├── box_writer.py
-│   │   └── detect.py
+│   │   ├── detect.py
+│   │   └── preview.py
 │   ├── camera_list.py
 │   ├── config.py
 │   ├── date_coverage.py
@@ -309,6 +334,8 @@ timelapse/
 │   ├── logger.py
 │   ├── main.py
 │   ├── run_state.py
+│   ├── settings.py
+│   ├── settings_save.py
 │   ├── solar.py
 │   ├── storage_filter.py
 │   ├── video.py
@@ -325,21 +352,31 @@ timelapse/
 │   │   ├── highlights.php
 │   │   ├── index.php
 │   │   ├── job-status.php
+│   │   ├── preview-refresh.php
+│   │   ├── preview.php
 │   │   ├── running-job.php
-│   │   └── style.css
+│   │   ├── settings.php
+│   │   ├── style.css
+│   │   └── verpixelung.php
 │   └── src/
 │       ├── components/
 │       │   ├── confirm-delete.php
 │       │   ├── header.php
-│       │   └── job-watcher.php
+│       │   ├── job-watcher.php
+│       │   └── settings-tabs.php
 │       ├── highlight-delete.php
 │       ├── highlights-library.php
 │       ├── job-runner.php
 │       ├── job-state.php
 │       ├── json-response.php
+│       ├── preview-runner.php
+│       ├── privacy-form.php
 │       ├── process-runner.php
+│       ├── project-config.php
 │       ├── publish-runner.php
 │       ├── rebuild-runner.php
+│       ├── settings-form.php
+│       ├── settings-runner.php
 │       ├── video-delete.php
 │       └── video-library.php
 ├── logs/         (Laufzeitdaten, nicht im Repository)
@@ -366,7 +403,7 @@ Was in welcher Datei unter `docs/` steht, listet das README unter
 
 `install.sh` richtet einen frischen Debian- oder Ubuntu-Host ein (host-neutral, ohne eingebundenen
 Ordner); `backup.sh` sichert von einem Host, was ein neuer Host braucht und nicht im Git liegt (Modell,
-Status, auf Wunsch Videos, keine Geheimnisse), und `install.sh` spielt es im Schritt `restore` zurück. Ablauf:
+Status, die Einstellungsdateien der Weboberfläche, auf Wunsch Videos, keine Geheimnisse), und `install.sh` spielt es im Schritt `restore` zurück. Ablauf:
 [vps.md](vps.md).
 `scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
 Der Upload der fertigen Videos auf die Website steht in [betrieb.md](betrieb.md#upload-auf-die-website).

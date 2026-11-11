@@ -1,7 +1,9 @@
 # Blur (Verpixelung) settings tab
 
 Status: BUILT 2026-11-10 (build order tasks 1-5 and the per-camera top strip, see "Built since this
-draft" at the end); the docs (task 6) are still open. It extends `2026-11-10-settings-page.md` and
+draft" at the end); the docs (task 6) were written 2026-11-11 (`docs/weboberflaeche.md`,
+`konfiguration.md`, `verpixelung.md`, `verpixelung-box.md`, `handbuch.md`, `installation.md`, `vps.md`,
+`architektur.md`, README). It extends `2026-11-10-settings-page.md` and
 REPLACES its rule that the `privacy` block is never changeable on the page. Julius and a colleague decided on 2026-11-10 that the people who use the web UI may change the blur
 settings themselves: "the people here know what they do".
 
@@ -91,7 +93,8 @@ images blurred afterwards; already pixelated images stay as they are.
   one, a night frame only as a last resort. A camera with no confirmed frame at all gets no preview and
   shows the number rows only,
   fetches it with the existing frame source, and writes `state/web-jobs/previews/<camera>.jpg` plus a small
-  JSON file with its width and height. The page's button "Vorschau aktualisieren" starts it; the cache is
+  JSON file that says which frame it is (since 2026-11-11 without a size: PHP reads the size from the
+  picture itself with `getimagesize()`). The page's button "Vorschau aktualisieren" starts it; the cache is
   served by `web/public/preview.php?camera=<name>` (plain name, known blur camera, JPEG only).
 - The picture keeps its original size, so a rectangle drawn in the browser converts to pixel coordinates by one
   scale factor.
@@ -175,8 +178,7 @@ camera removed or an ignore box added without the confirm dialog (or its no-Java
 - **Preview details.** Frames come only from the blur job's confirmed state and must be the bytes it recorded
   (hash check); the wrapper needs `TIMELAPSE_STORAGE_BOX` like the other wrappers.
 
-Still open: the docs (task 6), a review pass for over-engineering (12 findings listed in the session notes),
-and the optional extras (a lock on the preview wrapper, showing only blurred frames, an independent security
+The review pass for over-engineering (12 findings) was done 2026-11-11. Still open: the optional extras (a lock on the preview wrapper, showing only blurred frames, an independent security
 review of the tab).
 
 ## Open for Julius

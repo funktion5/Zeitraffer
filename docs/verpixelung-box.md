@@ -60,7 +60,7 @@ flowchart TD
    nach 10 Minuten immer noch unvollständig, gilt der Upload als hängen geblieben und wird jede
    Runde als Fehler geloggt, bis es vollständig ist. Sonst geht sie an den Detektor (Zeitlimit
    120 Sekunden pro Bild, siehe [Zeitlimits](#zeitlimits)). Danach gelten `ignore_boxes`,
-   `ignore_top_share`, `skip_labels` und `min_person_score` (siehe
+   `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` (siehe
    [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
 7. **Nichts gefunden:** Die Prüfsumme des Bildes auf der Box muss der geprüften Kopie entsprechen
    (die Kamera kann das Bild inzwischen neu geschrieben haben). Dann wird das Bild als `clean`
@@ -109,7 +109,7 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 | `--settle-seconds N` | Wartezeit, bis ein Upload als fertig gilt (Standard 15) |
 | `--state-dir PFAD` | Ordner der Statusdateien (Standard `state/privacy/box/`) |
 
-- Ungültige `blur`-Werte, `ignore_boxes`, `ignore_top_share`, `skip_labels` oder `min_person_score` brechen den Lauf mit
+- Ungültige `blur`-Werte, `ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` oder `min_person_score` brechen den Lauf mit
   `Invalid privacy settings, nothing written: …` ab, bevor die Box kontaktiert wird.
 
 - Eine der beiden Kamera-Optionen ist Pflicht. Ein Lauf darf nur in die Kameras schreiben, mit
@@ -134,7 +134,8 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 
 ## Konfiguration
 
-In `config/config.json`:
+In `config/config.json` (die Weboberfläche legt ihre Änderungen daran in `config/settings-privacy.json`
+darüber, siehe unten):
 
 ```json
 "ignored_cameras": ["…", "BlurTest"],
@@ -157,11 +158,29 @@ In `config/config.json`:
 - `ignore_top_share`: Boxen überwiegend im oberen Bilddrittel werden verworfen und unter
   `ignored_boxes` festgehalten, wie in
   [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score).
+  `ignore_top_share_per_camera` ersetzt den Wert für eine Kamera.
 - `skip_labels`: pro Kamera `vehicle`/`plate`, die nie verpixelt werden (nicht im Beispiel oben;
   heute nur SLSV, keine Box-Job-Kamera), siehe ebenda.
 - `min_person_score`: pro Kamera Mindestsicherheit für Personen (heute nur SLSV, `0.35`), siehe
   ebenda.
 - `detector_command` und `blur`: wie in [verpixelung.md](verpixelung.md#konfiguration).
+
+**Änderungen auf der Weboberfläche.** Im Reiter „Verpixelung“ ([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp))
+lassen sich `blur_cameras`, die drei `blur`-Werte, `min_person_score`, `ignore_boxes` und
+`ignore_top_share_per_camera` ändern; sie stehen dann in `config/settings-privacy.json`, und
+`load_config()` legt sie über `config.json`. Der nächste Lauf liest sie, der Nachtlauf ebenso wie ein von Hand gestartetes Video.
+Für die Box-Verpixelung heißt das:
+
+- Eine **neu angehakte** Kamera wird ab der nächsten Nacht verpixelt, einschließlich der Bilder von
+  heute und den zwei Tagen davor. Ihre ersten automatischen Videos nutzen nur bestätigte Bilder
+  ([Sperre](#sperre-in-automatischen-videos)) und können deshalb übersprungen oder kurz sein. Sie
+  nutzt die Schwellen des Detektors für alle Kameras; ihre Qualität ist erst nach einem Blick auf
+  die ersten Ergebnisse geprüft.
+- Eine **abgewählte** Kamera wird nicht mehr verpixelt. Bei einer Kamera, die schon läuft, zeigt der
+  Reiter „Wichtig!“ und einen eigenen Block im Bestätigungsdialog: Ihre neuen Bilder blieben
+  unverpixelt, und die Videos zeigen Menschen wieder erkennbar.
+- Neue `blur`-Werte, Schwellen, Streifen und Rahmen wirken nur auf Bilder, die danach verpixelt werden;
+  bereits verpixelte Bilder bleiben, wie sie sind.
 
 ### Bekannte Fehlerkennungen (`ignore_boxes`)
 
@@ -443,7 +462,7 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | Meldung im Log | Ursache | Folge / Lösung |
 |---|---|---|
 | `Not in privacy.blur_cameras, nothing written: …` | Kamera fehlt in `blur_cameras` | Kamera eintragen oder Aufruf prüfen |
-| `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes`, `ignore_top_share`, `skip_labels` oder `min_person_score` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
+| `Invalid privacy settings, nothing written: …` | ungültiger Wert in `blur`, `ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` oder `min_person_score` | Wert laut [verpixelung.md](verpixelung.md#konfiguration) korrigieren |
 | `No storage box: TIMELAPSE_STORAGE_BOX is not set` | Die Variable fehlt in der Cron-Zeile oder der Shell | `TIMELAPSE_STORAGE_BOX=<ssh-alias>` setzen |
 | `Unsafe storage box remote: '…'` | Der Alias enthält ein unzulässiges Zeichen | erlaubt: Buchstaben, Ziffern, `.`, `_`, `-` (am Anfang Buchstabe oder Ziffer), optional `benutzer@host`; Eintrag in `~/.ssh/config` und Cron-Zeile angleichen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |

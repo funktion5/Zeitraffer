@@ -223,6 +223,12 @@ sudo install -o root -g root -m 755 \
   scripts/web/timelapse-web-publish \
   /usr/local/sbin/timelapse-web-publish
 sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-settings \
+  /usr/local/sbin/timelapse-web-settings
+sudo install -o root -g root -m 755 \
+  scripts/web/timelapse-web-preview \
+  /usr/local/sbin/timelapse-web-preview
+sudo install -o root -g root -m 755 \
   scripts/web/timelapse-web-worker-rebuild \
   /usr/local/libexec/timelapse-web-worker-rebuild
 sudo install -o root -g root -m 755 \
@@ -230,7 +236,7 @@ sudo install -o root -g root -m 755 \
   /usr/local/libexec/timelapse-web-worker-publish
 ```
 
-Die sudoers-Regeln erlauben ausschließlich die drei festen Trigger (Video-Auftrag, Neu erstellen, Upload) und die beiden festen Lösch-Wrapper, jeweils als `<benutzer>`:
+Die sudoers-Regeln erlauben ausschließlich die drei festen Trigger (Video-Auftrag, Neu erstellen, Upload), die beiden festen Lösch-Wrapper und die beiden Wrapper der Einstellungsseite (Speichern, Vorschaubild), jeweils als `<benutzer>`:
 
 ```sudoers
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-trigger *
@@ -238,11 +244,15 @@ www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-rebuild *
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-publish *
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete
 www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-delete-highlight
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-settings *
+www-data ALL=(<benutzer>) NOPASSWD: /usr/local/sbin/timelapse-web-preview *
 ```
 
 Eine sudoers-Regel ohne Argumentliste erlaubt beliebige Argumente. `timelapse-web-delete` erwartet genau Kamera, Job-Typ und Dateiname, prüft diese selbst (kein `/`, nur `.mp4`, keine Symlinks) und löscht ausschließlich unter `videos/<camera>/manual-runs/<job>/`. `timelapse-web-delete-highlight` erwartet genau Kamera, Datum und Dateiname (nur `.jpg`, keine Symlinks) und löscht ausschließlich ein Bild unter `videos/<camera>/highlights/<datum>/`, nie die `manifest.json`.
 
 `timelapse-web-rebuild` erwartet Job-ID, Kamera und ein bis vier Videoarten (`daily`, `weekly`, `monthly`, `yearly`), `timelapse-web-publish` genau Job-ID und Kamera. Beide prüfen die Kamera gegen `state/web-jobs/cameras.json` und nehmen dieselbe Laufsperre wie der Trigger; ihre Worker `timelapse-web-worker-rebuild` und `timelapse-web-worker-publish` müssen unter `/usr/local/libexec/` liegen (sonst endet der Trigger mit Exit 69). Der Upload-Worker liest keine Zugangsdaten: Er startet `scripts/copy_zeitraffer_videos_vps2siteground.sh`, das sie aus `config/siteground.env` liest. `./install.sh` installiert alles im Schritt `web_bridge`.
+
+`timelapse-web-settings` erwartet genau drei Argumente: den Bereich (`general` oder `privacy`, sonst nichts), die Änderungszeit der Einstellungsdatei (nur Ziffern) und die Werte als ein JSON-Text (höchstens 8 KB, bei `privacy` 64 KB). Es startet `python3 -m src.settings_save` als `<benutzer>`, das jeden Schlüssel gegen die Liste in `src/settings.py` prüft und `config/settings.json` bzw. `config/settings-privacy.json` atomar schreibt. Es arbeitet synchron und nimmt keine Laufsperre. Exit 0 gespeichert, 65 ungültige Werte, 73 inzwischen geändert, 64 falsche Eingabe, 69 Python fehlt. `timelapse-web-preview` erwartet genau einen Kameranamen (einfacher Name), setzt `TIMELAPSE_STORAGE_BOX` (Standard `storagebox`, wie die anderen Wrapper) und beendet `python3 -m src.privacy.preview` nach spätestens 90 Sekunden (`timeout` aus coreutils). Exit 0 Bild zwischengespeichert, 66 keine Blur-Kamera, 67 noch kein geprüftes Bild, 124 Zeitlimit. Beide stehen nur in der Weboberfläche ([Einstellungen](weboberflaeche.md#einstellungen)).
 
 Die Regeln werden mit folgendem Befehl in einer eigenen Datei sicher bearbeitet und geprüft:
 
@@ -267,8 +277,10 @@ Nach Änderungen an den versionierten Wrappern müssen die Laufzeitkopien erneut
 | `videos/` | lesen (`r-x` / `r--`) | Bibliothek, Wiedergabe, Speicheranzeige |
 | `config/` | nur Durchgang (`--x`) | – |
 | `config/config.json` | lesen (`r--`) | `ignored_cameras`, `flagger.cameras`, Zeitzone |
+| `config/settings.json`, `config/settings-privacy.json` | lesen (`r--`), sofern vorhanden | die auf der Einstellungsseite gespeicherten Werte, die die Seiten über `config.json` legen |
 | `state/` | nur Durchgang (`--x`) | – |
 | `state/web-jobs/` | lesen (vom Status-Skript als `755`/`644` angelegt) | Job-Status-Polling |
+| `state/web-jobs/previews/` | lesen (vom Vorschau-Skript als `755`/`644` angelegt) | Vorschaubilder der Verpixelungs-Kameras |
 | alle übrigen Einträge in `timelapse/` | keine | – |
 
 `logs/`, `temp/` und `reports/` werden mit Modus `770` vorab angelegt, damit die Python-Jobs sie später nicht weltlesbar erzeugen.

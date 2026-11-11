@@ -120,6 +120,13 @@ Abschnitt `privacy` in `config/config.json`:
 ausschließlich in diese Kameras und bricht ohne Eintrag ab. Der Videomodus (`--blur-people`)
 ignoriert die Liste.
 
+Ein Teil dieser Werte lässt sich auch auf der Weboberfläche ändern, im Reiter **Verpixelung**
+([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp)): `blur_cameras`, die
+drei `blur`-Werte, je Kamera `min_person_score`, `ignore_boxes` und `ignore_top_share_per_camera`.
+Diese Änderungen stehen nicht in `config.json`, sondern in `config/settings-privacy.json` und
+gelten darüber ([konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche)). Nur die IT
+ändert `detector_command`, `skip_labels` und den globalen `ignore_top_share`.
+
 ### `detector_command`
 
 Die Befehlszeile des Detektors als Liste, nie als Shell-Text. Steht hier `null`, bricht jeder
@@ -149,8 +156,12 @@ bei Scheunenviertel: der Wegweiser am Café-Eingang und die Ankerkette rechts. W
 Koordinaten findet (von Hand oder mit Claude):
 [Handbuch](handbuch.md#ein-feststehendes-objekt-wird-immer-wieder-verpixelt).
 
-`ignore_top_share`: globale Regel für alle Kameras. Eine Box, die zu mehr als der Hälfte ihrer
-Höhe im oberen Teil des Bildes liegt (hier oberes Drittel), wird verworfen. Dort sind Himmel, Dächer, Wasser oder die
+`ignore_top_share`: Regel für alle Kameras, der Standard der IT. Eine Box, die zu mehr als der Hälfte ihrer
+Höhe im oberen Teil des Bildes liegt (hier oberes Drittel), wird verworfen. `ignore_top_share_per_camera`
+gibt einer Kamera einen eigenen Wert (`{"Scheunenviertel": 0.2}`), der für sie den globalen
+**ersetzt**; `0` schaltet den Streifen dort ab. Die Weboberfläche schreibt nur diesen Wert je Kamera.
+Ein Rahmen aus `ignore_boxes` kann den Streifen nicht ersetzen: Er verwirft nur Boxen, die ihn zu
+mindestens 50 % überlappen, der Streifen jede, die überwiegend in ihm liegt. Dort sind Himmel, Dächer, Wasser oder die
 Kamerahalterung, keine Person, die man erkennen könnte. Anlass: Bei Scheunenviertel hielt der
 Detektor zweimal die Halterung oben rechts für eine Person, einmal mit einer 373 × 460 px großen
 Box in der Dämmerung. Am 2026-08-16 betraf die Regel nur diese 2 von 1965 Boxen.
@@ -177,7 +188,7 @@ Alle vier Regeln gelten im Video-Modus und im Box-Job gleich (eine gemeinsame Fu
 `filter_boxes`). Verworfene Boxen stehen im Log (`Ignored box in …`) bzw. beim Box-Job in der
 Statusdatei unter `ignored_boxes`. Alle Werte werden bei jedem Start geprüft: Ein Tippfehler wie
 `ignore_top_share: 3.33` würde sonst stillschweigend jede Box verwerfen, deshalb bricht der Lauf
-mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5; Boxen mit vier ganzen Zahlen,
+mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5, auch für jeden Wert in `ignore_top_share_per_camera`; Boxen mit vier ganzen Zahlen,
 `x1 > x0`, `y1 > y0`; bei `skip_labels` eine nicht leere Liste aus `vehicle`/`plate`; bei `min_person_score` eine Zahl
 von 0 bis 0,5). Kamerabezogene Regeln nur, wo sie nötig sind; eine Kamera mit Personen im oberen Drittel
 (Hang, Balkon) bräuchte eine Ausnahme.
@@ -275,7 +286,7 @@ Prüfsumme des Modells, Laufzeit, Kachelung, Schwelle und die Fahrzeug-Einstellu
 Vereinigung, bei Personen auch für Boxen, die fast ganz in einer anderen liegen; `v` =
 Kennzeichenbereich, `vc` = Fahrzeug-Schwelle, `ps` = Kennzeichensuche, `b` = Blockgröße). Ein
 anderes Modell oder eine andere Einstellung führt also automatisch zu einer neuen Prüfung.
-`ignore_boxes`, `ignore_top_share`, `skip_labels` und `min_person_score` gehören nicht dazu, weil sie erst beim
+`ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` gehören nicht dazu, weil sie erst beim
 Verpixeln greifen: Eine Änderung braucht keine neue Erkennung, nur ein neues Video.
 Eine beschädigte Zeile gilt nur als fehlender Eintrag.
 
@@ -353,7 +364,7 @@ Speichers belegt; Detektor und FFmpeg laufen nie gleichzeitig.
 | `No blurrable region left for …` | Detektor meldet eine Box außerhalb des Bildes | Detektor bzw. Modell prüfen |
 | `Detector box for … has an invalid 'block'` bzw. `'label'` | Detektor liefert eine Blockgröße unter 1 oder ein Label, das kein Text ist | Detektor prüfen; mit dem mitgelieferten `detect.py` tritt das nicht auf |
 | `Ignored box in …` (kein Fehler) | Box passte zu `ignore_boxes`, lag überwiegend im oberen Drittel (`ignore_top_share`) , hat ein Label aus `skip_labels` oder liegt unter `min_person_score` | Nur prüfen, wenn dort doch eine echte Person war; dann die Regel anpassen |
-| `privacy.ignore_top_share must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen) |
+| `privacy.ignore_top_share must be …`, `privacy.ignore_top_share_per_camera for … must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen). Die Seite „Einstellungen“ lässt solche Werte nicht speichern; ein Fehler kommt hier nur aus einer von Hand bearbeiteten Datei |
 | `privacy.min_person_score for … must be a number from 0 to 0.5` | Tippfehler; ein höherer Wert würde deutlich sichtbare Personen verwerfen | Wert korrigieren |
 | `privacy.skip_labels for … may only list vehicle, plate` | leere Liste, Tippfehler oder `person` eingetragen | nur `vehicle` und/oder `plate` eintragen; Personen werden immer verpixelt |
 | `Cannot read the size of …` | FFprobe liefert keine oder eine unerwartete Bildgröße (Bild beschädigt) | Bild prüfen; im Box-Job betrifft das nur dieses Bild, es wird jede Runde erneut versucht |
@@ -365,7 +376,7 @@ Ohne Logmeldung, beim Ansehen des Videos:
 | Kennzeichen knapp über dem verpixelten Bereich | Blickwinkel der Kamera: Kennzeichen sitzt höher im Fahrzeugkasten | `--vehicle-plate-share` erhöhen (heute `0.55`), nie den Bereich verschieben; Bildnummer notieren |
 | Auto in einem Bild verpixelt, im nächsten nicht | Erkennungssicherheit schwankt von Bild zu Bild | `--vehicle-threshold` prüfen (`0.15`); Bildnummer notieren, Cache-Eintrag ansehen |
 | Nur ein halbes Auto bzw. eine halbe Person verpixelt | früher: Kachelgrenze bei x = 768 (seit 2026-10-16 behoben, Kennung `-u2`) | Video mit aktuellem Detektor neu erzeugen |
-| Große Pixelfläche oben im Bild ohne Person | Fehlerkennung, z. B. Kamerahalterung | liegt sie überwiegend im oberen Drittel, verwirft `ignore_top_share` sie; sonst als `ignore_boxes` eintragen |
+| Große Pixelfläche oben im Bild ohne Person | Fehlerkennung, z. B. Kamerahalterung | liegt sie überwiegend im oberen Drittel, verwirft `ignore_top_share` (bzw. der Wert der Kamera) sie; sonst als `ignore_boxes` eintragen, am bequemsten auf der Weboberfläche (Reiter Verpixelung, Rahmen auf dem Bild ziehen) |
 | Boote, Anhänger oder Stege verpixelt, obwohl es dort keine Autos gibt | Detektor hält Boote auf Trailern für Fahrzeuge | Kamera in `skip_labels` mit `["vehicle", "plate"]` eintragen, Video neu erzeugen (Cache bleibt gültig) |
 | Bootsplanen, Segelsäcke oder Winschen verpixelt | Detektor hält sie für Personen (meist geringe Sicherheit) | `min_person_score` für die Kamera setzen (SLSV: `0.35`), Video neu erzeugen; nimmt in Kauf, dass entfernte Personen unverpixelt bleiben |
 | Auto zu grob verpixelt | `--vehicle-block-ratio` fehlt oder ist `0` | Wert `0.0133` setzen |

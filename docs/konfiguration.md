@@ -1,7 +1,8 @@
 # Konfiguration
 
-Die Einstellungen des Programms (`config/config.json`) und die Umgebungsvariablen. Wie man einen
-Server einrichtet, steht in [installation.md](installation.md) und [vps.md](vps.md).
+Die Einstellungen des Programms (`config/config.json`), die Werte, die die Weboberfläche darüber legt
+([Einstellungen der Weboberfläche](#einstellungen-der-weboberfläche)), und die Umgebungsvariablen.
+Wie man einen Server einrichtet, steht in [installation.md](installation.md) und [vps.md](vps.md).
 
 *Für die technische Einrichtung.*
 
@@ -87,7 +88,10 @@ Historische Daily- und Weekly-Läufe nutzen dagegen immer den festen Wert `dayli
 `interval_window` ist das tägliche Bildfenster für Monthly und Yearly: Zielzeit
 `target_time` (`HH:MM` oder `sunset`) ± `tolerance_minutes`. Automatische Läufe verwenden immer
 diesen Wert; historische Läufe können ihn per CLI überschreiben (siehe „Zeitfenster für
-historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reichen.
+historisches Monthly und Yearly"). Ein Fenster darf nicht über Mitternacht reichen, und die
+Toleranz muss mindestens 1 Minute betragen. Auf der Weboberfläche sind nur eine Zielzeit von 10:00
+bis 14:00 und eine Toleranz von 1 bis 120 Minuten wählbar (Tageslicht, Fenster im selben Tag);
+`sunset` und andere Zeiten gelten nur in dieser Datei und per CLI.
 
 `min_coverage_days` legt fest, wie viele Tage mit mindestens einem Bild im Zeitfenster ein
 Monthly bzw. Yearly braucht (automatisch und historisch gleich). Erlaubt sind ganze Zahlen von 1
@@ -103,7 +107,8 @@ steuern die Videoerstellung.
 
 `privacy` steuert die Verpixelung von Personen und Kennzeichen: `detector_command` ist die
 Befehlszeile der Erkennung (als Liste, Pfade relativ zum Projektordner), `blur` das Aussehen
-(Blockgröße, Rand, weicher Übergang), `ignore_boxes` und `ignore_top_share` verwerfen bekannte
+(Blockgröße, Rand, weicher Übergang), `ignore_boxes` und `ignore_top_share` (mit dem Wert je Kamera
+`ignore_top_share_per_camera`) verwerfen bekannte
 Fehlerkennungen, `skip_labels` schaltet pro Kamera die Fahrzeug- und Kennzeichenverpixelung ab
 (z. B. Boote auf Trailern), `min_person_score` verwirft pro Kamera unsichere Personen-Boxen
 (z. B. Bootsplanen; kann entfernte Personen unverpixelt lassen). Ungültige Werte brechen einen Lauf mit Verpixelung ab, bevor ein Bild bearbeitet
@@ -113,6 +118,81 @@ wird. Alle Werte und Grenzen:
 `flagger` steuert den Highlights-Flagger: `cameras` sind die Kameras, die jede Nacht geprüft
 werden (leer = keine), `retention_days` ist die Aufbewahrung der Berichte in Tagen (mindestens
 7). Details: [docs/flagger.md](flagger.md#konfiguration).
+
+## Einstellungen der Weboberfläche
+
+`config/config.json` ist die Datei der IT. Eine festgelegte Auswahl ihrer Werte können die
+Kolleginnen und Kollegen auf der Seite **Einstellungen** der Weboberfläche ändern
+([weboberflaeche.md](weboberflaeche.md#einstellungen)). Diese Änderungen landen nicht in
+`config.json`, sondern in zwei eigenen Dateien, je Reiter eine, und gelten **über** `config.json`:
+
+| Datei | Reiter | Bereich |
+|---|---|---|
+| `config/settings.json` | Allgemein | `general` |
+| `config/settings-privacy.json` | Verpixelung | `privacy` |
+
+Beide sind in Git ignoriert und gibt es je Host einmal; die Datei auf dem VPS ist maßgeblich.
+`config/settings.example.json` zeigt die Form. Fehlt eine Datei, gelten ihre Werte nicht.
+
+- **Rangfolge:** `config.json`, darüber `settings.json`, darüber `settings-privacy.json`
+  (`load_config()` in `src/config.py`). Objekte werden Schlüssel für Schlüssel gemischt (ein Monat des
+  Tageslicht-Puffers ändert nur diesen Monat), Zahlen und Listen ersetzen den Wert.
+- **Nur Abweichungen:** Die Dateien enthalten nur, was von `config.json` abweicht. Wird ein Wert auf
+  der Seite auf den Standard zurückgestellt, verschwindet er aus der Datei, und eine spätere
+  Änderung an `config.json` erreicht den Schlüssel wieder. Steht ein Schlüssel in einer
+  Einstellungsdatei, ist eine Änderung in `config.json` für ihn wirkungslos: Auf der Seite
+  zurücksetzen („Alles auf Standard“, dann Speichern) oder den Schlüssel aus der Datei löschen.
+- **Nur freigegebene Schlüssel:** `src/settings.py` ist die einzige Liste mit Regeln und Grenzen.
+  Alles andere in einer Einstellungsdatei, ein Wert außerhalb der Grenzen, eine kaputte oder
+  unlesbare Datei wird mit einer Warnung im Protokoll ignoriert und kann den Nachtlauf nicht stoppen.
+  Die PHP-Seiten kennen nur die Schlüsselnamen; ein Test vergleicht sie mit der Python-Liste.
+- **Erster Schlüssel `_note`** in `config.json` weist darauf hin; er wird nicht ausgewertet.
+
+Bereich `general` (Reiter Allgemein):
+
+| Schlüssel | Erlaubt |
+|---|---|
+| `timelapse.crf` | ganze Zahl 18–35 (die Umgebungsvariable `TIMELAPSE_X264_CRF` erlaubt 0–51) |
+| `timelapse.daily_framerate`, `monthly_framerate`, `yearly_framerate` | je 1–60 |
+| `ignored_cameras` | Liste einfacher Kameranamen |
+| `flagger.cameras` | Liste einfacher Kameranamen |
+| `flagger.retention_days` | 1–365 |
+| `daylight_buffer_minutes` | 0–240 |
+| `automatic_daylight_buffer_minutes.1` bis `.12` | je 0–240 |
+| `interval_window.target_time` | `HH:MM` von 10:00 bis 14:00 |
+| `interval_window.tolerance_minutes` | 1–120 |
+| `min_coverage_days.monthly`, `.yearly` | 1–31; 1–366 |
+| `log_retention_days` | 1–365 |
+
+Bereich `privacy` (Reiter Verpixelung); die Grenzen sind die des Verpixelungs-Codes selbst
+(`src/privacy/anonymize.py`):
+
+| Schlüssel | Erlaubt |
+|---|---|
+| `privacy.blur_cameras` | Liste einfacher Kameranamen |
+| `privacy.blur.strength` | 0,05–0,5 |
+| `privacy.blur.padding_ratio` | 0,05–1 |
+| `privacy.blur.feather` | 0–1 |
+| `privacy.ignore_top_share_per_camera.<Kamera>` | 0 bis unter 0,5 (0 = aus) |
+| `privacy.min_person_score.<Kamera>` | 0–0,5 |
+| `privacy.ignore_boxes.<Kamera>` | höchstens 50 Rahmen `[x0, y0, x1, y1]`, ganze Zahlen von 0 bis 20 000, `x1 > x0`, `y1 > y0` |
+
+`privacy.ignore_top_share_per_camera.<Kamera>` **ersetzt** für diese Kamera den globalen
+`privacy.ignore_top_share` ([verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
+Der globale Wert bleibt in `config.json` der Standard der IT und steht nicht auf der Seite; ein Wert
+je Kamera, der ihm gleicht, wird nicht gespeichert.
+
+Absichtlich **nicht** auf der Seite: `location`, `timelapse.ffmpeg_threads`,
+`image_scan_stall_timeout_seconds` (ein falscher Wert kann den VPS überlasten oder Aufträge hängen
+lassen) und aus `privacy` der Detektor (`detector_command`), `skip_labels` und der globale
+`ignore_top_share`.
+
+Jede Speicherung schreibt eine Zeile nach `logs/settings.log` (Zeit, Bereich, Schlüssel alt → neu;
+keine IP-Adresse). Auf einen neuen Host kommen die beiden Dateien einmal mit der Sicherung
+(`backup.sh`, Schritt `restore`) oder mit `rsync --no-perms --ignore-existing`; danach nie wieder
+von einem anderen Rechner kopieren, sonst gehen die Änderungen der Kolleginnen und Kollegen verloren.
+
+## Tests der Konfiguration
 
 Die Tests prüfen unter anderem:
 

@@ -24,12 +24,14 @@ Das Projekt muss in `~/timelapse` liegen, weil die installierten Web-Wrapper dor
 
 Solange der bisherige Host noch läuft, sichert `backup.sh` (im Repository-Ordner auf dem Mac
 gestartet), was der neue Host braucht und nicht im Git liegt: das Erkennungsmodell (`models/`), den
-Status (`state/` ohne Sperrdateien, Laufmarke und `web-jobs/`, darin der Status der Verpixelung) und
-die Crontab zum Nachlesen; mit `VIDEOS=1` auch die Videos (ohne versteckte Dateien). Es liest nur
+Status (`state/` ohne Sperrdateien, Laufmarke und `web-jobs/`, darin der Status der Verpixelung), die
+beiden Einstellungsdateien der Weboberfläche (`config/settings.json` und `config/settings-privacy.json`,
+falls vorhanden; sonst nichts aus `config/`) und die Crontab zum Nachlesen; mit `VIDEOS=1` auch die Videos
+(ohne versteckte Dateien). Es liest nur
 vom Host (ssh und rsync, kein sudo) und schreibt dort nichts.
 
 ```bash
-BACKUP_HOST=<alter-host> ./backup.sh              # models/, state/, crontab.txt
+BACKUP_HOST=<alter-host> ./backup.sh              # models/, state/, die beiden settings-Dateien, crontab.txt
 BACKUP_HOST=<alter-host> VIDEOS=1 ./backup.sh     # zusätzlich videos/
 ```
 
@@ -47,6 +49,10 @@ und der ssh-Schlüssel für die Storage Box ist pro Host ein neuer (Schritt 2).
 - **`state/` nicht weglassen:** Ohne `state/privacy/box/` kennt der neue Host keinen bestätigten
   Frame, und die [Sperre](verpixelung-box.md#sperre-in-automatischen-videos) lässt dann die Monats-
   und Jahresvideos der Blur-Kameras aus, bis die Bilder neu bestätigt sind.
+- **Die Einstellungsdateien** enthalten die Änderungen der Kolleginnen und Kollegen auf der Seite
+  „Einstellungen“ ([konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche)). Ohne sie
+  zeigt der neue Host wieder die Werte aus `config.json`, auch bei den Verpixelungs-Kameras. Sie
+  liegen nur auf dem Host, nicht im Git.
 - **Das Modell** lässt sich auch neu laden ([verpixelung.md](verpixelung.md#installation)).
 - **Die Videos** sind groß (bei der Planung 4,6 GB) und optional: Der nächtliche Lauf baut neue. Der
   Weekly-Job fügt aber nur vorhandene Daily-Videos zusammen und braucht keine eigenen Bilder; ohne
@@ -139,7 +145,7 @@ Ausgabe; installiert wird sie nicht. Der Installer ist wiederholbar, einzelne Sc
 
 `restore` liest `~/timelapse-backup` (`BACKUP_DIR` nennt einen anderen absoluten Pfad). Gibt es den
 Ordner nicht, wird der Schritt übersprungen und der Host fängt leer an. Sonst kopiert er `models/`,
-`state/` und `videos/` aus der Sicherung ins Projekt, überschreibt dabei nie eine vorhandene Datei
+`state/`, `videos/` und die beiden Einstellungsdateien aus der Sicherung ins Projekt, überschreibt dabei nie eine vorhandene Datei
 und löscht nichts; die Crontab aus der Sicherung wird nicht installiert. Wurde die Sicherung erst
 nach dem Installieren kopiert: `./install.sh restore permissions verify`.
 

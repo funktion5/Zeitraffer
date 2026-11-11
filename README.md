@@ -112,6 +112,13 @@ geschützt und nicht für das offene Internet gedacht. Dort kann man:
   Nacht ausgefallen war, und sie danach **auf die Website übertragen**. Beides steckt auf der Seite
   der Kamera in einer Leiste, die erst aufklappt, wenn man sie öffnet. Vor dem Übertragen muss man
   ausdrücklich bestätigen; die Seite sagt vorher, welche Videos gesendet werden.
+- auf der Seite **Einstellungen** (Zahnrad oben rechts) Werte ändern, für die man sonst die IT
+  braucht: zum Beispiel in welcher Qualität die Videos entstehen, welche Kameras verarbeitet werden
+  oder wie die Verpixelung arbeitet. Bei der Verpixelung kann man auf einem echten Kamerabild
+  einzeichnen, wo etwas fälschlich verpixelt wird (ein Poller, ein Boot, die Kamerahalterung).
+  Das Bild ist immer eins, das die Verpixelung schon geprüft hat, nie ein Rohbild. Weil
+  die Verpixelung eine Datenschutz-Einstellung ist, fragt die Seite vor dem Speichern noch einmal
+  nach. Eine Änderung gilt ab dem nächsten Auftrag, laufende Aufträge bleiben unberührt.
 
 Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 
@@ -166,7 +173,7 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | YouTube-Beschreibungen schreiben | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md) und [youtube/texts](docs/youtube/youtube-texts.md) |
 | Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
 | den Code und die Ordner verstehen | [docs/architektur.md](docs/architektur.md) |
-| Einstellungen ändern (`config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) |
+| Einstellungen ändern (die Seite „Einstellungen“, `config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) und [docs/weboberflaeche.md](docs/weboberflaeche.md#einstellungen) |
 | einen Server von Grund auf installieren | [docs/installation.md](docs/installation.md) und [docs/vps.md](docs/vps.md) |
 
 ## Was noch fehlt

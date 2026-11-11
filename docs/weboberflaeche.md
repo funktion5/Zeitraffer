@@ -30,6 +30,8 @@ Nachtlauf schreibt. Die gesamte Oberfläche ist auf Deutsch; interne Bezeichner 
 
 Die Seite **Highlights** (`/highlights.php`, Link im Header) zeigt die vom [Highlights-Flagger](flagger.md) markierten Bilder pro Kamera und Tag, mit Zeitraum- und Kamerafilter, Großansicht per Klick (Blättern mit den Pfeiltasten), Download und Löschen (Bestätigungsdialog, eigener Lösch-Wrapper). Details: [docs/highlights-seite.md](highlights-seite.md).
 
+Die Seite **Einstellungen** (Link mit Zahnrad ganz rechts im Header) hat zwei Reiter, **Allgemein** und **Verpixelung**. Dort ändern die Kolleginnen und Kollegen eine festgelegte Auswahl der Werte aus `config/config.json`, ohne die Datei anzufassen. Aufbau, Grenzen und Ablauf: [Einstellungen](#einstellungen).
+
 Beide Listen lesen nur die vier Job-Ordner (`daily`, `weekly`, `monthly`, `yearly`); `highlights/` und `manual-runs/` erscheinen also nie als Job. Versteckte Dateien werden nicht gelistet, darunter `.<name>.tmp.mp4` eines laufenden Renderings, das so weder abgespielt noch gelöscht werden kann. Gelöscht werden können nur manuelle Videos: das Löschen prüft gegen die Liste der manuellen Videos, der Lösch-Wrapper lehnt automatische ab. Eine Status-Datei-Bereinigung ist nicht implementiert.
 
 Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und blendet zusätzlich alle Kameras aus `ignored_cameras` in `config/config.json` aus (`getIgnoredCameras()` in `web/src/video-library.php`). Die Weboberfläche benötigt deshalb Lesezugriff auf `config/config.json`; dieselbe Datei liefert über `getBlurCameras()` die Kameras aus `privacy.blur_cameras` für den Verpixelungs-Hinweis.
@@ -40,12 +42,17 @@ Die Kameraerkennung der Weboberfläche ignoriert versteckte Verzeichnisse und bl
 web/public/index.php               Kameraübersicht
 web/public/camera.php              Player, Bibliothek, Formulare (historisches Video, Neu erstellen, Upload) und Status-Polling
 web/public/highlights.php          Highlights-Seite (Bilder des Flaggers, Löschen)
+web/public/settings.php            Einstellungen, Reiter „Allgemein“
+web/public/verpixelung.php         Einstellungen, Reiter „Verpixelung“ (Vorschaubild, Zeichen-Editor, Bestätigungsdialog)
+web/public/preview.php             liefert das zwischengespeicherte Vorschaubild einer Blur-Kamera (nur JPEG)
+web/public/preview-refresh.php     „Vorschau aktualisieren“: holt ein neues Bild, antwortet mit JSON
 web/public/job-status.php          read-only JSON-Status-Endpunkt (inkl. Tote-Prozess-Erkennung und Ergebniszeilen)
 web/public/running-job.php         read-only JSON: läuft gerade irgendein Web-Auftrag? (Hinweisstreifen auf jeder Seite)
 web/public/style.css               Darstellung und responsives Layout
 web/src/components/header.php      gemeinsamer Header, Speicheranzeige und Hinweisstreifen „Auftrag läuft“
 web/src/components/job-watcher.php gemeinsamer Abschlussdialog (mit Ergebniszeilen), seitenübergreifendes Polling
 web/src/components/confirm-delete.php gemeinsamer Bestätigungsdialog, löscht im Hintergrund
+web/src/components/settings-tabs.php  Reiterleiste „Allgemein | Verpixelung“
 web/src/video-library.php          Kamera-, Video- und Speicherermittlung, Vorschau der Dateien für den Upload
 web/src/job-runner.php             Aufruf des fest installierten Triggers
 web/src/rebuild-runner.php         Aufruf des Triggers zum Neuerstellen der automatischen Videos
@@ -54,7 +61,12 @@ web/src/job-state.php              Auftragsstatus aus den Statusdateien (Tote-Pr
 web/src/video-delete.php           Aufruf des fest installierten Lösch-Wrappers
 web/src/highlights-library.php     Lesen und Prüfen der Flagger-Berichte
 web/src/highlight-delete.php       Aufruf des Lösch-Wrappers für Highlight-Bilder
-web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger und Löschen)
+web/src/process-runner.php         gemeinsame proc_open-Hilfsfunktion (Trigger, Löschen, Einstellungen, Vorschau) und das Lesen der einen JSON-Zeile eines Wrappers
+web/src/project-config.php         liest config.json mit den beiden Einstellungsdateien darüber (dieselben Werte wie die Aufträge)
+web/src/settings-form.php          Felder des Reiters „Allgemein“ und die Umrechnung zwischen Formular und Werten
+web/src/privacy-form.php           dasselbe für „Verpixelung“, mit den Erklärtexten
+web/src/settings-runner.php        Aufruf des Speicher-Wrappers
+web/src/preview-runner.php         Aufruf des Vorschau-Wrappers, Lesen und Prüfen des Zwischenspeichers
 web/src/json-response.php          gemeinsame JSON-Antwort (Status-Endpunkt und Löschen im Hintergrund)
 ```
 
@@ -191,6 +203,99 @@ Die Ausgabe des Skripts bleibt in einer privaten temporären Datei und im Protok
 
 Der Trigger nimmt dieselbe Laufsperre wie alle anderen Aufträge: Während eines Uploads läuft kein Video-Auftrag und umgekehrt. Beide Wrapper-Paare (Neuerstellen und Upload) installiert `./install.sh` im Schritt `web_bridge` samt sudoers-Regeln; von Hand: [Installation – Wrapper installieren](installation.md#wrapper-installieren).
 
+## Einstellungen
+
+Zwei Reiter, jeder eine eigene Seite mit eigenem Formular, eigenem Speichern-Knopf und eigener Datei. Eine Speicherung im einen Reiter kann den anderen deshalb weder überschreiben noch veraltet machen. Die IT ändert weiter `config/config.json`; was auf der Seite einstellbar ist und was nicht, legt `src/settings.py` fest ([konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche)).
+
+Für beide Reiter gilt:
+
+- **Anzeige:** Die Seite zeigt die Werte, die gerade gelten (`config.json` mit den gespeicherten Änderungen darüber). Hinter jedem Feld steht „Standard: …“, das ist der Wert aus `config.json`, auch bei den Kameralisten („alle außer X“, die Namen, „keine“) und den Rahmen („2 Rahmen“).
+- **Zurücksetzen:** „Auf Standard zurücksetzen“ je Abschnitt und „Alles auf Standard“ in der unteren Leiste tragen den Standard ein und speichern nichts; „Änderungen verwerfen“ geht zu den geladenen Werten zurück. Die Standard-Knöpfe erscheinen erst mit JavaScript und wirken nur im eigenen Reiter.
+- **Speichern:** Wie auf den anderen Seiten prüft der Server das Sitzungs-Token (`hash_equals`) und nimmt nur die Bestätigung mit genau dem Wert `yes` an; gelesen werden nur die festen Felder des Formulars. Ein ungültiger Wert speichert nichts: Die Seite listet jeden Fehler, steht er an einem Feld, auch dort, und behält die Eingaben.
+- **Veraltete Seite:** Das Formular trägt die Änderungszeit der Einstellungsdatei (ganze Sekunden). Hat sich die Datei seit dem Laden geändert, wird nichts gespeichert und die Seite sagt „Die Einstellungen wurden inzwischen geändert, bitte Seite neu laden.“ Zwei Speicherungen in derselben Sekunde können an dieser Prüfung vorbeirutschen. Ohne Datei zählt die Zeit 0.
+- **Wirkung:** Ab dem nächsten Auftrag; ein laufender ist nicht betroffen. Eine neue Qualität (CRF) gilt nur für Videos, die danach entstehen, bestehende bleiben.
+- **Protokoll:** `logs/settings.log` bekommt je Speicherung eine Zeile mit Zeit, Bereich und den geänderten Schlüsseln (`[general] timelapse.crf: 28 -> 30`). Keine IP-Adresse, kein User-Agent; die Datei ist nur für den Projektbenutzer lesbar.
+
+### Reiter „Allgemein“ (`/settings.php`)
+
+25 Werte in Gruppen. Die Grenzen prüft der Server; die Felder im Browser zeigen sie nur an.
+
+| Gruppe | Wert | Erlaubt |
+|---|---|---|
+| Videoqualität | `timelapse.crf` | ganze Zahl 18–35 |
+| | `timelapse.daily_framerate`, `monthly_framerate`, `yearly_framerate` | je 1–60 |
+| Kameras | `ignored_cameras` (je Kamera ein Haken; abgewählt = nicht verarbeitet) | Kameranamen, mindestens eine angehakt |
+| Highlights | `flagger.cameras` (je Kamera ein Haken), `flagger.retention_days` | Kameranamen; 1–365 |
+| Zeitfenster und Abdeckung | `daylight_buffer_minutes` | 0–240 |
+| | `interval_window.target_time` (Mittagsbild: Zielzeit) | `10:00` bis `14:00`, Regler in 15-Minuten-Schritten |
+| | `interval_window.tolerance_minutes` (± Minuten) | 1–120 |
+| | `min_coverage_days.monthly`, `yearly` | 1–31; 1–366 |
+| Tageslicht-Puffer je Monat | `automatic_daylight_buffer_minutes` (zwölf Felder) | je 0–240 |
+| Protokolle | `log_retention_days` | 1–365 |
+
+- **Zielzeit und Abweichung:** Das Mittagsbild ist ein Tageslichtbild. Mit einer Zielzeit zwischen 10:00 und 14:00 und höchstens 120 Minuten Abweichung bleibt das Fenster in jedem Monat bei Tageslicht und innerhalb eines Kalendertags (die Fensterlogik lehnt ein Fenster über Mitternacht und eine Abweichung unter 1 ab). Neben dem Zeitfeld steht ein Regler, der erst mit JavaScript erscheint; das Zeitfeld bleibt die eigentliche Eingabe. `sunset` und andere Zeiten gibt es nur in `config.json` und per CLI.
+- **Kameras:** Eine abgewählte Kamera verschwindet sofort aus der Kameraliste der Weboberfläche (die Seiten lesen die zusammengeführte Config) und wird nachts nicht mehr gebaut. **Achtung:** Sie muss dann auch unter „Highlights“ abgewählt werden. Der Flagger sucht seine Kameras unter den nicht ignorierten; steht dort eine ignorierte, startet er für alle Kameras nicht (`Requested cameras not found`). Die Seite verhindert diese Kombination bisher nicht. Wieder angehakt erscheint sie in der Kameraliste und hier nach dem nächsten Nachtlauf, denn die Liste schreibt der Nachtlauf (`state/web-jobs/cameras.json`) und die Weboberfläche hat keinen Zugriff auf die Box. Die Liste der Seite besteht aus dieser Kameraliste plus den bereits ignorierten Namen.
+- **Nicht einstellbar,** mit Absicht: `location`, `timelapse.ffmpeg_threads` und `image_scan_stall_timeout_seconds` (falsche Werte können den VPS überlasten oder Aufträge hängen lassen). Die Verpixelung hat ihren eigenen Reiter.
+
+### Reiter „Verpixelung“ (`/verpixelung.php`)
+
+Die Seite ist eine Datenschutz-Einstellung und fragt deshalb vor jedem Speichern nach. Die Reihenfolge von oben nach unten:
+
+1. **Welche Kameras werden verpixelt?** (`privacy.blur_cameras`) Je Kamera ein Haken. Kameras, die schon in `config.json` stehen, tragen die Markierung „läuft schon“; ein Hinweis „Wichtig!“ sagt, dass bei ihnen der Haken nicht weg darf, weil Menschen auf den Videos sonst sofort wieder zu erkennen sind. Eine neu angehakte Kamera wird ab der nächsten Nacht verpixelt, auch die Bilder von heute und den zwei Tagen davor ([verpixelung-box.md](verpixelung-box.md#konfiguration)).
+2. **Wie wird verpixelt?** Drei Werte für alle Kameras: `privacy.blur.strength` (0,05–0,5, Größe der Kästchen), `padding_ratio` (0,05–1, wie weit der Schutz um einen Menschen reicht), `feather` (0–1, wie weich der Rand ist). Die Grenzen sind die, die der Verpixelungs-Code selbst erzwingt ([verpixelung.md](verpixelung.md#blur)). Sie wirken nur auf Bilder, die danach verpixelt werden.
+3. **Ein Block je Verpixelungs-Kamera:**
+   - *Mindest-Sicherheit* (`privacy.min_person_score.<Kamera>`, 0–0,5): Funde darunter werden nicht verpixelt.
+   - *Oberer Bildrand* (`privacy.ignore_top_share_per_camera.<Kamera>`, 0 bis unter 0,5, 0 = aus): Funde, die überwiegend in diesem oberen Streifen liegen, gelten als Irrtum (Himmel, Dächer, Kamerahalterung) und werden nicht verpixelt. Der Wert **ersetzt** für diese Kamera den globalen `privacy.ignore_top_share` aus `config.json`; der globale Wert bleibt der Standard der IT und steht nicht auf der Seite. Ein Wert gleich dem Standard der Kamera wird nicht gespeichert, die Kamera folgt dann weiter dem globalen Wert.
+   - *Vorschaubild* mit Zeichen-Editor (unten).
+   - *Rahmen* (`privacy.ignore_boxes.<Kamera>`): Zeilen mit vier Zahlen `links, oben, rechts, unten` in Bildpunkten. Ein Fund, der einen Rahmen zu mindestens 50 % überlappt, wird verworfen. Höchstens 50 Rahmen je Kamera, Koordinaten bis 20 000.
+
+Jedes Feld hat unter sich eine kurze Erklärung in einfachem Deutsch. Das Zahlenfeld ist die eigentliche Eingabe (Tastatur, Screenreader); der Regler daneben hilft nur der Maus und erscheint erst mit JavaScript. Ein Streifen oben und Rahmen sind zwei verschiedene Regeln: Der Streifen verwirft jeden Fund, der überwiegend in ihm liegt, ein Rahmen nur einen, der ihn zu mindestens 50 % überdeckt. Ein Rahmen kann den Streifen also nicht ersetzen.
+
+**Vorschaubild und Editor.** Unter dem Wert für den Rand zeigt jeder Block ein echtes Bild der Kamera. Es ist immer ein Bild, das der Box-Job schon geprüft hat (verpixelt, sauber oder Nacht), nie ein Rohbild. „Vorschau aktualisieren“ (nur mit JavaScript) holt ein neues; die Seite lädt dabei nicht neu, ungespeicherte Änderungen bleiben. Der Schalter „Rahmen bearbeiten“ macht das Bild zur Zeichenfläche:
+
+- ein Rechteck aufziehen legt einen Rahmen an (die Zahlen der Zeile füllen sich),
+- ein Rahmen lässt sich verschieben (Größe bleibt, er bleibt im Bild),
+- die untere Kante des roten Streifens oben lässt sich ziehen und ändert den Rand dieser Kamera,
+- „Rahmen hinzufügen“ und „Entfernen“ in den Zeilen gehen auch ohne Maus; es stehen keine leeren Reserve-Zeilen da.
+
+Ausgeschaltet lässt die Ebene jede Berührung durch, das Bild blockiert das Scrollen also nicht. Die Zeilen mit den Zahlen bleiben der Weg ohne Maus. Hat eine Kamera noch kein geprüftes Bild (neue Kamera: erst nach der ersten verpixelten Nacht), steht dort nur ein Hinweis, die Zahlenzeilen funktionieren trotzdem.
+
+**Bestätigung.** „Speichern“ öffnet einen Dialog, der in Worten aufzählt, was sich ändert; ändert sich die Kameraliste, steht sie zusätzlich in einem „Wichtig!“-Block. Erst „Ja, speichern“ sendet das Formular mit `confirm_privacy=yes`. Ohne JavaScript ersetzt ein Kästchen den Dialog. Der Server nimmt nur genau `yes` an, jeder andere Wert, auch ein Array, wird abgelehnt.
+
+Ablauf des Speicherns (beide Reiter):
+
+```text
+settings.php / verpixelung.php  (Sitzungs-Token, Bestätigung, Werte aus dem festen Feldsatz)
+  → settings-runner.php:
+    sudo -n -u <benutzer> /usr/local/sbin/timelapse-web-settings <bereich> <änderungszeit> <werte-json>
+
+timelapse-web-settings
+  → prüft Bereich (general oder privacy), Änderungszeit (nur Ziffern) und Größe (8 KB, privacy 64 KB)
+  → startet python3 -m src.settings_save --scope <bereich>   (die Werte kommen über stdin)
+  → Exit 0 gespeichert, 65 ungültige Werte (Meldungen als JSON), 73 inzwischen geändert
+```
+
+Der Wrapper arbeitet synchron und nimmt keine Laufsperre: Der Schreiber ersetzt die Datei in einem Schritt (temporäre Datei im selben Ordner, dann Umbenennen, Rechte 0644 damit der Webserver-Benutzer sie liest), und ein laufender Auftrag hat seine Config schon gelesen. Die Werte laufen als EIN JSON-Argument, weil der Prozessaufruf von PHP keine Standardeingabe hat. `src/settings.py` ist der einzige Prüfer: Jeder Schlüssel muss in der Liste des Bereichs stehen und seine Regel erfüllen, alles andere wird abgelehnt, wie auch immer die Anfrage gebaut ist. Gespeichert wird nur, was von `config.json` abweicht; ein Wert, der auf den Standard zurückgesetzt wird, verschwindet aus der Datei, und eine spätere Änderung an `config.json` erreicht den Schlüssel wieder.
+
+Ablauf der Vorschau:
+
+```text
+preview-refresh.php  (POST: Sitzungs-Token, Kamera aus der Blur-Liste)
+  → preview-runner.php:
+    sudo -n -u <benutzer> /usr/local/sbin/timelapse-web-preview <kamera>
+
+timelapse-web-preview
+  → prüft den Kameranamen (einfacher Name), Zeitlimit 90 Sekunden, setzt TIMELAPSE_STORAGE_BOX
+  → startet python3 -m src.privacy.preview <kamera>
+  → Exit 0 Bild zwischengespeichert, 66 keine Blur-Kamera, 67 noch kein geprüftes Bild, 124 Zeitlimit
+```
+
+Der Webserver-Benutzer erreicht die Storage Box nicht, deshalb holt das Skript das Bild als Projektbenutzer mit der Bildquelle (`src/frame_source.py`) und legt es in `state/web-jobs/previews/<Kamera>.jpg` ab, dazu `<Kamera>.json` mit Bildname, Art und Aufnahmezeit. Gewählt wird unter den Bildern der letzten Tage, die der Box-Job bestätigt hat: zuerst „verpixelt“, dann „sauber“, ein Nachtbild nur zuletzt, der neueste Tag, dort das Bild nächst der Mittagszeit. Das Bild muss genau die Bytes sein, die der Job festgehalten hat (Prüfsumme); stimmt es nicht, kommt der nächste Kandidat, höchstens drei. Die Bildgröße steht nicht in der JSON-Datei: PHP liest sie aus dem Bild selbst (`getimagesize()`, nur JPEG, Seiten von 1 bis 20 000 Punkten). Ein beschädigtes Bild gilt als „kein Bild“.
+
+`preview.php?camera=<Name>` liefert das Bild: einfacher Name, Kamera aus der Blur-Liste, kein Symlink, Größe 4 Byte bis 32 MiB, JPEG-Typ; sonst 404. Die Antwort trägt `Cache-Control: private, no-cache`, die Adresse eine Version, damit ein altes Bild nie aus dem Zwischenspeicher des Browsers erscheint. Der Wrapper endet nach höchstens 90 Sekunden, damit eine Box, die nicht antwortet, keine Webanfrage minutenlang festhält.
+
+**Wo die Dateien liegen.** `config/settings.json` (Allgemein) und `config/settings-privacy.json` (Verpixelung) sind in Git ignoriert, je Host eine Datei; die auf dem VPS ist maßgeblich. Fehlt eine, gelten keine Änderungen. Eine Starthilfe liegt als `config/settings.example.json` bei. Wer eine Datei vom Mac auf den VPS bringt, tut das **einmal** mit `rsync --no-perms --ignore-existing`: Ein zweites Kopieren würde die Änderungen der Kolleginnen und Kollegen löschen. Eine kaputte oder unlesbare Datei, ein unbekannter Schlüssel oder ein Wert außerhalb der Grenzen wird mit einer Warnung im Protokoll ignoriert und kann den Nachtlauf nicht stoppen. `./install.sh permissions` lässt `www-data` genau diese beiden Dateien lesen, `backup.sh` und der Schritt `restore` nehmen sie mit.
+
 ## Webtests
 
 Wrapper, PHP-Helfer und Status-Endpunkt werden mit pytest geprüft (benötigt `php` auf der Kommandozeile):
@@ -205,8 +310,13 @@ python3 -m pytest tests/web
 - `web_php_test.py`: `video-library.php`, `process-runner.php`, `job-runner.php`, `rebuild-runner.php`, `publish-runner.php`, `job-state.php` (Ergebniszeilen) und `video-delete.php`; in `video-library.php` auch `newestAutomaticVideos()` (Vorschau des Uploads, mit Randfällen wie leeren, versteckten und verlinkten Dateien); die Tests kopieren `web/src` nach `tmp_path`, ersetzen dort die festen Pfade und verwenden ein Fake-`sudo`, sodass weder echte Videos noch installierte Wrapper berührt werden
 - `web_camera_page_test.py`: `camera.php` als Ganzes (Kopie in `tmp_path`, Kamerapfad und `sudo` ersetzt): beide Listen, Auswahl über `source=auto`, Lese-Schutz der automatischen Videos, ungültige Parameter, Markierung des laufenden Videos, Löschen per `response=json`, Weiterleitung nach dem Start (Post/Redirect/Get), Verpixelungs-Hinweis nur bei Blur-Kameras. die Leiste (zu, nach einer abgelehnten Anfrage offen), das Neuerstellen-Formular, der Upload-Abschnitt mit der strengen Bestätigung (`yes` und nichts sonst) und der Hinweisstreifen im Header. Die gemeinsame Hilfsfunktion `render_page()` dafür liegt in `web_php_test.py`
 - `web_rebuild_test.py`: Trigger und Worker des Neuerstellens (Argumente, Kameraliste, Laufsperre, Aufruf von `src.main` ohne `--target-date`, Ergebniszeilen)
+- `web_settings_page_test.py`, `web_privacy_page_test.py`: die beiden Seiten als Ganzes (Felder, Standardwerte aus `config.json`, Zurücksetzen, Fehler am Feld, Token und Bestätigung, was an den Wrapper geht, Regler und Skript als Struktur); die Seite „Verpixelung“ zusätzlich Kamerablöcke, Rahmenzeilen, Vorschaubild und Editor-Bausteine
+- `web_settings_reader_test.py`, `web_settings_runner_test.py`, `web_settings_wrapper_test.py`: das gemeinsame Lesen der Config (Schlüssellisten wie in `src/settings.py`), der Aufruf des Wrappers (Antworten und Exit-Codes) und der Wrapper selbst
+- `web_preview_endpoint_test.py`, `web_preview_runner_test.py`, `web_preview_wrapper_test.py`: `preview.php` und `preview-refresh.php` (Statuscodes, Token, Antwort), das Lesen des Zwischenspeichers (Größe aus dem Bild, beschädigte Bilder) und der Vorschau-Wrapper
 - `web_publish_test.py`: Trigger und Worker des Uploads (genau zwei Argumente, `--run`, Ergebniszeile, `failed` ohne Ergebniszeile, privates Protokoll, und dass der FTP-Zugang nie in die Statusdateien gelangt)
 
 Die Tests der Highlights-Seite stehen in [highlights-seite.md](highlights-seite.md#dateien-und-tests).
 
-Nicht automatisiert getestet sind die Speicheranzeige (`getStorageUsage`) und das JavaScript der Seiten.
+Die Python-Seite der Einstellungen prüfen `tests/settings_test.py` (Regeln und Grenzen), `tests/settings_save_test.py` (Schreiber: nur Abweichungen, atomar, veraltete Seite, Protokoll) und `tests/privacy/privacy_preview_test.py` (Auswahl und Prüfung des Vorschaubilds).
+
+Nicht automatisiert getestet sind die Speicheranzeige (`getStorageUsage`) und das JavaScript der Seiten (die Zeichen-Gesten sind in einem echten Browser geprüft; die Tests prüfen, was der Server dafür bereitstellt).

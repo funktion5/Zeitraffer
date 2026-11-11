@@ -1,6 +1,8 @@
 # Settings page (web UI)
 
-Status: DRAFT design, 2026-11-10. Not approved, nothing built.
+Status: BUILT 2026-11-10, docs written 2026-11-11. Change since this design: the noon picture's
+`interval_window.target_time` is limited to 10:00-14:00 and `tolerance_minutes` to 1-120 (the table below
+shows the first proposal, 0-240 and any time).
 
 ## Why
 
