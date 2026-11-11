@@ -57,10 +57,19 @@ class CameraNamesRule:
 
 @dataclass(frozen=True)
 class TimeOfDayRule:
-	description = "muss eine Uhrzeit im Format HH:MM sein"
+	low: str
+	high: str
+
+	@property
+	def description(self) -> str:
+		return f"muss eine Uhrzeit von {self.low} bis {self.high} sein (Format HH:MM)"
 
 	def accepts(self, value: object) -> bool:
-		return isinstance(value, str) and TIME_OF_DAY_PATTERN.fullmatch(value) is not None
+		if not isinstance(value, str) or TIME_OF_DAY_PATTERN.fullmatch(value) is None:
+			return False
+
+		# Zero-padded HH:MM sorts like the clock, so a text comparison is enough.
+		return self.low <= value <= self.high
 
 
 @dataclass(frozen=True)
@@ -132,8 +141,11 @@ GENERAL_RULES: dict[str, Rule] = {
 	"flagger.retention_days": IntRule(1, 365),
 	"daylight_buffer_minutes": _DAYLIGHT_BUFFER,
 	**{f"automatic_daylight_buffer_minutes.{month}": _DAYLIGHT_BUFFER for month in range(1, 13)},
-	"interval_window.target_time": TimeOfDayRule(),
-	"interval_window.tolerance_minutes": IntRule(0, 240),
+	# The noon picture is a daylight picture: a target between 10:00 and 14:00 and a tolerance of at
+	# most 120 minutes keep the whole window in daylight in every month and inside one calendar day
+	# (the window code rejects one that crosses midnight, and a tolerance below 1).
+	"interval_window.target_time": TimeOfDayRule("10:00", "14:00"),
+	"interval_window.tolerance_minutes": IntRule(1, 120),
 	"min_coverage_days.monthly": IntRule(1, 31),
 	"min_coverage_days.yearly": IntRule(1, 366),
 	"log_retention_days": IntRule(1, 365),

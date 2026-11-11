@@ -31,7 +31,9 @@ INT_BOUNDS = [
 	("flagger.retention_days", 1, 365),
 	("daylight_buffer_minutes", 0, 240),
 	*[(f"automatic_daylight_buffer_minutes.{month}", 0, 240) for month in range(1, 13)],
-	("interval_window.tolerance_minutes", 0, 240),
+	# At least 1: the interval window rejects 0. At most 120: with the target between 10:00 and
+	# 14:00 the whole window then stays in daylight, also in December.
+	("interval_window.tolerance_minutes", 1, 120),
 	("min_coverage_days.monthly", 1, 31),
 	("min_coverage_days.yearly", 1, 366),
 	("log_retention_days", 1, 365),
@@ -199,16 +201,22 @@ def test_validate_rejects_bad_camera_names(key, names):
 	assert errors[0].startswith(key)
 
 
-@pytest.mark.parametrize("value", ["12:00", "00:00", "23:59"])
-def test_validate_accepts_a_time_of_day(value):
+# The target time of the interval window is a daylight hour: the slider on the page runs from
+# 10:00 to 14:00, and nothing outside it may be saved.
+@pytest.mark.parametrize("value", ["10:00", "12:00", "14:00", "10:15", "13:59"])
+def test_validate_accepts_a_target_time_in_daylight(value):
 	clean, errors = validate_settings({"interval_window": {"target_time": value}})
 
 	assert errors == []
 	assert clean == {"interval_window": {"target_time": value}}
 
 
-@pytest.mark.parametrize("value", ["24:00", "12:60", "1200", "", "12:00\n", "7:30", 1200, None])
-def test_validate_rejects_a_bad_time_of_day(value):
+@pytest.mark.parametrize(
+	"value",
+	["09:59", "14:01", "00:00", "23:59", "23:00", "00:30", "24:00", "12:60", "1200", "", "12:00\n"]
+	+ ["7:30", 1200, None],
+)
+def test_validate_rejects_a_target_time_outside_daylight_or_malformed(value):
 	clean, errors = validate_settings({"interval_window": {"target_time": value}})
 
 	assert clean == {}
