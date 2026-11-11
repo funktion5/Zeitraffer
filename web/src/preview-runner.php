@@ -5,10 +5,9 @@ declare(strict_types=1);
 require_once __DIR__ . "/process-runner.php";
 
 // The preview picture of a blur camera on the Verpixelung page. A root-owned wrapper fetches one
-// confirmed frame from the Storage Box and caches it (state/web-jobs/previews/<camera>.jpg plus a
-// <camera>.json saying which frame it is); this file starts the wrapper and reads the cache. Nothing in here
-// reaches the box itself, and no raw frame: the script behind the wrapper only publishes a frame
-// the box blur job has confirmed.
+// judged frame from the Storage Box and caches it (state/web-jobs/previews/<camera>.jpg plus
+// <camera>.json saying which frame it is); this file starts the wrapper and reads the cache. Nothing
+// here reaches the box or shows a raw frame: the script only publishes a frame the blur job judged.
 
 // A camera name as the preview takes it: the plain name the per-camera settings keys allow (no dot,
 // no slash), so a name from a request can never leave the cache folder.

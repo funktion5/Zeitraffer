@@ -178,11 +178,10 @@ function findVideos(string $camera, string $runFolder): array
 
 // The preview of what an upload would send: per period the newest automatic video, as [period =>
 // filename] in the fixed order, only periods that have one. The delivery script decides what really
-// goes (scripts/list-deliverable-videos.py); this mirrors its rules so the page shows the same
-// list: only the four period folders directly under the camera folder, no symlinks, and in them
-// the newest BY FILE NAME among the regular, non-empty, non-hidden *.mp4 files (".mp4" in lower
-// case only, as its glob). Test renders in manual-runs/ and the like are never looked at. The
-// camera folder's own ignored_cameras rule is already applied by findAvailableCameras().
+// goes (scripts/list-deliverable-videos.py); this mirrors its rules: only the four period folders
+// directly under the camera folder, no symlinks, the newest BY FILE NAME among regular, non-empty,
+// non-hidden lowercase *.mp4 files (as its glob). manual-runs/ is never looked at. ignored_cameras
+// is already applied by findAvailableCameras().
 function newestAutomaticVideos(string $camera): array
 {
 	$cameraPath = projectRoot() . "/videos/" . $camera;

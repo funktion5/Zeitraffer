@@ -1060,11 +1060,10 @@ def test_state_of_listed_names_is_read_from_each_names_own_month(setup: Setup) -
 	}
 
 
-# The nightly and live rounds record an image on the page of the round's time, which can be up to
-# two days after the image's date. A frame of the last day of a month can therefore sit on the
-# NEXT month's page (on the real box: 89 frames of 2026-10-31 on 2026-11.jsonl). The lookup has
-# to find it there, or a backfill takes the frame for a new one, detects it again and backs it up
-# a second time.
+# The nightly and live rounds record an image on the page of the round's time, up to two days after
+# the image's date, so a frame of a month's last day can sit on the NEXT month's page (on the real
+# box: 89 frames of 2026-10-31 on 2026-11.jsonl). The lookup must find it there, or a backfill takes
+# it for new and backs it up a second time.
 LAST_OF_MONTH = "20260331T120000.jpg"
 RECORDED_TWO_DAYS_LATER = datetime(2026, 4, 2, 2, 0, tzinfo=ZoneInfo(TIMEZONE))
 
@@ -1116,11 +1115,10 @@ def test_a_finished_frame_stays_finished_when_a_later_page_says_refused(setup: S
 	assert states[LAST_OF_MONTH]["status"] == "blurred"
 
 
-# The guard against a second backup. The state is not the only evidence of what was done: the Pi
-# blurred frames before the VPS state existed, and a backfill then took them for new, detected them
-# again and backed up the already blurred version as a second "original". A frame that has a backup
-# on the box but no longer matches it was changed since, so it is already blurred: record it and
-# touch nothing.
+# The guard against a second backup: the Pi blurred frames before the VPS state existed, and a
+# backfill took them for new, detected them again and backed up the blurred version as a second
+# "original". A frame that has a backup but no longer matches it was changed since, so it is already
+# blurred: record it, touch nothing.
 def make_backup(setup: Setup, name: str, original: bytes) -> Path:
 	folder = setup.camera_dir / "original"
 	folder.mkdir(exist_ok=True)

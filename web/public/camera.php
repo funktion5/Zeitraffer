@@ -822,12 +822,9 @@ unset($_SESSION["started_job"]);
 	      window.history.replaceState(null, "", url);
 	    }
 
-	    // Monthly/Yearly don't use a daylight buffer at all, so the radio
-	    // group starts hidden and only shows for Daily/Weekly. Showing it
-	    // client-side is only a display convenience — the server ignores any
-	    // buffer value submitted alongside Monthly/Yearly regardless.
-	    // daylightBufferJobs comes from PHP ($daylightBufferJobs) so this list
-	    // can never drift out of sync with what the server actually accepts.
+	    // Monthly/Yearly use no daylight buffer, so the radio group starts hidden and shows only for
+	    // Daily/Weekly (display only: the server ignores a buffer sent with Monthly/Yearly). The list comes
+	    // from PHP ($daylightBufferJobs), so it cannot drift from what the server accepts.
 	    const daylightBufferJobs = <?= json_encode($daylightBufferJobs, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
 	    const daylightBufferFieldset = document.querySelector("#daylight-buffer-fieldset");
 	    const jobRadios = document.querySelectorAll('input[name="job"]');

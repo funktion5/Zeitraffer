@@ -11,12 +11,11 @@ os.environ.pop("TIMELAPSE_X264_CRF", None)
 # the shell must never turn a test that forgot to patch the source into a run against the real box.
 os.environ.pop("TIMELAPSE_STORAGE_BOX", None)
 os.environ.pop("TIMELAPSE_FRAME_SOURCE", None)
-# numpy and cv2 start BLAS thread pools the moment they are imported, and OpenCV starts a worker
-# thread of its own at its first image operation (the flagger tests run real ones). Either leaves a
-# thread behind for the rest of the session, and Python 3.12+ then warns at every fork of the
-# isolated worker tests ("multi-threaded, use of fork() may lead to deadlocks"). The tests only use
-# tiny arrays and images, so one thread each is plenty. This has to run before the first import of
-# numpy or cv2, which is why it sits here: pytest loads this file before it collects any test.
+# numpy and cv2 start BLAS thread pools on import, and OpenCV a worker thread at its first image
+# operation. Either leaves a thread behind, and Python 3.12+ then warns at every fork of the
+# isolated worker tests ("multi-threaded, use of fork() may lead to deadlocks"). The tests use
+# tiny arrays, so one thread each is plenty. This must run before the first numpy/cv2 import, so
+# it sits here: pytest loads this file before it collects any test.
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["OMP_NUM_THREADS"] = "1"
 os.environ["OPENCV_FOR_THREADS_NUM"] = "1"

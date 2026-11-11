@@ -1056,10 +1056,10 @@ def test_manual_weekly_release_error_is_logged_and_later_cameras_still_run(
 	assert "| failed=1 |" in caplog.text
 
 
-# A manual Weekly of a camera in privacy.blur_cameras blurs the frames it collected on the box
-# before the video is built (blur_job_frames, tested in privacy_blur_job_test.py). The automatic
-# Weekly joins Dailies that are already confirmed and writes nothing to the box. The blur comes
-# before the 7-of-7 check, so a week with a missing day builds no video but its frames get blurred.
+# A manual Weekly of a blur camera blurs the frames it collected on the box before the video is
+# built (blur_job_frames, tested in privacy_blur_job_test.py); the automatic Weekly joins already
+# confirmed Dailies and writes nothing. The blur comes before the 7-of-7 check, so a week with a
+# missing day builds no video but its frames get blurred.
 BLUR_CONFIG = {
 	**TEST_CONFIG,
 	"privacy": {"blur_cameras": ["Test-Camera", "Stuck-Camera", "Working-Camera"]},

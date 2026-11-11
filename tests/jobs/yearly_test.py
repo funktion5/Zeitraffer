@@ -967,10 +967,9 @@ def test_yearly_selection_reads_the_fetched_files(
 	assert events.index("select:Test-Camera") < events.index("release:Test-Camera")
 
 
-# Manual runs of the cameras in privacy.blur_cameras blur the frames they selected on the box before
-# the video is built (blur_job_frames, tested in privacy_blur_job_test.py). The automatic run never
-# does: it writes nothing to the box. Unlike the Monthly the blur follows the selection and the
-# coverage check: it blurs the frames the video is built from.
+# Manual runs of blur cameras blur the frames they selected on the box before the video is built
+# (blur_job_frames, tested in privacy_blur_job_test.py); the automatic run never does. Unlike the
+# Monthly, the blur follows the selection and the coverage check.
 BLUR_CONFIG = {
 	**TEST_CONFIG,
 	"privacy": {"blur_cameras": ["Test-Camera", "Stuck-Camera", "Working-Camera"]},

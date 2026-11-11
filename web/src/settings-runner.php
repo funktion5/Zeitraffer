@@ -11,9 +11,9 @@ const SETTINGS_SCOPES = ["general", "privacy"];
 const SETTINGS_SAVE_FAILED_MESSAGE = "Die Einstellungen konnten nicht gespeichert werden.";
 const SETTINGS_INVALID_MESSAGE = "Die Eingaben sind ungültig.";
 
-// Saves the values of the settings page through the root-owned wrapper. The values travel as ONE
-// JSON argument next to the modification time of the settings file the page was loaded with; the
-// wrapper and the writer behind it validate everything again, so nothing here is trusted either way.
+// Saves the values of the settings page through the root-owned wrapper. They travel as ONE JSON
+// argument next to the modification time of the file the page was loaded with; the wrapper and the
+// writer validate everything again, so nothing here is trusted.
 // Returns ["status" => "saved" | "invalid" | "stale" | "failed", "errors" => string[], "mtime" => int].
 // A failure's details go to the server log only, never into the result.
 function saveSettings(array $values, int $loadedMtime, string $scope = "general"): array

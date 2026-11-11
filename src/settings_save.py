@@ -159,11 +159,11 @@ def _read_base(config_path: Path) -> dict | None:
 		return None
 
 
-# Saves the complete set of the form's values. Order matters: invalid input is refused before the
-# stale check, and nothing is written for either. The submission replaces the whole file, so a
-# leaf the form no longer sends loses its override. None for a path means the module constant,
-# read at call time so tests can patch it. Two saves in the same second can slip past the stale
-# check (the time is whole seconds); with a handful of colleagues that is accepted.
+# Saves the complete set of the form's values: invalid input is refused before the stale check,
+# and nothing is written for either. The submission replaces the whole file, so a leaf the form no
+# longer sends loses its override. A path of None means the module constant (read at call time, so
+# tests can patch it). Two saves in the same second can slip past the stale check (whole-second
+# times); accepted for a handful of colleagues.
 def save_settings(
 	submitted: object,
 	expected_mtime: int,

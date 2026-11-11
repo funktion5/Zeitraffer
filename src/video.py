@@ -146,11 +146,10 @@ def jpeg_size(path: Path) -> tuple[int, int] | None:
 	return None
 
 
-# A camera that was exchanged leaves frames of two sizes in one video (Uferstrasse: 640x480, then
-# 1920x1080). ffmpeg would take the size of the first frame and stretch every other one to it, so
-# the new 16:9 footage came out narrow. With mixed sizes every frame is fitted into the largest
-# size instead, aspect ratio kept, black bars where it does not fill. One size (every other
-# camera) adds nothing, so those commands stay exactly as they were.
+# Frames of two sizes in one video (an exchanged camera: Uferstrasse 640x480, then 1920x1080):
+# ffmpeg would stretch every frame to the first one's size, so the 16:9 footage came out narrow.
+# With mixed sizes every frame is fitted into the largest size, aspect ratio kept, black bars
+# where it does not fill. One size adds nothing, so those commands are unchanged.
 def frame_fit_arguments(temp_directory: Path) -> list[str]:
 	frame_sizes = (jpeg_size(frame) for frame in temp_directory.glob("frame_*.jpg"))
 	sizes = {size for size in frame_sizes if size is not None}

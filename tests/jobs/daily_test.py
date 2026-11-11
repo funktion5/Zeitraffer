@@ -1115,10 +1115,10 @@ def patch_blur(monkeypatch, ready=True):
 	return calls
 
 
-# A manual run goes to manual-runs, not public, so the gate does not apply. A blur camera gets its
-# frames blurred on the box instead, before the video is built (blur_job_frames, tested in
-# privacy_blur_job_test.py), so the video shows blurred frames. Cameras outside the blur list and
-# the automatic run are unchanged: the automatic run writes nothing to the box.
+# A manual run goes to manual-runs, not public, so the gate does not apply: a blur camera gets its
+# frames blurred on the box before the video is built (blur_job_frames, tested in
+# privacy_blur_job_test.py). Other cameras and the automatic run are unchanged; the automatic run
+# writes nothing to the box.
 def test_a_manual_daily_of_a_blur_camera_blurs_its_frames_before_the_video(
 	monkeypatch,
 	tmp_path,

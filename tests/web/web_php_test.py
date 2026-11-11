@@ -651,10 +651,9 @@ def test_start_publish_job_refuses_without_run_user(tmp_path):
 	assert args == []
 
 
-# The preview on the camera page: per period the newest video by file name, with the same rules as
-# scripts/list-deliverable-videos.py (the delivery script sends exactly that list): regular,
-# non-empty, non-hidden .mp4 directly in the period folder, no symlinks. Periods in the fixed order,
-# only those that have one. Test renders in manual-runs/ and the like are never looked at.
+# The upload preview on the camera page: the newest video per period by file name, with the rules
+# of scripts/list-deliverable-videos.py (regular, non-empty, non-hidden .mp4 directly in the period
+# folder, no symlinks), periods in the fixed order, only those that have one.
 def test_newest_automatic_videos_returns_the_newest_file_per_period(tmp_path):
 	camera = tmp_path / "videos" / "cam"
 	other = tmp_path / "elsewhere"
