@@ -367,6 +367,9 @@ function privacyValuesFromPost(array $post, array $knownCameras): array
 			}
 
 			setSettingsLeaf($values, "privacy.ignore_boxes." . $camera, $boxes);
+		} elseif (array_key_exists($key, $scores) || array_key_exists($key, $tops)) {
+			// A camera whose rows were all removed posts no box fields at all: that means "no boxes".
+			setSettingsLeaf($values, "privacy.ignore_boxes." . $camera, []);
 		}
 	}
 
@@ -590,7 +593,7 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 		<template data-box-template>
 			<?php renderPrivacyBoxRow($camera, "__INDEX__", "__NUMBER__", []); ?>
 		</template>
-		<button type="button" class="settings-default-button" data-add-box hidden>Rahmen hinzufügen</button>
+		<button type="button" class="settings-default-button" data-add-box aria-label="Rahmen hinzufügen, Kamera <?= settingsHtml($camera) ?>" hidden>Rahmen hinzufügen</button>
 		<?php if ($error !== null): ?>
 			<p class="field-error" id="<?= settingsHtml($id) ?>-error"><?= settingsHtml($error) ?></p>
 		<?php endif; ?>

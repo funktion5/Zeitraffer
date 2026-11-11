@@ -37,14 +37,30 @@
 	form.querySelectorAll("[data-remove-box]").forEach((button) => {
 		button.hidden = false;
 	});
+	// What a screen reader hears after a row was added or removed.
+	const announce = (container, text) => {
+		sectionOf(container).querySelector("[data-preview-status]").textContent =
+			`${text} Zum Übernehmen unten auf „Speichern“ drücken.`;
+	};
 	form.addEventListener("click", (event) => {
 		const remove = event.target.closest("[data-remove-box]");
 
 		if (remove !== null) {
 			const container = remove.closest(".privacy-boxes");
+			const row = remove.closest(".privacy-box-row");
+			const rows = Array.from(container.querySelectorAll(".privacy-box-row"));
+			const position = rows.indexOf(row);
+			// The focused button goes with its row: the focus moves to the next row, else the one
+			// before, else to "Rahmen hinzufügen".
+			const neighbour = rows[position + 1] ?? rows[position - 1];
 
-			remove.closest(".privacy-box-row").remove();
+			row.remove();
 			refreshContainer(container);
+			(neighbour === undefined
+				? container.closest("fieldset").querySelector("[data-add-box]")
+				: cellsOf(neighbour)[0]
+			).focus();
+			announce(container, `Rahmen ${position + 1} wurde entfernt.`);
 		}
 	});
 	form.querySelectorAll("[data-add-box]").forEach((button) => {
@@ -54,6 +70,8 @@
 
 			addBoxRow(container);
 			refreshContainer(container);
+			cellsOf(container.lastElementChild)[0].focus();
+			announce(container, `Rahmen ${container.querySelectorAll(".privacy-box-row").length} ist dazugekommen.`);
 		});
 	});
 
@@ -117,6 +135,7 @@
 			cellsOf(row).forEach((input) => {
 				input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/Rahmen \d+/, `Rahmen ${number}`));
 			});
+			row.querySelector("[data-remove-box]").setAttribute("aria-label", `Rahmen ${number} entfernen`);
 		});
 	};
 
@@ -272,6 +291,16 @@
 				return;
 			}
 
+			// One gesture at a time: a second finger must not take it over. The same pointer starting
+			// again means its last gesture ended without a pointerup, so that one is dropped.
+			if (gesture !== null) {
+				if (event.pointerId !== gesture.pointerId) {
+					return;
+				}
+
+				stop();
+			}
+
 			event.preventDefault();
 			layer.setPointerCapture(event.pointerId);
 
@@ -279,7 +308,7 @@
 
 			// The strip's edge: the drag changes this camera's top share, not a box.
 			if (event.target.closest(".privacy-top-handle") !== null) {
-				gesture = { kind: "strip", start, share: currentShare(section), moved: false };
+				gesture = { kind: "strip", pointerId: event.pointerId, start, share: currentShare(section), moved: false };
 
 				return;
 			}
@@ -292,7 +321,7 @@
 
 			if (box !== null) {
 				grabbed.classList.add("is-active");
-				gesture = { kind: "move", start, box, row, shape: grabbed };
+				gesture = { kind: "move", pointerId: event.pointerId, start, box, row, shape: grabbed };
 
 				return;
 			}
@@ -301,11 +330,11 @@
 
 			draft.className = "privacy-box-shape is-draft";
 			layer.append(draft);
-			gesture = { kind: "draw", start, draft };
+			gesture = { kind: "draw", pointerId: event.pointerId, start, draft };
 		});
 
 		layer.addEventListener("pointermove", (event) => {
-			if (gesture === null) {
+			if (gesture === null || event.pointerId !== gesture.pointerId) {
 				return;
 			}
 
@@ -341,7 +370,7 @@
 		});
 
 		layer.addEventListener("pointerup", (event) => {
-			if (gesture === null) {
+			if (gesture === null || event.pointerId !== gesture.pointerId) {
 				return;
 			}
 
@@ -370,8 +399,11 @@
 
 				stop();
 
-				// A click on a box, or a slip that moves it by less than a picture pixel, changes nothing.
-				if (to.x0 !== box.x0 || to.y0 !== box.y0) {
+				// A tap on a box changes nothing, however much it jitters: on a phone one screen pixel is
+				// several picture pixels. Nor does a slip of less than one picture pixel.
+				const dragged = Math.hypot(end.x - start.x, end.y - start.y) >= MIN_DRAWN_SIDE;
+
+				if (dragged && (to.x0 !== box.x0 || to.y0 !== box.y0)) {
 					const cells = [to.x0, to.y0, to.x1, to.y1];
 
 					fillRow(row, cells);
@@ -402,7 +434,11 @@
 			status.textContent = `Rahmen ${number} ist dazugekommen. Zum Übernehmen unten auf „Speichern“ drücken.`;
 		});
 
-		layer.addEventListener("pointercancel", () => {
+		layer.addEventListener("pointercancel", (event) => {
+			if (gesture !== null && event.pointerId !== gesture.pointerId) {
+				return;
+			}
+
 			// A cancelled drag of the strip leaves the value as it was before the drag.
 			if (gesture?.kind === "strip") {
 				setTopShare(section, gesture.share);
@@ -563,25 +599,6 @@
 		});
 	});
 
-	// The slider, the restore buttons and "Änderungen verwerfen" come from settings-common.js. This page
-	// adds what it keeps besides plain fields.
-	SettingsForm.init(form, {
-		// The Standard box rows of a camera replace the rows that stand there now.
-		onRestore: (scope) => {
-			scope.querySelectorAll("[data-default-boxes]").forEach((container) => {
-				container.replaceChildren();
-				JSON.parse(container.dataset.defaultBoxes).forEach((box) => {
-					addBoxRow(container, box.map(String));
-				});
-			});
-
-			// The rows and the top-share field changed without an event the picture listens to.
-			refreshAll();
-		},
-		// The pictures are drawn again from the fields the browser has just reset.
-		onReset: refreshAll,
-	});
-
 	// What the dialog lists: everything that differs from what the page loaded with.
 	const boxesText = (container) =>
 		JSON.stringify(
@@ -601,6 +618,17 @@
 	});
 	form.querySelectorAll(".privacy-boxes").forEach((container) => {
 		initial.set(container, boxesText(container));
+	});
+
+	// The rows the page loaded, so "Änderungen verwerfen" can bring them back: the browser's reset
+	// blanks rows a script added and cannot restore rows that were removed.
+	const loadedBoxes = new Map();
+
+	form.querySelectorAll(".privacy-boxes").forEach((container) => {
+		loadedBoxes.set(
+			container,
+			Array.from(container.querySelectorAll(".privacy-box-row")).map((row) => cellsOf(row).map((input) => input.value)),
+		);
 	});
 
 	const describeChanges = () => {
@@ -645,11 +673,8 @@
 		);
 	};
 
+	// Every submit is held back for the dialog; its "Ja, speichern" is the only way to send the form.
 	form.addEventListener("submit", (event) => {
-		if (form.dataset.confirmed === "yes") {
-			return;
-		}
-
 		event.preventDefault();
 
 		const { changes, cameraChanges } = describeChanges();
@@ -676,14 +701,32 @@
 		field.name = "confirm_privacy";
 		field.value = "yes";
 		form.append(field);
-		form.dataset.confirmed = "yes";
 		dialog.close();
 		form.submit();
 	});
 
-	// Back may restore the page from the cache with the confirmation still set: forget it on every show.
-	window.addEventListener("pageshow", () => {
-		delete form.dataset.confirmed;
-		form.querySelector('input[name="confirm_privacy"][type="hidden"]')?.remove();
+	// Last, so a missing shared file leaves the dialog wired: the slider, the restore buttons and
+	// "Änderungen verwerfen" come from settings-common.js; this page adds what it keeps besides fields.
+	SettingsForm.init(form, {
+		// The Standard box rows of a camera replace the rows that stand there now.
+		onRestore: (scope) => {
+			scope.querySelectorAll("[data-default-boxes]").forEach((container) => {
+				container.replaceChildren();
+				JSON.parse(container.dataset.defaultBoxes).forEach((box) => {
+					addBoxRow(container, box.map(String));
+				});
+			});
+
+			// The rows and the top-share field changed without an event the picture listens to.
+			refreshAll();
+		},
+		// The rows are rebuilt from what the page loaded, and the pictures drawn again from them.
+		onReset: () => {
+			loadedBoxes.forEach((boxes, container) => {
+				container.replaceChildren();
+				boxes.forEach((cells) => addBoxRow(container, cells));
+			});
+			refreshAll();
+		},
 	});
 })();

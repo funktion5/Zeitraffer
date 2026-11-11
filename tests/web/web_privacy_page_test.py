@@ -756,6 +756,29 @@ def test_unknown_posted_fields_are_never_forwarded(tmp_path):
 	assert "detector" not in args[-1]
 
 
+# A browser posts nothing for a camera whose rows were all removed. That means "no boxes", not
+# "unchanged": otherwise the boxes from config.json come back at the next load.
+def test_removing_every_box_row_of_a_camera_saves_an_empty_list(tmp_path):
+	prepare(tmp_path)
+	post = privacy_post()
+	del post["privacy"]["boxes"]["Scheunenviertel"]
+
+	_, args = render(tmp_path, post, sudo_out=SAVED)
+
+	assert sent_values(args)["privacy"]["ignore_boxes"]["Scheunenviertel"] == []
+
+
+def test_a_camera_the_form_did_not_send_gets_no_boxes_entry(tmp_path):
+	prepare(tmp_path)
+	post = privacy_post()
+	for field in ("top", "score", "boxes"):
+		del post["privacy"][field]["BlurTest"]
+
+	_, args = render(tmp_path, post, sudo_out=SAVED)
+
+	assert "BlurTest" not in sent_values(args)["privacy"].get("ignore_boxes", {})
+
+
 def test_invalid_values_are_shown_next_to_their_controls_with_what_was_typed(tmp_path):
 	prepare(tmp_path)
 	errors = [
@@ -920,18 +943,63 @@ def test_the_confirm_dialog_and_its_no_javascript_tick_box_exist(tmp_path):
 	assert 'name="confirm"' not in out
 
 
-# Back may restore the page from the cache with the confirmation still set, so the next Save would
-# skip the dialog: the script forgets it whenever the page is shown.
-def test_the_script_forgets_the_confirmation_when_the_page_is_shown_again(tmp_path):
+# The dialog is the only way to a save: form.submit() (which fires no submit event) is called once,
+# from its "Ja, speichern" button. A "confirmed" flag could only be a way around the dialog (Back, a
+# stopped navigation), so there is none.
+def test_the_confirmation_is_not_kept_as_a_flag(tmp_path):
+	script = read_scripts("verpixelung.js")
+
+	assert "dataset.confirmed" not in script
+	assert "pageshow" not in script
+	assert script.count("form.submit()") == 1
+	assert script.index("form.submit()") > script.index("data-confirm-yes")
+
+
+# The shared script starts last: if its file is missing, the dialog is already wired.
+def test_the_shared_script_is_started_after_the_confirm_dialog_is_wired(tmp_path):
+	script = read_scripts("verpixelung.js")
+
+	assert script.index("SettingsForm.init(form,") > script.index("data-confirm-yes")
+
+
+# "Änderungen verwerfen" rebuilds the rows from what the page loaded: a browser reset alone would
+# blank the rows a script added and leave removed ones removed.
+def test_reset_rebuilds_the_box_rows_from_a_snapshot_taken_at_load(tmp_path):
+	script = read_scripts("verpixelung.js")
+
+	assert "loadedBoxes" in script
+	assert script.index("loadedBoxes") < script.index("onReset")
+
+
+# What the browser may restore into the form (a reload) would make the dialog compare against typed
+# values; the dialog lists changes against what the page loaded.
+def test_the_form_does_not_let_the_browser_restore_typed_values(tmp_path):
 	prepare(tmp_path)
 
 	out, _ = render(tmp_path)
-	script = script_with(out, "privacy-confirm")
-	handler = re.search(r'addEventListener\("pageshow".*?\}\);', script, re.S)
 
-	assert handler is not None
-	assert "delete form.dataset.confirmed" in handler.group(0)
-	assert 'input[name="confirm_privacy"][type="hidden"]' in handler.group(0)
+	assert re.search(r'<form[^>]*class="settings-form"[^>]*autocomplete="off"', out)
+
+
+def test_every_row_button_says_which_camera_and_which_row_it_belongs_to(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = read_scripts("verpixelung.js")
+
+	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+		pattern = r'<button[^>]*data-add-box[^>]*aria-label="[^"]*' + camera + r'[^"]*"[^>]*>'
+		assert "Rahmen hinzufügen" in tag_of(out, pattern)
+	# The remove buttons are numbered with their row by the script.
+	assert "entfernen" in script
+
+
+# A second finger must not take over a gesture, and a tap must not move a box.
+def test_the_editor_follows_one_pointer_and_a_tap_does_not_move_a_box(tmp_path):
+	script = read_scripts("verpixelung.js")
+
+	assert "gesture.pointerId" in script
+	assert "Math.hypot" in script
 
 
 # The preview picture in each camera's block (the cache is written by the wrapper's script).

@@ -148,7 +148,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			</div>
 		<?php endif; ?>
 
-		<form method="post" action="/verpixelung.php" class="settings-form">
+		<form method="post" action="/verpixelung.php" class="settings-form" autocomplete="off">
 			<input type="hidden" name="csrf_token" value="<?= settingsHtml($csrfToken) ?>">
 			<input type="hidden" name="loaded_mtime" value="<?= (int) $pageMtime ?>">
 

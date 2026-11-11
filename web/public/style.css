@@ -421,7 +421,7 @@ ul {
 }
 
 /* The layer lets every click and touch through, so the picture never blocks scrolling on a phone.
-   Only while "Rahmen zeichnen" is on does it take the pointer, and then also the touch. */
+   Only while "Rahmen bearbeiten" is on does it take the pointer, and then also the touch. */
 .privacy-preview-layer {
 	position: absolute;
 	inset: 0;
