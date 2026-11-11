@@ -11,14 +11,20 @@ declare(strict_types=1);
 	</nav>
 
 	<?php if ($storage !== null): ?>
-		<div class="storage-overview">
+		<?php
+		// The ring is one gradient: each custom property is where a part ENDS, rounded so float noise
+		// never reaches the CSS. An unknown level counts as "ok".
+		$parts = array_column($storage["segments"], null, "key");
+		$automaticEnd = round($parts["automatic"]["percent"], 1);
+		$manualEnd = round($automaticEnd + $parts["manual"]["percent"], 1);
+		$otherEnd = round($manualEnd + $parts["other"]["percent"], 1);
+		$level = in_array($storage["level"], ["warn", "critical"], true) ? $storage["level"] : "ok";
+		$warning = ["warn" => "Speicher wird knapp", "critical" => "Speicher fast voll"][$level] ?? null;
+		?>
+		<div class="storage-overview" data-level="<?= $level ?>">
 			<div
 				class="storage-chart"
-				style="--storage-used: <?= htmlspecialchars(
-					(string) $storage["usedPercent"],
-					ENT_QUOTES,
-					"UTF-8",
-				) ?>%"
+				style="--storage-automatic: <?= $automaticEnd ?>%; --storage-manual: <?= $manualEnd ?>%; --storage-other: <?= $otherEnd ?>%"
 			>
 				<span>
 					<?= htmlspecialchars(
@@ -62,7 +68,33 @@ declare(strict_types=1);
 						) ?>
 					</dd>
 				</div>
+
+				<div>
+					<dt>Davon Videos</dt>
+					<dd>
+						<?= htmlspecialchars(
+							$storage["videos"],
+							ENT_QUOTES,
+							"UTF-8",
+						) ?>
+						<?php // The swatches are the ring's colours; the words and sizes carry the meaning. ?>
+						<ul class="storage-kinds">
+							<li>
+								<span class="storage-swatch storage-swatch-automatic" aria-hidden="true"></span>
+								Automatisch <?= htmlspecialchars(formatBytes($parts["automatic"]["bytes"]), ENT_QUOTES, "UTF-8") ?>
+							</li>
+							<li>
+								<span class="storage-swatch storage-swatch-manual" aria-hidden="true"></span>
+								Manuell <?= htmlspecialchars(formatBytes($parts["manual"]["bytes"]), ENT_QUOTES, "UTF-8") ?>
+							</li>
+						</ul>
+					</dd>
+				</div>
 			</dl>
+
+			<?php if ($warning !== null): ?>
+				<p class="storage-warning"><?= $warning ?></p>
+			<?php endif; ?>
 		</div>
 	<?php endif; ?>
 

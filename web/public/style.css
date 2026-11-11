@@ -20,6 +20,8 @@
 
 	--color-success: #52c7a5;
 	--color-danger: #df7171;
+	--color-warning: #e3b341;
+	--color-manual: #a995e8;
 
 	--radius-small: 6px;
 	--radius-medium: 10px;
@@ -685,10 +687,13 @@ ul {
 
 	border-radius: 50%;
 
+	/* Automatic videos, manual videos, the rest of the used space, free; the header sets the ends. */
 	background:
 		conic-gradient(
-			var(--color-primary) 0 var(--storage-used),
-			var(--color-surface-light) var(--storage-used) 100%
+			var(--color-primary) 0 var(--storage-automatic),
+			var(--color-manual) var(--storage-automatic) var(--storage-manual),
+			var(--color-border-light) var(--storage-manual) var(--storage-other),
+			var(--color-surface-light) var(--storage-other) 100%
 		);
 
 	position: relative;
@@ -746,6 +751,53 @@ ul {
 
 	font-size: 0.9rem;
 	font-weight: 600;
+}
+
+.storage-kinds {
+	margin: 0.2rem 0 0;
+	padding: 0;
+
+	list-style: none;
+
+	color: var(--color-text-muted);
+	font-size: 0.7rem;
+	font-weight: 400;
+}
+
+.storage-swatch {
+	display: inline-block;
+
+	width: 0.6rem;
+	height: 0.6rem;
+	margin-right: 0.25rem;
+
+	border-radius: 50%;
+}
+
+.storage-swatch-automatic {
+	background: var(--color-primary);
+}
+
+.storage-swatch-manual {
+	background: var(--color-manual);
+}
+
+/* The level is also said in words (.storage-warning); the colour only supports it. */
+.storage-overview[data-level="warn"] .storage-chart span,
+.storage-overview[data-level="warn"] .storage-warning {
+	color: var(--color-warning);
+}
+
+.storage-overview[data-level="critical"] .storage-chart span,
+.storage-overview[data-level="critical"] .storage-warning {
+	color: var(--color-danger);
+}
+
+.storage-warning {
+	margin: 0;
+
+	font-size: 0.8rem;
+	font-weight: 700;
 }
 
 
