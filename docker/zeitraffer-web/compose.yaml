@@ -1,0 +1,47 @@
+# A test copy of the VPS web UI on http://localhost:55222. The repo parts below are mounted live: a
+# reload shows whatever branch is checked out on this machine, no rebuild. Commands and limits:
+# docs/docker-web.md. Start it from this folder:  docker compose up --build
+name: zeitraffer-web
+
+services:
+  web:
+    build:
+      context: .
+      args:
+        # Only the account's number, so a mounted file is writable for it: not a secret.
+        RUN_UID: ${RUN_UID:-1000}
+    image: zeitraffer-web:dev
+    env_file: .env
+    environment:
+      # Python must not write its cache into the mounted src/ and tests/ folders.
+      PYTHONDONTWRITEBYTECODE: "1"
+    ports:
+      # Only this machine can reach it: the dev login is weak on purpose.
+      - "127.0.0.1:55222:55222"
+    volumes:
+      # The repo parts the web UI and its Python side need, one by one. Not one big mount: a mounted
+      # Mac folder shows up as owned by root, and the PHP runs the wrappers as the OWNER of the project
+      # folder (and refuses root). So /home/zeitraffer/timelapse is a real folder of the run account.
+      - ../../web:/home/zeitraffer/timelapse/web:ro
+      - ../../src:/home/zeitraffer/timelapse/src:ro
+      - ../../scripts:/home/zeitraffer/timelapse/scripts:ro
+      - ../../tests:/home/zeitraffer/timelapse/tests:ro
+      - ../../pyproject.toml:/home/zeitraffer/timelapse/pyproject.toml:ro
+      - ../../requirements.txt:/home/zeitraffer/timelapse/requirements.txt:ro
+      # Writable: the settings pages save config/settings*.json here (git-ignored, like on the VPS).
+      - ../../config:/home/zeitraffer/timelapse/config
+      # Runtime data and the Python environment live in volumes, apart from the repo folders.
+      - state:/home/zeitraffer/timelapse/state
+      - videos:/home/zeitraffer/timelapse/videos
+      - logs:/home/zeitraffer/timelapse/logs
+      - temp:/home/zeitraffer/timelapse/temp
+      - reports:/home/zeitraffer/timelapse/reports
+      - venv:/home/zeitraffer/timelapse/.venv
+
+volumes:
+  state:
+  videos:
+  logs:
+  temp:
+  reports:
+  venv:
