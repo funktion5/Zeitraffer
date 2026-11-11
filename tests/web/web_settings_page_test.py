@@ -114,6 +114,76 @@ def test_every_field_has_a_label_and_every_group_a_legend(tmp_path):
 	assert out.count("<fieldset") == out.count("<legend>") == 6
 
 
+# The noon picture is a daylight picture: the page offers 10:00 to 14:00 and at most 120 minutes of
+# tolerance (src/settings.py refuses the rest; these limits only shape the inputs).
+def test_the_target_time_is_limited_to_daylight(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	field = tag_of(out, r'<input\s+type="time"\s+id="setting-interval_window-target_time"[^>]*>')
+
+	assert 'min="10:00"' in field
+	assert 'max="14:00"' in field
+	# No step on the real field: a Standard off the 15 minute grid must still be savable.
+	assert "step=" not in field
+	assert "Standard: 12:00" in out
+
+
+def test_the_tolerance_runs_from_one_to_120_minutes(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	field = tag_of(
+		out, r'<input\s+type="number"\s+id="setting-interval_window-tolerance_minutes"[^>]*>'
+	)
+
+	assert 'min="1"' in field
+	assert 'max="120"' in field
+
+
+# The slider only helps the mouse (the time field is the real control), so it starts hidden and the
+# script shows it. It counts minutes since midnight: 10:00 = 600, 14:00 = 840.
+def test_the_target_time_has_a_helper_slider_in_minutes(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	slider = tag_of(
+		out,
+		r'<input\s+type="range"[^>]*data-slider-for="setting-interval_window-target_time"[^>]*>',
+	)
+
+	assert 'min="600"' in slider
+	assert 'max="840"' in slider
+	assert 'step="15"' in slider
+	# The attribute itself, not the "hidden" inside aria-hidden.
+	assert re.search(r"\shidden(\s|>)", slider) is not None
+	assert 'aria-hidden="true"' in slider
+	assert 'tabindex="-1"' in slider
+	# Only the time field is a form field: the slider must not send a second value.
+	assert "name=" not in slider
+	assert out.count('type="range"') == 1
+
+
+def test_the_page_script_keeps_the_slider_and_the_time_field_in_step(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	scripts = [
+		script
+		for script in re.findall(r"<script[^>]*>(.*?)</script>", out, re.S)
+		if "data-default-group" in script
+	]
+
+	assert len(scripts) == 1
+	assert 'querySelectorAll("[data-slider-for]")' in scripts[0]
+	# A restored Standard moves no slider by itself: the script has to announce the change.
+	assert 'dispatchEvent(new Event("input"))' in scripts[0]
+
+
 def test_the_saved_time_is_handed_back_and_shown(tmp_path):
 	prepare(tmp_path, settings={})
 

@@ -32,6 +32,14 @@ function settingsFieldId(string $key): string
 	return "setting-" . str_replace(".", "-", $key);
 }
 
+// "HH:MM" as minutes since midnight: what a time slider counts in.
+function settingsClockMinutes(string $time): int
+{
+	[$hours, $minutes] = array_map("intval", explode(":", $time));
+
+	return $hours * 60 + $minutes;
+}
+
 // Every one-value field of the page, in page order. "group" says in which fieldset it is shown.
 function settingsScalarFields(): array
 {
@@ -90,14 +98,18 @@ function settingsScalarFields(): array
 			"group" => "daylight",
 			"label" => "Mittagsbild: Zielzeit",
 			"type" => "time",
+			"min" => "10:00",
+			"max" => "14:00",
+			"slider_step_minutes" => 15,
+			"hint" => "Nur Zeiten bei Tageslicht: 10:00 bis 14:00 Uhr.",
 		],
 		[
 			"key" => "interval_window.tolerance_minutes",
 			"group" => "daylight",
 			"label" => "Mittagsbild: Abweichung (± Minuten)",
 			"type" => "number",
-			"min" => 0,
-			"max" => 240,
+			"min" => 1,
+			"max" => 120,
 		],
 		[
 			"key" => "min_coverage_days.monthly",
@@ -325,19 +337,40 @@ function renderSettingsField(array $field, array $state, array $baseConfig, arra
 	?>
 	<div class="settings-field">
 		<label for="<?= settingsHtml($id) ?>"><?= settingsHtml($field["label"]) ?></label>
+		<?php if (isset($field["slider_step_minutes"])): ?>
+		<?php // A slider only helps the mouse: the time field is the real control and the only one sent. ?>
+		<div class="privacy-slider-row">
+			<input
+				type="range"
+				class="privacy-range"
+				data-slider-for="<?= settingsHtml($id) ?>"
+				min="<?= settingsClockMinutes($field["min"]) ?>"
+				max="<?= settingsClockMinutes($field["max"]) ?>"
+				step="<?= (int) $field["slider_step_minutes"] ?>"
+				aria-hidden="true"
+				tabindex="-1"
+				hidden
+			>
+		<?php endif; ?>
 		<input
 			type="<?= settingsHtml($field["type"]) ?>"
 			id="<?= settingsHtml($id) ?>"
 			name="settings[<?= settingsHtml($key) ?>]"
 			value="<?= settingsHtml($state["fields"][$key] ?? "") ?>"
 			<?= $hasDefault && (is_int($default) || is_string($default)) ? 'data-default="' . settingsHtml((string) $default) . '"' : "" ?>
+			<?php if (isset($field["min"])): ?>
+				min="<?= settingsHtml((string) $field["min"]) ?>" max="<?= settingsHtml((string) $field["max"]) ?>"
+			<?php endif; ?>
 			<?php if ($field["type"] === "number"): ?>
-				min="<?= (int) $field["min"] ?>" max="<?= (int) $field["max"] ?>" step="1" inputmode="numeric"
+				step="1" inputmode="numeric"
 			<?php endif; ?>
 			required
 			<?= $error !== null ? 'aria-invalid="true"' : "" ?>
 			<?= $describedBy !== "" ? 'aria-describedby="' . settingsHtml($describedBy) . '"' : "" ?>
 		>
+		<?php if (isset($field["slider_step_minutes"])): ?>
+		</div>
+		<?php endif; ?>
 		<?php if ($hasDefault && (is_int($default) || is_string($default))): ?>
 			<span class="settings-default">Standard: <?= settingsHtml((string) $default) ?></span>
 		<?php endif; ?>
