@@ -11,15 +11,6 @@ const SETTINGS_SCOPES = ["general", "privacy"];
 const SETTINGS_SAVE_FAILED_MESSAGE = "Die Einstellungen konnten nicht gespeichert werden.";
 const SETTINGS_INVALID_MESSAGE = "Die Eingaben sind ungültig.";
 
-// The one JSON line the settings writer prints, or null when the output is not a JSON object with
-// a text "status".
-function decodeSettingsReply(string $stdout): ?array
-{
-	$reply = json_decode($stdout, true);
-
-	return is_array($reply) && is_string($reply["status"] ?? null) ? $reply : null;
-}
-
 // Saves the values of the settings page through the root-owned wrapper. The values travel as ONE
 // JSON argument next to the modification time of the settings file the page was loaded with; the
 // wrapper and the writer behind it validate everything again, so nothing here is trusted either way.
@@ -70,7 +61,7 @@ function saveSettings(array $values, int $loadedMtime, string $scope = "general"
 		return $failed();
 	}
 
-	$reply = decodeSettingsReply($result["stdout"]);
+	$reply = decodeStatusReply($result["stdout"]);
 	$status = $reply["status"] ?? null;
 	$mtime = is_int($reply["mtime"] ?? null) ? $reply["mtime"] : $loadedMtime;
 

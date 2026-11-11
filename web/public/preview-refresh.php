@@ -42,7 +42,8 @@ if ($result["status"] === "ok") {
 		"url" => previewUrl($camera, $info["version"]),
 		"width" => $info["width"],
 		"height" => $info["height"],
-		"takenText" => $info["takenText"],
+		"alt" => previewAltText($camera, $info),
+		"caption" => previewCaption($info),
 	];
 }
 

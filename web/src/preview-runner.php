@@ -6,7 +6,7 @@ require_once __DIR__ . "/process-runner.php";
 
 // The preview picture of a blur camera on the Verpixelung page. A root-owned wrapper fetches one
 // confirmed frame from the Storage Box and caches it (state/web-jobs/previews/<camera>.jpg plus a
-// <camera>.json with its size); this file starts the wrapper and reads the cache. Nothing in here
+// <camera>.json saying which frame it is); this file starts the wrapper and reads the cache. Nothing in here
 // reaches the box itself, and no raw frame: the script behind the wrapper only publishes a frame
 // the box blur job has confirmed.
 
@@ -14,7 +14,8 @@ require_once __DIR__ . "/process-runner.php";
 // no slash), so a name from a request can never leave the cache folder.
 const PREVIEW_CAMERA_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
 
-// Sanity limits for what is read back from the cache: the same size bound as the script's.
+// Sanity limits for what is read back from the cache: a picture's side is bound the same way as an
+// ignore box's coordinates (src/settings.py).
 const PREVIEW_MAX_DIMENSION = 20000;
 const PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 
@@ -54,9 +55,38 @@ function previewUrl(string $camera, int $version): string
 	return "/preview.php?camera=" . rawurlencode($camera) . "&v=" . $version;
 }
 
+// The size of a cached picture, read from the picture itself: [width, height], or null when the file
+// is not a JPEG of a plausible size. getimagesize() also knows GIF, PNG and more, so the type is
+// checked. It complains (a notice) about a cut-off or damaged file, which is exactly what this
+// answers with null, so the notice is dropped here instead of reaching the page.
+function previewPictureSize(string $path): ?array
+{
+	set_error_handler(static fn(): bool => true);
+
+	try {
+		$found = getimagesize($path);
+	} finally {
+		restore_error_handler();
+	}
+
+	if ($found === false || $found[2] !== IMAGETYPE_JPEG) {
+		return null;
+	}
+
+	[$width, $height] = $found;
+
+	foreach ([$width, $height] as $side) {
+		if ($side < 1 || $side > PREVIEW_MAX_DIMENSION) {
+			return null;
+		}
+	}
+
+	return [$width, $height];
+}
+
 // The cached JPEG of a camera, or null when there is none worth serving: an unsafe name, a missing,
-// empty, oversized or linked file (a link could lead anywhere the web server user can read), or
-// content that does not start like a JPEG.
+// empty, oversized or linked file (a link could lead anywhere the web server user can read), or a
+// file that is not a JPEG of a plausible size.
 function previewPicturePath(string $camera): ?string
 {
 	if (!isPreviewCamera($camera)) {
@@ -75,27 +105,18 @@ function previewPicturePath(string $camera): ?string
 		return null;
 	}
 
-	$handle = fopen($path, "rb");
-
-	if ($handle === false) {
-		return null;
-	}
-
-	$start = fread($handle, 2);
-	fclose($handle);
-
-	return $start === "\xFF\xD8" ? $path : null;
+	return previewPictureSize($path) === null ? null : $path;
 }
 
-// What the page needs to show the picture: size, kind of frame, when it was taken and a version.
-// Null unless the picture AND its description are both there and plausible: the description is
-// the page's only knowledge of the picture's size.
+// What the page needs to show the picture: size (the picture's own), kind of frame, when it was taken
+// and a version. Null unless the picture AND its description are both there and plausible.
 function readPreviewInfo(string $camera): ?array
 {
 	$picture = previewPicturePath($camera);
+	$size = $picture === null ? null : previewPictureSize($picture);
 	$infoPath = previewDirectory() . "/" . $camera . ".json";
 
-	if ($picture === null || is_link($infoPath) || !is_file($infoPath) || !is_readable($infoPath)) {
+	if ($picture === null || $size === null || is_link($infoPath) || !is_file($infoPath) || !is_readable($infoPath)) {
 		return null;
 	}
 
@@ -106,16 +127,8 @@ function readPreviewInfo(string $camera): ?array
 		return null;
 	}
 
-	$width = $info["width"] ?? null;
-	$height = $info["height"] ?? null;
 	$kind = $info["status"] ?? null;
 	$taken = $info["taken"] ?? null;
-
-	foreach ([$width, $height] as $side) {
-		if (!is_int($side) || $side < 1 || $side > PREVIEW_MAX_DIMENSION) {
-			return null;
-		}
-	}
 
 	if (!in_array($kind, PREVIEW_KINDS, true) || !is_string($taken)) {
 		return null;
@@ -131,8 +144,8 @@ function readPreviewInfo(string $camera): ?array
 	$version = filemtime($picture);
 
 	return [
-		"width" => $width,
-		"height" => $height,
+		"width" => $size[0],
+		"height" => $size[1],
 		"kind" => $kind,
 		"taken" => $taken,
 		"takenText" => $moment->format("d.m.Y, H:i"),
@@ -140,13 +153,18 @@ function readPreviewInfo(string $camera): ?array
 	];
 }
 
-// The one JSON line the preview script prints, or null when the output is not a JSON object with a
-// text "status".
-function decodePreviewReply(string $stdout): ?array
+// The sentences that go with a picture: its alternative text and the line under it. They are worded
+// here, once, for the page and for the answer to "Vorschau aktualisieren", so the script only shows
+// what the server says. $info is what readPreviewInfo() found.
+function previewAltText(string $camera, array $info): string
 {
-	$reply = json_decode($stdout, true);
+	return "Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr";
+}
 
-	return is_array($reply) && is_string($reply["status"] ?? null) ? $reply : null;
+function previewCaption(array $info): string
+{
+	return "Aufgenommen am " . $info["takenText"] . " Uhr. Bildgröße: "
+		. $info["width"] . " × " . $info["height"] . " Punkte.";
 }
 
 // Fetches a fresh preview through the root-owned wrapper (synchronous: one frame takes seconds).
@@ -190,7 +208,7 @@ function refreshPreview(string $camera): array
 		return $answer("failed", PREVIEW_TIMEOUT_MESSAGE);
 	}
 
-	$reply = decodePreviewReply($result["stdout"]);
+	$reply = decodeStatusReply($result["stdout"]);
 	$status = $reply["status"] ?? null;
 
 	// 0 picture cached, 66 not a blur camera, 67 no confirmed frame yet (see the wrapper). A reply

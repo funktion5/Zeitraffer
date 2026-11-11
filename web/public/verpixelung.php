@@ -89,11 +89,7 @@ unset($_SESSION["privacy_saved"]);
 $hasProblems = $messages !== [] || $fieldErrors !== [];
 $lastSaved = formatSettingsTime($savedMtime);
 
-// The blur values by group, each with its Standard (null when config.json has none).
-$floatsOf = static fn(string $group): array => array_values(array_filter(
-	privacyFloatFields(),
-	static fn(array $field): bool => $field["group"] === $group,
-));
+// A blur value's Standard (null when config.json has none).
 $standardOf = static fn(string $key): ?string => ($defaultState["floats"][$key] ?? "") !== "" ? $defaultState["floats"][$key] : null;
 
 // What one camera goes back to: its score and boxes in config.json, or "no minimum" and "no boxes".
@@ -107,7 +103,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 		// Its own top share in config.json, else the one every camera gets from there.
 		"top" => isset($tops[$camera]) ? privacyNumberText($tops[$camera]) : ($globalTop !== "" ? $globalTop : "0"),
 		"score" => isset($scores[$camera]) ? privacyNumberText($scores[$camera]) : "0",
-		"boxes" => privacyBoxesForDefaults($boxes[$camera] ?? []),
+		"boxes" => privacyStoredBoxes($boxes[$camera] ?? []),
 	];
 };
 
@@ -171,7 +167,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				<legend>Wie wird verpixelt?</legend>
 				<?php renderSettingsDefaultButton("Wie wird verpixelt?"); ?>
 				<p class="settings-hint">Diese drei Werte gelten für alle Kameras. Sie wirken nur auf Bilder, die danach verpixelt werden. Bilder, die schon verpixelt sind, bleiben wie sie sind.</p>
-				<?php foreach ($floatsOf("blur") as $field): ?>
+				<?php foreach (privacyFloatFields() as $field): ?>
 					<?php renderPrivacyNumber(
 						privacyFieldId($field["key"]),
 						"privacy[floats][" . $field["key"] . "]",
@@ -267,6 +263,15 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				});
 			});
 
+			// The four number inputs of a box row, in the order left, top, right, bottom, and a way to write
+			// a box's numbers into them.
+			const cellsOf = (row) => Array.from(row.querySelectorAll("input"));
+			const fillRow = (row, cells) => {
+				cellsOf(row).forEach((input, position) => {
+					input.value = String(cells[position]);
+				});
+			};
+
 			// One more row of four box numbers, cloned from the camera's template.
 			const addBoxRow = (container, cells = ["", "", "", ""]) => {
 				const template = container.closest("fieldset").querySelector("[data-box-template]");
@@ -282,9 +287,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 				const row = container.lastElementChild;
 
-				row.querySelectorAll("input").forEach((input, position) => {
-					input.value = cells[position];
-				});
+				fillRow(row, cells);
 				row.querySelector("[data-remove-box]").hidden = false;
 			};
 
@@ -344,16 +347,18 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			const containerOf = (section) => section.closest("fieldset").querySelector(".privacy-boxes");
 			const percent = (part, whole) => `${(part / whole) * 100}%`;
 
+			// The picture's own size is the width and height of its image: the one place the page keeps it.
 			const pictureSize = (section) => {
-				const width = Number(section.dataset.previewWidth);
-				const height = Number(section.dataset.previewHeight);
+				const image = section.querySelector(".privacy-preview-stage img");
+				const width = Number(image?.getAttribute("width"));
+				const height = Number(image?.getAttribute("height"));
 
 				return width > 0 && height > 0 ? { width, height } : null;
 			};
 
 			// A row as a box, or null while it is blank or not a usable box yet.
 			const boxOfRow = (row) => {
-				const inputs = Array.from(row.querySelectorAll("input"));
+				const inputs = cellsOf(row);
 
 				if (inputs.some((input) => input.value.trim() === "")) {
 					return null;
@@ -371,7 +376,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					const number = String(index + 1);
 
 					row.querySelector(".privacy-box-number").textContent = number;
-					row.querySelectorAll("input").forEach((input) => {
+					cellsOf(row).forEach((input) => {
 						input.setAttribute("aria-label", input.getAttribute("aria-label").replace(/Rahmen \d+/, `Rahmen ${number}`));
 					});
 				});
@@ -457,16 +462,14 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 			const placeBox = (container, cells) => {
 				const rows = Array.from(container.querySelectorAll(".privacy-box-row"));
 				let row = rows.find((candidate) =>
-					Array.from(candidate.querySelectorAll("input")).every((input) => input.value.trim() === ""),
+					cellsOf(candidate).every((input) => input.value.trim() === ""),
 				);
 
 				if (row === undefined) {
 					addBoxRow(container, cells.map(String));
 					row = container.lastElementChild;
 				} else {
-					row.querySelectorAll("input").forEach((input, position) => {
-						input.value = String(cells[position]);
-					});
+					fillRow(row, cells);
 				}
 
 				refreshContainer(container);
@@ -509,6 +512,25 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					return { x0: left, y0: top, x1: left + width, y1: top + height };
 				};
 
+				// The rectangle a drag drew, in picture pixels, or null when it is too small to be meant or has
+				// no area once rounded. One scale factor per direction turns screen pixels into picture pixels.
+				const drawnCells = (start, end, size) => {
+					const left = Math.min(start.x, end.x);
+					const right = Math.max(start.x, end.x);
+					const top = Math.min(start.y, end.y);
+					const bottom = Math.max(start.y, end.y);
+
+					if (right - left < MIN_DRAWN_SIDE || bottom - top < MIN_DRAWN_SIDE) {
+						return null;
+					}
+
+					const scaleX = size.width / end.width;
+					const scaleY = size.height / end.height;
+					const cells = [left * scaleX, top * scaleY, right * scaleX, bottom * scaleY].map(Math.round);
+
+					return cells[2] > cells[0] && cells[3] > cells[1] ? cells : null;
+				};
+
 				layer.addEventListener("pointerdown", (event) => {
 					if (!layer.classList.contains("is-drawing") || event.button !== 0) {
 						return;
@@ -519,7 +541,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 					const start = pointAt(event);
 
-					// The strip's edge: the drag changes the global top share, not a box.
+					// The strip's edge: the drag changes this camera's top share, not a box.
 					if (event.target.closest(".privacy-top-handle") !== null) {
 						gesture = { kind: "strip", start, share: currentShare(section), moved: false };
 
@@ -616,9 +638,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						if (to.x0 !== box.x0 || to.y0 !== box.y0) {
 							const cells = [to.x0, to.y0, to.x1, to.y1];
 
-							row.querySelectorAll("input").forEach((input, position) => {
-								input.value = String(cells[position]);
-							});
+							fillRow(row, cells);
 
 							const number = Array.from(container.querySelectorAll(".privacy-box-row")).indexOf(row) + 1;
 
@@ -630,25 +650,12 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 						return;
 					}
 
-					const left = Math.min(start.x, end.x);
-					const right = Math.max(start.x, end.x);
-					const top = Math.min(start.y, end.y);
-					const bottom = Math.max(start.y, end.y);
-
 					stop();
 
-					if (size === null || right - left < MIN_DRAWN_SIDE || bottom - top < MIN_DRAWN_SIDE) {
-						redrawSection(section);
+					const cells = size === null ? null : drawnCells(start, end, size);
 
-						return;
-					}
-
-					// Screen pixels to picture pixels: one factor per direction.
-					const scaleX = size.width / end.width;
-					const scaleY = size.height / end.height;
-					const cells = [left * scaleX, top * scaleY, right * scaleX, bottom * scaleY].map(Math.round);
-
-					if (cells[2] <= cells[0] || cells[3] <= cells[1]) {
+					// A click, a slip or a rectangle with no area once rounded draws nothing.
+					if (cells === null) {
 						redrawSection(section);
 
 						return;
@@ -740,20 +747,16 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					refreshContainer(container);
 				}
 			});
-			form.addEventListener("focusin", (event) => {
-				const container = event.target.closest(".privacy-boxes");
+			// The focused row lights up on the picture. The focus is still on the old field while focusout
+			// runs, so both events look a moment later, when it has moved.
+			["focusin", "focusout"].forEach((name) => {
+				form.addEventListener(name, (event) => {
+					const container = event.target.closest(".privacy-boxes");
 
-				if (container !== null) {
-					refreshContainer(container);
-				}
-			});
-			form.addEventListener("focusout", (event) => {
-				const container = event.target.closest(".privacy-boxes");
-
-				// The focus is still on the old field while the event runs.
-				if (container !== null) {
-					setTimeout(() => refreshContainer(container), 0);
-				}
+					if (container !== null) {
+						setTimeout(() => refreshContainer(container), 0);
+					}
+				});
 			});
 
 			// The picture of a camera, from what the server answered. Built with the DOM and filled with
@@ -778,13 +781,9 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				image.src = picture.url;
 				image.width = picture.width;
 				image.height = picture.height;
-				image.alt = `Vorschaubild der Kamera ${section.dataset.previewCamera} vom ${picture.takenText} Uhr`;
-				figure.querySelector("figcaption").textContent =
-					`Aufgenommen am ${picture.takenText} Uhr. Bildgröße: ${picture.width} × ${picture.height} Punkte.`;
+				image.alt = picture.alt;
+				figure.querySelector("figcaption").textContent = picture.caption;
 
-				// The layer lies over the picture: its size is what the boxes are measured against.
-				section.dataset.previewWidth = String(picture.width);
-				section.dataset.previewHeight = String(picture.height);
 				prepareSection(section);
 			};
 
@@ -881,7 +880,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				JSON.stringify(
 					Array.from(container.querySelectorAll(".privacy-box-row"))
 						.map((row) =>
-							Array.from(row.querySelectorAll("input")).map((input) => input.value.trim()),
+							cellsOf(row).map((input) => input.value.trim()),
 						)
 						.filter((cells) => cells.some((cell) => cell !== "")),
 				);

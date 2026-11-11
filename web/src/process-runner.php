@@ -62,3 +62,12 @@ function runPrivilegedCommand(array $command): array
 		"stderr" => $stderr,
 	];
 }
+
+// The one JSON line a wrapper's script prints, or null when the output is not a JSON object with a
+// text "status".
+function decodeStatusReply(string $stdout): ?array
+{
+	$reply = json_decode($stdout, true);
+
+	return is_array($reply) && is_string($reply["status"] ?? null) ? $reply : null;
+}

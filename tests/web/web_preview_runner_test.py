@@ -16,6 +16,10 @@ NONE_REPLY = '{"status": "none"}'
 UNKNOWN_REPLY = '{"status": "unknown_camera"}'
 FAILED_MESSAGE = "Das Bild konnte nicht geholt werden. Bitte später noch einmal versuchen."
 JPEG = b"\xff\xd8\xff\xc0\x00\x08\x08\x01\xe0\x02\x80\x00\xff\xd9"
+# The same picture at 800 x 600, and pictures PHP cannot give a plausible size.
+JPEG_800X600 = b"\xff\xd8\xff\xc0\x00\x08\x08\x02\x58\x03\x20\x00\xff\xd9"
+JPEG_WIDTH_0 = b"\xff\xd8\xff\xc0\x00\x08\x08\x01\xe0\x00\x00\x00\xff\xd9"
+JPEG_WIDTH_20001 = b"\xff\xd8\xff\xc0\x00\x08\x08\x01\xe0\x4e\x21\x00\xff\xd9"
 
 
 def cache(tmp_path: Path, camera: str = "SLSV", info=None, picture: bytes | None = JPEG) -> Path:
@@ -29,8 +33,6 @@ def cache(tmp_path: Path, camera: str = "SLSV", info=None, picture: bytes | None
 		data = {
 			"image": "20261109T120000.jpg",
 			"status": "blurred",
-			"width": 640,
-			"height": 480,
 			"taken": "2026-11-09T12:00:00+01:00",
 			**(info or {}),
 		}
@@ -182,6 +184,16 @@ def test_the_cached_info_is_read_and_validated(tmp_path):
 	assert info["takenText"] == "09.11.2026, 12:00"
 
 
+# The size is the picture's own. A description with a size of its own (one from before the script
+# stopped writing it, or a wrong one) cannot make the page lie about the picture.
+def test_the_size_is_read_from_the_picture_not_from_the_description(tmp_path):
+	cache(tmp_path, picture=JPEG_800X600, info={"width": 1, "height": 1})
+
+	info = php(tmp_path, 'echo json_encode(readPreviewInfo("SLSV"));')
+
+	assert (info["width"], info["height"]) == (800, 600)
+
+
 def test_there_is_no_info_without_a_cache(tmp_path):
 	assert php(tmp_path, 'echo json_encode(readPreviewInfo("SLSV"));') is None
 
@@ -194,11 +206,14 @@ def test_there_is_no_info_without_a_cache(tmp_path):
 		{"info": False},
 		{"picture": b""},
 		{"picture": b"GIF89a not a jpeg"},
-		{"info": {"width": 0}},
-		{"info": {"width": 20001}},
-		{"info": {"height": -5}},
-		{"info": {"width": "640"}},
-		{"info": {"width": 640.5}},
+		# The size is read from the picture itself: one without a plausible size is no preview.
+		{"picture": b"\xff\xd8not really\xff\xd9"},
+		{"picture": JPEG_WIDTH_0},
+		{"picture": JPEG_WIDTH_20001},
+		{"picture": b"\xff\xd8\xff\xc0\x00"},
+		{"picture": b"\xff\xd8\xff\xe0"},
+		# PHP complains about this one (a notice): the page must show no preview and no error text.
+		{"picture": b"\xff\xd8\x8e\xff"},
 		{"info": {"status": "mystery"}},
 		{"info": {"taken": "yesterday"}},
 		{"info": {"taken": 5}},

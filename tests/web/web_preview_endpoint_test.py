@@ -33,8 +33,6 @@ def prepare(tmp_path: Path, config=CONFIG, picture: bytes | None = JPEG, camera=
 				{
 					"image": "20261109T120000.jpg",
 					"status": "blurred",
-					"width": 640,
-					"height": 480,
 					"taken": "2026-11-09T12:00:00+01:00",
 				}
 			)
@@ -196,7 +194,13 @@ def test_a_refresh_returns_the_new_picture(tmp_path):
 	assert reply["status"] == "ok"
 	assert reply["picture"]["width"] == 640
 	assert reply["picture"]["height"] == 480
-	assert reply["picture"]["takenText"] == "09.11.2026, 12:00"
+	# The sentences come finished from the server: the script only shows them.
+	assert reply["picture"]["alt"] == "Vorschaubild der Kamera SLSV vom 09.11.2026, 12:00 Uhr"
+	assert (
+		reply["picture"]["caption"]
+		== "Aufgenommen am 09.11.2026, 12:00 Uhr. Bildgröße: 640 × 480 Punkte."
+	)
+	assert "takenText" not in reply["picture"]
 	assert reply["picture"]["url"].startswith("/preview.php?camera=SLSV&v=")
 
 

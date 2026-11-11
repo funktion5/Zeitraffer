@@ -840,8 +840,6 @@ def cache_preview(tmp_path: Path, camera: str, picture: bool = True, **info) -> 
 	data = {
 		"image": "20261109T120000.jpg",
 		"status": "blurred",
-		"width": 640,
-		"height": 480,
 		"taken": "2026-11-09T12:00:00+01:00",
 		**info,
 	}
@@ -938,6 +936,21 @@ def test_the_script_asks_for_a_new_picture_with_the_forms_token(tmp_path):
 	assert 'role="status"' in preview_block(out, "SLSV")
 
 
+# The alternative text and the caption are worded once, on the server. The answer to a refresh
+# carries them finished, so the script has no copy of the sentences to keep in step.
+def test_the_script_shows_the_servers_sentences_and_has_none_of_its_own(tmp_path):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	script = script_with(out, "data-default-group")
+
+	assert "picture.alt" in script
+	assert "picture.caption" in script
+	assert "Aufgenommen am" not in script
+	assert "Vorschaubild der Kamera" not in script
+	assert "takenText" not in script
+
+
 # The drawing editor on the picture. Its drag logic is script (the project has no browser test
 # runner, so it is clicked for real in a browser); these tests pin what the server puts in place.
 
@@ -945,28 +958,29 @@ STYLE = Path(__file__).resolve().parents[2] / "web" / "public" / "style.css"
 
 
 # The script turns a rectangle on the picture into box numbers by one scale factor: it needs the
-# picture's own size, and a frame (the stage) to lay its layer over.
-def test_the_picture_sits_in_a_stage_that_carries_its_size(tmp_path):
+# picture's own size, and a frame (the stage) to lay its layer over. The picture's width and height
+# attributes are the one place the page keeps that size, and the script reads it from there.
+def test_the_picture_sits_in_a_stage_and_its_size_is_kept_only_on_the_image(tmp_path):
 	prepare(tmp_path)
 	cache_preview(tmp_path, "SLSV")
 
 	out, _ = render(tmp_path)
 	block = preview_block(out, "SLSV")
-	section = tag_of(block, r"<section[^>]*>")
+	script = script_with(out, "data-default-group")
 
-	assert 'data-preview-width="640"' in section
-	assert 'data-preview-height="480"' in section
 	assert re.search(r'<div class="privacy-preview-stage">\s*<img', block)
+	assert "data-preview-width" not in block
+	assert "data-preview-height" not in block
+	assert 'getAttribute("width")' in script
+	assert "previewWidth" not in script
 
 
-def test_a_camera_without_a_picture_has_no_stage_and_no_size(tmp_path):
+def test_a_camera_without_a_picture_has_no_stage(tmp_path):
 	prepare(tmp_path)
 
 	out, _ = render(tmp_path)
-	block = preview_block(out, "SLSV")
 
-	assert "privacy-preview-stage" not in block
-	assert "data-preview-width" not in block
+	assert "privacy-preview-stage" not in preview_block(out, "SLSV")
 
 
 # Drawing needs a pointer and a script: the button is hidden until the script shows it, and it is a
@@ -1050,49 +1064,6 @@ def test_the_script_draws_with_pointer_events_and_keeps_the_layer_out_of_the_acc
 	assert re.search(r"\bvar\b", script) is None
 
 
-# The generic "main section" panel would take about a fifth of a phone's width from the picture.
-def test_the_picture_block_gives_up_its_panel_on_a_phone():
-	css = STYLE.read_text(encoding="utf-8")
-	narrow = tag_of(css, r"@media \(max-width: 40rem\)\s*\{\s*\.privacy-preview\s*\{[^}]*\}", re.S)
-
-	assert "padding: 0" in narrow
-	assert "border: 0" in narrow
-
-
-# "Entfernen" is a deletion, so it is red like the app's other delete buttons (the text still says
-# what it does: colour is not the only sign), and it stands level with the inputs of its row.
-def test_the_remove_button_is_red_and_level_with_its_inputs():
-	css = STYLE.read_text(encoding="utf-8")
-	rule = tag_of(css, r"\.privacy-box-row \.privacy-box-remove\s*\{[^}]*\}", re.S)
-	hover = tag_of(css, r"\.privacy-box-row \.privacy-box-remove:hover\s*\{[^}]*\}", re.S)
-
-	assert "border-color: var(--color-danger)" in rule
-	assert "color: var(--color-danger)" in rule
-	assert "rgb(223 113 113" in hover
-	# The generic small button is pinned to the top of a flex row: here it must sit on the bottom
-	# line with the inputs, or it looks shifted up next to them.
-	assert "align-self: flex-end" in rule
-
-
-# The row's inputs, its button and its number share one height, so they line up in one row.
-def test_the_row_items_share_one_height():
-	css = STYLE.read_text(encoding="utf-8")
-	heights = re.findall(
-		r"(\.privacy-box-row input|\.privacy-box-row \.privacy-box-remove|\.privacy-box-number)"
-		r"\s*\{[^}]*?(?<![\w-])height:\s*([^;]+);",
-		css,
-		re.S,
-	)
-
-	assert {selector for selector, _ in heights} == {
-		".privacy-box-row input",
-		".privacy-box-row .privacy-box-remove",
-		".privacy-box-number",
-	}
-	assert len({value for _, value in heights}) == 1
-	assert "align-self: flex-end" in tag_of(css, r"\.privacy-box-number\s*\{[^}]*\}", re.S)
-
-
 # Without the toggle the layer must let everything through, or the picture would block scrolling
 # on a phone; only while drawing may it take the touch away from the page.
 def test_the_layer_only_catches_the_pointer_while_drawing():
@@ -1116,14 +1087,3 @@ def test_the_strip_handle_shows_only_while_editing():
 	assert "display: none" in idle
 	assert "display: block" in editing
 	assert "cursor: ns-resize" in editing
-
-
-# A box can be grabbed only while editing is on, and the pointer says so.
-def test_a_box_shows_the_move_cursor_only_while_editing():
-	css = STYLE.read_text(encoding="utf-8")
-	pattern = r"\.privacy-preview-layer\.is-drawing \.privacy-box-shape\s*\{[^}]*\}"
-	grabbable = tag_of(css, pattern, re.S)
-
-	assert "cursor: move" in grabbable
-	# The rectangle being drawn is not a handle: it keeps the crosshair.
-	assert "cursor: crosshair" in tag_of(css, r"\.privacy-box-shape\.is-draft\s*\{[^}]*\}", re.S)

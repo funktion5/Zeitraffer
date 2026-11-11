@@ -17,14 +17,13 @@ function privacyFieldId(string $key): string
 	return "privacy-" . str_replace(".", "-", $key);
 }
 
-// The number controls shared by all blur cameras. "group" says in which fieldset one is shown. (The
-// top share is not among them: every blur camera has its own.)
+// The number controls shared by all blur cameras, shown together in one fieldset. (The top share is
+// not among them: every blur camera has its own.)
 function privacyFloatFields(): array
 {
 	return [
 		[
 			"key" => "privacy.blur.strength",
-			"group" => "blur",
 			"label" => "Wie grob sind die Kästchen?",
 			"min" => "0.05",
 			"max" => "0.5",
@@ -36,7 +35,6 @@ function privacyFloatFields(): array
 		],
 		[
 			"key" => "privacy.blur.padding_ratio",
-			"group" => "blur",
 			"label" => "Wie weit reicht der Schutz um einen Menschen herum?",
 			"min" => "0.05",
 			"max" => "1",
@@ -48,7 +46,6 @@ function privacyFloatFields(): array
 		],
 		[
 			"key" => "privacy.blur.feather",
-			"group" => "blur",
 			"label" => "Wie weich ist der Rand vom Mosaik?",
 			"min" => "0",
 			"max" => "1",
@@ -134,29 +131,8 @@ function privacyNumberText(mixed $value): string
 	return is_int($value) || is_float($value) || is_string($value) ? (string) $value : "";
 }
 
-// Boxes as the form shows them: rows of four texts. Anything that is not a box is left out.
-function privacyBoxesForDisplay(mixed $boxes): array
-{
-	if (!is_array($boxes)) {
-		return [];
-	}
-
-	$rows = [];
-
-	foreach ($boxes as $box) {
-		if (is_array($box) && count($box) === 4) {
-			$rows[] = array_map(
-				static fn(mixed $cell): string => is_scalar($cell) ? (string) $cell : "",
-				array_values($box),
-			);
-		}
-	}
-
-	return $rows;
-}
-
-// Boxes of a config as whole numbers, for the restore button's data. Anything else is left out.
-function privacyBoxesForDefaults(mixed $boxes): array
+// The boxes of a config as rows of four whole numbers. Anything that is not a box is left out.
+function privacyStoredBoxes(mixed $boxes): array
 {
 	if (!is_array($boxes)) {
 		return [];
@@ -171,6 +147,15 @@ function privacyBoxesForDefaults(mixed $boxes): array
 	}
 
 	return $rows;
+}
+
+// The same boxes as the form shows them: rows of four texts.
+function privacyBoxesForDisplay(mixed $boxes): array
+{
+	return array_map(
+		static fn(array $box): array => array_map("strval", $box),
+		privacyStoredBoxes($boxes),
+	);
 }
 
 // What the form shows, from a config: the number texts, the ticked blur cameras and one block (score
@@ -236,14 +221,9 @@ function privacyFormStateFromPost(array $post): array
 		$boxes = [];
 
 		foreach ($cameraRows as $row) {
-			$cells = [];
+			$cells = privacyRowCells($row);
 
-			foreach (["x0", "y0", "x1", "y1"] as $name) {
-				$cell = is_array($row) ? ($row[$name] ?? "") : "";
-				$cells[] = is_string($cell) ? trim($cell) : "";
-			}
-
-			if ($cells !== ["", "", "", ""]) {
+			if ($cells !== null && $cells !== ["", "", "", ""]) {
 				$boxes[] = $cells;
 			}
 		}
@@ -256,6 +236,29 @@ function privacyFormStateFromPost(array $post): array
 	}
 
 	return ["blur_cameras" => $blurCameras, "floats" => $floats, "cameras" => $cameras];
+}
+
+// The four cells of a row of the form, in the order of the box, as trimmed texts. Null when the row
+// is not a row or a cell is missing or not text.
+function privacyRowCells(mixed $row): ?array
+{
+	if (!is_array($row)) {
+		return null;
+	}
+
+	$cells = [];
+
+	foreach (["x0", "y0", "x1", "y1"] as $name) {
+		$cell = $row[$name] ?? null;
+
+		if (!is_string($cell)) {
+			return null;
+		}
+
+		$cells[] = trim($cell);
+	}
+
+	return $cells;
 }
 
 // Text of a number field to a number; anything else stays text, so the writer's message names the
@@ -283,20 +286,10 @@ function privacyBoxesFromRows(mixed $rows): ?array
 	$boxes = [];
 
 	foreach ($rows as $row) {
-		if (!is_array($row)) {
+		$cells = privacyRowCells($row);
+
+		if ($cells === null) {
 			return null;
-		}
-
-		$cells = [];
-
-		foreach (["x0", "y0", "x1", "y1"] as $name) {
-			$cell = $row[$name] ?? null;
-
-			if (!is_string($cell)) {
-				return null;
-			}
-
-			$cells[] = trim($cell);
 		}
 
 		if ($cells !== ["", "", "", ""]) {
@@ -380,19 +373,21 @@ function privacyValuesFromPost(array $post, array $knownCameras): array
 	return [$values, []];
 }
 
+// The per-camera keys of the tab: the key prefix (a camera name follows) => the id prefix of that
+// camera's control, and what the summary names the control.
+const PRIVACY_CAMERA_KEYS = [
+	"privacy.min_person_score." => ["privacy-score-", "Sicherheit"],
+	"privacy.ignore_boxes." => ["privacy-boxes-", "Rahmen"],
+	"privacy.ignore_top_share_per_camera." => ["privacy-top-", "Oberer Bildrand"],
+];
+
 // The element a writer message points at: the control of that key.
 function privacyErrorTarget(string $key): string
 {
-	if (str_starts_with($key, "privacy.min_person_score.")) {
-		return "privacy-score-" . substr($key, strlen("privacy.min_person_score."));
-	}
-
-	if (str_starts_with($key, "privacy.ignore_boxes.")) {
-		return "privacy-boxes-" . substr($key, strlen("privacy.ignore_boxes."));
-	}
-
-	if (str_starts_with($key, "privacy.ignore_top_share_per_camera.")) {
-		return "privacy-top-" . substr($key, strlen("privacy.ignore_top_share_per_camera."));
+	foreach (PRIVACY_CAMERA_KEYS as $prefix => [$idPrefix]) {
+		if (str_starts_with($key, $prefix)) {
+			return $idPrefix . substr($key, strlen($prefix));
+		}
 	}
 
 	return $key === "privacy.blur_cameras" ? "privacy-blur-cameras" : privacyFieldId($key);
@@ -407,16 +402,10 @@ function privacyErrorLabel(string $key): string
 		}
 	}
 
-	if (str_starts_with($key, "privacy.min_person_score.")) {
-		return "Kamera " . substr($key, strlen("privacy.min_person_score.")) . ": Sicherheit";
-	}
-
-	if (str_starts_with($key, "privacy.ignore_boxes.")) {
-		return "Kamera " . substr($key, strlen("privacy.ignore_boxes.")) . ": Rahmen";
-	}
-
-	if (str_starts_with($key, "privacy.ignore_top_share_per_camera.")) {
-		return "Kamera " . substr($key, strlen("privacy.ignore_top_share_per_camera.")) . ": Oberer Bildrand";
+	foreach (PRIVACY_CAMERA_KEYS as $prefix => [, $what]) {
+		if (str_starts_with($key, $prefix)) {
+			return "Kamera " . substr($key, strlen($prefix)) . ": " . $what;
+		}
 	}
 
 	return "Verpixelte Kameras";
@@ -604,13 +593,6 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 	<?php
 }
 
-// The text under a preview picture; the script builds the same sentence for a picture it loads.
-function privacyPreviewCaption(array $info): string
-{
-	return "Aufgenommen am " . $info["takenText"] . " Uhr. Bildgröße: "
-		. $info["width"] . " × " . $info["height"] . " Punkte.";
-}
-
 // The picture of one blur camera, so the ignore boxes can be placed by eye. $info is what
 // readPreviewInfo() found (null: no picture yet). The button is shown by the script and sends
 // nothing with the form: it asks preview-refresh.php for a fresh picture and shows it.
@@ -622,7 +604,6 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 	<section
 		class="privacy-preview"
 		data-preview-camera="<?= settingsHtml($camera) ?>"
-		<?= $info !== null ? 'data-preview-width="' . (int) $info["width"] . '" data-preview-height="' . (int) $info["height"] . '"' : "" ?>
 		aria-labelledby="<?= settingsHtml($id) ?>-title"
 	>
 		<h3 class="privacy-boxes-title" id="<?= settingsHtml($id) ?>-title">Bild der Kamera</h3>
@@ -637,10 +618,10 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 						src="<?= settingsHtml(previewUrl($camera, $info["version"])) ?>"
 						width="<?= (int) $info["width"] ?>"
 						height="<?= (int) $info["height"] ?>"
-						alt="<?= settingsHtml("Vorschaubild der Kamera " . $camera . " vom " . $info["takenText"] . " Uhr") ?>"
+						alt="<?= settingsHtml(previewAltText($camera, $info)) ?>"
 					>
 				</div>
-				<figcaption><?= settingsHtml(privacyPreviewCaption($info)) ?></figcaption>
+				<figcaption><?= settingsHtml(previewCaption($info)) ?></figcaption>
 			</figure>
 		<?php else: ?>
 			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.</p>

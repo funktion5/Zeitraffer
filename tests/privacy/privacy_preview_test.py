@@ -17,7 +17,6 @@ from src.privacy.preview import (
 	EXIT_UNKNOWN_CAMERA,
 	MAX_CANDIDATES,
 	build_preview,
-	jpeg_size,
 	rank_candidates,
 )
 
@@ -25,7 +24,6 @@ from src.privacy.preview import (
 # confirmed (blurred, clean or night), fetched with the frame source and cached for the web server.
 #   rank_candidates(processed, timezone) -> best frame first
 #   build_preview(camera, config, state_root, preview_root, now) -> info dict, or None
-#   jpeg_size(path) -> (width, height) or None
 
 CAMERA = "Blur-Camera"
 TIMEZONE = "Europe/Berlin"
@@ -140,15 +138,14 @@ def test_only_confirmed_frames_with_a_readable_time_are_candidates():
 	assert names_of(ranked) == ["20261109T100300.jpg"]
 
 
-def test_a_preview_is_written_with_its_size(box):
+# The description has no size: the web side reads it from the picture itself.
+def test_a_preview_is_written_with_its_description(box):
 	data = box.add("20261109T120000.jpg", "blurred")
 	info = box.build()
 
 	assert info == {
 		"image": "20261109T120000.jpg",
 		"status": "blurred",
-		"width": 640,
-		"height": 480,
 		"taken": "2026-11-09T12:00:00+01:00",
 	}
 	assert (box.previews / f"{CAMERA}.jpg").read_bytes() == data
@@ -251,13 +248,6 @@ def test_a_frame_missing_on_the_box_is_skipped(box):
 	assert box.build()["image"] == "20261109T130000.jpg"
 
 
-def test_a_frame_that_is_no_jpeg_with_a_size_is_skipped(box):
-	box.add("20261109T120000.jpg", "blurred", b"\xff\xd8not really\xff\xd9")
-	box.add("20261109T130000.jpg", "blurred")
-
-	assert box.build()["image"] == "20261109T130000.jpg"
-
-
 # A box that answers slowly must not be asked about the whole backlog.
 def test_only_a_few_candidates_are_tried(box):
 	for hour in range(MAX_CANDIDATES + 2):
@@ -284,43 +274,6 @@ def test_the_fetched_copies_are_released_after_a_build(box, monkeypatch, data):
 	box.build()
 
 	assert released == [CAMERA]
-
-
-@pytest.mark.parametrize("marker", [0xC0, 0xC1, 0xC2])
-def test_jpeg_size_reads_baseline_and_progressive_headers(tmp_path, marker):
-	data = make_jpeg(1920, 1080).replace(b"\xff\xc0", bytes([0xFF, marker]))
-	path = tmp_path / "a.jpg"
-	path.write_bytes(data)
-
-	assert jpeg_size(path) == (1920, 1080)
-
-
-# Other segments (camera metadata) come before the size segment in a real JPEG.
-def test_jpeg_size_skips_other_segments(tmp_path):
-	app = b"\xff\xe1" + struct.pack(">H", 8) + b"Exif.."
-	data = make_jpeg(800, 600)
-	path = tmp_path / "a.jpg"
-	path.write_bytes(data[:2] + app + data[2:])
-
-	assert jpeg_size(path) == (800, 600)
-
-
-@pytest.mark.parametrize(
-	"data",
-	[
-		b"",
-		b"\xff\xd8",
-		b"not a jpeg at all",
-		make_jpeg()[:6],
-		make_jpeg(0, 0),
-		make_jpeg(30000, 10),
-	],
-)
-def test_jpeg_size_refuses_what_is_not_a_plausible_jpeg(tmp_path, data):
-	path = tmp_path / "a.jpg"
-	path.write_bytes(data)
-
-	assert jpeg_size(path) is None
 
 
 # The command line: one JSON line on stdout and an exit code the wrapper hands on to PHP.
@@ -352,7 +305,7 @@ def test_the_command_line_reports_the_preview(box, cli):
 
 	assert code == EXIT_OK
 	assert reply["status"] == "ok"
-	assert (reply["width"], reply["height"]) == (640, 480)
+	assert reply["image"] == "20261109T120000.jpg"
 
 
 def test_the_command_line_reports_no_frame(box, cli):
