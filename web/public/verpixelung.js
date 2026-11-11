@@ -708,16 +708,9 @@
 	// Last, so a missing shared file leaves the dialog wired: the slider, the restore buttons and
 	// "Änderungen verwerfen" come from settings-common.js; this page adds what it keeps besides fields.
 	SettingsForm.init(form, {
-		// The Standard box rows of a camera replace the rows that stand there now.
-		onRestore: (scope) => {
-			scope.querySelectorAll("[data-default-boxes]").forEach((container) => {
-				container.replaceChildren();
-				JSON.parse(container.dataset.defaultBoxes).forEach((box) => {
-					addBoxRow(container, box.map(String));
-				});
-			});
-
-			// The rows and the top-share field changed without an event the picture listens to.
+		// A restore can change a camera's top strip without an event the picture listens to. Boxes have
+		// no Standard, so their rows stay as they are.
+		onRestore: () => {
 			refreshAll();
 		},
 		// The rows are rebuilt from what the page loaded, and the pictures drawn again from them.

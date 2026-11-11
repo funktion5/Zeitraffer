@@ -39,15 +39,12 @@ window.SettingsForm = (() => {
 
 		// Fills the fields of one scope with their Standard (the config.json value). Nothing is
 		// saved: the Save button stores it, and a value equal to the Standard drops its override.
+		// Camera choices and boxes have no Standard: they are never touched here.
 		const restoreDefaults = (scope, what) => {
 			scope.querySelectorAll("[data-default]").forEach((input) => {
 				input.value = input.dataset.default;
 				// A script sets no "input" event by itself: announce it, so a slider follows.
 				input.dispatchEvent(new Event("input"));
-			});
-
-			scope.querySelectorAll("[data-default-checked]").forEach((input) => {
-				input.checked = input.dataset.defaultChecked === "1";
 			});
 
 			onRestore(scope);

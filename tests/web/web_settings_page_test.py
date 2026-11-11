@@ -261,41 +261,35 @@ def test_the_cameras_are_the_listed_ones_plus_the_ignored_ones(tmp_path):
 	assert 'name="flagger_cameras[]"' in out
 
 
-def standard_of(out: str, legend: str) -> str:
-	fieldset = re.search(rf"<legend>{legend}</legend>.*?</fieldset>", out, re.S)
-
-	assert fieldset is not None, legend
-
-	pattern = r'<span class="settings-default">Standard: ([^<]*)</span>'
-
-	return re.search(pattern, fieldset.group(0)).group(1)
-
-
-# A list of cameras says its Standard in words, so nobody has to compare ticks with a file: all of
-# them, "all but" the few that are off, the few that are on, or none.
-def test_each_camera_list_says_what_its_standard_is(tmp_path):
+# Which cameras are processed or searched for highlights is a choice of cameras, not a value: it has
+# no Standard to read and nothing to restore. The numbers around it keep theirs.
+def test_the_camera_lists_have_no_standard(tmp_path):
 	prepare(tmp_path)
 
 	out, _ = render(tmp_path)
 
-	# Known: Alpha, Beta and the ignored Reolink. Two of three are on, so the off one is named.
-	assert standard_of(out, "Kameras") == "alle außer Reolink"
-	# One of three is on: the camera that is on is named.
-	assert standard_of(out, r"Highlights \(Flagger\)") == "Alpha"
+	assert "data-default-checked" not in out
+
+	for legend in ("Kameras", r"Highlights \(Flagger\)"):
+		fieldset = re.search(rf"<legend>{legend}</legend>.*?</fieldset>", out, re.S).group(0)
+		boxes = re.search(r'<div class="settings-cameras">.*?</div>', fieldset, re.S).group(0)
+
+		assert "Standard" not in boxes, legend
+		assert "settings-default" not in boxes, legend
+
+	cameras = re.search(r"<legend>Kameras</legend>.*?</fieldset>", out, re.S).group(0)
+	flagger = re.search(r"<legend>Highlights \(Flagger\)</legend>.*?</fieldset>", out, re.S).group(
+		0
+	)
+
+	# Nothing in the "Kameras" group is a value, so it has no Standard at all; the flagger group
+	# still has the one of its retention days.
+	assert "Standard" not in cameras
+	assert re.findall(r"Standard: ([^<]*)</span>", flagger) == ["30"]
 
 
-def test_the_standard_of_a_camera_list_can_be_all_or_none(tmp_path):
-	config = {**BASE, "ignored_cameras": [], "flagger": {"cameras": [], "retention_days": 30}}
-	prepare(tmp_path, config=config)
-
-	out, _ = render(tmp_path)
-
-	assert standard_of(out, "Kameras") == "alle Kameras"
-	assert standard_of(out, r"Highlights \(Flagger\)") == "keine"
-
-
-# The Standard is what config.json holds: a saved change leaves it as it was.
-def test_the_standard_of_a_camera_list_ignores_what_is_saved(tmp_path):
+# A saved choice of cameras is what the boxes show: there is no second, "default" state beside it.
+def test_a_saved_camera_selection_is_what_the_boxes_show(tmp_path):
 	# Beta is switched off on the page; Reolink stays ignored, so all three cameras are still shown.
 	prepare(tmp_path, settings={"ignored_cameras": ["Reolink", "Beta"]})
 
@@ -307,7 +301,6 @@ def test_the_standard_of_a_camera_list_ignores_what_is_saved(tmp_path):
 		("Beta", ""),
 		("Reolink", ""),
 	]
-	assert standard_of(out, "Kameras") == "alle außer Reolink"
 
 
 def test_a_camera_name_that_is_not_a_plain_name_is_never_shown(tmp_path):
@@ -530,8 +523,8 @@ def test_a_message_that_names_no_field_stands_in_the_summary_only(tmp_path):
 	assert message in out
 	assert 'class="field-error"' not in out
 	# What was ticked stays ticked, so the colleague only has to change the one box.
-	assert camera_boxes(out, "flagger_cameras")["Alpha"][1] is True
-	assert camera_boxes(out, "process_cameras")["Alpha"][1] is False
+	assert camera_boxes(out, "flagger_cameras")["Alpha"] is True
+	assert camera_boxes(out, "process_cameras")["Alpha"] is False
 
 
 def test_a_page_that_is_out_of_date_is_refused_and_stays_so(tmp_path):
@@ -614,14 +607,13 @@ def tag_of(out: str, pattern: str) -> str:
 	return match.group(0)
 
 
-# name -> (the Standard tick, ticked now) for one list of camera boxes.
+# name -> ticked now, for one list of camera boxes.
 def camera_boxes(out: str, name: str) -> dict:
 	boxes = {}
 
 	for tag in re.findall(rf'<input[^>]*name="{name}\[\]"[^>]*>', out):
 		value = re.search(r'value="([^"]+)"', tag).group(1)
-		standard = re.search(r'data-default-checked="([01])"', tag).group(1)
-		boxes[value] = (standard, re.search(r"\schecked\b", tag) is not None)
+		boxes[value] = re.search(r"\schecked\b", tag) is not None
 
 	return boxes
 
@@ -648,14 +640,13 @@ def test_a_field_without_a_standard_has_nothing_to_restore(tmp_path):
 	assert "data-default" not in tag_of(out, r'<input[^>]*id="setting-log_retention_days"[^>]*>')
 
 
-def test_the_camera_boxes_carry_the_standard_ticks(tmp_path):
+def test_the_camera_boxes_show_what_is_saved(tmp_path):
 	prepare(tmp_path, settings={"ignored_cameras": ["Beta"], "flagger": {"cameras": ["Beta"]}})
 
 	out, _ = render(tmp_path)
 
-	# The Standard is config.json (Reolink ignored, Alpha flagged); then what is saved.
-	assert camera_boxes(out, "process_cameras") == {"Alpha": ("1", True), "Beta": ("1", False)}
-	assert camera_boxes(out, "flagger_cameras") == {"Alpha": ("1", False), "Beta": ("0", True)}
+	assert camera_boxes(out, "process_cameras") == {"Alpha": True, "Beta": False}
+	assert camera_boxes(out, "flagger_cameras") == {"Alpha": False, "Beta": True}
 
 
 def test_each_group_and_the_bar_have_a_restore_button_that_starts_hidden(tmp_path):
@@ -664,11 +655,14 @@ def test_each_group_and_the_bar_have_a_restore_button_that_starts_hidden(tmp_pat
 	out, _ = render(tmp_path)
 	group_buttons = re.findall(r"<button[^>]*data-default-group[^>]*>", out)
 
-	assert len(group_buttons) == 6
+	assert len(group_buttons) == 5
 	for tag in group_buttons:
 		assert 'type="button"' in tag
 		assert re.search(r"\shidden[\s>]", tag) is not None
 	assert 'aria-label="Videoqualität: auf Standard zurücksetzen"' in out
+	# The choice of cameras has nothing to restore; the flagger group does (its retention days).
+	assert 'aria-label="Kameras: auf Standard zurücksetzen"' not in out
+	assert 'aria-label="Highlights (Flagger): auf Standard zurücksetzen"' in out
 
 	all_button = tag_of(out, r"<button[^>]*data-default-all[^>]*>")
 
@@ -684,7 +678,8 @@ def test_the_restore_script_fills_fields_and_never_submits(tmp_path):
 	script = read_scripts("settings-common.js")
 
 	assert 'querySelectorAll("[data-default]")' in script
-	assert 'querySelectorAll("[data-default-checked]")' in script
+	# No checkbox has a Standard any more.
+	assert "data-default-checked" not in script
 	assert re.search(r"\bvar\b", script) is None
 	assert ".submit(" not in script
 	assert "requestSubmit" not in script

@@ -91,16 +91,6 @@ function privacyScoreField(): array
 	];
 }
 
-// How many boxes a camera has, in words, for the Standard line.
-function privacyBoxCountText(int $count): string
-{
-	return match ($count) {
-		0 => "kein Rahmen",
-		1 => "1 Rahmen",
-		default => $count . " Rahmen",
-	};
-}
-
 function privacyBoxHelp(): array
 {
 	return [
@@ -499,8 +489,8 @@ function renderPrivacyNumber(
 	<?php
 }
 
-// The blur camera list. A camera that already blurs (config.json) is marked, so nobody takes its
-// tick away by accident. With an error the group points at it, and it can take the focus, so the
+// The blur camera list. Which cameras blur is a choice, not a value: it has no Standard. A camera
+// that already blurs (config.json) is marked, so nobody takes its tick away by accident. With an error the group points at it, and it can take the focus, so the
 // link in the summary has somewhere to go.
 function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $baseList, bool $hasError = false): void
 {
@@ -515,7 +505,6 @@ function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $bas
 			<label>
 				<input
 					type="checkbox"
-					data-default-checked="<?= $live ? "1" : "0" ?>"
 					<?= $live ? 'data-live="1"' : "" ?>
 					name="blur_cameras[]"
 					value="<?= settingsHtml($camera) ?>"
@@ -528,7 +517,6 @@ function renderPrivacyCameraBoxes(array $knownCameras, array $ticked, array $bas
 			</label>
 		<?php endforeach; ?>
 	</div>
-	<span class="settings-default">Standard: <?= settingsHtml(settingsCameraListText($knownCameras, $baseList)) ?></span>
 	<?php
 }
 
@@ -562,9 +550,9 @@ function renderPrivacyBoxRow(string $camera, string $index, string $number, arra
 }
 
 // The ignore boxes of one camera: the saved rows only (no empty rows stand by), a note while there
-// are none, and the template and button the script uses to add rows. $defaultBoxes is what the
-// restore button sets back.
-function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?string $error): void
+// are none, and the template and button the script uses to add rows. Boxes are data, so they have no
+// Standard and no restore.
+function renderPrivacyBoxes(string $camera, array $boxes, ?string $error): void
 {
 	$id = "privacy-boxes-" . $camera;
 	$describedBy = $id . "-help" . ($error !== null ? " " . $id . "-error" : "");
@@ -573,7 +561,6 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 	?>
 	<div class="settings-field privacy-boxes-field">
 		<h2 class="privacy-boxes-title">Stellen, die nie verpixelt werden (Rahmen)<span class="visually-hidden">, Kamera <?= settingsHtml($camera) ?></span></h2>
-		<span class="settings-default">Standard: <?= settingsHtml(privacyBoxCountText(count($defaultBoxes))) ?></span>
 		<?php renderPrivacyHelp($id, privacyBoxHelp()); ?>
 		<p class="privacy-boxes-empty" <?= $boxes === [] ? "" : "hidden" ?>>Für diese Kamera ist noch kein Rahmen gesetzt.</p>
 		<div
@@ -581,7 +568,6 @@ function renderPrivacyBoxes(string $camera, array $boxes, array $defaultBoxes, ?
 			id="<?= settingsHtml($id) ?>"
 			data-camera="<?= settingsHtml($camera) ?>"
 			data-label="Rahmen von <?= settingsHtml($camera) ?>"
-			data-default-boxes="<?= settingsHtml((string) json_encode($defaultBoxes)) ?>"
 			data-next-index="<?= (int) $rowCount ?>"
 			role="group"
 			aria-describedby="<?= settingsHtml($describedBy) ?>"
