@@ -1,7 +1,5 @@
 import subprocess
-
 from datetime import date
-
 
 from src.date_coverage import (
 	check_coverage,
@@ -22,7 +20,7 @@ from src.interval_window import (
 from src.logger import RUN_ID, format_run_context, logger
 from src.privacy.blur_gate import apply_blur_gate
 from src.privacy.blur_job import blur_job_frames
-from src.video import create_timelapse, cleanup_automatic_video_retention
+from src.video import cleanup_automatic_video_retention, create_timelapse
 from src.yearly_selection import select_yearly_images_isolated
 
 

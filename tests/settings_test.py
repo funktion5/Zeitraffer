@@ -21,7 +21,6 @@ from src.settings import (
 	validate_settings,
 )
 
-
 # (key, lowest allowed, highest allowed): the integer rules of the allowlist.
 INT_BOUNDS = [
 	("timelapse.crf", 18, 35),

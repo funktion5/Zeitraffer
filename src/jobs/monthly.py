@@ -1,6 +1,12 @@
 import subprocess
 from datetime import date
 
+from src.date_coverage import (
+	check_coverage,
+	get_coverage_date_range,
+	get_latest_completed_date,
+	get_min_coverage_days,
+)
 from src.image_worker import WorkerExitedError
 from src.images import find_interval_images_isolated, release_camera_frames
 from src.interval_window import (
@@ -11,14 +17,7 @@ from src.interval_window import (
 from src.logger import RUN_ID, format_run_context, logger
 from src.privacy.blur_gate import apply_blur_gate
 from src.privacy.blur_job import blur_job_frames
-from src.video import create_timelapse
-from src.video import cleanup_automatic_video_retention
-from src.date_coverage import (
-	check_coverage,
-	get_coverage_date_range,
-	get_latest_completed_date,
-	get_min_coverage_days,
-)
+from src.video import cleanup_automatic_video_retention, create_timelapse
 
 
 # Run the automatic Monthly timelapse workflow.

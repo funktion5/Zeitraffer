@@ -1,12 +1,11 @@
 import json
 import os
-from pathlib import Path
 import pwd
 import shutil
 import subprocess
+from pathlib import Path
 
 import pytest
-
 
 WEB_SRC = Path(__file__).resolve().parents[2] / "web" / "src"
 WEB_PUBLIC = WEB_SRC.parent / "public"

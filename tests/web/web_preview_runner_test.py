@@ -4,7 +4,6 @@ import pwd
 from pathlib import Path
 
 import pytest
-
 from web_php_test import PROJECT_ROOT_CALL, SUDO_PATH, fake_sudo, run_php
 
 # web/src/preview-runner.php: the PHP side of the preview picture. It starts the root-owned wrapper

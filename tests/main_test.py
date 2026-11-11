@@ -1,6 +1,6 @@
+import sys
 from argparse import Namespace
 from datetime import date, time
-import sys
 
 import pytest
 

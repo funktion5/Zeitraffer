@@ -1,6 +1,5 @@
 from pathlib import Path
 
-
 STATE_ROOT = Path("state")
 RUN_MARKER = STATE_ROOT / "run-in-progress"
 

@@ -10,7 +10,6 @@ import src.config as config_module
 import src.settings_save as settings_save
 from src.settings import ALLOWED_KEYS, get_leaf, set_leaf
 
-
 # An arbitrary but fixed modification time, so "the file changed since the page loaded" is exact.
 FILE_TIME = 1_700_000_000
 

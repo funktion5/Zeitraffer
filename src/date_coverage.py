@@ -6,7 +6,6 @@ from zoneinfo import ZoneInfo
 from src.images import extract_date
 from src.logger import logger
 
-
 CoverageType = Literal[
 	"weekly",
 	"monthly",

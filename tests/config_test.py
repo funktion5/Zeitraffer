@@ -10,7 +10,6 @@ from src.interval_window import interval_window_from_config
 from src.privacy.anonymize import parse_blur_settings, parse_drop_rules
 from src.privacy.box_writer import check_camera_name
 
-
 EXPECTED_ROOT_KEYS = {
 	"_note",
 	"location",

@@ -1,7 +1,6 @@
+from collections import defaultdict
 from datetime import date
 from pathlib import Path
-
-from collections import defaultdict
 
 import src.yearly_selection as yearly_selection_module
 from src.yearly_selection import (

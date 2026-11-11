@@ -3,10 +3,9 @@ import os
 from pathlib import Path
 
 import pytest
-
-from src.settings import ALLOWED_KEYS, ALLOWED_KEYS_BY_SCOPE
 from web_php_test import PROJECT_ROOT_CALL, run_php
 
+from src.settings import ALLOWED_KEYS, ALLOWED_KEYS_BY_SCOPE
 
 # An arbitrary but fixed modification time.
 FILE_TIME = 1_700_000_000

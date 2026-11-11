@@ -10,9 +10,8 @@ import src.images as images_module
 import src.jobs.yearly as yearly_module
 import src.privacy.blur_gate as blur_gate_module
 from src.image_worker import WorkerExitedError
-from src.jobs.yearly import run_yearly_job
 from src.interval_window import SUNSET, IntervalWindow
-
+from src.jobs.yearly import run_yearly_job
 
 TEST_CONFIG = {
 	"location": {

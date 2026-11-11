@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from web_php_test import PROJECT_ROOT_CALL, run_php, run_wrapper
 
 

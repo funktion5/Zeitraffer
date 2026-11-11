@@ -20,12 +20,12 @@ from src.solar import get_sun_times
 from src.video import (
 	TEMP_ROOT,
 	VIDEO_ROOT,
+	cleanup_automatic_video_retention,
 	cleanup_temp_directory,
 	create_concat_file,
 	create_concat_video,
 	create_timelapse,
 	get_video_path,
-	cleanup_automatic_video_retention,
 )
 
 

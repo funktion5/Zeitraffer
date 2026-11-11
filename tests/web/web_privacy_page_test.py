@@ -5,9 +5,9 @@ import re
 from pathlib import Path
 
 import pytest
+from web_php_test import SUDO_PATH, fake_sudo, read_scripts, render_page
 
 import src.config as config_module
-from web_php_test import SUDO_PATH, fake_sudo, read_scripts, render_page
 
 TOKEN = "test-token"
 FILE_TIME = 1_700_000_000

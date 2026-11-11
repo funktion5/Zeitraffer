@@ -14,10 +14,10 @@ import src.images as images_module
 from src.images import (
 	extract_date,
 	extract_time,
+	filter_duplicate_images_against_reference,
 	find_images_for_dates,
 	find_interval_images,
 	find_interval_images_isolated,
-	filter_duplicate_images_against_reference,
 	get_cameras,
 	get_image_range,
 )

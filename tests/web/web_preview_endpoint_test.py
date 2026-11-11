@@ -8,7 +8,6 @@ import urllib.request
 from pathlib import Path
 
 import pytest
-
 from web_php_test import SUDO_PATH, WEB_SRC, fake_sudo, render_page
 
 # The two endpoints of the preview picture:

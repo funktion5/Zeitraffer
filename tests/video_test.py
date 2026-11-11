@@ -8,6 +8,7 @@ import src.video as video_module
 from src.interval_window import SUNSET, IntervalWindow
 from src.privacy.anonymize import PrivacyCheckError, parse_drop_rules
 from src.video import (
+	cleanup_automatic_video_retention,
 	cleanup_temp_directory,
 	copy_images_to_temp,
 	create_concat_file,
@@ -15,7 +16,6 @@ from src.video import (
 	create_image_timelapse,
 	create_temp_directory,
 	create_timelapse,
-	cleanup_automatic_video_retention,
 	frame_fit_arguments,
 	get_video_path,
 	jpeg_size,

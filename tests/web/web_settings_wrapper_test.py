@@ -4,7 +4,6 @@ from pathlib import Path
 
 import pytest
 
-
 WRAPPER = Path(__file__).resolve().parents[2] / "scripts" / "web" / "timelapse-web-settings"
 SETTINGS_JSON = '{"timelapse": {"crf": 30}}'
 
