@@ -11,6 +11,9 @@ services:
         # Only the account's number, so a mounted file is writable for it: not a secret.
         RUN_UID: ${RUN_UID:-1000}
     image: zeitraffer-web:dev
+    # Comes back by itself after Docker Desktop or the Mac restarts; "docker compose down" or
+    # "docker stop" still keeps it stopped until the next start.
+    restart: unless-stopped
     env_file: .env
     environment:
       # Python must not write its cache into the mounted src/ and tests/ folders.
@@ -28,9 +31,10 @@ services:
       - ../../tests:/home/zeitraffer/timelapse/tests:ro
       - ../../pyproject.toml:/home/zeitraffer/timelapse/pyproject.toml:ro
       - ../../requirements.txt:/home/zeitraffer/timelapse/requirements.txt:ro
-      # The tests of the installer and the backup script read these two files (tests/scripts/).
+      # Read by the tests of the installer, the backup script and the NAS helper (tests/scripts/).
       - ../../install.sh:/home/zeitraffer/timelapse/install.sh:ro
       - ../../backup.sh:/home/zeitraffer/timelapse/backup.sh:ro
+      - ../../nas:/home/zeitraffer/timelapse/nas:ro
       # Writable: the settings pages save config/settings*.json here (git-ignored, like on the VPS).
       - ../../config:/home/zeitraffer/timelapse/config
       # Runtime data and the Python environment live in volumes, apart from the repo folders.
