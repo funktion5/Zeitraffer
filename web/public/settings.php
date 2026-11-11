@@ -229,8 +229,9 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 				note.hidden = false;
 			};
 
-			// A slider only helps the mouse: the time field is the real control, so both follow each
-			// other. The slider counts minutes since midnight.
+			// A slider only helps the mouse: the field is the real control, so both follow each other.
+			// The slider of a time field counts minutes since midnight, the slider of a number field the
+			// number itself.
 			const toMinutes = (text) => {
 				const [hours, minutes] = text.split(":").map(Number);
 
@@ -243,7 +244,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 				const field = form.querySelector(`#${range.dataset.sliderFor}`);
 
 				if (field.value !== "") {
-					range.value = String(toMinutes(field.value));
+					range.value = field.type === "time" ? String(toMinutes(field.value)) : field.value;
 				}
 			};
 
@@ -252,7 +253,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 				range.hidden = false;
 				range.addEventListener("input", () => {
-					field.value = toClock(Number(range.value));
+					field.value = field.type === "time" ? toClock(Number(range.value)) : range.value;
 				});
 				field.addEventListener("input", () => syncSlider(range));
 				syncSlider(range);

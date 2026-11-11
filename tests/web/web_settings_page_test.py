@@ -189,7 +189,32 @@ def test_the_target_time_has_a_helper_slider_in_minutes(tmp_path):
 	assert 'tabindex="-1"' in slider
 	# Only the time field is a form field: the slider must not send a second value.
 	assert "name=" not in slider
-	assert out.count('type="range"') == 1
+	# The time field and the two coverage fields have a slider, no other field.
+	assert re.findall(r'data-slider-for="([^"]+)"', out) == [
+		"setting-interval_window-target_time",
+		"setting-min_coverage_days-monthly",
+		"setting-min_coverage_days-yearly",
+	]
+
+
+# The coverage fields count in days; their slider counts the same, and stops where the number does
+# (the jobs refuse 0 and anything above the window).
+@pytest.mark.parametrize(
+	("key", "high"), [("min_coverage_days-monthly", 30), ("min_coverage_days-yearly", 365)]
+)
+def test_the_coverage_fields_have_a_helper_slider_in_days(tmp_path, key, high):
+	prepare(tmp_path)
+
+	out, _ = render(tmp_path)
+	slider = tag_of(out, rf'<input\s+type="range"[^>]*data-slider-for="setting-{key}"[^>]*>')
+
+	assert 'min="1"' in slider
+	assert f'max="{high}"' in slider
+	assert 'step="1"' in slider
+	assert re.search(r"\shidden(\s|>)", slider) is not None
+	assert 'aria-hidden="true"' in slider
+	assert 'tabindex="-1"' in slider
+	assert "name=" not in slider
 
 
 def test_the_page_script_keeps_the_slider_and_the_time_field_in_step(tmp_path):
@@ -205,6 +230,8 @@ def test_the_page_script_keeps_the_slider_and_the_time_field_in_step(tmp_path):
 
 	assert len(scripts) == 1
 	assert 'querySelectorAll("[data-slider-for]")' in scripts[0]
+	# Only a time slider counts in minutes; a number slider copies the number.
+	assert 'field.type === "time"' in scripts[0]
 	# A restored Standard moves no slider by itself: the script has to announce the change.
 	assert 'dispatchEvent(new Event("input"))' in scripts[0]
 

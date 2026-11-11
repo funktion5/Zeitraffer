@@ -40,6 +40,13 @@ function settingsClockMinutes(string $time): int
 	return $hours * 60 + $minutes;
 }
 
+// A bound of a field as its slider counts it: a time slider in minutes since midnight, a number
+// slider in the number itself.
+function settingsSliderBound(array $field, string|int $bound): int
+{
+	return $field["type"] === "time" ? settingsClockMinutes((string) $bound) : (int) $bound;
+}
+
 // Every one-value field of the page, in page order. "group" says in which fieldset it is shown.
 function settingsScalarFields(): array
 {
@@ -100,7 +107,7 @@ function settingsScalarFields(): array
 			"type" => "time",
 			"min" => "10:00",
 			"max" => "14:00",
-			"slider_step_minutes" => 15,
+			"slider_step" => 15,
 			"hint" => "Nur Zeiten bei Tageslicht: 10:00 bis 14:00 Uhr.",
 		],
 		[
@@ -118,6 +125,7 @@ function settingsScalarFields(): array
 			"type" => "number",
 			"min" => 1,
 			"max" => 30,
+			"slider_step" => 1,
 		],
 		[
 			"key" => "min_coverage_days.yearly",
@@ -126,6 +134,7 @@ function settingsScalarFields(): array
 			"type" => "number",
 			"min" => 1,
 			"max" => 365,
+			"slider_step" => 1,
 		],
 		[
 			"key" => "log_retention_days",
@@ -337,16 +346,16 @@ function renderSettingsField(array $field, array $state, array $baseConfig, arra
 	?>
 	<div class="settings-field">
 		<label for="<?= settingsHtml($id) ?>"><?= settingsHtml($field["label"]) ?></label>
-		<?php if (isset($field["slider_step_minutes"])): ?>
-		<?php // A slider only helps the mouse: the time field is the real control and the only one sent. ?>
+		<?php if (isset($field["slider_step"])): ?>
+		<?php // A slider only helps the mouse: the field is the real control and the only one sent. ?>
 		<div class="privacy-slider-row">
 			<input
 				type="range"
 				class="privacy-range"
 				data-slider-for="<?= settingsHtml($id) ?>"
-				min="<?= settingsClockMinutes($field["min"]) ?>"
-				max="<?= settingsClockMinutes($field["max"]) ?>"
-				step="<?= (int) $field["slider_step_minutes"] ?>"
+				min="<?= settingsSliderBound($field, $field["min"]) ?>"
+				max="<?= settingsSliderBound($field, $field["max"]) ?>"
+				step="<?= (int) $field["slider_step"] ?>"
 				aria-hidden="true"
 				tabindex="-1"
 				hidden
@@ -368,7 +377,7 @@ function renderSettingsField(array $field, array $state, array $baseConfig, arra
 			<?= $error !== null ? 'aria-invalid="true"' : "" ?>
 			<?= $describedBy !== "" ? 'aria-describedby="' . settingsHtml($describedBy) . '"' : "" ?>
 		>
-		<?php if (isset($field["slider_step_minutes"])): ?>
+		<?php if (isset($field["slider_step"])): ?>
 		</div>
 		<?php endif; ?>
 		<?php if ($hasDefault && (is_int($default) || is_string($default))): ?>
