@@ -45,6 +45,14 @@ Alles im Ordner `docker/zeitraffer-web`:
 | beenden (Daten bleiben) | `docker compose down` |
 | beenden und **alle Testdaten löschen** | `docker compose down -v` |
 
+Der Container startet nach einem Neustart von Docker Desktop oder des Rechners **von selbst wieder**
+(`restart: unless-stopped`). Wer ihn angehalten hat (`docker compose down` oder `docker stop`), startet ihn mit
+`docker compose up -d` oder `docker start zeitraffer-web-web-1` wieder.
+
+Ohne die Compose-Datei (auf einem Zweig, der den Ordner `docker/zeitraffer-web/` nicht hat) gehen weiterhin
+`docker exec`, `docker restart` und `docker start/stop` mit dem Namen `zeitraffer-web-web-1`; nur Bauen und
+`docker compose` brauchen die Datei.
+
 ## Einen Zweig testen
 
 Der Container zeigt **immer den Stand, der auf dem Rechner ausgecheckt ist**: Zweig wechseln
@@ -70,15 +78,15 @@ Der Container hat dieselbe Umgebung wie der VPS (Debian 13, Python 3.13, PHP, FF
 docker compose exec -u zeitraffer web bash -c "cd ~/timelapse && .venv/bin/python3 -m pytest"
 ```
 
-Eingebunden sind `tests`, `src`, `web`, `scripts`, `config`, `pyproject.toml`, `requirements.txt`, `install.sh`
-und `backup.sh`: das, was die Tests lesen. Nicht dabei sind `docs/`, `models/` und `sandbox/`; der eine Test, der
+Eingebunden sind `tests`, `src`, `web`, `scripts`, `config`, `nas`, `pyproject.toml`, `requirements.txt`,
+`install.sh` und `backup.sh`: das, was die Tests lesen. Nicht dabei sind `docs/`, `models/` und `sandbox/`; der eine Test, der
 das Erkennungsmodell und die Beispielbilder braucht (`tests/flagger/flagger_acceptance_test.py`), überspringt sich
 selbst. Ruff geht ebenso: `.venv/bin/ruff check .`.
 
 ## Warum es so gebaut ist
 
 - **Die Ordner werden einzeln eingebunden** (`web`, `src`, `scripts`, `tests`, `config`, `pyproject.toml`,
-  `requirements.txt`, `install.sh`, `backup.sh`), nicht das ganze Repo. Der Grund: Docker Desktop zeigt eingebundene Dateien im Container
+  `requirements.txt`, `install.sh`, `backup.sh`, `nas`), nicht das ganze Repo. Der Grund: Docker Desktop zeigt eingebundene Dateien im Container
   als Eigentum von root, und `projectRunUser()` in `web/src/process-runner.php` startet die Wrapper als
   **Eigentümer des Projektordners** und verweigert root. Deshalb ist `/home/zeitraffer/timelapse` ein echter
   Ordner des Kontos `zeitraffer`.
