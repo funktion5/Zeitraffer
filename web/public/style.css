@@ -1582,6 +1582,39 @@ body > section li a:hover {
 }
 
 
+/* A camera's name on the left; its video size, share and a thin share bar on the right. */
+.camera-link {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.camera-storage {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+
+	color: var(--color-text-muted);
+	font-size: 0.85rem;
+}
+
+.camera-share {
+	width: 8rem;
+	height: 0.4rem;
+
+	background: var(--color-surface);
+	border-radius: 0.2rem;
+	overflow: hidden;
+}
+
+.camera-share > span {
+	display: block;
+	height: 100%;
+
+	background: var(--color-primary);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Scrollbars                                                                 */
 /* -------------------------------------------------------------------------- */
