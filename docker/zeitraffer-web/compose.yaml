@@ -28,6 +28,9 @@ services:
       - ../../tests:/home/zeitraffer/timelapse/tests:ro
       - ../../pyproject.toml:/home/zeitraffer/timelapse/pyproject.toml:ro
       - ../../requirements.txt:/home/zeitraffer/timelapse/requirements.txt:ro
+      # The tests of the installer and the backup script read these two files (tests/scripts/).
+      - ../../install.sh:/home/zeitraffer/timelapse/install.sh:ro
+      - ../../backup.sh:/home/zeitraffer/timelapse/backup.sh:ro
       # Writable: the settings pages save config/settings*.json here (git-ignored, like on the VPS).
       - ../../config:/home/zeitraffer/timelapse/config
       # Runtime data and the Python environment live in volumes, apart from the repo folders.
