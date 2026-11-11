@@ -40,7 +40,7 @@ FLOATS = {
 
 # What the page sends for each blur camera's own top share when nothing was changed: the global
 # value (the writer then stores nothing).
-TOPS ={"BlurTest": "0.333", "Scheunenviertel": "0.333", "SLSV": "0.333"}
+TOPS = {"BlurTest": "0.333", "Scheunenviertel": "0.333", "SLSV": "0.333"}
 
 # Every control that carries an explanation, by element id.
 EXPLAINED = [
