@@ -685,31 +685,37 @@ ul {
 	height: 72px;
 	flex-shrink: 0;
 
-	border-radius: 50%;
-
-	/* Automatic videos, manual videos, the rest of the used space, free; the header sets the ends. */
-	background:
-		conic-gradient(
-			var(--color-primary) 0 var(--storage-automatic),
-			var(--color-manual) var(--storage-automatic) var(--storage-manual),
-			var(--color-border-light) var(--storage-manual) var(--storage-other),
-			var(--color-surface-light) var(--storage-other) 100%
-		);
-
 	position: relative;
 }
 
-.storage-chart::after {
-	content: "";
-
+.storage-chart svg {
 	position: absolute;
+	inset: 0;
 
-	width: 52px;
-	height: 52px;
+	width: 100%;
+	height: 100%;
+}
 
-	background: var(--color-surface);
+/* Hovering one arc shows its own title; the four colours are automatic, manual, the rest, free. */
+.storage-arc {
+	fill: none;
+	stroke-width: 10;
+}
 
-	border-radius: 50%;
+.storage-arc-automatic {
+	stroke: var(--color-primary);
+}
+
+.storage-arc-manual {
+	stroke: var(--color-manual);
+}
+
+.storage-arc-other {
+	stroke: var(--color-border-light);
+}
+
+.storage-arc-free {
+	stroke: var(--color-surface-light);
 }
 
 .storage-chart span {
@@ -751,35 +757,6 @@ ul {
 
 	font-size: 0.9rem;
 	font-weight: 600;
-}
-
-.storage-kinds {
-	margin: 0.2rem 0 0;
-	padding: 0;
-
-	list-style: none;
-
-	color: var(--color-text-muted);
-	font-size: 0.7rem;
-	font-weight: 400;
-}
-
-.storage-swatch {
-	display: inline-block;
-
-	width: 0.6rem;
-	height: 0.6rem;
-	margin-right: 0.25rem;
-
-	border-radius: 50%;
-}
-
-.storage-swatch-automatic {
-	background: var(--color-primary);
-}
-
-.storage-swatch-manual {
-	background: var(--color-manual);
 }
 
 /* The level is also said in words (.storage-warning); the colour only supports it. */

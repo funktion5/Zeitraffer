@@ -1,4 +1,5 @@
 import json
+import re
 import subprocess
 from pathlib import Path
 
@@ -46,30 +47,67 @@ def render_header(tmp_path: Path, data: dict | None) -> str:
 	return result.stdout
 
 
-# The ring is one conic-gradient; the page hands it the END of each part as a custom property.
-def test_the_ring_gets_the_end_of_each_part(tmp_path):
+# The ring is four arcs of one circle (pathLength 100: a dash length is a percent).
+def test_the_ring_draws_one_arc_per_part(tmp_path):
 	out = render_header(tmp_path, storage())
 
-	assert "--storage-automatic: 10%" in out
-	assert "--storage-manual: 15%" in out
-	assert "--storage-other: 40%" in out
+	for key, dash, offset in (
+		("automatic", "10 90", "0"),
+		("manual", "5 95", "-10"),
+		("other", "25 75", "-15"),
+		("free", "60 40", "-40"),
+	):
+		arc = re.search(rf'<circle\s+class="storage-arc storage-arc-{key}"[^>]*>', out)
+
+		assert arc is not None, key
+		assert f'stroke-dasharray="{dash}"' in arc.group(0)
+		assert f'stroke-dashoffset="{offset}"' in arc.group(0)
 
 
-def test_the_ring_ends_do_not_show_float_noise(tmp_path):
+def test_the_ring_arcs_do_not_show_float_noise(tmp_path):
 	out = render_header(tmp_path, storage(percents=(0.1, 0.2, 0.0, 99.7)))
 
-	assert "--storage-manual: 0.3%" in out
+	assert 'stroke-dasharray="0.2 99.8"' in out
+	assert 'stroke-dashoffset="-0.1"' in out
+	assert 'stroke-dasharray="99.7 0.3"' in out
+	assert 'stroke-dashoffset="-0.3"' in out
 
 
-def test_the_videos_box_names_both_kinds_with_their_sizes(tmp_path):
+def test_an_empty_part_gets_no_arc(tmp_path):
+	out = render_header(tmp_path, storage(percents=(10.0, 0.0, 30.0, 60.0)))
+
+	assert "storage-arc-manual" not in out
+	assert "storage-arc-automatic" in out
+
+
+# Hovering an arc shows what it is: its own title, with the size and the share.
+def test_every_arc_says_what_it_is_when_hovered(tmp_path):
+	out = render_header(tmp_path, storage())
+
+	assert "<title>Automatische Videos: 3.0 GB (10.0 %)</title>" in out
+	assert "<title>Manuelle Videos: 1.0 GB (5.0 %)</title>" in out
+	assert "<title>Sonstiges (System, Modelle, Logs, Highlights): 5.0 GB (25.0 %)</title>" in out
+	assert "<title>Frei: 20.0 GB (60.0 %)</title>" in out
+
+
+# Screen readers get the same four statements in one label: a title alone is hover-only.
+def test_the_ring_has_one_label_with_all_parts(tmp_path):
+	out = render_header(tmp_path, storage())
+
+	label = re.search(r'<svg[^>]*aria-label="([^"]*)"', out)
+
+	assert label is not None
+	assert "Automatische Videos: 3.0 GB" in label.group(1)
+	assert "Frei: 20.0 GB" in label.group(1)
+
+
+def test_the_videos_box_shows_the_total_and_no_legend(tmp_path):
 	out = render_header(tmp_path, storage())
 
 	assert "<dt>Davon Videos</dt>" in out
 	assert "4.0 GB" in out
-	assert "Automatisch" in out
-	assert "3.0 GB" in out
-	assert "Manuell" in out
-	assert "1.0 GB" in out
+	assert "storage-kinds" not in out
+	assert "storage-swatch" not in out
 
 
 def test_the_old_boxes_are_still_there(tmp_path):

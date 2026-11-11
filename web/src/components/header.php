@@ -12,20 +12,50 @@ declare(strict_types=1);
 
 	<?php if ($storage !== null): ?>
 		<?php
-		// The ring is one gradient: each custom property is where a part ENDS, rounded so float noise
-		// never reaches the CSS. An unknown level counts as "ok".
+		// The ring is four arcs of one circle drawn with pathLength 100, so a dash length is a percent;
+		// each arc carries its own title for the hover. Empty parts are left out. An unknown level
+		// counts as "ok".
 		$parts = array_column($storage["segments"], null, "key");
-		$automaticEnd = round($parts["automatic"]["percent"], 1);
-		$manualEnd = round($automaticEnd + $parts["manual"]["percent"], 1);
-		$otherEnd = round($manualEnd + $parts["other"]["percent"], 1);
+		$names = [
+			"automatic" => "Automatische Videos",
+			"manual" => "Manuelle Videos",
+			"other" => "Sonstiges (System, Modelle, Logs, Highlights)",
+			"free" => "Frei",
+		];
+		$arcs = [];
+		$start = 0.0;
+
+		foreach ($names as $key => $name) {
+			$percent = (float) $parts[$key]["percent"];
+			$label = $name . ": " . formatBytes($parts[$key]["bytes"]) . " (" . number_format($percent, 1) . " %)";
+
+			if ($percent > 0) {
+				$arcs[] = ["key" => $key, "label" => $label, "start" => round($start, 1), "percent" => $percent];
+			}
+
+			$start += $percent;
+		}
+
+		$summary = implode("; ", array_column($arcs, "label"));
 		$level = in_array($storage["level"], ["warn", "critical"], true) ? $storage["level"] : "ok";
 		$warning = ["warn" => "Speicher wird knapp", "critical" => "Speicher fast voll"][$level] ?? null;
 		?>
 		<div class="storage-overview" data-level="<?= $level ?>">
-			<div
-				class="storage-chart"
-				style="--storage-automatic: <?= $automaticEnd ?>%; --storage-manual: <?= $manualEnd ?>%; --storage-other: <?= $otherEnd ?>%"
-			>
+			<div class="storage-chart">
+				<svg viewBox="0 0 72 72" role="img" aria-label="<?= htmlspecialchars($summary, ENT_QUOTES, "UTF-8") ?>">
+					<g transform="rotate(-90 36 36)">
+						<?php foreach ($arcs as $arc): ?>
+							<circle
+								class="storage-arc storage-arc-<?= $arc["key"] ?>"
+								cx="36" cy="36" r="31" pathLength="100"
+								stroke-dasharray="<?= $arc["percent"] ?> <?= round(100 - $arc["percent"], 1) ?>"
+								stroke-dashoffset="<?= $arc["start"] > 0 ? -$arc["start"] : 0 ?>"
+							>
+								<title><?= htmlspecialchars($arc["label"], ENT_QUOTES, "UTF-8") ?></title>
+							</circle>
+						<?php endforeach; ?>
+					</g>
+				</svg>
 				<span>
 					<?= htmlspecialchars(
 						(string) $storage["usedPercent"],
@@ -77,17 +107,6 @@ declare(strict_types=1);
 							ENT_QUOTES,
 							"UTF-8",
 						) ?>
-						<?php // The swatches are the ring's colours; the words and sizes carry the meaning. ?>
-						<ul class="storage-kinds">
-							<li>
-								<span class="storage-swatch storage-swatch-automatic" aria-hidden="true"></span>
-								Automatisch <?= htmlspecialchars(formatBytes($parts["automatic"]["bytes"]), ENT_QUOTES, "UTF-8") ?>
-							</li>
-							<li>
-								<span class="storage-swatch storage-swatch-manual" aria-hidden="true"></span>
-								Manuell <?= htmlspecialchars(formatBytes($parts["manual"]["bytes"]), ENT_QUOTES, "UTF-8") ?>
-							</li>
-						</ul>
 					</dd>
 				</div>
 			</dl>
