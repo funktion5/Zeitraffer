@@ -54,6 +54,14 @@ function getBlurCameras(): array
 	return cameraNames(is_array($privacy) ? ($privacy["blur_cameras"] ?? []) : []);
 }
 
+// The names end up in file paths, so only plain names pass: the pattern the Python side applies to
+// the storage listing. It also keeps out ".", "..", hidden entries and "/". The D modifier stops
+// "$" from accepting a trailing newline.
+function isPlainCameraName(string $name): bool
+{
+	return preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $name) === 1;
+}
+
 // The camera names come from state/web-jobs/cameras.json, which the nightly run writes
 // (python3 -m src.camera_list): the web server user has no ssh key and the storage is not mounted
 // on this host. A missing or unusable file gives an empty list.
@@ -81,10 +89,7 @@ function findAvailableCameras(): array
 	$cameras = [];
 
 	foreach ($list as $entry) {
-		// The names end up in file paths, so only plain names pass: the pattern the Python side
-		// applies to the storage listing. It also keeps out ".", "..", hidden entries and "/".
-		// The D modifier stops "$" from accepting a trailing newline.
-		if (!is_string($entry) || preg_match('/^[A-Za-z0-9][A-Za-z0-9._-]*$/D', $entry) !== 1) {
+		if (!is_string($entry) || !isPlainCameraName($entry)) {
 			continue;
 		}
 
@@ -305,6 +310,111 @@ function formatBytes(float $bytes): string
 }
 
 
+// From these shares of the disk on, the header warns in words as well as in colour.
+const STORAGE_WARN_PERCENT = 80.0;
+const STORAGE_CRITICAL_PERCENT = 90.0;
+
+// The folders the nightly run fills; "manual-runs" holds the videos made by hand.
+const AUTOMATIC_VIDEO_FOLDERS = ["daily", "weekly", "monthly", "yearly"];
+
+// Bytes of the regular files under a folder. Links are skipped so a link cannot count a file that
+// lies elsewhere; a subfolder that cannot be read is left out.
+function directoryBytes(string $directory): int
+{
+	if (!is_dir($directory) || !is_readable($directory)) {
+		return 0;
+	}
+
+	$files = new RecursiveIteratorIterator(
+		new RecursiveDirectoryIterator($directory, FilesystemIterator::SKIP_DOTS),
+		RecursiveIteratorIterator::LEAVES_ONLY,
+		RecursiveIteratorIterator::CATCH_GET_CHILD,
+	);
+
+	$bytes = 0;
+
+	foreach ($files as $file) {
+		if ($file->isFile() && !$file->isLink()) {
+			$bytes += $file->getSize();
+		}
+	}
+
+	return $bytes;
+}
+
+// Size of videos/ per camera, split into the automatic videos, the manual ones and the rest
+// (highlight pictures, anything else). Every camera folder counts, ignored cameras too: the disk
+// is filled by what lies on it.
+function getVideoStorage(): array
+{
+	$videoRoot = projectRoot() . "/videos";
+	$storage = ["cameras" => [], "automatic" => 0, "manual" => 0, "other" => 0, "total" => 0];
+	$entries = is_dir($videoRoot) ? scandir($videoRoot) : false;
+
+	if ($entries === false) {
+		return $storage;
+	}
+
+	foreach ($entries as $entry) {
+		$directory = $videoRoot . "/" . $entry;
+
+		if (!isPlainCameraName($entry) || is_link($directory) || !is_dir($directory)) {
+			continue;
+		}
+
+		$automatic = 0;
+
+		foreach (AUTOMATIC_VIDEO_FOLDERS as $folder) {
+			$automatic += directoryBytes($directory . "/" . $folder);
+		}
+
+		$manual = directoryBytes($directory . "/manual-runs");
+		$total = directoryBytes($directory);
+
+		$storage["cameras"][$entry] = [
+			"automatic" => $automatic,
+			"manual" => $manual,
+			"other" => $total - $automatic - $manual,
+			"total" => $total,
+		];
+
+		$storage["automatic"] += $automatic;
+		$storage["manual"] += $manual;
+		$storage["other"] += $total - $automatic - $manual;
+		$storage["total"] += $total;
+	}
+
+	return $storage;
+}
+
+function storageLevel(float $usedPercent): string
+{
+	if ($usedPercent >= STORAGE_CRITICAL_PERCENT) {
+		return "critical";
+	}
+
+	return $usedPercent >= STORAGE_WARN_PERCENT ? "warn" : "ok";
+}
+
+// The disk as four parts for the small donut: automatic videos, manual videos, the rest of the
+// used space (system, models, logs, highlights) and the free space. File sizes and disk figures are
+// read at different moments, so the rest is clamped at 0 and the free part takes what is left.
+function storageSegments(float $total, float $available, int $automatic, int $manual): array
+{
+	$used = max(0.0, $total - $available);
+	$other = max(0, (int) round($used) - $automatic - $manual);
+	$free = max(0, (int) round($total) - $automatic - $manual - $other);
+
+	$percentOf = static fn(int $bytes): float => $total > 0 ? round($bytes / $total * 100, 1) : 0.0;
+
+	return [
+		["key" => "automatic", "bytes" => $automatic, "percent" => $percentOf($automatic)],
+		["key" => "manual", "bytes" => $manual, "percent" => $percentOf($manual)],
+		["key" => "other", "bytes" => $other, "percent" => $percentOf($other)],
+		["key" => "free", "bytes" => $free, "percent" => $percentOf($free)],
+	];
+}
+
 function getStorageUsage(): ?array
 {
 	$videoRoot = projectRoot() . "/videos";
@@ -322,11 +432,16 @@ function getStorageUsage(): ?array
 		? ($used / $total) * 100
 		: 0;
 
+	$videos = getVideoStorage();
+
 	return [
 		"total" => formatBytes($total),
 		"used" => formatBytes($used),
 		"available" => formatBytes($available),
 		"usedPercent" => round($usedPercent, 1),
+		"level" => storageLevel($usedPercent),
+		"videos" => formatBytes($videos["total"]),
+		"segments" => storageSegments($total, $available, $videos["automatic"], $videos["manual"]),
 	];
 }
 
