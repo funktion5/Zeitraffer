@@ -15,7 +15,7 @@ declare(strict_types=1);
 
 <dialog id="confirm-delete-dialog">
 	<h2 id="confirm-delete-title"><?= htmlspecialchars($deleteDialogTitle, ENT_QUOTES, "UTF-8") ?></h2>
-	<p id="confirm-delete-message"></p>
+	<p id="confirm-delete-message" role="alert"></p>
 
 	<form method="dialog">
 		<button type="submit">Abbrechen</button>
@@ -87,6 +87,8 @@ declare(strict_types=1);
 			if (!result.deleted) {
 				deleteDialogMessage.textContent = result.message;
 				deleteDialogConfirmButton.hidden = true;
+				// The focused button just vanished: keep focus in the dialog, on the one button left.
+				deleteDialog.querySelector('button[type="submit"]').focus();
 				return;
 			}
 
