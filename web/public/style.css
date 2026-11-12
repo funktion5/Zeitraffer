@@ -1292,8 +1292,6 @@ video {
 /* Video creation                                                             */
 /* -------------------------------------------------------------------------- */
 
-.video-rebuild,
-.video-publish,
 .video-create {
 	grid-column: 1 / -1;
 
