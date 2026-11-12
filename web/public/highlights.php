@@ -445,8 +445,9 @@ function highlightBoxStyle(array $item): string
 				return;
 			}
 
-			// Keep the keyboard where the image was.
-			viewerLinks[Math.min(index, viewerLinks.length - 1)]?.focus();
+			// Keep the keyboard where the image was; with none left, at the top controls.
+			const nextLink = viewerLinks[Math.min(index, viewerLinks.length - 1)];
+			(nextLink ?? document.querySelector("#highlights-show-boxes")).focus();
 		});
 
 		if (typeof viewer.showModal === "function") {
