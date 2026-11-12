@@ -5,10 +5,12 @@ recognises within the given years (yearly-backfill applies the 12:00 window late
 are counted, never guessed. Existing files are kept, so a later tar cannot overwrite a picture
 from a year zip. Unreadable inner zips are reported and skipped. See docs/nas.md.
 
-Usage: .venv/bin/python3 zip_extract.py <zip name> <camera> <first year> <last year>
+Usage (the folder with the zips is TIMELAPSE_NAS_ARCHIVE):
+	.venv/bin/python3 zip_extract.py <zip name> <camera> <first year> <last year>
 """
 
 import collections
+import os
 import sys
 import tarfile
 import zipfile
@@ -20,7 +22,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.images import extract_date  # noqa: E402
 
-ARCHIVE = Path("/mnt/nas/storagebox-mirror/webcam-bis-2023/Cafe-am-Meer-Promenade/webcam-archive")
+archive_setting = os.environ.get("TIMELAPSE_NAS_ARCHIVE", "")
+
+if not archive_setting:
+	sys.exit("Set TIMELAPSE_NAS_ARCHIVE to the folder with the camera zips (below the NAS mount).")
+
+ARCHIVE = Path(archive_setting)
 
 zip_name, camera, first_year, last_year = (
 	sys.argv[1],
