@@ -7,8 +7,8 @@ only if something is found is the original backed up on the box (it must be exac
 bytes), the copy blurred, uploaded and swapped in. Images without findings cause no write at all.
 Newest first, so after an outage the image the website shows next is done first.
 
-Everything goes over SSH with timeouts, never through the SSHFS mount (it can hang or serve stale
-data); every write goes through BoxWriter. Anything unclear leaves the image as it is and is
+Everything goes over SSH with timeouts, so a stalled box cannot hang the round; every write goes
+through BoxWriter. Anything unclear leaves the image as it is and is
 retried next round; images that can never be written (too old, unknown name) are recorded as
 ``refused`` and logged as errors, never skipped silently.
 """
@@ -209,8 +209,8 @@ def record_processed(state_root: Path, camera: str, entry: dict, now: datetime) 
 
 
 # The state of the given images wherever it was written. A backfilled image sits on the page of its
-# own month, which load_processed (the last few days only) would never look at. The nightly and live
-# rounds record an image on the page of the round's time, up to LISTED_DAYS - 1 days after its date:
+# own month, which load_processed (the last few days only) would never look at. The nightly
+# round records an image on the page of the round's time, up to LISTED_DAYS - 1 days after its date:
 # a frame of the last day of a month can sit on the next month's page. So those pages are read too,
 # or the frame would look new and be backed up a second time.
 def load_processed_for_names(
@@ -248,8 +248,9 @@ def _as_lists(boxes: list) -> list[list]:
 	]
 
 
-# One image from download to swap. Returns "blurred", "clean" or "settling"; anything else raises
-# and leaves the image as it is: BoxWriteRefused (never writable) or IMAGE_ERRORS (retried).
+# One image from download to swap. Returns "blurred", "clean", "settling" or ALREADY_BLURRED;
+# anything else raises and leaves the image as it is: BoxWriteRefused (never writable) or
+# IMAGE_ERRORS (retried).
 def _process_image(
 	writer: BoxWriter,
 	camera: str,
@@ -343,8 +344,8 @@ def _process_image(
 
 # One image of a round: finish an interrupted swap, wait for an upload that is still settling,
 # otherwise judge it and write it. Whatever goes wrong leaves the image as it is, and the outcome
-# goes into the summary. recorded_at picks the state page: the round's time for the nightly and live
-# rounds, the image's own time for a backfill.
+# goes into the summary. recorded_at picks the state page: the round's time for the nightly
+# round, the image's own time for a backfill.
 def _handle_image(
 	writer: BoxWriter,
 	camera: str,

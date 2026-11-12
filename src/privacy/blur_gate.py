@@ -1,4 +1,4 @@
-"""The blur gate of a public video built from older frames (the automatic Monthly and Yearly).
+"""The blur gate of an automatic public video (Daily, Monthly, Yearly; the Weekly inherits it).
 
 A video of a blur camera goes public, so it may only contain frames the box blur job has confirmed
 (blurred, clean or night). Unconfirmed frames are left out, not blurred here: this module only reads

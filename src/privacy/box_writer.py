@@ -1,11 +1,12 @@
 """The only code allowed to write to the storage box.
 
 Everything else only reads the camera images (through the frame source). This module writes over SSH
-with exactly three operations - back up an image, upload a blurred copy under a temporary name,
-swap it in - and nothing else: no delete, no general "run a command" function.
+with exactly three write operations - back up an image, upload a blurred copy under a temporary
+name, swap it in - and nothing else: no delete, no general "run a command" function. Its reads
+(``fetch``, ``list_backups``, ``camera_exists``, ``image_hash``) change nothing on the box.
 
 Safety rules, in the order they are enforced:
-- Cameras must be in the allow-list given at construction (``privacy.blur_cameras`` later).
+- Cameras must be in the allow-list given at construction (``privacy.blur_cameras``).
 - Camera and file names must match a strict character set and a known image filename format, so
   every remote command is built from plain tokens and never needs shell quoting.
 - Backups are content-addressed (``original/<stem>.<sha16>.jpg``). They are copied to a hidden
@@ -367,7 +368,7 @@ class BoxWriter:
 		return self._exists(self._camera_directory(camera))
 
 	# Read-only: copy an image from the box into the work folder. The judged bytes come from where
-	# they will be written, never from the SSHFS mount, which can hang or serve stale data.
+	# they will be written, so they are exactly the bytes that get backed up.
 	def fetch(self, camera: str, name: str, local_file: Path) -> None:
 		image_path = self._image_path(camera, name)
 		_check_remote_path(image_path)
@@ -456,7 +457,7 @@ class BoxWriter:
 		):
 			raise BoxWriteRefused(f"Upload source is not a complete JPEG: {local}")
 
-		# Validates the backup record before anything leaves the Pi.
+		# Validates the backup record before anything leaves this host.
 		self._backup_path(backup)
 		temporary_path = self._temporary_path(backup.camera, backup.name)
 		_check_remote_path(temporary_path)
