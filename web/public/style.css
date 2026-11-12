@@ -74,6 +74,12 @@ a:hover {
 	color: var(--color-primary-hover);
 }
 
+/* One focus ring for every control; a component only sets its own when it needs another. */
+:where(a, button, input, select, summary):focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
+}
+
 h1,
 h2,
 h3,
@@ -145,11 +151,6 @@ ul {
 	margin-right: auto;
 }
 
-.main-header nav a:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 .main-header nav a[aria-current="page"] {
 	background: var(--color-surface-light);
 	border-color: var(--color-primary-dark);
@@ -205,14 +206,6 @@ ul {
 	color: var(--color-text);
 
 	font: inherit;
-}
-
-.settings-field input:focus-visible,
-.settings-cameras input:focus-visible,
-.settings-default-button:focus-visible,
-.settings-bar button:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 /* Colour is not the only sign of an error: the message is text and the field says aria-invalid. */
@@ -325,11 +318,6 @@ ul {
 
 	color: var(--color-text);
 	font-weight: 600;
-}
-
-.settings-tabs a:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 
@@ -640,12 +628,6 @@ ul {
 	color: var(--color-text);
 
 	font: inherit;
-}
-
-.privacy-box-row input:focus-visible,
-.privacy-noscript-confirm input:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 #privacy-confirm {
@@ -1172,11 +1154,6 @@ video {
 	color: var(--color-danger);
 }
 
-.video-library-delete:focus-visible {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
-}
-
 .video-library-delete svg {
 	width: 14px;
 	height: 14px;
@@ -1223,12 +1200,6 @@ video {
 
 .delete-video-button:hover {
 	background: var(--color-danger-tint);
-}
-
-.delete-video-button:focus-visible,
-.download-video-button:focus-visible {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
 }
 
 .delete-video-button svg,
@@ -1375,11 +1346,6 @@ input[type="date"] {
 	font: inherit;
 }
 
-input[type="date"]:focus {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
-}
-
 button {
 	width: fit-content;
 
@@ -1461,11 +1427,6 @@ button:disabled {
 
 .video-tools > summary:hover {
 	background: var(--color-surface-light);
-}
-
-.video-tools > summary:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 /* Open: the two sections follow the bar with the page's usual gap. */
@@ -1769,14 +1730,6 @@ body > section li a:hover {
 	font: inherit;
 }
 
-.highlights-filter select:focus-visible,
-.highlights-filter button:focus-visible,
-.highlights-toggle input:focus-visible,
-.highlights-viewer-toggle input:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 .highlights-error {
 	width: fit-content;
 	padding: 0.6rem 0.8rem;
@@ -1848,11 +1801,6 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 	display: block;
 	border-radius: var(--radius-small);
 	cursor: zoom-in;
-}
-
-.highlights-open:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 .highlights-viewer {
@@ -1952,11 +1900,6 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 	color: var(--color-danger);
 }
 
-.highlights-viewer-icon:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 /* A narrow dialog stacks the three groups, centred. */
 @media (max-width: 40rem) {
 	.highlights-viewer-nav {
@@ -1972,11 +1915,6 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 
 .highlights-viewer-nav button[hidden] {
 	display: none;
-}
-
-.highlights-viewer-nav button:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 .highlights-grid figcaption {
