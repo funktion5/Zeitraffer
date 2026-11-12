@@ -20,6 +20,7 @@
 
 	--color-success: #52c7a5;
 	--color-danger: #df7171;
+	--color-danger-tint: rgb(223 113 113 / 12%);
 	--color-warning: #e3b341;
 	--color-manual: #a995e8;
 	--color-highlight: #e07ab8;
@@ -361,7 +362,7 @@ ul {
 	margin: 0;
 	padding: 0.8rem 1rem;
 
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border: 1px solid var(--color-danger);
 	border-radius: var(--radius-small);
 }
@@ -560,7 +561,7 @@ ul {
 }
 
 .privacy-box-row .privacy-box-remove:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 }
 
 .privacy-boxes-empty {
@@ -1165,7 +1166,7 @@ video {
 }
 
 .video-library-delete:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border-color: var(--color-danger);
 
 	color: var(--color-danger);
@@ -1221,7 +1222,7 @@ video {
 }
 
 .delete-video-button:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 }
 
 .delete-video-button:focus-visible,
@@ -1555,7 +1556,7 @@ button:disabled {
 
 	padding: 0.6rem 0.8rem;
 
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border: 1px solid var(--color-danger);
 	border-radius: var(--radius-small);
 
@@ -1945,7 +1946,7 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 }
 
 .highlights-viewer-delete:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border-color: var(--color-danger);
 
 	color: var(--color-danger);
