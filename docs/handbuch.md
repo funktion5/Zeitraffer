@@ -580,7 +580,7 @@ gehört `root` (dann verweigert die Seite den Start bewusst).
 | Code | Bedeutung |
 |---|---|
 | 66 | Die Kamera steht nicht in der Kameraliste `state/web-jobs/cameras.json` |
-| 64 | Ungültige Eingabe (Datum, Job, Zeitpuffer oder Zeitfenster) |
+| 64 | Ungültige Eingabe (Datum, Job, Zeitfenster oder Zahl der Argumente) |
 | 69 | Worker oder Status-Hilfsskript unter `/usr/local/libexec/` fehlt |
 
 **Lösung:** Bei 66 [Kameraliste leer](#kameraliste-leer); bei 69

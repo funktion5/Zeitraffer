@@ -23,6 +23,10 @@ if (!in_array($camera, $availableCameras, true)) {
 // A manual video of these cameras (any job type) blurs its frames first and takes longer.
 $cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
 
+// The daylight buffer of a manual Daily/Weekly is the saved setting: the form names it, never asks.
+$savedDaylightBuffer = getManualDaylightBuffer();
+$jobHints = array_map(static fn($value) => $value ?? "?", getJobHintValues());
+
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
 $automaticVideos = $camera === "" ? [] : findVideos($camera, "");
 // What an upload would send (the upload section lists it and is absent when it is empty).
@@ -55,12 +59,6 @@ $allowedJobs = [
   "weekly",
   "monthly",
   "yearly",
-];
-
-$allowedDaylightBuffers = [
-  "30",
-  "60",
-  "90",
 ];
 
 // Single source of truth for "which job types use a daylight buffer at all" —
@@ -154,14 +152,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	// ----------------------------------------------------------------------
 	} elseif ($submittedAction === "create-video") {
 		$submittedDate = $_POST["target_date"] ?? null;
-		$submittedBuffer = $_POST["daylight_buffer_minutes"] ?? null;
 		$submittedWindow = $_POST["interval_window"] ?? null;
 		$submittedWindowTolerance = $_POST["window_tolerance_minutes"] ?? null;
 		$jobUsesIntervalWindow = in_array($submittedJob, $intervalWindowJobs, true);
 		$windowIsSunset = $jobUsesIntervalWindow && $submittedWindow === "sunset";
-		// Only Daily/Weekly's image selection actually consults the daylight
-		// buffer; Monthly/Yearly must never receive one, regardless of what
-		// a client sends (the radio group is only ever shown for the other two).
+		// Only Daily/Weekly's image selection consults the daylight buffer, and it is the saved
+		// setting: a buffer sent by a client (an old tab) is never read.
 		$jobUsesDaylightBuffer = in_array($submittedJob, $daylightBufferJobs, true);
 
 		if (
@@ -176,14 +172,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		) {
 			$formMessage = "Das Zieldatum ist ungültig.";
 
-		} elseif (
-			$jobUsesDaylightBuffer
-			&& (
-				!is_string($submittedBuffer)
-				|| !in_array($submittedBuffer, $allowedDaylightBuffers, true)
-			)
-		) {
-			$formMessage = "Der ausgewählte Zeitpuffer ist ungültig.";
+		} elseif ($jobUsesDaylightBuffer && $savedDaylightBuffer === null) {
+			$formMessage = "Die Einstellungen konnten nicht gelesen werden.";
 
 		} elseif (
 			$jobUsesIntervalWindow
@@ -204,7 +194,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			$formMessage = "Die ausgewählte Fensterbreite ist ungültig.";
 
 		} else {
-			$daylightBufferMinutes = $jobUsesDaylightBuffer ? (int) $submittedBuffer : null;
+			// For the job watcher, which names the video it waits for after this buffer.
+			$daylightBufferMinutes = $jobUsesDaylightBuffer ? $savedDaylightBuffer : null;
 			// Only the sunset choice overrides the window; Daily/Weekly never get one.
 			$windowTime = $windowIsSunset ? "sunset" : null;
 			$windowToleranceMinutes = $windowIsSunset ? (int) $submittedWindowTolerance : null;
@@ -213,7 +204,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				$submittedJob,
 				$submittedDate,
 				$submittedCamera,
-				$daylightBufferMinutes,
 				$windowTime,
 				$windowToleranceMinutes,
 			);
@@ -612,8 +602,8 @@ unset($_SESSION["started_job"]);
 	                <li><strong>Monatlich:</strong> die 30 Tage bis einschließlich des gewählten Datums (kein Kalendermonat).</li>
 	                <li><strong>Jährlich:</strong> die 365 Tage bis einschließlich des gewählten Datums. Beispiel: Zieldatum 31.12.2025 ergibt das Jahr 2025.</li>
 	              </ul>
-	              <p>Monatlich braucht mindestens 25 der 30 Tage, Jährlich mindestens 300 Tage mit Bildern im gewählten Zeitfenster. Fehlende Tage werden im Video übersprungen; sind es zu viele, wird kein Video erstellt.</p>
-	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um 12:00 Uhr (±90 Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
+	              <p>Monatlich braucht mindestens <?= htmlspecialchars((string) $jobHints["monthlyMinDays"], ENT_QUOTES, "UTF-8") ?> der 30 Tage, Jährlich mindestens <?= htmlspecialchars((string) $jobHints["yearlyMinDays"], ENT_QUOTES, "UTF-8") ?> Tage mit Bildern im gewählten Zeitfenster. Fehlende Tage werden im Video übersprungen; sind es zu viele, wird kein Video erstellt.</p>
+	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um <?= htmlspecialchars((string) $jobHints["windowTime"], ENT_QUOTES, "UTF-8") ?> Uhr (±<?= htmlspecialchars((string) $jobHints["windowTolerance"], ENT_QUOTES, "UTF-8") ?> Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
 	            </div>
 
 	              <?php if ($formMessage !== null && !in_array($submittedAction, ["rebuild-jobs", "publish-camera"], true)): ?>
@@ -662,31 +652,20 @@ unset($_SESSION["started_job"]);
 	                </label>
 	              </fieldset>
 
-	              <fieldset id="daylight-buffer-fieldset" hidden>
-	                <legend>Zeitpuffer</legend>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="30">
-	                  30 Min.
-	                </label>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="60">
-	                  60 Min.
-	                </label>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="90" checked>
-	                  90 Min.
-	                </label>
-	              </fieldset>
+	              <p id="daylight-buffer-note" hidden>
+	                <?php if ($savedDaylightBuffer !== null): ?>
+	                  Zeitpuffer: <strong><?= $savedDaylightBuffer ?> Minuten</strong> (aus den Einstellungen)
+	                <?php else: ?>
+	                  Der Zeitpuffer aus den Einstellungen konnte nicht gelesen werden.
+	                <?php endif; ?>
+	              </p>
 
 	              <fieldset id="interval-window-fieldset" hidden>
 	                <legend>Zeitfenster</legend>
 
 	                <label>
 	                  <input type="radio" name="interval_window" value="default" checked>
-	                  Mittag (Standard, 12:00 Uhr ±90 Min.)
+	                  Mittag (Standard, <?= htmlspecialchars((string) $jobHints["windowTime"], ENT_QUOTES, "UTF-8") ?> Uhr ±<?= htmlspecialchars((string) $jobHints["windowTolerance"], ENT_QUOTES, "UTF-8") ?> Min.)
 	                </label>
 
 	                <label>
@@ -819,11 +798,10 @@ unset($_SESSION["started_job"]);
 	      window.history.replaceState(null, "", url);
 	    }
 
-	    // Monthly/Yearly use no daylight buffer, so the radio group starts hidden and shows only for
-	    // Daily/Weekly (display only: the server ignores a buffer sent with Monthly/Yearly). The list comes
-	    // from PHP ($daylightBufferJobs), so it cannot drift from what the server accepts.
+	    // Monthly/Yearly use no daylight buffer, so the note names it only for Daily/Weekly (display
+	    // only). The list comes from PHP ($daylightBufferJobs), so it cannot drift from the server.
 	    const daylightBufferJobs = <?= json_encode($daylightBufferJobs, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const daylightBufferFieldset = document.querySelector("#daylight-buffer-fieldset");
+	    const daylightBufferNote = document.querySelector("#daylight-buffer-note");
 	    const jobRadios = document.querySelectorAll('input[name="job"]');
 
 	    // Same idea for the Monthly/Yearly window: display convenience only, the
@@ -840,7 +818,7 @@ unset($_SESSION["started_job"]);
 	      const checkedWindow = document.querySelector('input[name="interval_window"]:checked');
 	      const showTolerance = showWindow && checkedWindow !== null && checkedWindow.value === "sunset";
 
-	      daylightBufferFieldset.hidden = !showBuffer;
+	      daylightBufferNote.hidden = !showBuffer;
 	      intervalWindowFieldset.hidden = !showWindow;
 	      windowToleranceFieldset.hidden = !showTolerance;
 	    }

@@ -9,7 +9,6 @@ function startVideoJob(
 	string $job,
 	string $targetDate,
 	string $camera,
-	?int $daylightBufferMinutes,
 	?string $windowTime = null,
 	?int $windowToleranceMinutes = null,
 ): array {
@@ -39,14 +38,9 @@ function startVideoJob(
 		$camera,
 	];
 
-	// Monthly/Yearly don't use a daylight buffer at all, so the argument is
-	// omitted entirely rather than passed as some placeholder value.
-	if ($daylightBufferMinutes !== null) {
-		$command[] = (string) $daylightBufferMinutes;
-	}
-
-	// Monthly/Yearly interval window: both values or neither, so the wrapper
-	// can tell it apart from a daylight buffer by argument count.
+	// A Daily/Weekly gets no daylight buffer here: the job uses the saved setting. Monthly/Yearly
+	// may add an interval window, both values or neither (the wrapper takes four arguments, or
+	// six with a window).
 	if ($windowTime !== null && $windowToleranceMinutes !== null) {
 		$command[] = $windowTime;
 		$command[] = (string) $windowToleranceMinutes;

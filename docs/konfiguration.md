@@ -82,7 +82,8 @@ Sonnenuntergang für das automatische Daily, abhängig vom Monat des Zieltags (S
 `"12"`, alle zwölf müssen vorhanden sein): Mai bis Juli 90, März, April, August und September 60, sonst 30 Minuten.
 Das automatische Weekly wird aus den Dailys zusammengesetzt und übernimmt den Puffer damit pro Tag.
 Historische Daily- und Weekly-Läufe nutzen dagegen immer den festen Wert `daylight_buffer_minutes`
-(oder den per CLI/Weboberfläche gewählten), weil dieser im Dateinamen steht.
+(oder den per CLI gewählten), weil dieser im Dateinamen steht. Die Weboberfläche fragt keinen
+Puffer ab, sie nimmt immer den gespeicherten Wert.
 `--daylight-buffer-minutes` überschreibt für einen Lauf beide Werte, auch bei automatischen Jobs.
 
 `interval_window` ist das tägliche Bildfenster für Monthly und Yearly: Zielzeit
