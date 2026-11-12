@@ -1038,16 +1038,6 @@ video {
 	border-radius: var(--radius-small);
 }
 
-.video-library summary {
-	padding: 0.75rem;
-
-	color: var(--color-text);
-	font-weight: 600;
-
-	cursor: pointer;
-	user-select: none;
-}
-
 .video-library details[open] summary {
 	border-bottom: 1px solid var(--color-border);
 }
