@@ -648,14 +648,7 @@ ul {
 }
 
 #privacy-confirm {
-	max-width: 36rem;
 	padding: 1.25rem;
-
-	background: var(--color-surface);
-	border: 1px solid var(--color-border-light);
-	border-radius: var(--radius-medium);
-
-	color: var(--color-text);
 }
 
 #privacy-confirm::backdrop {
