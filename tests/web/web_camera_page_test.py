@@ -308,6 +308,56 @@ def test_a_monthly_does_not_need_the_buffer_setting(tmp_path):
 	]
 
 
+# The hint texts name the real limits: config.json's values with settings.json laid over them, the
+# way the jobs read them, not numbers typed into the page.
+def write_hint_config(tmp_path: Path, saved: dict | None = None) -> None:
+	config_folder = tmp_path / "config"
+	config_folder.mkdir(parents=True, exist_ok=True)
+	(config_folder / "config.json").write_text(
+		json.dumps(
+			{
+				"min_coverage_days": {"monthly": 20, "yearly": 250},
+				"interval_window": {"target_time": "11:30", "tolerance_minutes": 45},
+			}
+		)
+	)
+
+	if saved is not None:
+		(config_folder / "settings.json").write_text(json.dumps(saved))
+
+
+def test_the_hints_name_the_configured_minimum_days_and_window(tmp_path):
+	write_hint_config(tmp_path)
+
+	out, _ = render(tmp_path)
+
+	assert "Monatlich braucht mindestens 20 der 30 Tage" in out
+	assert "Jährlich mindestens 250 Tage" in out
+	assert "um 11:30 Uhr (±45 Min.)" in out
+	assert "Mittag (Standard, 11:30 Uhr ±45 Min.)" in out
+	# The old typed-in numbers are gone.
+	assert "25 der 30" not in out
+	assert "300 Tage" not in out
+	assert "12:00" not in out
+
+
+def test_the_hints_follow_a_saved_setting(tmp_path):
+	write_hint_config(
+		tmp_path,
+		saved={
+			"min_coverage_days": {"monthly": 18},
+			"interval_window": {"target_time": "13:00"},
+		},
+	)
+
+	out, _ = render(tmp_path)
+
+	assert "mindestens 18 der 30 Tage" in out
+	# Only the saved key changes; the others stay as config.json has them.
+	assert "mindestens 250 Tage" in out
+	assert "um 13:00 Uhr (±45 Min.)" in out
+
+
 # A manual Daily, Monthly or Yearly of a camera in privacy.blur_cameras blurs its frames on the box
 # before the video is built, which takes longer: the form says so, only for those cameras.
 def write_blur_config(tmp_path: Path, cameras: list[str]) -> None:

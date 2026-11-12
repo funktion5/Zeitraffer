@@ -25,6 +25,7 @@ $cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
 
 // The daylight buffer of a manual Daily/Weekly is the saved setting: the form names it, never asks.
 $savedDaylightBuffer = getManualDaylightBuffer();
+$jobHints = array_map(static fn($value) => $value ?? "?", getJobHintValues());
 
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
 $automaticVideos = $camera === "" ? [] : findVideos($camera, "");
@@ -601,8 +602,8 @@ unset($_SESSION["started_job"]);
 	                <li><strong>Monatlich:</strong> die 30 Tage bis einschließlich des gewählten Datums (kein Kalendermonat).</li>
 	                <li><strong>Jährlich:</strong> die 365 Tage bis einschließlich des gewählten Datums. Beispiel: Zieldatum 31.12.2025 ergibt das Jahr 2025.</li>
 	              </ul>
-	              <p>Monatlich braucht mindestens 25 der 30 Tage, Jährlich mindestens 300 Tage mit Bildern im gewählten Zeitfenster. Fehlende Tage werden im Video übersprungen; sind es zu viele, wird kein Video erstellt.</p>
-	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um 12:00 Uhr (±90 Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
+	              <p>Monatlich braucht mindestens <?= htmlspecialchars((string) $jobHints["monthlyMinDays"], ENT_QUOTES, "UTF-8") ?> der 30 Tage, Jährlich mindestens <?= htmlspecialchars((string) $jobHints["yearlyMinDays"], ENT_QUOTES, "UTF-8") ?> Tage mit Bildern im gewählten Zeitfenster. Fehlende Tage werden im Video übersprungen; sind es zu viele, wird kein Video erstellt.</p>
+	              <p>Monatlich/Jährlich verwenden standardmäßig Bilder um <?= htmlspecialchars((string) $jobHints["windowTime"], ENT_QUOTES, "UTF-8") ?> Uhr (±<?= htmlspecialchars((string) $jobHints["windowTolerance"], ENT_QUOTES, "UTF-8") ?> Min.). Mit <strong>Sonnenuntergang</strong> liegt das Fenster an jedem Tag um dessen Sonnenuntergang und wandert so mit der Jahreszeit.</p>
 	            </div>
 
 	              <?php if ($formMessage !== null && !in_array($submittedAction, ["rebuild-jobs", "publish-camera"], true)): ?>
@@ -664,7 +665,7 @@ unset($_SESSION["started_job"]);
 
 	                <label>
 	                  <input type="radio" name="interval_window" value="default" checked>
-	                  Mittag (Standard, 12:00 Uhr ±90 Min.)
+	                  Mittag (Standard, <?= htmlspecialchars((string) $jobHints["windowTime"], ENT_QUOTES, "UTF-8") ?> Uhr ±<?= htmlspecialchars((string) $jobHints["windowTolerance"], ENT_QUOTES, "UTF-8") ?> Min.)
 	                </label>
 
 	                <label>

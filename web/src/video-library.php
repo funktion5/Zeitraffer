@@ -63,6 +63,26 @@ function getManualDaylightBuffer(): ?int
 	return is_int($value) && $value >= 0 && $value <= 240 ? $value : null;
 }
 
+// The numbers the camera page's hint texts name, as the jobs read them (config.json with the saved
+// settings over it). A value that is missing or malformed stays null; the page then prints "?".
+function getJobHintValues(): array
+{
+	$config = readProjectConfig();
+	$monthlyDays = $config["min_coverage_days"]["monthly"] ?? null;
+	$yearlyDays = $config["min_coverage_days"]["yearly"] ?? null;
+	$windowTime = $config["interval_window"]["target_time"] ?? null;
+	$windowTolerance = $config["interval_window"]["tolerance_minutes"] ?? null;
+
+	return [
+		"monthlyMinDays" => is_int($monthlyDays) && $monthlyDays >= 1 ? $monthlyDays : null,
+		"yearlyMinDays" => is_int($yearlyDays) && $yearlyDays >= 1 ? $yearlyDays : null,
+		"windowTime" => is_string($windowTime) && preg_match('/^([01][0-9]|2[0-3]):[0-5][0-9]$/', $windowTime) === 1
+			? $windowTime
+			: null,
+		"windowTolerance" => is_int($windowTolerance) && $windowTolerance >= 1 ? $windowTolerance : null,
+	];
+}
+
 // The names end up in file paths, so only plain names pass: the pattern the Python side applies to
 // the storage listing. It also keeps out ".", "..", hidden entries and "/". The D modifier stops
 // "$" from accepting a trailing newline.
