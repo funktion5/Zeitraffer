@@ -3,9 +3,9 @@
 set -euo pipefail
 
 # Saves the values of the web UI settings page. Unlike the rebuild trigger this is synchronous and
-# takes no run lock: the writer replaces config/settings.json in one atomic step, and a running job
-# has already read its config. The values arrive as ONE JSON argument (the PHP process runner has no
-# stdin), go to the writer on stdin, and never end up on a command line.
+# takes no run lock: the writer replaces the scope's settings file in one atomic step, and a
+# running job has already read its config. The values arrive as ONE JSON argument (the PHP process
+# runner has no stdin), go to the writer on stdin, and never end up on a command line.
 
 # Default: ~/timelapse of the account this runs as (sudo -u). Looked up via getent because
 # sudo does not always reset HOME to the target user's home.

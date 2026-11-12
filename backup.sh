@@ -4,8 +4,8 @@
 # pulls and `crontab -l`. Nothing is written on the host.
 #
 # Usage:
-#   BACKUP_HOST=<ssh alias> ./backup.sh              models/, state/, config/settings.json and the
-#                                                    crontab (reference)
+#   BACKUP_HOST=<ssh alias> ./backup.sh              models/, state/, the settings files in config/
+#                                                    and the crontab (reference)
 #   BACKUP_HOST=<ssh alias> VIDEOS=1 ./backup.sh     plus videos/ (several GB; the nightly run
 #                                                    builds new ones, so they are optional)
 #

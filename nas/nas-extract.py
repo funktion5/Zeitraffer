@@ -1,4 +1,4 @@
-"""Fetch the Monthly/Yearly window images of the NAS camera tar archives onto the Pi.
+"""Fetch the Monthly/Yearly window images of the NAS camera tar archives onto the host that runs it.
 
 The NAS is only reachable over FTP. Uploading unpacked images back costs one data connection
 per file (~3 min per tar), so instead each tar is streamed down once with `rclone cat` and only

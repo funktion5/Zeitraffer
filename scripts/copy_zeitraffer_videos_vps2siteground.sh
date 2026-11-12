@@ -1,13 +1,14 @@
 #!/bin/bash
 
 # Verwendung:
-# ./copy_zeitraffer_videos_vps2siteground.sh [<kamera>] [--run]
+# ./copy_zeitraffer_videos_vps2siteground.sh [<kamera>] [--run] [--list-file <datei>]
 #
 # Beispiel:
 # ./copy_zeitraffer_videos_vps2siteground.sh --run
 # ./copy_zeitraffer_videos_vps2siteground.sh "Scheunenviertel" --run
 #
 # Ohne <kamera> werden alle Kameras der Liste nacheinander bearbeitet.
+# Mit --list-file wird die Liste aus der Datei gelesen statt aus der Liste der freigegebenen Videos.
 # Ohne --run ist es ein Trockenlauf: Es wird nichts gesendet oder gelöscht.
 #
 # Ablauf:
