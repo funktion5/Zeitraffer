@@ -1,12 +1,11 @@
 """Fetch the Monthly/Yearly window images of the NAS camera tar archives onto the host that runs it.
 
-The NAS is only reachable over FTP. Uploading unpacked images back costs one data connection
-per file (~3 min per tar), so instead each tar is streamed down once with `rclone cat` and only
+The NAS is only reachable over FTP, so each tar is streamed down once with `rclone cat` and only
 the .jpg members inside the interval window are written flat (basename only) to
 <output>/<camera>/. yearly-backfill.py then reads them via TIMELAPSE_CAMERA_ROOT=<output>.
 Finished tars are recorded per window, so a stopped run resumes. Never writes to the NAS.
+See docs/nas.md.
 
-Run from anywhere:
 	.venv/bin/python3 nas/nas-extract.py --cameras BSV-Steinhude
 	.venv/bin/python3 nas/nas-extract.py --all-cameras [--exclude A B] [--limit N]
 		[--window-time HH:MM|sunset] [--window-tolerance-minutes N]

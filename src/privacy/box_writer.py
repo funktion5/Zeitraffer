@@ -1,23 +1,10 @@
 """The only code allowed to write to the storage box.
 
-Everything else only reads the camera images (through the frame source). This module writes over SSH
-with exactly three write operations - back up an image, upload a blurred copy under a temporary
-name, swap it in - and nothing else: no delete, no general "run a command" function. Its reads
-(``fetch``, ``list_backups``, ``camera_exists``, ``image_hash``) change nothing on the box.
-
-Safety rules, in the order they are enforced:
-- Cameras must be in the allow-list given at construction (``privacy.blur_cameras``).
-- Camera and file names must match a strict character set and a known image filename format, so
-  every remote command is built from plain tokens and never needs shell quoting.
-- Backups are content-addressed (``original/<stem>.<sha16>.jpg``). They are copied to a hidden
-  temporary name, verified, and only then renamed with ``mv -n``: a power cut mid-copy leaves at
-  most a temporary file that the next round overwrites, never a broken backup under the final
-  name, and an existing backup is never overwritten.
-- Every write is verified by SHA-256 afterwards; the image is only replaced while the image
-  itself and its backup still hash to the recorded original.
-- "File missing" is only believed when the box says so explicitly; any other failure stops.
-- Proportion: only images whose filename time lies in the last ``max_image_age`` are backed up,
-  and at most ``max_backups_per_camera`` per run - independent of whatever scan feeds this.
+Three write operations, nothing else: back up an image, upload a blurred copy under a temporary
+name, swap it in. There is no delete and no general "run a command" function, and tests make sure
+no other module can write to the box. The reads (``fetch``, ``list_backups``, ``camera_exists``,
+``image_hash``) change nothing. The safety rules (allowed commands, name and age limits, backup
+cap, SHA-256 checks) are in docs/verpixelung-box.md, "Sicherheitsregeln".
 """
 
 import hashlib

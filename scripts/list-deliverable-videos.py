@@ -1,13 +1,9 @@
-"""List the video files that may be copied to the website.
-
-Prints one path per line, relative to the videos folder, ready for rsync:
-	.venv/bin/python3 scripts/list-deliverable-videos.py > deliverable.txt
-	rsync -a --files-from=deliverable.txt videos/ <target>
+"""List the video files that may be copied to the website, one path per line.
 
 Per camera and period only the newest video is listed, chosen by file name like the WordPress
 plugin does. Only regular, non-empty, non-hidden .mp4 files directly in
 videos/<camera>/{daily,weekly,monthly,yearly}/ count, and never those of a camera in
-ignored_cameras. Everything else in videos/ (test renders, highlights, leftovers) stays out.
+ignored_cameras. See docs/betrieb.md and docs/wordpress.md.
 """
 
 import sys

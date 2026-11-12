@@ -1,14 +1,11 @@
 """Copy the pictures of one 2004-2008 camera zip into ~/nas-cameras/<camera>/.
 
-The old zips in webcam-archive hold year zips (monthly folders) and tars, nested inside one zip.
 Read-only over the rclone mount /mnt/nas. Keeps every file whose name src.images.extract_date
-recognises (yearly-backfill applies the 12:00 +-90 min window later) within the given years;
-unknown names are counted, never guessed. Existing files are kept, so a later tar cannot
-overwrite a picture from a year zip. Unreadable inner zips (e.g. webcam1_bsv/2007.zip) are
-reported and skipped.
+recognises within the given years (yearly-backfill applies the 12:00 window later); unknown names
+are counted, never guessed. Existing files are kept, so a later tar cannot overwrite a picture
+from a year zip. Unreadable inner zips are reported and skipped. See docs/nas.md.
 
 Usage: .venv/bin/python3 zip_extract.py <zip name> <camera> <first year> <last year>
-Example: zip_extract.py webcam1_bsv.zip BSV-Steinhude 2004 2008
 """
 
 import collections

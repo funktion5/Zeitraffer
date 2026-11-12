@@ -1,12 +1,10 @@
 """Copy the pictures of a 2004-2008 camera zip that has no central directory.
 
-Four zips in webcam-archive (promenade, insektenmuseum, uferstrasse, scheunenviertel) end without
-a central directory, so zipfile cannot open them. Their entries carry a data descriptor (sizes
-unknown up front). This reads the zip front to back over the read-only mount /mnt/nas: deflated
-entries are inflated as a stream (zlib reports where each one ends, so no guessing at "PK"
-bytes inside compressed data), tars are read with tarfile in stream mode, inner zips are
-spilled to temp/ on disk. Same keep rules as zip_extract.py: only names src.images.extract_date
-knows, within the given years, existing files kept; unknown names are counted with samples.
+Some zips in webcam-archive end without a central directory, so zipfile cannot open them, and
+their entries carry no sizes up front. This reads the zip front to back over the read-only mount
+/mnt/nas: deflated entries are inflated as a stream (zlib reports where each one ends), tars are
+read in stream mode, inner zips are spilled to temp/. Same keep rules as zip_extract.py.
+See docs/nas.md.
 
 Usage: .venv/bin/python3 seqzip_extract.py <zip name> <camera> <first year> <last year>
 """

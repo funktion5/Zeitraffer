@@ -1,14 +1,9 @@
-"""The preview picture of the web UI's Verpixelung page: one frame of a blur camera.
+"""The preview picture of the Verpixelung page: one frame of a blur camera.
 
-The page lets colleagues draw ignore boxes on a real picture of the camera. The picture is never a
-raw frame the blur job has not seen: only a frame the box blur job has judged (blurred or clean) is
-a candidate. A night frame is recorded without running the detector, so it is never shown. A frame
-is shown only if the bytes on the box are the ones the job recorded.
-
-The frame is fetched with the frame source (this module starts no ssh itself), checked, and cached
-under state/web-jobs/previews/ with a short description, where the web server user can read it. The
-web server reads the picture's size from the picture itself. It cannot reach the Storage Box, so the
-root-owned wrapper timelapse-web-preview runs this as the run user.
+Only a frame the box blur job has already judged (blurred or clean) is shown, and only if the bytes
+on the box are the ones the job recorded. The frame is fetched with the frame source, checked and
+cached under state/web-jobs/previews/. The web server user cannot reach the Storage Box, so the
+root-owned wrapper timelapse-web-preview runs this as the run user. See docs/weboberflaeche.md.
 """
 
 import argparse

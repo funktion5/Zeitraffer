@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# Nightly run on the VPS. The pipeline fetches its frames over ssh by itself, so this wrapper
-# writes the camera list for the web pages, runs the automatic pipeline once for every camera, and
-# then verifies what came out: the exit code, the job summaries, the cameras the log names as
-# failed, and every new video. A failing camera never stops the others; the exit code and the
-# report tell.
+# Nightly run on the VPS: writes the camera list for the web pages, runs the automatic pipeline
+# once per camera, then verifies the result (exit code, job summaries, failed cameras, every new
+# video). A failing camera never stops the others.
 #
 # Exit codes: 0 = everything ran and verified; 1 = the run or some cameras failed; 2 = fatal (the
 # camera list could not be written, or is empty); 64 = bad setting; 70 = project folder unusable;

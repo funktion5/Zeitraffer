@@ -1,16 +1,10 @@
 """Blur people and licence plates in new camera images on the storage box, in place.
 
-One round per run (cron). Per camera in ``privacy.blur_cameras``: list today's and the two
-previous days' images with their upload times over SSH, skip what the state file already has and
-record night images. Every settled daytime image is downloaded and detected on the local copy;
-only if something is found is the original backed up on the box (it must be exactly the judged
-bytes), the copy blurred, uploaded and swapped in. Images without findings cause no write at all.
-Newest first, so after an outage the image the website shows next is done first.
-
-Everything goes over SSH with timeouts, so a stalled box cannot hang the round; every write goes
-through BoxWriter. Anything unclear leaves the image as it is and is
-retried next round; images that can never be written (too old, unknown name) are recorded as
-``refused`` and logged as errors, never skipped silently.
+One round per run (cron), per camera in ``privacy.blur_cameras``. Only an image where the detector
+finds something is changed: its original is backed up first, then the blurred copy replaces it.
+Everything goes over SSH with timeouts, so a stalled box cannot hang the round, and every write
+goes through BoxWriter. Anything unclear leaves the image as it is and is retried next round.
+The flow is in docs/verpixelung-box.md, "Ablauf".
 """
 
 import argparse
