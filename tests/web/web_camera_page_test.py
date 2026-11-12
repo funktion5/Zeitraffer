@@ -193,18 +193,40 @@ def create_post(token: str = TOKEN) -> dict:
 		"camera": CAMERA,
 		"job": "daily",
 		"target_date": "2026-10-25",
-		"daylight_buffer_minutes": "60",
 	}
+
+
+# config/config.json with a daylight buffer, and optionally config/settings.json laid over it, the
+# way the pages and the jobs read them.
+def write_config(tmp_path: Path, buffer: int, saved_buffer: int | None = None) -> None:
+	config_folder = tmp_path / "config"
+	config_folder.mkdir(parents=True, exist_ok=True)
+	(config_folder / "config.json").write_text(json.dumps({"daylight_buffer_minutes": buffer}))
+
+	if saved_buffer is not None:
+		(config_folder / "settings.json").write_text(
+			json.dumps({"daylight_buffer_minutes": saved_buffer})
+		)
 
 
 # Post/Redirect/Get: the POST answers with a redirect only, the next page load hands the job to
 # the watcher exactly once, so a reload cannot start it again.
 def test_started_job_redirects_and_reaches_the_watcher_once(tmp_path):
+	write_config(tmp_path, 90, saved_buffer=60)
+
 	out, args = render(tmp_path, post=create_post())
 
 	assert out.strip() == ""
 	assert args[3] == "/usr/local/sbin/timelapse-web-trigger"
 	job_id = args[4]
+	# The page sends no buffer: the job reads the saved setting itself.
+	assert args[3:] == [
+		"/usr/local/sbin/timelapse-web-trigger",
+		job_id,
+		"daily",
+		"2026-10-25",
+		CAMERA,
+	]
 
 	out, _ = render(tmp_path)
 
@@ -218,6 +240,8 @@ def test_started_job_redirects_and_reaches_the_watcher_once(tmp_path):
 
 
 def test_busy_lock_keeps_the_form_page_with_its_message(tmp_path):
+	write_config(tmp_path, 90)
+
 	out, _ = render(tmp_path, post=create_post(), sudo_exit=75)
 
 	assert "Es läuft bereits ein anderer Zeitraffer-Auftrag." in out
@@ -226,6 +250,62 @@ def test_busy_lock_keeps_the_form_page_with_its_message(tmp_path):
 	out, _ = render(tmp_path)
 
 	assert '"jobId"' not in out
+
+
+# The form does not ask for a buffer any more: a manual Daily/Weekly uses the saved setting, and
+# the page says which one.
+def test_the_form_names_the_saved_buffer_instead_of_asking_for_one(tmp_path):
+	write_config(tmp_path, 90, saved_buffer=45)
+
+	out, _ = render(tmp_path)
+
+	assert 'name="daylight_buffer_minutes"' not in out
+	assert 'id="daylight-buffer-note"' in out
+	assert "Zeitpuffer: <strong>45 Minuten</strong>" in out
+
+
+# An old tab that still posts a buffer changes nothing: the value is ignored, not forwarded.
+def test_a_posted_buffer_is_ignored(tmp_path):
+	write_config(tmp_path, 90, saved_buffer=60)
+
+	out, args = render(tmp_path, post={**create_post(), "daylight_buffer_minutes": "30"})
+
+	assert out.strip() == ""
+	assert args[3:] == [
+		"/usr/local/sbin/timelapse-web-trigger",
+		args[4],
+		"daily",
+		"2026-10-25",
+		CAMERA,
+	]
+
+	out, _ = render(tmp_path)
+
+	assert '"bufferMinutes":60' in out
+
+
+# Without readable settings the page cannot name the buffer the job will use: it starts nothing.
+def test_a_daily_is_refused_when_the_settings_cannot_be_read(tmp_path):
+	out, args = render(tmp_path, post=create_post())
+
+	assert "Die Einstellungen konnten nicht gelesen werden." in out
+	assert args == []
+
+
+# Monthly and Yearly use a window, not a buffer: they do not need the buffer setting at all.
+def test_a_monthly_does_not_need_the_buffer_setting(tmp_path):
+	out, args = render(
+		tmp_path, post={**create_post(), "job": "monthly", "interval_window": "default"}
+	)
+
+	assert out.strip() == ""
+	assert args[3:] == [
+		"/usr/local/sbin/timelapse-web-trigger",
+		args[4],
+		"monthly",
+		"2026-10-25",
+		CAMERA,
+	]
 
 
 # A manual Daily, Monthly or Yearly of a camera in privacy.blur_cameras blurs its frames on the box

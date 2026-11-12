@@ -107,6 +107,7 @@ def run_web_worker(
 	existing_video: bool = False,
 	job: str = "daily",
 	daylight_buffer_minutes: str | None = "60",
+	reported_buffer: str | None = None,
 	window: tuple[str, str] | None = None,
 	expected_video_suffix: str | None = None,
 	python_stderr: str = "",
@@ -136,9 +137,20 @@ def run_web_worker(
 		video_path.write_text("existing video")
 
 	python_environment_file = tmp_path / "python-environment"
+	buffer_lookups_file = tmp_path / "buffer-lookups"
+	# A Daily/Weekly gets no buffer argument: the worker asks Python (python -c ...) for the saved
+	# setting. That question is answered here and kept out of the record of src.main's arguments.
+	setting_answer = (
+		reported_buffer if reported_buffer is not None else (daylight_buffer_minutes or "")
+	)
 	fake_python = tmp_path / "fake-python"
 	fake_python_lines = [
 		"#!/bin/bash",
+		'if [[ "${1-}" == "-c" ]]; then',
+		f'\techo asked >>"{buffer_lookups_file}"',
+		f"\techo {shlex.quote(setting_answer)}",
+		"\texit 0",
+		"fi",
 		f'printf "%s\\n" "$@" >"{python_arguments_file}"',
 		# What src.main would see of the frame source settings ("unset" when missing).
 		f'echo "${{TIMELAPSE_FRAME_SOURCE-unset}}" >"{python_environment_file}"',
@@ -192,9 +204,6 @@ def run_web_worker(
 		"Scheunenviertel",
 	]
 
-	if daylight_buffer_minutes:
-		command.append(daylight_buffer_minutes)
-
 	if window is not None:
 		command.extend(window)
 
@@ -208,6 +217,7 @@ def run_web_worker(
 
 	result.status_file = status_root / f"{job_id}.status"
 	result.video_path = video_path
+	result.buffer_lookups_file = buffer_lookups_file
 	result.python_arguments_file = python_arguments_file
 	result.python_environment_file = python_environment_file
 	result.reason_file = status_root / f"{job_id}.reason"
@@ -383,7 +393,6 @@ def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 			"weekly",
 			"2026-09-22",
 			"Scheunenviertel",
-			"60",
 		],
 		capture_output=True,
 		text=True,
@@ -400,7 +409,6 @@ def test_web_trigger_writes_running_and_launches_worker(tmp_path):
 		"weekly",
 		"2026-09-22",
 		"Scheunenviertel",
-		"60",
 	]
 
 
@@ -419,7 +427,6 @@ def test_web_trigger_rejects_busy_lock(tmp_path):
 				"daily",
 				"2026-09-22",
 				"Scheunenviertel",
-				"60",
 			],
 			capture_output=True,
 			text=True,
@@ -435,7 +442,7 @@ def test_web_trigger_rejects_busy_lock(tmp_path):
 
 def run_trigger(environment: dict, camera: str) -> subprocess.CompletedProcess:
 	return subprocess.run(
-		[str(WEB_TRIGGER), "a" * 32, "daily", "2026-09-22", camera, "60"],
+		[str(WEB_TRIGGER), "a" * 32, "daily", "2026-09-22", camera],
 		capture_output=True,
 		text=True,
 		env=environment,
@@ -545,44 +552,38 @@ def test_web_trigger_accepts_monthly_without_buffer(tmp_path):
 	]
 
 
-# A buffer supplied alongside Monthly/Yearly must be rejected outright.
-def test_web_trigger_rejects_buffer_with_monthly(tmp_path):
-	environment, _, invocation_file = prepare_web_trigger(tmp_path)
-	job_id = "2" * 32
-
-	result = subprocess.run(
-		[
-			str(WEB_TRIGGER),
-			job_id,
-			"monthly",
-			"2026-09-22",
-			"Scheunenviertel",
-			"60",
-		],
-		capture_output=True,
-		text=True,
-		env=environment,
-		check=False,
-	)
-
-	assert result.returncode == 64
-	assert result.stderr.strip() == "Monthly/Yearly do not use a daylight buffer."
-	assert not invocation_file.exists()
-
-
-# Daily/Weekly must reject a request missing the required buffer.
-def test_web_trigger_rejects_daily_without_buffer(tmp_path):
+# Daily/Weekly take no buffer: a manual video always uses the saved setting.
+@pytest.mark.parametrize("job", ["daily", "weekly"])
+def test_web_trigger_accepts_daily_and_weekly_without_a_buffer(tmp_path, job):
 	environment, _, invocation_file = prepare_web_trigger(tmp_path)
 	job_id = "3" * 32
 
 	result = subprocess.run(
-		[
-			str(WEB_TRIGGER),
-			job_id,
-			"daily",
-			"2026-09-22",
-			"Scheunenviertel",
-		],
+		[str(WEB_TRIGGER), job_id, job, "2026-09-22", "Scheunenviertel"],
+		capture_output=True,
+		text=True,
+		env=environment,
+		check=False,
+	)
+
+	wait_for_file_content(invocation_file)
+
+	assert result.returncode == 0
+	assert invocation_file.read_text().splitlines() == [
+		job_id,
+		job,
+		"2026-09-22",
+		"Scheunenviertel",
+	]
+
+
+# A buffer argument is refused for every job: four arguments are valid, or six with a window.
+@pytest.mark.parametrize("job", ["daily", "weekly", "monthly", "yearly"])
+def test_web_trigger_rejects_a_daylight_buffer_argument(tmp_path, job):
+	environment, _, invocation_file = prepare_web_trigger(tmp_path)
+
+	result = subprocess.run(
+		[str(WEB_TRIGGER), "2" * 32, job, "2026-09-22", "Scheunenviertel", "60"],
 		capture_output=True,
 		text=True,
 		env=environment,
@@ -590,7 +591,7 @@ def test_web_trigger_rejects_daily_without_buffer(tmp_path):
 	)
 
 	assert result.returncode == 64
-	assert result.stderr.strip() == "Invalid daylight buffer:"
+	assert result.stderr.startswith("Usage: timelapse-web-trigger")
 	assert not invocation_file.exists()
 
 
@@ -607,6 +608,44 @@ def test_web_worker_monthly_video_has_no_buffer_suffix(tmp_path):
 	assert result.returncode == 0
 	assert result.status_file.read_text() == "completed\n"
 	assert result.video_path.name == "Scheunenviertel_2026-09-22.mp4"
+	# Monthly/Yearly use no buffer, so the worker never asks for the setting.
+	assert not result.buffer_lookups_file.exists()
+
+
+# A Daily/Weekly gets no buffer argument: the worker reads the saved setting and names the video
+# after it, and src.main uses the same setting by itself (it is not passed on).
+@pytest.mark.parametrize("buffer", ["0", "45", "240"])
+def test_web_worker_takes_the_buffer_from_the_settings(tmp_path, buffer):
+	result = run_web_worker(
+		tmp_path, python_exit_code=0, publish_video=True, daylight_buffer_minutes=buffer
+	)
+
+	assert result.returncode == 0
+	assert result.status_file.read_text() == "completed\n"
+	assert result.video_path.name == f"Scheunenviertel_2026-09-22_{buffer}min.mp4"
+	assert result.python_arguments_file.read_text().splitlines() == [
+		"-m",
+		"src.main",
+		"--jobs",
+		"daily",
+		"--target-date",
+		"2026-09-22",
+		"--cameras",
+		"Scheunenviertel",
+	]
+
+
+# A buffer that cannot be read stops the job before src.main runs and says so in the status.
+@pytest.mark.parametrize("answer", ["oops", "", "241", "-5"])
+def test_web_worker_fails_when_the_buffer_setting_cannot_be_read(tmp_path, answer):
+	result = run_web_worker(
+		tmp_path, python_exit_code=0, publish_video=True, reported_buffer=answer
+	)
+
+	assert result.returncode == 69
+	assert result.status_file.read_text() == "failed\n"
+	assert "The daylight buffer setting could not be read." in result.stderr
+	assert not result.python_arguments_file.exists()
 
 
 # Monthly/Yearly may pass a window time plus tolerance through to the worker.
@@ -654,7 +693,7 @@ def test_web_trigger_accepts_monthly_with_window(tmp_path, window_time):
 		("yearly", "sunset", "0", "Invalid window tolerance: 0"),
 		("yearly", "sunset", "1000", "Invalid window tolerance: 1000"),
 		("yearly", "sunset", "-5", "Invalid window tolerance: -5"),
-		("daily", "sunset", "60", "Invalid daylight buffer:"),
+		("daily", "sunset", "60", "Daily/Weekly do not use an interval window."),
 	],
 )
 def test_web_trigger_rejects_invalid_window(tmp_path, job, window_time, tolerance, message):

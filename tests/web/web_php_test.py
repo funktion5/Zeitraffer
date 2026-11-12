@@ -442,11 +442,12 @@ def run_wrapper(tmp_path: Path, source: str, call: str, exit_code: int, out: str
 	return result, args
 
 
-def test_start_video_job_passes_daily_buffer_argument(tmp_path):
+# No job gets a daylight buffer from the page: a manual Daily/Weekly uses the saved setting.
+def test_start_video_job_passes_no_buffer_argument(tmp_path):
 	result, args = run_wrapper(
 		tmp_path,
 		"job-runner.php",
-		'startVideoJob("daily", "2026-03-05", "cam", 45)',
+		'startVideoJob("daily", "2026-03-05", "cam")',
 		0,
 	)
 
@@ -460,16 +461,15 @@ def test_start_video_job_passes_daily_buffer_argument(tmp_path):
 		"daily",
 		"2026-03-05",
 		"cam",
-		"45",
 	]
 
 
-# Monthly/Yearly send the window as two trailing arguments and no buffer.
+# Monthly/Yearly send the window as two trailing arguments.
 def test_start_video_job_passes_interval_window_arguments(tmp_path):
 	result, args = run_wrapper(
 		tmp_path,
 		"job-runner.php",
-		'startVideoJob("monthly", "2026-03-31", "cam", null, "sunset", 30)',
+		'startVideoJob("monthly", "2026-03-31", "cam", "sunset", 30)',
 		0,
 		out="accepted",
 	)
@@ -481,7 +481,7 @@ def test_start_video_job_passes_interval_window_arguments(tmp_path):
 # Exit 75 is the wrapper's "lock already held" code and gets its own message.
 def test_start_video_job_reports_busy_on_exit_75(tmp_path):
 	result, _ = run_wrapper(
-		tmp_path, "job-runner.php", 'startVideoJob("daily", "2026-03-05", "cam", 45)', 75
+		tmp_path, "job-runner.php", 'startVideoJob("daily", "2026-03-05", "cam")', 75
 	)
 
 	assert result == {
@@ -494,7 +494,7 @@ def test_start_video_job_reports_busy_on_exit_75(tmp_path):
 # Wrapper stderr is logged server-side only, never returned to the browser.
 def test_start_video_job_hides_wrapper_error_details(tmp_path):
 	result, _ = run_wrapper(
-		tmp_path, "job-runner.php", 'startVideoJob("daily", "2026-03-05", "cam", 45)', 1
+		tmp_path, "job-runner.php", 'startVideoJob("daily", "2026-03-05", "cam")', 1
 	)
 
 	assert result["started"] is False
@@ -544,7 +544,7 @@ def test_start_video_job_refuses_without_run_user(tmp_path):
 	result, args = run_wrapper(
 		tmp_path,
 		"job-runner.php",
-		'startVideoJob("daily", "2026-03-05", "cam", 45)',
+		'startVideoJob("daily", "2026-03-05", "cam")',
 		0,
 	)
 

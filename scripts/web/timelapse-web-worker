@@ -8,8 +8,8 @@ PROJECT_ROOT="${TIMELAPSE_PROJECT_ROOT:-$(getent passwd "$(id -un)" | cut -d: -f
 PYTHON="${TIMELAPSE_WEB_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 
-if [[ $# -lt 4 || $# -gt 6 ]]; then
-	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> [daylight-buffer-minutes | window-time window-tolerance-minutes]" >&2
+if [[ $# -ne 4 && $# -ne 6 ]]; then
+	echo "Usage: timelapse-web-worker <job-id> <job> <target-date> <camera> [window-time window-tolerance-minutes]" >&2
 	exit 64
 fi
 
@@ -17,13 +17,11 @@ JOB_ID="$1"
 JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
-DAYLIGHT_BUFFER_MINUTES="${5:-}"
 WINDOW_TIME=""
 WINDOW_TOLERANCE_MINUTES=""
 
-# Monthly/Yearly reuse positions 5/6 for the optional interval window.
+# Positions 5 and 6 are the optional interval window of a Monthly/Yearly.
 if [[ $# -eq 6 ]]; then
-	DAYLIGHT_BUFFER_MINUTES=""
 	WINDOW_TIME="$5"
 	WINDOW_TOLERANCE_MINUTES="$6"
 fi
@@ -47,25 +45,6 @@ case "$JOB" in
 	*)
 		echo "Invalid job: $JOB" >&2
 		exit 64
-		;;
-esac
-
-case "$JOB" in
-	daily|weekly)
-		case "$DAYLIGHT_BUFFER_MINUTES" in
-			30|60|90)
-				;;
-			*)
-				echo "Invalid daylight buffer: $DAYLIGHT_BUFFER_MINUTES" >&2
-				exit 64
-				;;
-		esac
-		;;
-	monthly|yearly)
-		if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
-			echo "Monthly/Yearly do not use a daylight buffer." >&2
-			exit 64
-		fi
 		;;
 esac
 
@@ -116,10 +95,20 @@ COMMAND=(
 
 VIDEO_SUFFIX=""
 
-if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
-	COMMAND+=(--daylight-buffer-minutes "$DAYLIGHT_BUFFER_MINUTES")
-	VIDEO_SUFFIX="_${DAYLIGHT_BUFFER_MINUTES}min"
-fi
+# A manual Daily/Weekly uses the saved daylight buffer; src.main reads it itself. The worker only
+# needs the value to name the video it waits for, so it asks the project's own config loader.
+case "$JOB" in
+	daily|weekly)
+		if ! DAYLIGHT_BUFFER_MINUTES="$(cd "$PROJECT_ROOT" && "$PYTHON" -c 'from src.config import load_config; print(load_config()["daylight_buffer_minutes"])' 2>/dev/null)" \
+			|| [[ ! "$DAYLIGHT_BUFFER_MINUTES" =~ ^([0-9]|[1-9][0-9]|1[0-9][0-9]|2[0-3][0-9]|240)$ ]]; then
+			echo "The daylight buffer setting could not be read." >&2
+			write_job_status "$JOB_ID" "failed" || true
+			exit 69
+		fi
+
+		VIDEO_SUFFIX="_${DAYLIGHT_BUFFER_MINUTES}min"
+		;;
+esac
 
 if [[ -n "$WINDOW_TIME" ]]; then
 	COMMAND+=(--window-time "$WINDOW_TIME" --window-tolerance-minutes "$WINDOW_TOLERANCE_MINUTES")

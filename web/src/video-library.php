@@ -54,6 +54,15 @@ function getBlurCameras(): array
 	return cameraNames(is_array($privacy) ? ($privacy["blur_cameras"] ?? []) : []);
 }
 
+// The daylight buffer in minutes that a manual Daily or Weekly uses (daylight_buffer_minutes:
+// config.json with the saved settings on top), or null when it is not a whole number from 0 to 240.
+function getManualDaylightBuffer(): ?int
+{
+	$value = readProjectConfig()["daylight_buffer_minutes"] ?? null;
+
+	return is_int($value) && $value >= 0 && $value <= 240 ? $value : null;
+}
+
 // The names end up in file paths, so only plain names pass: the pattern the Python side applies to
 // the storage listing. It also keeps out ".", "..", hidden entries and "/". The D modifier stops
 // "$" from accepting a trailing newline.

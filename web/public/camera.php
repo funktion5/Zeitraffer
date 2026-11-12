@@ -23,6 +23,9 @@ if (!in_array($camera, $availableCameras, true)) {
 // A manual video of these cameras (any job type) blurs its frames first and takes longer.
 $cameraIsBlurred = $camera !== "" && in_array($camera, getBlurCameras(), true);
 
+// The daylight buffer of a manual Daily/Weekly is the saved setting: the form names it, never asks.
+$savedDaylightBuffer = getManualDaylightBuffer();
+
 $manualVideos = $camera === "" ? [] : findVideos($camera, "manual-runs");
 $automaticVideos = $camera === "" ? [] : findVideos($camera, "");
 // What an upload would send (the upload section lists it and is absent when it is empty).
@@ -55,12 +58,6 @@ $allowedJobs = [
   "weekly",
   "monthly",
   "yearly",
-];
-
-$allowedDaylightBuffers = [
-  "30",
-  "60",
-  "90",
 ];
 
 // Single source of truth for "which job types use a daylight buffer at all" —
@@ -154,14 +151,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 	// ----------------------------------------------------------------------
 	} elseif ($submittedAction === "create-video") {
 		$submittedDate = $_POST["target_date"] ?? null;
-		$submittedBuffer = $_POST["daylight_buffer_minutes"] ?? null;
 		$submittedWindow = $_POST["interval_window"] ?? null;
 		$submittedWindowTolerance = $_POST["window_tolerance_minutes"] ?? null;
 		$jobUsesIntervalWindow = in_array($submittedJob, $intervalWindowJobs, true);
 		$windowIsSunset = $jobUsesIntervalWindow && $submittedWindow === "sunset";
-		// Only Daily/Weekly's image selection actually consults the daylight
-		// buffer; Monthly/Yearly must never receive one, regardless of what
-		// a client sends (the radio group is only ever shown for the other two).
+		// Only Daily/Weekly's image selection consults the daylight buffer, and it is the saved
+		// setting: a buffer sent by a client (an old tab) is never read.
 		$jobUsesDaylightBuffer = in_array($submittedJob, $daylightBufferJobs, true);
 
 		if (
@@ -176,14 +171,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 		) {
 			$formMessage = "Das Zieldatum ist ungültig.";
 
-		} elseif (
-			$jobUsesDaylightBuffer
-			&& (
-				!is_string($submittedBuffer)
-				|| !in_array($submittedBuffer, $allowedDaylightBuffers, true)
-			)
-		) {
-			$formMessage = "Der ausgewählte Zeitpuffer ist ungültig.";
+		} elseif ($jobUsesDaylightBuffer && $savedDaylightBuffer === null) {
+			$formMessage = "Die Einstellungen konnten nicht gelesen werden.";
 
 		} elseif (
 			$jobUsesIntervalWindow
@@ -204,7 +193,8 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 			$formMessage = "Die ausgewählte Fensterbreite ist ungültig.";
 
 		} else {
-			$daylightBufferMinutes = $jobUsesDaylightBuffer ? (int) $submittedBuffer : null;
+			// For the job watcher, which names the video it waits for after this buffer.
+			$daylightBufferMinutes = $jobUsesDaylightBuffer ? $savedDaylightBuffer : null;
 			// Only the sunset choice overrides the window; Daily/Weekly never get one.
 			$windowTime = $windowIsSunset ? "sunset" : null;
 			$windowToleranceMinutes = $windowIsSunset ? (int) $submittedWindowTolerance : null;
@@ -213,7 +203,6 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 				$submittedJob,
 				$submittedDate,
 				$submittedCamera,
-				$daylightBufferMinutes,
 				$windowTime,
 				$windowToleranceMinutes,
 			);
@@ -662,24 +651,13 @@ unset($_SESSION["started_job"]);
 	                </label>
 	              </fieldset>
 
-	              <fieldset id="daylight-buffer-fieldset" hidden>
-	                <legend>Zeitpuffer</legend>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="30">
-	                  30 Min.
-	                </label>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="60">
-	                  60 Min.
-	                </label>
-
-	                <label>
-	                  <input type="radio" name="daylight_buffer_minutes" value="90" checked>
-	                  90 Min.
-	                </label>
-	              </fieldset>
+	              <p id="daylight-buffer-note" hidden>
+	                <?php if ($savedDaylightBuffer !== null): ?>
+	                  Zeitpuffer: <strong><?= $savedDaylightBuffer ?> Minuten</strong> (aus den Einstellungen)
+	                <?php else: ?>
+	                  Der Zeitpuffer aus den Einstellungen konnte nicht gelesen werden.
+	                <?php endif; ?>
+	              </p>
 
 	              <fieldset id="interval-window-fieldset" hidden>
 	                <legend>Zeitfenster</legend>
@@ -819,11 +797,10 @@ unset($_SESSION["started_job"]);
 	      window.history.replaceState(null, "", url);
 	    }
 
-	    // Monthly/Yearly use no daylight buffer, so the radio group starts hidden and shows only for
-	    // Daily/Weekly (display only: the server ignores a buffer sent with Monthly/Yearly). The list comes
-	    // from PHP ($daylightBufferJobs), so it cannot drift from what the server accepts.
+	    // Monthly/Yearly use no daylight buffer, so the note names it only for Daily/Weekly (display
+	    // only). The list comes from PHP ($daylightBufferJobs), so it cannot drift from the server.
 	    const daylightBufferJobs = <?= json_encode($daylightBufferJobs, JSON_HEX_TAG | JSON_HEX_AMP) ?>;
-	    const daylightBufferFieldset = document.querySelector("#daylight-buffer-fieldset");
+	    const daylightBufferNote = document.querySelector("#daylight-buffer-note");
 	    const jobRadios = document.querySelectorAll('input[name="job"]');
 
 	    // Same idea for the Monthly/Yearly window: display convenience only, the
@@ -840,7 +817,7 @@ unset($_SESSION["started_job"]);
 	      const checkedWindow = document.querySelector('input[name="interval_window"]:checked');
 	      const showTolerance = showWindow && checkedWindow !== null && checkedWindow.value === "sunset";
 
-	      daylightBufferFieldset.hidden = !showBuffer;
+	      daylightBufferNote.hidden = !showBuffer;
 	      intervalWindowFieldset.hidden = !showWindow;
 	      windowToleranceFieldset.hidden = !showTolerance;
 	    }

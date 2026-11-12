@@ -10,9 +10,9 @@ CAMERA_LIST="${PROJECT_ROOT}/state/web-jobs/cameras.json"
 STATUS_HELPER="${TIMELAPSE_WEB_STATUS_HELPER:-/usr/local/libexec/timelapse-web-status.sh}"
 WORKER="${TIMELAPSE_WEB_WORKER:-/usr/local/libexec/timelapse-web-worker}"
 
-if [[ $# -lt 4 || $# -gt 6 ]]; then
-	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera> [daylight-buffer-minutes | window-time window-tolerance-minutes]" >&2
-	echo "daylight-buffer-minutes is required for daily/weekly; monthly/yearly take either nothing or a window time (HH:MM or sunset) plus tolerance." >&2
+if [[ $# -ne 4 && $# -ne 6 ]]; then
+	echo "Usage: timelapse-web-trigger <job-id> <job> <target-date> <camera> [window-time window-tolerance-minutes]" >&2
+	echo "daily/weekly take no extra argument (they use the saved daylight buffer); monthly/yearly take either nothing or a window time (HH:MM or sunset) plus tolerance." >&2
 	exit 64
 fi
 
@@ -20,13 +20,11 @@ JOB_ID="$1"
 JOB="$2"
 TARGET_DATE="$3"
 CAMERA="$4"
-DAYLIGHT_BUFFER_MINUTES="${5:-}"
 WINDOW_TIME=""
 WINDOW_TOLERANCE_MINUTES=""
 
-# Monthly/Yearly reuse positions 5/6 for the optional interval window.
+# Positions 5 and 6 are the optional interval window of a Monthly/Yearly.
 if [[ $# -eq 6 ]]; then
-	DAYLIGHT_BUFFER_MINUTES=""
 	WINDOW_TIME="$5"
 	WINDOW_TOLERANCE_MINUTES="$6"
 fi
@@ -96,25 +94,6 @@ if ! camera_is_listed "$CAMERA"; then
 	exit 66
 fi
 
-case "$JOB" in
-	daily|weekly)
-		case "$DAYLIGHT_BUFFER_MINUTES" in
-			30|60|90)
-				;;
-			*)
-				echo "Invalid daylight buffer: $DAYLIGHT_BUFFER_MINUTES" >&2
-				exit 64
-				;;
-		esac
-		;;
-	monthly|yearly)
-		if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
-			echo "Monthly/Yearly do not use a daylight buffer." >&2
-			exit 64
-		fi
-		;;
-esac
-
 if [[ -n "$WINDOW_TIME" ]]; then
 	case "$JOB" in
 		monthly|yearly)
@@ -144,10 +123,6 @@ COMMAND=(
 	"$TARGET_DATE"
 	"$CAMERA"
 )
-
-if [[ -n "$DAYLIGHT_BUFFER_MINUTES" ]]; then
-	COMMAND+=("$DAYLIGHT_BUFFER_MINUTES")
-fi
 
 if [[ -n "$WINDOW_TIME" ]]; then
 	COMMAND+=("$WINDOW_TIME" "$WINDOW_TOLERANCE_MINUTES")
