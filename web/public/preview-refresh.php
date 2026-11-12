@@ -17,7 +17,7 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 
 $sessionToken = $_SESSION["csrf_token"] ?? null;
 
-// A session stays locked until it is closed, and the fetch below can take a minute: the colleague's
+// A session stays locked until it is closed, and the fetch below can take a minute: the user's
 // other tabs must not wait for it.
 session_write_close();
 

@@ -90,7 +90,7 @@ function readJobResults(string $statusRoot, string $jobId): array
 }
 
 
-// Whether any web job is running right now (the camera pages show a notice for it). Only files
+// Whether any web job is running right now (every page shows a notice for it). Only files
 // named like a job ID count: the folder also holds cameras.json and the like.
 function hasRunningWebJob(string $statusRoot): bool
 {

@@ -19,7 +19,7 @@ function projectRunUser(): ?string
 	return $entry === false ? null : $entry["name"];
 }
 
-// Shared by the video-trigger and video-delete wrappers so the sudo/proc_open
+// Shared by every runner that calls a root-owned wrapper so the sudo/proc_open
 // handling only needs to be correct in one place.
 function runPrivilegedCommand(array $command): array
 {
