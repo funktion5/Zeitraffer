@@ -13,7 +13,7 @@ declare(strict_types=1);
 <!-- Background deletes change the page silently; this tells screen readers what happened. -->
 <p id="delete-status" class="visually-hidden" role="status"></p>
 
-<dialog id="confirm-delete-dialog">
+<dialog id="confirm-delete-dialog" aria-labelledby="confirm-delete-title">
 	<h2 id="confirm-delete-title"><?= htmlspecialchars($deleteDialogTitle, ENT_QUOTES, "UTF-8") ?></h2>
 	<p id="confirm-delete-message" role="alert"></p>
 
