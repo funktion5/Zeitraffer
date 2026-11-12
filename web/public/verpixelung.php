@@ -216,7 +216,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				</label>
 			</noscript>
 
-			<p class="settings-hint" id="settings-default-note" role="status" hidden></p>
+			<p class="settings-hint" id="settings-default-note" role="status"></p>
 
 			<div class="settings-bar">
 				<p class="settings-saved">

@@ -15,6 +15,15 @@ window.SettingsForm = (() => {
 	const init = (form, { onRestore = () => {}, onReset = () => {} } = {}) => {
 		const note = form.querySelector("#settings-default-note");
 
+		// A live region only announces a change of its text: clear it first, so the same message
+		// from a second click on the same button is read again.
+		const say = (text) => {
+			note.textContent = "";
+			setTimeout(() => {
+				note.textContent = text;
+			}, 0);
+		};
+
 		// A slider only helps the mouse: the field is the real control, so both follow each other.
 		const fieldOf = (range) => form.querySelector(`#${range.dataset.sliderFor}`);
 		const syncSlider = (range) => {
@@ -49,8 +58,7 @@ window.SettingsForm = (() => {
 
 			onRestore(scope);
 
-			note.textContent = `${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`;
-			note.hidden = false;
+			say(`${what}: Standardwerte eingetragen. Zum Übernehmen bitte speichern.`);
 		};
 
 		// Without JavaScript the buttons stay hidden: they would do nothing.
@@ -70,7 +78,7 @@ window.SettingsForm = (() => {
 
 		// "Änderungen verwerfen" returns to the loaded values, so the note no longer applies.
 		form.addEventListener("reset", () => {
-			note.hidden = true;
+			note.textContent = "";
 			// The fields go back to their loaded values after this event, so look then.
 			setTimeout(() => {
 				sliders.forEach(syncSlider);

@@ -193,7 +193,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 				<?php endforeach; ?>
 			</fieldset>
 
-			<p class="settings-hint" id="settings-default-note" role="status" hidden></p>
+			<p class="settings-hint" id="settings-default-note" role="status"></p>
 
 			<div class="settings-bar">
 				<p class="settings-saved">
