@@ -41,7 +41,7 @@ class FakeBox:
 		self.after_command = None
 		self.fail_next: dict[str, subprocess.CompletedProcess] = {}
 		self.corrupt_upload = False
-		# Power cut on the Pi mid-copy: the box keeps half a file and SSH reports a lost link.
+		# Power cut mid-copy: the box keeps half a file and SSH reports a lost link.
 		self.cut_copy = False
 
 	def path(self, remote_path: str) -> Path:

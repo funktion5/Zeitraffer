@@ -265,7 +265,7 @@ def test_get_blur_cameras(tmp_path, config, expected):
 
 
 # The camera names come from state/web-jobs/cameras.json (python3 -m src.camera_list), because the
-# web server user has no ssh key and the storage is not mounted on this host.
+# web server user has no ssh key and never talks to the box.
 def available_cameras(tmp_path: Path, list_content: str | None):
 	list_path = tmp_path / "state" / "web-jobs" / "cameras.json"
 	list_path.parent.mkdir(parents=True)

@@ -360,7 +360,8 @@ def prepare_web_trigger(tmp_path: Path) -> tuple[dict, Path, Path]:
 
 
 # The trigger starts the worker in the background. Its shell redirect creates the file before
-# printf fills it, so wait for content, with a timeout generous enough for a busy Pi or CI runner.
+# printf fills it, so wait for content, with a timeout generous enough for a busy server or CI
+# runner.
 def wait_for_file_content(path: Path, timeout_seconds: float = 2.0) -> None:
 	deadline = time.monotonic() + timeout_seconds
 

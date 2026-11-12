@@ -260,7 +260,7 @@ def test_power_cut_after_swap_is_recognised_without_reprocessing(setup: Setup) -
 	setup.upload(DAY_WITH_PERSON)
 	setup.run()
 
-	# Drop the final "blurred" line, as if the Pi died right after the swap.
+	# Drop the final "blurred" line, as if the host died right after the swap.
 	path = setup.state_root / CAMERA / "2026-06.jsonl"
 	lines = path.read_text().splitlines()
 	assert json.loads(lines[-1])["status"] == "blurred"
@@ -800,8 +800,8 @@ def test_box_mostly_in_the_top_band_is_ignored_and_recorded(setup: Setup, monkey
 	assert setup.states()[DAY_WITH_PERSON]["ignored_boxes"] == [[1545, 20, 1918, 480, 0.9]]
 
 
-# The judged bytes come over SSH from the box; the SSHFS mount is never read, so it cannot hang
-# the round or serve stale data.
+# The judged bytes come over SSH from the box and are never read from a local folder, so a
+# stalled read cannot hang the round or serve stale data.
 def test_image_is_downloaded_from_the_box_never_read_from_the_mount(setup: Setup) -> None:
 	setup.upload(DAY_WITH_PERSON)
 
@@ -877,7 +877,7 @@ def test_state_from_the_old_single_file_is_honoured(setup: Setup) -> None:
 OLD_PERSON = "20260310T123000.jpg"
 OLD_CLEAN = "20260310T120000.jpg"
 OLD_AGE = 97 * 24 * 3600
-# The caller (the job) sizes the writer for its frames; the nightly and live defaults stay.
+# The caller (the job) sizes the writer for its frames; the nightly defaults stay.
 OLD_LIMITS = {"max_image_age": timedelta(days=200), "max_backups_per_camera": 50}
 
 
@@ -1061,7 +1061,7 @@ def test_state_of_listed_names_is_read_from_each_names_own_month(setup: Setup) -
 	}
 
 
-# The nightly and live rounds record an image on the page of the round's time, up to two days after
+# The nightly round records an image on the page of the round's time, up to two days after
 # the image's date, so a frame of a month's last day can sit on the NEXT month's page (on the real
 # box: 89 frames of 2026-10-31 on 2026-11.jsonl). The lookup must find it there, or a backfill takes
 # it for new and backs it up a second time.
@@ -1197,7 +1197,7 @@ def test_nothing_is_listed_when_every_frame_is_confirmed(setup: Setup) -> None:
 	assert backup_listings(setup) == []
 
 
-# The nightly and live rounds keep their cost and behaviour: no listing, no guard.
+# The nightly round keeps its cost and behaviour: no listing, no guard.
 def test_the_nightly_round_does_not_list_the_backups(setup: Setup) -> None:
 	setup.upload(DAY_WITH_PERSON)
 	make_backup(setup, "20260101T120000.jpg", b"\xff\xd8older\xff\xd9")
