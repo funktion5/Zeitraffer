@@ -318,7 +318,6 @@ function highlightBoxStyle(array $item): string
 					class="highlights-viewer-icon highlights-viewer-download"
 					href=""
 					download
-					title="Bild herunterladen"
 					aria-label="Bild herunterladen"
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -329,7 +328,6 @@ function highlightBoxStyle(array $item): string
 					type="button"
 					id="highlights-viewer-delete"
 					class="highlights-viewer-icon highlights-viewer-delete"
-					title="Bild löschen"
 					aria-label="Bild löschen"
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -445,8 +443,9 @@ function highlightBoxStyle(array $item): string
 				return;
 			}
 
-			// Keep the keyboard where the image was.
-			viewerLinks[Math.min(index, viewerLinks.length - 1)]?.focus();
+			// Keep the keyboard where the image was; with none left, at the top controls.
+			const nextLink = viewerLinks[Math.min(index, viewerLinks.length - 1)];
+			(nextLink ?? document.querySelector("#highlights-show-boxes")).focus();
 		});
 
 		if (typeof viewer.showModal === "function") {

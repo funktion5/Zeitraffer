@@ -21,8 +21,6 @@ $csrfToken = $_SESSION["csrf_token"];
 $knownCameras = settingsKnownCameras();
 $baseConfig = readBaseConfig();
 $state = settingsFormState(readProjectConfig(), $knownCameras);
-// What the restore buttons go back to: the same form state, from config.json alone.
-$defaultState = settingsFormState($baseConfig, $knownCameras);
 $savedMtime = readSettingsMtime();
 // What the page hands back on save. After a refusal because the file changed it stays the OLD
 // value, so a second try without reloading is refused again.
@@ -154,16 +152,15 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 
 			<fieldset class="settings-group">
 				<legend>Kameras</legend>
-				<?php renderSettingsDefaultButton("Kameras"); ?>
 				<p class="settings-hint">Angehakte Kameras werden nachts verarbeitet. Eine abgewählte Kamera wird nicht mehr gebaut und verschwindet sofort aus der Kameraliste dieser Weboberfläche. Eine wieder angehakte Kamera erscheint dort, und hier, nach dem nächsten Nachtlauf wieder. Mindestens eine Kamera muss angehakt bleiben.</p>
-				<?php renderSettingsCameraBoxes("process_cameras", $knownCameras, $state["processed"], $defaultState["processed"]); ?>
+				<?php renderSettingsCameraBoxes("process_cameras", $knownCameras, $state["processed"]); ?>
 			</fieldset>
 
 			<fieldset class="settings-group">
 				<legend>Highlights (Flagger)</legend>
 				<?php renderSettingsDefaultButton("Highlights (Flagger)"); ?>
 				<p class="settings-hint">Kameras, auf denen nach Flugzeugen, Vögeln und Drachen gesucht wird.</p>
-				<?php renderSettingsCameraBoxes("flagger_cameras", $knownCameras, $state["flagger"], $defaultState["flagger"]); ?>
+				<?php renderSettingsCameraBoxes("flagger_cameras", $knownCameras, $state["flagger"]); ?>
 				<?php foreach ($fieldsOf("flagger") as $field): ?>
 					<?php renderSettingsField($field, $state, $baseConfig, $fieldErrors); ?>
 				<?php endforeach; ?>
@@ -196,7 +193,7 @@ $fieldsOf = static fn(string $group): array => array_values(array_filter(
 				<?php endforeach; ?>
 			</fieldset>
 
-			<p class="settings-hint" id="settings-default-note" role="status" hidden></p>
+			<p class="settings-hint" id="settings-default-note" role="status"></p>
 
 			<div class="settings-bar">
 				<p class="settings-saved">

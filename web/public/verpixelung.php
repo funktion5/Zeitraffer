@@ -92,10 +92,10 @@ $lastSaved = formatSettingsTime($savedMtime);
 // A blur value's Standard (null when config.json has none).
 $standardOf = static fn(string $key): ?string => ($defaultState["floats"][$key] ?? "") !== "" ? $defaultState["floats"][$key] : null;
 
-// What one camera goes back to: its score and boxes in config.json, or "no minimum" and "no boxes".
+// What one camera goes back to: its score and top share in config.json, or "no minimum". Its boxes
+// are data and have no Standard.
 $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 	$scores = is_array($basePrivacy["min_person_score"] ?? null) ? $basePrivacy["min_person_score"] : [];
-	$boxes = is_array($basePrivacy["ignore_boxes"] ?? null) ? $basePrivacy["ignore_boxes"] : [];
 	$tops = is_array($basePrivacy["ignore_top_share_per_camera"] ?? null) ? $basePrivacy["ignore_top_share_per_camera"] : [];
 	$globalTop = privacyNumberText($basePrivacy["ignore_top_share"] ?? "");
 
@@ -103,7 +103,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 		// Its own top share in config.json, else the one every camera gets from there.
 		"top" => isset($tops[$camera]) ? privacyNumberText($tops[$camera]) : ($globalTop !== "" ? $globalTop : "0"),
 		"score" => isset($scores[$camera]) ? privacyNumberText($scores[$camera]) : "0",
-		"boxes" => privacyStoredBoxes($boxes[$camera] ?? []),
 	];
 };
 
@@ -156,7 +155,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 			<fieldset class="settings-group">
 				<legend>Welche Kameras werden verpixelt?</legend>
-				<?php renderSettingsDefaultButton("Welche Kameras werden verpixelt?"); ?>
 				<p class="settings-hint">Ein Haken bedeutet: Die Bilder dieser Kamera werden verpixelt, wenn Menschen darauf zu sehen sind. Eine neu angehakte Kamera wird ab der nächsten Nacht verpixelt, auch die Bilder von heute und den zwei Tagen davor.</p>
 				<p class="privacy-important"><strong>Wichtig!</strong> Bei einer Kamera, die schon läuft und verpixelt, darf der Haken nicht weg. Sonst sind Menschen auf ihren Videos sofort wieder zu erkennen. Diese Kameras sind mit „läuft schon“ markiert.</p>
 				<?php if (isset($fieldErrors["privacy.blur_cameras"])): ?>
@@ -206,7 +204,6 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 					<?php renderPrivacyBoxes(
 						(string) $camera,
 						$cameraState["boxes"],
-						$defaults["boxes"],
 						$fieldErrors["privacy.ignore_boxes." . $camera] ?? null,
 					); ?>
 				</fieldset>
@@ -219,7 +216,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 				</label>
 			</noscript>
 
-			<p class="settings-hint" id="settings-default-note" role="status" hidden></p>
+			<p class="settings-hint" id="settings-default-note" role="status"></p>
 
 			<div class="settings-bar">
 				<p class="settings-saved">

@@ -141,8 +141,10 @@ Beide sind in Git ignoriert und gibt es je Host einmal; die Datei auf dem VPS is
 - **Nur Abweichungen:** Die Dateien enthalten nur, was von `config.json` abweicht. Wird ein Wert auf
   der Seite auf den Standard zurückgestellt, verschwindet er aus der Datei, und eine spätere
   Änderung an `config.json` erreicht den Schlüssel wieder. Steht ein Schlüssel in einer
-  Einstellungsdatei, ist eine Änderung in `config.json` für ihn wirkungslos: Auf der Seite
-  zurücksetzen („Alles auf Standard“, dann Speichern) oder den Schlüssel aus der Datei löschen.
+  Einstellungsdatei, ist eine Änderung in `config.json` für ihn wirkungslos: Bei einem Wert auf der Seite
+  zurücksetzen („Alles auf Standard“, dann Speichern) oder den Schlüssel aus der Datei löschen. Die
+  Kameralisten und die Rahmen haben keinen Standard-Knopf; stellt man sie von Hand wieder so ein wie in
+  `config.json`, verschwindet ihr Schlüssel ebenfalls aus der Datei.
 - **Nur freigegebene Schlüssel:** `src/settings.py` ist die einzige Liste mit Regeln und Grenzen.
   Alles andere in einer Einstellungsdatei, ein Wert außerhalb der Grenzen, eine kaputte oder
   unlesbare Datei wird mit einer Warnung im Protokoll ignoriert und kann den Nachtlauf nicht stoppen.

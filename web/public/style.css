@@ -20,6 +20,7 @@
 
 	--color-success: #52c7a5;
 	--color-danger: #df7171;
+	--color-danger-tint: rgb(223 113 113 / 12%);
 	--color-warning: #e3b341;
 	--color-manual: #a995e8;
 	--color-highlight: #e07ab8;
@@ -71,6 +72,12 @@ a {
 
 a:hover {
 	color: var(--color-primary-hover);
+}
+
+/* One focus ring for every control; a component only sets its own when it needs another. */
+:where(a, button, input, select, summary):focus-visible {
+	outline: 2px solid var(--color-primary);
+	outline-offset: 2px;
 }
 
 h1,
@@ -144,11 +151,6 @@ ul {
 	margin-right: auto;
 }
 
-.main-header nav a:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 .main-header nav a[aria-current="page"] {
 	background: var(--color-surface-light);
 	border-color: var(--color-primary-dark);
@@ -204,14 +206,6 @@ ul {
 	color: var(--color-text);
 
 	font: inherit;
-}
-
-.settings-field input:focus-visible,
-.settings-cameras input:focus-visible,
-.settings-default-button:focus-visible,
-.settings-bar button:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 /* Colour is not the only sign of an error: the message is text and the field says aria-invalid. */
@@ -326,11 +320,6 @@ ul {
 	font-weight: 600;
 }
 
-.settings-tabs a:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 
 /* -------------------------------------------------------------------------- */
 /* Verpixelung tab                                                            */
@@ -361,7 +350,7 @@ ul {
 	margin: 0;
 	padding: 0.8rem 1rem;
 
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border: 1px solid var(--color-danger);
 	border-radius: var(--radius-small);
 }
@@ -560,7 +549,7 @@ ul {
 }
 
 .privacy-box-row .privacy-box-remove:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 }
 
 .privacy-boxes-empty {
@@ -641,21 +630,8 @@ ul {
 	font: inherit;
 }
 
-.privacy-box-row input:focus-visible,
-.privacy-noscript-confirm input:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 #privacy-confirm {
-	max-width: 36rem;
 	padding: 1.25rem;
-
-	background: var(--color-surface);
-	border: 1px solid var(--color-border-light);
-	border-radius: var(--radius-medium);
-
-	color: var(--color-text);
 }
 
 #privacy-confirm::backdrop {
@@ -823,12 +799,32 @@ ul {
 }
 
 
-/* The two donuts above the settings tabs: the whole disk and the videos only. */
+/* The panel above the settings tabs: the two donuts (whole disk, videos only) on the left, the list on
+   the right. Below 56rem the list moves under the donuts. */
+.storage-panel {
+	display: grid;
+	grid-template-columns: auto minmax(16rem, 1fr);
+	align-items: center;
+	gap: 0 3rem;
+
+	margin-bottom: 2rem;
+}
+
+.storage-panel h2 {
+	grid-column: 1 / -1;
+}
+
 .storage-donuts {
 	display: flex;
 	flex-wrap: wrap;
-	justify-content: center;
-	gap: 2rem 4rem;
+	gap: 2rem 3rem;
+}
+
+@media (max-width: 56rem) {
+	.storage-panel {
+		grid-template-columns: 1fr;
+		gap: 1.5rem 0;
+	}
 }
 
 .storage-figure {
@@ -901,8 +897,7 @@ ul {
 }
 
 .storage-parts {
-	max-width: 36rem;
-	margin: 1.5rem auto 0;
+	margin: 0;
 }
 
 .storage-parts li {
@@ -1017,16 +1012,6 @@ video {
 	background: var(--color-surface-light);
 	border: 1px solid var(--color-border);
 	border-radius: var(--radius-small);
-}
-
-.video-library summary {
-	padding: 0.75rem;
-
-	color: var(--color-text);
-	font-weight: 600;
-
-	cursor: pointer;
-	user-select: none;
 }
 
 .video-library details[open] summary {
@@ -1163,15 +1148,10 @@ video {
 }
 
 .video-library-delete:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border-color: var(--color-danger);
 
 	color: var(--color-danger);
-}
-
-.video-library-delete:focus-visible {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
 }
 
 .video-library-delete svg {
@@ -1219,13 +1199,7 @@ video {
 }
 
 .delete-video-button:hover {
-	background: rgb(223 113 113 / 12%);
-}
-
-.delete-video-button:focus-visible,
-.download-video-button:focus-visible {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
+	background: var(--color-danger-tint);
 }
 
 .delete-video-button svg,
@@ -1273,8 +1247,6 @@ video {
 /* Video creation                                                             */
 /* -------------------------------------------------------------------------- */
 
-.video-rebuild,
-.video-publish,
 .video-create {
 	grid-column: 1 / -1;
 
@@ -1374,11 +1346,6 @@ input[type="date"] {
 	font: inherit;
 }
 
-input[type="date"]:focus {
-	outline: 2px solid var(--color-primary-dark);
-	outline-offset: 2px;
-}
-
 button {
 	width: fit-content;
 
@@ -1460,11 +1427,6 @@ button:disabled {
 
 .video-tools > summary:hover {
 	background: var(--color-surface-light);
-}
-
-.video-tools > summary:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 /* Open: the two sections follow the bar with the page's usual gap. */
@@ -1555,7 +1517,7 @@ button:disabled {
 
 	padding: 0.6rem 0.8rem;
 
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border: 1px solid var(--color-danger);
 	border-radius: var(--radius-small);
 
@@ -1768,14 +1730,6 @@ body > section li a:hover {
 	font: inherit;
 }
 
-.highlights-filter select:focus-visible,
-.highlights-filter button:focus-visible,
-.highlights-toggle input:focus-visible,
-.highlights-viewer-toggle input:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
-}
-
 .highlights-error {
 	width: fit-content;
 	padding: 0.6rem 0.8rem;
@@ -1847,11 +1801,6 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 	display: block;
 	border-radius: var(--radius-small);
 	cursor: zoom-in;
-}
-
-.highlights-open:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 .highlights-viewer {
@@ -1945,15 +1894,10 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 }
 
 .highlights-viewer-delete:hover {
-	background: rgb(223 113 113 / 12%);
+	background: var(--color-danger-tint);
 	border-color: var(--color-danger);
 
 	color: var(--color-danger);
-}
-
-.highlights-viewer-icon:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 /* A narrow dialog stacks the three groups, centred. */
@@ -1971,11 +1915,6 @@ body:has(#highlights-show-boxes:checked) .highlights-box {
 
 .highlights-viewer-nav button[hidden] {
 	display: none;
-}
-
-.highlights-viewer-nav button:focus-visible {
-	outline: 2px solid var(--color-primary);
-	outline-offset: 2px;
 }
 
 .highlights-grid figcaption {

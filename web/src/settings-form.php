@@ -418,28 +418,9 @@ function renderSettingsDefaultButton(string $legend): void
 	<?php
 }
 
-// The Standard of a camera list in words, so nobody has to compare ticks with a file: "alle Kameras",
-// "alle außer ..." when that names fewer cameras, the ticked names, or "keine". Only cameras the page
-// shows are named.
-function settingsCameraListText(array $knownCameras, array $standardTicked): string
-{
-	$ticked = array_values(array_intersect($knownCameras, $standardTicked));
-	$unticked = array_values(array_diff($knownCameras, $ticked));
-
-	if ($ticked === []) {
-		return "keine";
-	}
-
-	if ($unticked === []) {
-		return "alle Kameras";
-	}
-
-	return count($unticked) < count($ticked) ? "alle außer " . implode(", ", $unticked) : implode(", ", $ticked);
-}
-
-// A list of camera checkboxes (name = the form field, e.g. "process_cameras"). $standardTicked is
-// the config.json state that the restore buttons set the boxes back to, and the Standard shown.
-function renderSettingsCameraBoxes(string $name, array $knownCameras, array $ticked, array $standardTicked): void
+// A list of camera checkboxes (name = the form field, e.g. "process_cameras"). Which cameras are on
+// is a choice, not a value, so it has no Standard and the restore buttons leave it alone.
+function renderSettingsCameraBoxes(string $name, array $knownCameras, array $ticked): void
 {
 	?>
 	<div class="settings-cameras">
@@ -447,7 +428,6 @@ function renderSettingsCameraBoxes(string $name, array $knownCameras, array $tic
 			<label>
 				<input
 					type="checkbox"
-					data-default-checked="<?= in_array($camera, $standardTicked, true) ? "1" : "0" ?>"
 					name="<?= settingsHtml($name) ?>[]"
 					value="<?= settingsHtml($camera) ?>"
 					<?= in_array($camera, $ticked, true) ? "checked" : "" ?>
@@ -456,6 +436,5 @@ function renderSettingsCameraBoxes(string $name, array $knownCameras, array $tic
 			</label>
 		<?php endforeach; ?>
 	</div>
-	<span class="settings-default">Standard: <?= settingsHtml(settingsCameraListText($knownCameras, $standardTicked)) ?></span>
 	<?php
 }

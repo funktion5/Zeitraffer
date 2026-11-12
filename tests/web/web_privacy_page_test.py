@@ -1,4 +1,3 @@
-import html
 import json
 import os
 import re
@@ -166,22 +165,15 @@ def test_this_pages_script_hands_its_own_parts_to_the_shared_one(tmp_path):
 	assert 'querySelectorAll("[data-slider-for]")' not in own
 
 
+# name -> ticked now, for the blur camera boxes.
 def camera_boxes(out: str) -> dict:
 	boxes = {}
 
 	for tag in re.findall(r'<input[^>]*name="blur_cameras\[\]"[^>]*>', out):
 		value = re.search(r'value="([^"]+)"', tag).group(1)
-		standard = re.search(r'data-default-checked="([01])"', tag).group(1)
-		boxes[value] = (standard, re.search(r"\schecked\b", tag) is not None)
+		boxes[value] = re.search(r"\schecked\b", tag) is not None
 
 	return boxes
-
-
-def default_boxes_of(out: str, camera: str) -> list:
-	container = tag_of(out, rf'<div[^>]*id="privacy-boxes-{camera}"[^>]*>')
-	raw = re.search(r'data-default-boxes="([^"]*)"', container).group(1)
-
-	return json.loads(html.unescape(raw))
 
 
 def test_the_page_has_its_groups_and_the_tab_strip(tmp_path):
@@ -211,44 +203,39 @@ def test_the_camera_list_shows_listed_ignored_and_blur_cameras(tmp_path):
 
 	out, _ = render(tmp_path)
 
-	# The first value is the Standard from config.json, the second whether it is ticked now.
 	assert camera_boxes(out) == {
-		"Alpha": ("0", False),
-		"BlurTest": ("1", True),
-		"Scheunenviertel": ("1", True),
-		"SLSV": ("1", True),
+		"Alpha": False,
+		"BlurTest": True,
+		"Scheunenviertel": True,
+		"SLSV": True,
 	}
 
 
-# The lists say their Standard in words too: the cameras that blur, and the number of boxes of each
-# camera. It is what config.json holds, whatever is saved on top.
-def camera_list_standard(out: str) -> str:
-	match = re.search(r'id="privacy-blur-cameras".*?Standard: ([^<]*)</span>', out, re.S)
-
-	assert match is not None
-
-	return match.group(1)
-
-
-def box_standard(out: str, camera: str) -> str:
-	block = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
-
-	return re.search(r"privacy-boxes-field.*?Standard: ([^<]*)</span>", block, re.S).group(1)
-
-
-def test_the_camera_list_and_the_box_lists_say_their_standard(tmp_path):
+# Which cameras blur and where the boxes are is data, not a value: no Standard to read, nothing to
+# restore. The "läuft schon" mark stays: it is a warning that a tick must not go, not a default.
+def test_the_camera_list_and_the_boxes_have_no_standard(tmp_path):
 	prepare(tmp_path)
 
 	out, _ = render(tmp_path)
 
-	# Known: Alpha and the three that blur; one is off, so it is named.
-	assert camera_list_standard(out) == "alle außer Alpha"
-	assert box_standard(out, "BlurTest") == "1 Rahmen"
-	assert box_standard(out, "Scheunenviertel") == "2 Rahmen"
-	assert box_standard(out, "SLSV") == "kein Rahmen"
+	assert "data-default-checked" not in out
+	assert "data-default-boxes" not in out
+
+	cameras = tag_of(out, r"<legend>Welche Kameras werden verpixelt\?</legend>.*?</fieldset>", re.S)
+
+	assert "Standard" not in cameras
+	assert "läuft schon" in cameras
+
+	for camera in BLUR_CAMERAS:
+		block = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
+		boxes = re.search(r"privacy-boxes-field.*?</div>\s*<template", block, re.S).group(0)
+
+		assert "Standard" not in boxes, camera
+		# Its score and top strip are real values and keep theirs.
+		assert "Standard:" in block, camera
 
 
-def test_these_standards_stay_the_config_json_ones_when_something_is_saved(tmp_path):
+def test_a_saved_camera_list_and_boxes_show_as_saved(tmp_path):
 	# SLSV stays on the blur list, so its block is there; only its boxes and the list itself change.
 	saved = {"blur_cameras": ["Alpha", "SLSV"], "ignore_boxes": {"SLSV": [[1, 1, 2, 2]]}}
 	prepare(tmp_path, privacy={"privacy": saved})
@@ -257,8 +244,6 @@ def test_these_standards_stay_the_config_json_ones_when_something_is_saved(tmp_p
 
 	assert "Alpha" in re.findall(r'name="blur_cameras\[\]"\s+value="([^"]+)"\s+checked', out)
 	assert 'name="privacy[boxes][SLSV][0][x0]"' in out
-	assert camera_list_standard(out) == "alle außer Alpha"
-	assert box_standard(out, "SLSV") == "kein Rahmen"
 
 
 def test_cameras_that_already_blur_are_marked_and_the_warning_is_shown(tmp_path):
@@ -304,7 +289,6 @@ def test_every_blur_camera_has_its_score_and_its_boxes(tmp_path):
 	# Exactly the saved boxes: no empty rows stand by.
 	assert 'name="privacy[boxes][Scheunenviertel][1][y1]"' in out
 	assert 'name="privacy[boxes][Scheunenviertel][2][x0]"' not in out
-	assert default_boxes_of(out, "Scheunenviertel") == [[1, 2, 3, 4], [5, 6, 7, 8]]
 
 
 def box_rows_of(out: str, camera: str) -> list:
@@ -349,13 +333,18 @@ def test_a_camera_without_boxes_says_so(tmp_path):
 	assert re.search(r"\shidden[\s>]", notes["Scheunenviertel"])
 
 
-def test_restoring_defaults_does_not_add_empty_rows_back(tmp_path):
+# Boxes are data with no Standard, so a restore button never touches their rows. It still redraws
+# the pictures, because it can change a camera's top strip.
+def test_restoring_defaults_leaves_the_box_rows_alone_but_redraws_the_pictures(tmp_path):
 	prepare(tmp_path)
 
 	out, _ = render(tmp_path)
 	script = script_with(out, "data-default-group")
+	own = read_scripts("verpixelung.js")
 
-	assert "for (let blank" not in script
+	assert "defaultBoxes" not in script
+	assert "data-default-boxes" not in script
+	assert re.search(r"onRestore:[^}]*refreshAll\(\)", own) is not None
 	# The note under the heading follows the rows, so it shows again after the last one is removed.
 	assert "privacy-boxes-empty" in script
 
@@ -384,7 +373,6 @@ def test_the_standard_shown_is_what_config_json_holds(tmp_path):
 		tag = tag_of(out, rf'<input[^>]*id="privacy-score-{camera}"[^>]*>')
 
 		assert f'data-default="{score}"' in tag, camera
-		assert default_boxes_of(out, camera) == privacy.get("ignore_boxes", {}).get(camera, [])
 
 		# A camera's own top share, else the global one that config.json gives every camera.
 		own = privacy.get("ignore_top_share_per_camera", {})
@@ -392,10 +380,6 @@ def test_the_standard_shown_is_what_config_json_holds(tmp_path):
 		tag = tag_of(out, rf'<input[^>]*id="privacy-top-{camera}"[^>]*>')
 
 		assert f'data-default="{top}"' in tag, camera
-
-	standard = {name for name, (tick, _) in camera_boxes(out).items() if tick == "1"}
-
-	assert standard == set(names)
 
 
 # A value the browser's own validation refuses cannot be saved, so every Standard of the REAL config
@@ -900,8 +884,10 @@ def test_the_restore_buttons_exist_per_section_and_for_everything(tmp_path):
 	out, _ = render(tmp_path)
 	group_buttons = re.findall(r"<button[^>]*data-default-group[^>]*>", out)
 
-	# The camera list, the blur values, and one per blur camera (its block holds its top share too).
-	assert len(group_buttons) == 2 + len(BLUR_CAMERAS)
+	# The blur values, and one per blur camera (its block holds its score and top share). The camera
+	# list has none: which cameras blur is a choice, not a value.
+	assert len(group_buttons) == 1 + len(BLUR_CAMERAS)
+	assert 'aria-label="Welche Kameras werden verpixelt?: auf Standard zurücksetzen"' not in out
 	for tag in group_buttons:
 		assert 'type="button"' in tag
 		assert re.search(r"\shidden[\s>]", tag) is not None

@@ -9,7 +9,7 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 ?>
 
-<dialog id="job-result-dialog">
+<dialog id="job-result-dialog" aria-labelledby="job-result-title">
 	<h2 id="job-result-title">Video-Auftrag</h2>
 	<p id="job-result-message"></p>
 	<!-- The result line of every job of a rebuild; hidden for a single manual video. -->
