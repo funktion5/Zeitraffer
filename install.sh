@@ -422,6 +422,8 @@ step_verify() {
 	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: highlight delete rule active" \
 		|| warn "sudoers: highlight delete rule missing for www-data."
+	grep -q "timelapse-web-settings" <<<"$sudo_rules" \
+		&& echo "sudoers: settings rule active" || warn "sudoers: settings rule missing for www-data."
 	grep -q "timelapse-web-preview" <<<"$sudo_rules" \
 		&& echo "sudoers: preview rule active" || warn "sudoers: preview rule missing for www-data."
 
