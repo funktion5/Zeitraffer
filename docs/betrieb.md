@@ -290,7 +290,7 @@ videos/Scheunenviertel/manual-runs/yearly/Scheunenviertel_2026-08-15_sunset-60mi
 ```
 
 Historische Daily- und Weekly-Videos tragen immer den Zeitpuffer als Suffix `_<N>min`
-(30, 60 oder 90), damit Läufe mit verschiedenem Puffer sich nicht überschreiben. Monthly und
+(`daylight_buffer_minutes` aus den Einstellungen, 0–240; per CLI 30, 60 oder 90), damit Läufe mit verschiedenem Puffer sich nicht überschreiben. Monthly und
 Yearly haben kein Suffix, außer bei einem abweichenden Zeitfenster (`--window-time` /
 `--window-tolerance-minutes`): dann `_<HHMM|sunset>-<toleranz>min`. Mit `--blur-people` kommt
 `_blur` dazu.
