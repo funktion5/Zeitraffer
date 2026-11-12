@@ -20,7 +20,7 @@ from src.privacy.blur_job import blur_job_frames
 from src.video import cleanup_automatic_video_retention, create_timelapse
 
 
-# Run the automatic Monthly timelapse workflow.
+# Run the Monthly timelapse job: automatic by default, a manual run when manual_run is set.
 def run_monthly_job(
 	config: dict,
 	cameras: list[str],

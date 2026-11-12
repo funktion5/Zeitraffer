@@ -24,7 +24,7 @@ from src.video import cleanup_automatic_video_retention, create_timelapse
 from src.yearly_selection import select_yearly_images_isolated
 
 
-# Run the automatic Yearly timelapse workflow.
+# Run the Yearly timelapse job: automatic by default, a manual run when manual_run is set.
 def run_yearly_job(
 	config: dict,
 	cameras: list[str],
