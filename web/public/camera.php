@@ -373,7 +373,6 @@ unset($_SESSION["started_job"]);
 									href="<?= htmlspecialchars($selectedVideo["url"], ENT_QUOTES, "UTF-8") ?>"
 									download
 									class="download-video-button"
-									title="Video herunterladen"
 									aria-label="<?= htmlspecialchars(
 										$selectedVideo["filename"],
 										ENT_QUOTES,
@@ -431,7 +430,6 @@ unset($_SESSION["started_job"]);
 								<button
 									type="submit"
 									class="delete-video-button"
-									title="Video löschen"
 									aria-label="<?= htmlspecialchars(
 										$selectedVideo["filename"],
 										ENT_QUOTES,
@@ -515,7 +513,6 @@ unset($_SESSION["started_job"]);
 												<button
 													type="submit"
 													class="video-library-delete"
-													title="Video löschen"
 													aria-label="<?= htmlspecialchars($video["filename"], ENT_QUOTES, "UTF-8") ?> löschen"
 												>
 													<svg viewBox="0 0 24 24" aria-hidden="true">

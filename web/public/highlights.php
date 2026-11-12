@@ -318,7 +318,6 @@ function highlightBoxStyle(array $item): string
 					class="highlights-viewer-icon highlights-viewer-download"
 					href=""
 					download
-					title="Bild herunterladen"
 					aria-label="Bild herunterladen"
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
@@ -329,7 +328,6 @@ function highlightBoxStyle(array $item): string
 					type="button"
 					id="highlights-viewer-delete"
 					class="highlights-viewer-icon highlights-viewer-delete"
-					title="Bild löschen"
 					aria-label="Bild löschen"
 				>
 					<svg viewBox="0 0 24 24" aria-hidden="true">
