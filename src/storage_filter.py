@@ -32,8 +32,8 @@ HASH_TIMEOUT_SECONDS = 180
 PROGRESS_LOG_INTERVAL_SECONDS = 30
 
 
-# One `ls -l` on the storage box replaces one SSHFS stat per file, which took
-# up to ~45 minutes for 190k files instead of a few seconds.
+# One `ls -l` on the storage box lists every name with its size in a single call; a request per
+# file would take far too long for the ~190k files of a camera.
 def list_camera_files(storage_box: StorageBox, camera: str) -> dict[str, int]:
 	directory = storage_box.camera_directory(camera)
 
@@ -50,11 +50,10 @@ def list_camera_files(storage_box: StorageBox, camera: str) -> dict[str, int]:
 
 
 # One `ls -1d` with the shared date patterns lists only the requested days, however large the
-# folder has grown (~0.8 s on the box). A name whose filename date is another day is dropped
-# (the pattern only happened to match, e.g. inside a time); a name without a readable date is
-# kept, so the caller can refuse and log it instead of it vanishing.
-# Name -> modification time (epoch seconds) of the camera's images for these days, in one
-# command. The times serve the blur job's settle and night checks without touching the mount.
+# folder has grown (~0.8 s on the box). Returns name -> modification time (epoch seconds), which
+# serve the blur job's settle and night checks. A name whose filename date is another day is
+# dropped (the pattern only happened to match, e.g. inside a time); a name without a readable
+# date is kept, so the caller can refuse and log it instead of it vanishing.
 def list_images_for_dates(storage_box: StorageBox, camera: str, days: list[date]) -> dict[str, int]:
 	directory = storage_box.camera_directory(camera)
 	patterns = dict.fromkeys(pattern for day in days for pattern in date_patterns(day))
@@ -99,8 +98,7 @@ def list_images_for_dates(storage_box: StorageBox, camera: str, days: list[date]
 	return dict(sorted(images.items()))
 
 
-# Hash files on the storage box, so only the hashes cross the network. Reading
-# them over SSHFS instead took ~43 ms per file (2+ hours for one camera).
+# Hash files on the storage box, so only the hashes cross the network, not the images.
 def hash_camera_files(storage_box: StorageBox, camera: str, names: list[str]) -> dict[str, str]:
 	directory = storage_box.camera_directory(camera)
 	paths = " ".join(shlex.quote(f"{directory}/{name}") for name in names)
@@ -229,8 +227,8 @@ def find_deletion_candidates(
 
 	hashes = hash_in_batches(storage_box, camera, names_to_hash)
 
-	# The report names the files as the storage box has them (the folder under its base directory),
-	# not as a mount would show them: a host without a mount has no such path.
+	# The report names the files as the storage box has them (the folder under its base directory);
+	# this host has no local path for them.
 	camera_path = Path(storage_box.camera_directory(camera))
 
 	candidates = [(camera_path / name, "empty") for name in empty_names]
@@ -306,8 +304,8 @@ def main(argv: list[str] | None = None) -> int:
 	configure_file_logging("filter")
 	cleanup_old_logs(retention_days=config["log_retention_days"])
 
-	# The box first: with nothing configured this gives the filter's own hint, not the frame
-	# source's error for a camera list the filter would not use anyway.
+	# The box first: with nothing configured this gives the filter's own hint instead of the
+	# frame source's error from get_cameras() below.
 	try:
 		storage_box = get_storage_box()
 

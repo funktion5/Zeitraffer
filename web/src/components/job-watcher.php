@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-// Included by both index.php and camera.php so a video-creation job's result
-// dialog appears no matter which page is open when the job finishes, not only
-// the page that started it. $camera is only defined on camera.php.
+// Included by every page so a video-creation job's result dialog appears no matter which page
+// is open when the job finishes, not only the page that started it. $camera is only defined on
+// camera.php.
 $jobWatcherCurrentCamera = $camera ?? "";
 
 ?>
@@ -222,7 +222,8 @@ $jobWatcherCurrentCamera = $camera ?? "";
 				const result = await response.json();
 
 				if (result.status === "running") {
-					// On every camera page: it also explains the disabled "Video erstellen" button.
+					// The notice at the top of every page; on a camera page it also explains the disabled
+					// "Video erstellen" button.
 					const liveStatus = document.querySelector("#job-live-status");
 
 					if (liveStatus !== null) {
@@ -259,7 +260,7 @@ $jobWatcherCurrentCamera = $camera ?? "";
 
 				throw new Error("The server returned an unknown job status.");
 			} catch (error) {
-				// A dropped connection or a busy Pi must not end the wait: try again next tick.
+				// A dropped connection or a busy server must not end the wait: try again next tick.
 				console.error("Video-job polling failed, retrying.", error);
 				window.setTimeout(() => pollPendingJob(pendingJob), 5000);
 			}
@@ -280,8 +281,8 @@ $jobWatcherCurrentCamera = $camera ?? "";
 			}
 		}
 
-		// A job another colleague (or another tab) started: the camera page says so, so nobody fills
-		// in the form only to be refused. The details stay with the tab that started the job, so the
+		// A job another colleague (or another tab) started: the notice says so, so nobody fills in
+		// the form only to be refused. The details stay with the tab that started the job, so the
 		// text is generic. The create button stays enabled: a start during a run is refused anyway,
 		// and the button state belongs to this tab's own job.
 		const OTHER_JOB_TEXT = "Gerade läuft ein Auftrag. Ein neues Video kann erst danach gestartet werden.";

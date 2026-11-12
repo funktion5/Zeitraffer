@@ -1,23 +1,17 @@
 """Count the pictures of one camera on the NAS tars and the Storage Box, read-only.
 
-Each NAS tar is streamed once through `rclone cat` and only its headers are read (names and
-sizes), so nothing is kept in memory or on disk except the lists. The Storage Box is listed with
-one `ls -l` over SSH, like the storage filter. Results go to an output folder outside the repo:
+Each NAS tar is streamed once through `rclone cat` and only its headers are read; the Storage Box
+is listed with one `ls -l` over SSH. Results go to an output folder outside the repo:
 
 	tars.csv    source;tar;images;bytes;error      one line per finished tar (resume marker)
 	images.csv  source;tar;name;size               one line per .jpg
 
-`tars` can be stopped and restarted: finished tars are skipped. `report` prints the summary
-(per source, per year, missing days, overlaps, name formats) as Markdown.
+`tars` can be stopped and restarted: finished tars are skipped. `report` prints the summary as
+Markdown. See docs/nas.md.
 
-Usage:
 	.venv/bin/python3 nas/helpers/count_images.py tars <out> <source label> <rclone dir> <regex>
 	.venv/bin/python3 nas/helpers/count_images.py box <out> <camera>
 	.venv/bin/python3 nas/helpers/count_images.py report <out>
-
-Example (Wunstorf-Marktplatz):
-	count_images.py tars ~/nas-count/wunstorf archive-2015-2019 \\
-		nas:Webcams/storagebox-mirror/webcam-archive-2015-2019 'wunstorf|marktplatz'
 """
 
 import collections

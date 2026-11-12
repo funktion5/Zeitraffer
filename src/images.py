@@ -184,7 +184,6 @@ def get_image_range(
 	latest_date = None
 	unrecognized_files = 0
 
-	# Inspect filenames without triggering additional file metadata lookups.
 	for name in get_frame_source().list_names(camera):
 		if progress_callback is not None:
 			progress_callback()
@@ -607,7 +606,7 @@ def filter_duplicate_images_by_date(
 
 
 # Find daylight images for one date and drop empty files. Runs inside the
-# isolated worker so blocked filesystem access cannot stall the application.
+# isolated worker so a hanging ssh or rsync call cannot stall the application.
 def _find_images_worker(
 	camera: str,
 	target_date: date,

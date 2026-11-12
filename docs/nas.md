@@ -41,6 +41,14 @@ Auf das NAS wird nie geschrieben.
   fusermount -u /mnt/nas   # aushängen
   ```
 
+  Den Ordner mit den Kamera-Zips auf diesem Mount nennen die beiden Helfer über die Umgebungsvariable
+  `TIMELAPSE_NAS_ARCHIVE` (sie steht in keiner Datei des Repositorys; ohne sie brechen die Helfer
+  mit einer Meldung ab):
+
+  ```bash
+  export TIMELAPSE_NAS_ARCHIVE=/mnt/nas/<Ordner mit den Zips>
+  ```
+
 ## Bilder aus den Tar-Archiven holen: `nas/nas-extract.py`
 
 Das Archiv liegt als Tar-Dateien `backup_<Kamera>_<YYYYMMDD>.tar` auf dem NAS.
@@ -96,7 +104,8 @@ Helfer lokal tun, ist verschieden:
 | `render_letterbox.py` | Jahresvideo mit wechselnder Auflösung ohne Verzerrung erstellen (alles in 1280x720 eingepasst; die normalen Jobs passen gemischte Bildgrößen inzwischen selbst an, siehe [betrieb.md](betrieb.md#yearly), dieser Helfer erzwingt eine feste Größe) | `TIMELAPSE_CAMERA_ROOT=~/nas-cameras render_letterbox.py <Kamera> <Jahr>` |
 | `count_images.py` | Bilder einer Kamera auf den NAS-Tars und der Storage Box zählen und vergleichen (pro Jahr, fehlende Tage, Überschneidungen); `tars` lässt sich abbrechen und fortsetzen | `count_images.py tars <Ausgabe> <Bezeichnung> <rclone-Ordner> <Regex>`, `count_images.py box <Ausgabe> <Kamera>`, `count_images.py report <Ausgabe>` |
 
-Aufruf jeweils mit `.venv/bin/python3 nas/helpers/<Helfer>`. Beispiel:
+Aufruf jeweils mit `.venv/bin/python3 nas/helpers/<Helfer>`; die beiden Zip-Helfer brauchen dafür
+`TIMELAPSE_NAS_ARCHIVE` (siehe oben). Beispiel:
 
 ```bash
 .venv/bin/python3 nas/helpers/zip_extract.py webcam1_bsv.zip BSV-Steinhude 2004 2008

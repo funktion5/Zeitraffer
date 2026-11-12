@@ -213,7 +213,7 @@ def create_automatic_weekly_video(
 	return video_path
 
 
-# Run the automatic Weekly timelapse workflow.
+# Run the Weekly timelapse job: automatic by default, a manual run when manual_run is set.
 def run_weekly_job(
 	config: dict,
 	cameras: list[str],

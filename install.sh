@@ -21,8 +21,8 @@
 #   HTPASSWD_USER login name of the web UI, used only when /etc/apache2/.htpasswd does not exist
 #                 yet (asked for when unset; the password is always asked for by htpasswd)
 #   BACKUP_DIR    absolute path of a backup made by backup.sh (default ~/timelapse-backup); the
-#                 step restore copies its models/, state/, settings.json and videos/ into the project if the
-#                 folder exists, and never overwrites a file that is already there
+#                 step restore copies its models/, state/, the settings files and videos/ into the
+#                 project if the folder exists, and never overwrites a file that is already there
 #   REWRITE_VHOST=1  overwrite an existing, different vhost file (it is kept by default, so a
 #                    later TLS setup is not undone by a re-run)
 #
@@ -422,6 +422,8 @@ step_verify() {
 	grep -Eq "timelapse-web-delete-highlight([[:space:],]|$)" <<<"$sudo_rules" \
 		&& echo "sudoers: highlight delete rule active" \
 		|| warn "sudoers: highlight delete rule missing for www-data."
+	grep -q "timelapse-web-settings" <<<"$sudo_rules" \
+		&& echo "sudoers: settings rule active" || warn "sudoers: settings rule missing for www-data."
 	grep -q "timelapse-web-preview" <<<"$sudo_rules" \
 		&& echo "sudoers: preview rule active" || warn "sudoers: preview rule missing for www-data."
 

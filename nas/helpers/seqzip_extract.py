@@ -1,18 +1,18 @@
 """Copy the pictures of a 2004-2008 camera zip that has no central directory.
 
-Four zips in webcam-archive (promenade, insektenmuseum, uferstrasse, scheunenviertel) end without
-a central directory, so zipfile cannot open them. Their entries carry a data descriptor (sizes
-unknown up front). This reads the zip front to back over the read-only mount /mnt/nas: deflated
-entries are inflated as a stream (zlib reports where each one ends, so no guessing at "PK"
-bytes inside compressed data), tars are read with tarfile in stream mode, inner zips are
-spilled to temp/ on disk. Same keep rules as zip_extract.py: only names src.images.extract_date
-knows, within the given years, existing files kept; unknown names are counted with samples.
+Some zips in webcam-archive end without a central directory, so zipfile cannot open them, and
+their entries carry no sizes up front. This reads the zip front to back over the read-only mount
+/mnt/nas: deflated entries are inflated as a stream (zlib reports where each one ends), tars are
+read in stream mode, inner zips are spilled to temp/. Same keep rules as zip_extract.py.
+See docs/nas.md.
 
-Usage: .venv/bin/python3 seqzip_extract.py <zip name> <camera> <first year> <last year>
+Usage (the folder with the zips is TIMELAPSE_NAS_ARCHIVE):
+	.venv/bin/python3 seqzip_extract.py <zip name> <camera> <first year> <last year>
 """
 
 import collections
 import io
+import os
 import struct
 import sys
 import tarfile
@@ -26,7 +26,12 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.images import extract_date  # noqa: E402
 
-ARCHIVE = Path("/mnt/nas/storagebox-mirror/webcam-bis-2023/Cafe-am-Meer-Promenade/webcam-archive")
+archive_setting = os.environ.get("TIMELAPSE_NAS_ARCHIVE", "")
+
+if not archive_setting:
+	sys.exit("Set TIMELAPSE_NAS_ARCHIVE to the folder with the camera zips (below the NAS mount).")
+
+ARCHIVE = Path(archive_setting)
 LOCAL = 0x04034B50
 DESCRIPTOR = 0x08074B50
 CHUNK = 4 << 20

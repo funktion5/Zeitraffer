@@ -1,12 +1,11 @@
-"""Detector for the Zeitraffer privacy step: people and, optionally, licence plate areas.
+"""Detector for the privacy step: people and, optionally, licence plate areas.
 
-Run by src/privacy/anonymize.py as a separate process. Every reported box is an area to
-pixelate: a whole person, the lower part of a vehicle, where its licence plate usually sits,
-and (--plate-search) any plate-like rectangle found anywhere in a vehicle.
+Run as a separate process by src/privacy/anonymize.py and blur_box.py. Every reported box is an
+area to pixelate: a person, or the lower part of a vehicle where its plate sits.
 
 Protocol: image paths on stdin, one per line; one JSON object on stdout:
 {"detector": "<id>", "results": {"<path>": [{"x0", "y0", "x1", "y1", "score", "label"(, "block")}]}}
-An empty request only returns the id. Any unreadable image exits non-zero (fail closed).
+An empty request only returns the id. An unreadable image exits non-zero (fail closed).
 Pre/postprocessing follows opencv_zoo models/object_detection_yolox (Apache-2.0).
 """
 

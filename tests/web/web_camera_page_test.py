@@ -269,7 +269,7 @@ def test_the_job_notice_is_in_the_header_and_hidden_until_a_job_runs(tmp_path):
 	assert out.index('id="job-live-status"') < out.index('class="video-create"')
 
 
-# A job another colleague started is announced on every camera page, not only in the tab that
+# A job another colleague started is announced on every page, not only in the tab that
 # started it: the page asks running-job.php (the JavaScript itself is not tested, as elsewhere).
 def test_the_page_asks_whether_another_job_is_running(tmp_path):
 	out, _ = render(tmp_path)

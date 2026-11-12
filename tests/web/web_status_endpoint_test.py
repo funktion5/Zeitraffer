@@ -161,7 +161,7 @@ def test_status_endpoint_fails_a_running_job_without_pid_after_a_minute(
 	assert json.loads(result.stdout) == {"status": expected}
 
 
-# running-job.php tells every camera page whether ANY web job is running, so a colleague sees the
+# running-job.php tells every page whether ANY web job is running, so a colleague sees the
 # notice without having started the job in their own tab. It reads the same status files as
 # job-status.php and applies the same "is the worker still alive" check.
 RUNNING_ENDPOINT = Path(__file__).resolve().parents[2] / "web" / "public" / "running-job.php"

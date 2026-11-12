@@ -8,26 +8,6 @@ require_once __DIR__ . "/video-library.php";
 // schema 1, see docs/flagger.md). Everything in a report is treated as untrusted: a field with
 // the wrong type drops its item, a broken report drops its day, nothing ever throws.
 
-// German label for a COCO class the flagger reports; unknown labels pass through unchanged.
-function translateHighlightLabel(string $label): string
-{
-	return match ($label) {
-		"bird" => "Vogel",
-		"airplane" => "Flugzeug",
-		"kite" => "Drachen",
-		"cat" => "Katze",
-		"dog" => "Hund",
-		"horse" => "Pferd",
-		"sheep" => "Schaf",
-		"cow" => "Kuh",
-		"elephant" => "Elefant",
-		"bear" => "Bär",
-		"zebra" => "Zebra",
-		"giraffe" => "Giraffe",
-		default => $label,
-	};
-}
-
 function parseHighlightsPeriod(mixed $value): string
 {
 	return in_array($value, ["1", "7", "30", "all"], true) ? $value : "7";

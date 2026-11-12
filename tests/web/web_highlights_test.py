@@ -77,13 +77,12 @@ def days(tmp_path: Path, camera: str, since=None):
 	)
 
 
-def test_labels_period_and_names(tmp_path):
+def test_period_and_names(tmp_path):
 	result = highlights(
 		tmp_path,
 		"""
 		$today = new DateTimeImmutable("2026-10-21");
 		echo json_encode([
-			array_map("translateHighlightLabel", ["bird", "airplane", "kite", "horse", "zzz"]),
 			array_map("parseHighlightsPeriod", ["1", "7", "30", "all", "8", "", null, []]),
 			highlightsSinceDate("1", $today),
 			highlightsSinceDate("7", $today),
@@ -98,7 +97,6 @@ def test_labels_period_and_names(tmp_path):
 	)
 
 	assert result == [
-		["Vogel", "Flugzeug", "Drachen", "Pferd", "zzz"],
 		["1", "7", "30", "all", "7", "7", "7", "7"],
 		"2026-10-20",
 		"2026-10-14",

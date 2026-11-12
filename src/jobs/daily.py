@@ -41,7 +41,7 @@ def cleanup_daily_retention(
 		existing_video.unlink()
 
 
-# Run the automatic daily timelapse workflow.
+# Run the Daily timelapse job: automatic by default, a manual run when manual_run is set.
 def run_daily_job(
 	config: dict,
 	cameras: list[str],

@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 
-// Return one JSON response and stop processing (job status and the background deletes).
+// Return one JSON response and stop processing.
 function respondWithJson(int $statusCode, array $payload): never
 {
 	http_response_code($statusCode);

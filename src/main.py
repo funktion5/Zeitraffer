@@ -145,7 +145,8 @@ def main():
 		args.target_date and args.jobs and set(args.jobs) == {"daily"}
 	)
 
-	# Blurring is only tested on manual dailies; weekly videos reuse unblurred dailies.
+	# --blur-people blurs while the video is built (a test feature, manual dailies only). Historical
+	# videos of blur cameras are blurred on the box by privacy/blur_job.py, no flag needed.
 	if args.blur_people and not manual_daily_run:
 		raise ValueError(
 			"--blur-people is only allowed for manual Daily runs "

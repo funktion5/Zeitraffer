@@ -78,7 +78,7 @@ def blur_job_frames(
 		except RuntimeError:
 			return _not_ready(camera, "another blur run holds the lock")
 
-		# The nightly and live rounds only touch images of the last two days. These frames can be
+		# The nightly round only touches images of the last two days. These frames can be
 		# months old, so the writer's age limit is sized for the oldest of them and the backup cap
 		# for their number. Both stay hard limits; they just fit this job.
 		moments = [m for m in (image_moment(name, timezone) for name in still_open) if m]

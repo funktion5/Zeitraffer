@@ -354,7 +354,7 @@ def _cache_path(camera: str) -> Path:
 
 
 def _file_identity(frame: Path) -> tuple[int, int]:
-	# copy2 keeps size and mtime, so the local copy identifies the original without an SSHFS stat.
+	# copy2 keeps size and mtime, so the local copy identifies the original without asking the box.
 	stat = frame.stat()
 
 	return stat.st_size, stat.st_mtime_ns

@@ -53,6 +53,12 @@ def test_the_verification_checks_the_preview_rule():
 	assert 'grep -q "timelapse-web-preview" <<<"$sudo_rules"' in step
 
 
+def test_the_verification_checks_the_settings_rule():
+	step = step_text("step_verify")
+
+	assert 'grep -q "timelapse-web-settings" <<<"$sudo_rules"' in step
+
+
 # The pages show the saved values, so the web server user has to read the file; it must not be
 # closed with the other files in config/ (the upload login among them).
 def test_the_web_server_user_can_read_the_settings_file():

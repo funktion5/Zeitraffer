@@ -1,11 +1,9 @@
 """Build historical calendar-year Yearly videos without the full-coverage check.
 
-One-off backfill: same image scan, 0-byte filter, configured interval window and
-five-images-per-day selection as the Yearly job, but a camera is encoded
-whatever its coverage, so the results can be judged afterwards. Missing days
-are logged and written to a summary CSV instead of skipping the camera.
+One-off backfill: it scans and selects images like the Yearly job, but a camera is encoded
+whatever its coverage, so the result can be judged afterwards. Missing days go into a summary CSV
+instead of skipping the camera. See docs/werkzeuge.md.
 
-Run from anywhere:
 	.venv/bin/python3 scripts/yearly-backfill.py [--years 2023 2024] [--cameras A B] [--force]
 		[--blur-people]
 """

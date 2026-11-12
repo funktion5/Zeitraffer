@@ -130,8 +130,9 @@ Rule = IntRule | CameraNamesRule | TimeOfDayRule | FloatRule | BoxListRule
 
 _DAYLIGHT_BUFFER = IntRule(0, 240)
 
-# Everything the settings page may change, by dotted leaf key. Anything not listed here (the whole
-# "privacy" block, "location", ffmpeg threads, the scan timeout) is refused on purpose.
+# Everything the Allgemein page may change, by dotted leaf key. Anything not listed here (the
+# "privacy" block, "location", ffmpeg threads, the scan timeout) is refused in this scope on
+# purpose; the privacy block has its own scope below.
 GENERAL_RULES: dict[str, Rule] = {
 	"timelapse.crf": IntRule(18, 35),
 	"timelapse.daily_framerate": IntRule(1, 60),
@@ -154,11 +155,11 @@ GENERAL_RULES: dict[str, Rule] = {
 	"log_retention_days": IntRule(1, 365),
 }
 
+# Read only by the tests, which compare the key lists with the PHP ones (drift tests).
 ALLOWED_KEYS: tuple[str, ...] = tuple(GENERAL_RULES)
 
 # The privacy tab of the web UI has its own scope, file and rules, so a save on one tab never
-# touches the other tab's settings. The blur camera list comes first; the other privacy keys follow
-# with their own rule types.
+# touches the other tab's settings.
 PRIVACY_RULES: dict[str, Rule] = {
 	"privacy.blur_cameras": CameraNamesRule(),
 	"privacy.blur.strength": FloatRule(*BLUR_STRENGTH_RANGE),
@@ -174,6 +175,7 @@ PRIVACY_RULES: dict[str, Rule] = {
 
 SCOPES: dict[str, dict[str, Rule]] = {"general": GENERAL_RULES, "privacy": PRIVACY_RULES}
 
+# Same use as ALLOWED_KEYS, per scope.
 ALLOWED_KEYS_BY_SCOPE: dict[str, tuple[str, ...]] = {
 	name: tuple(rules) for name, rules in SCOPES.items()
 }

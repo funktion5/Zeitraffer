@@ -1,10 +1,8 @@
 #!/bin/bash
 
-# Nightly run for a host that cannot mount the camera storage (the VPS, the web server). The
-# pipeline fetches its frames over ssh by itself, so this wrapper writes the camera list for the web
-# pages, runs the automatic pipeline once for every camera, and then verifies what came out: the exit
-# code, the job summaries, the cameras the log names as failed, and every new video. A failing camera
-# never stops the others; the exit code and the report tell.
+# Nightly run on the VPS: writes the camera list for the web pages, runs the automatic pipeline
+# once per camera, then verifies the result (exit code, job summaries, failed cameras, every new
+# video). A failing camera never stops the others.
 #
 # Exit codes: 0 = everything ran and verified; 1 = the run or some cameras failed; 2 = fatal (the
 # camera list could not be written, or is empty); 64 = bad setting; 70 = project folder unusable;
@@ -19,11 +17,11 @@ PYTHON="${TIMELAPSE_NIGHTLY_PYTHON:-${PROJECT_ROOT}/.venv/bin/python3}"
 
 cd "$PROJECT_ROOT" || exit 70
 
-# Static ffmpeg and ffprobe live in ~/bin on the web server.
+# A static ffmpeg and ffprobe in ~/bin, if present, win over the system ones.
 export PATH="${HOME}/bin:${PATH}"
 export TIMELAPSE_STORAGE_BOX="${TIMELAPSE_STORAGE_BOX:-storagebox}"
 export TIMELAPSE_FRAME_SOURCE=ssh
-# The web server kills large encoder processes; a lighter preset keeps FFmpeg small enough.
+# Default to a light preset so a host with little memory keeps FFmpeg small; the cron line sets it.
 export TIMELAPSE_X264_PRESET="${TIMELAPSE_X264_PRESET:-ultrafast}"
 
 case "$TIMELAPSE_X264_PRESET" in

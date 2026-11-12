@@ -26,7 +26,7 @@ TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
 FFMPEG_ERROR_LOG_LINES = 40
 
-# A host that kills large encoder processes (the web server) selects a lighter x264 preset here.
+# A host with little memory that kills large encoder processes selects a lighter x264 preset here.
 # Unset keeps FFmpeg's own default, so the command is unchanged everywhere else.
 X264_PRESET_ENV = "TIMELAPSE_X264_PRESET"
 X264_PRESETS = (

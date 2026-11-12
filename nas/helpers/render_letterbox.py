@@ -1,9 +1,8 @@
 """Re-render one yearly backfill video with every frame fitted into 1280x720 (aspect kept).
 
-Mixed-resolution years (Scheunenviertel 2018: 640x480 until April, 1280x720 from August) come
-out distorted, because FFmpeg sizes the video after the first frame and stretches the rest.
-This reuses yearly-backfill.py's build_year unchanged and only adds a scale+pad filter to the
-encode command for this process.
+For years with mixed resolutions: FFmpeg sizes the video after the first frame and stretches the
+rest. This reuses yearly-backfill.py's build_year unchanged and only adds a scale+pad filter to
+the encode command for this process. See docs/nas.md.
 
 Usage: TIMELAPSE_CAMERA_ROOT=~/nas-cameras .venv/bin/python3 render_letterbox.py <camera> <year>
 """

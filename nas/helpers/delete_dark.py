@@ -1,12 +1,10 @@
 """Delete dark (night) pictures of a camera inside given date ranges from ~/nas-cameras.
 
-For cameras whose clock was wrong for a while, the 12:00 window picks night pictures. This
-measures each picture's mean brightness (FFmpeg scale to 1x1 grey, 0..255) and deletes those
-below the threshold, then reports how many bright pictures each day keeps.
+For cameras whose clock was wrong for a while, the 12:00 window picks night pictures. A picture
+is deleted when its mean brightness (FFmpeg scale to 1x1 grey, 0..255) is below the threshold;
+the report shows how many bright pictures each day keeps. See docs/nas.md.
 
 Usage: .venv/bin/python3 delete_dark.py <camera> <from YYYY-MM-DD> <to YYYY-MM-DD> [...more ranges]
-Example (Uferstrasse, 2026-10-05 findings):
-	delete_dark.py Uferstrasse 2016-11-01 2017-02-28 2018-04-01 2018-07-31
 """
 
 import collections

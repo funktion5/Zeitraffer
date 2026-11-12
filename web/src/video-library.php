@@ -63,8 +63,8 @@ function isPlainCameraName(string $name): bool
 }
 
 // The camera names come from state/web-jobs/cameras.json, which the nightly run writes
-// (python3 -m src.camera_list): the web server user has no ssh key and the storage is not mounted
-// on this host. A missing or unusable file gives an empty list.
+// (python3 -m src.camera_list): the web server user has no ssh key and never talks to the box.
+// A missing or unusable file gives an empty list.
 function findAvailableCameras(): array
 {
 	$listPath = projectRoot() . "/state/web-jobs/cameras.json";
