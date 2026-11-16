@@ -10,6 +10,7 @@ import pytest
 import src.frame_source as frame_source
 import src.privacy.preview as preview
 from src.frame_source import LocalFrameSource
+from src.privacy.checked_mark import add_mark
 from src.privacy.preview import (
 	EXIT_FAILED,
 	EXIT_NO_FRAME,
@@ -245,6 +246,21 @@ def test_each_kind_is_checked_against_its_own_recorded_hash(box):
 	)
 
 	assert box.build()["image"] == "20261109T123000.jpg"
+
+
+# Since 2026-11-16 a clean frame carries the checked mark: the bytes on the box are the marked ones.
+def test_a_marked_clean_frame_is_checked_against_its_marked_hash(box):
+	clean = make_jpeg(payload=b"clean")
+	marked = add_mark(clean)
+	box.add(
+		"20261109T120000.jpg",
+		"clean",
+		marked,
+		original_sha256=sha256(clean),
+		marked_sha256=sha256(marked),
+	)
+
+	assert box.build()["image"] == "20261109T120000.jpg"
 
 
 def test_a_cut_off_frame_is_skipped(box):

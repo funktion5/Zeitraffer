@@ -31,9 +31,13 @@ PREVIEW_ROOT = PROJECT_ROOT / "state" / "web-jobs" / "previews"
 # Best first. Both kinds went through the detector; a night frame did not, so it is left out.
 KINDS = ("blurred", "clean")
 
-# The bytes the blur job judged, by kind: the blurred copy it wrote, or the untouched original it
-# found clean.
-JUDGED_HASH_FIELD = {"blurred": "blurred_sha256", "clean": "original_sha256"}
+# The bytes on the box after the blur job, by kind, first field found wins: the blurred copy it
+# wrote, or for a clean frame the original with the checked mark (since 2026-11-16) or, in older
+# lines, the untouched original.
+JUDGED_HASH_FIELDS = {
+	"blurred": ("blurred_sha256",),
+	"clean": ("marked_sha256", "original_sha256"),
+}
 
 # A box that answers slowly must not be asked about the whole backlog.
 MAX_CANDIDATES = 3
@@ -86,7 +90,8 @@ def _is_judged_frame(path: Path, candidate: Candidate) -> bool:
 	if not blur_box.is_complete_jpeg(path):
 		return False
 
-	expected = candidate.entry.get(JUDGED_HASH_FIELD.get(candidate.kind, ""))
+	fields = JUDGED_HASH_FIELDS.get(candidate.kind, ())
+	expected = next((candidate.entry[f] for f in fields if candidate.entry.get(f)), None)
 
 	return not expected or blur_box.sha256_file(path) == expected
 
