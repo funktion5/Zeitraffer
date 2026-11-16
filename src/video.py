@@ -14,13 +14,10 @@ from src.config import load_config
 from src.images import JPEG_END_MARKER
 from src.interval_window import IntervalWindow
 from src.logger import logger
-from src.privacy.anonymize import anonymize_frames, parse_drop_rules
 
 CONFIG = load_config()
 
 FFMPEG_THREADS = CONFIG["timelapse"]["ffmpeg_threads"]
-DETECTOR_COMMAND = CONFIG["privacy"]["detector_command"]
-BLUR_SETTINGS = CONFIG["privacy"]["blur"]
 
 TEMP_ROOT = Path("temp")
 VIDEO_ROOT = Path("videos")
@@ -324,13 +321,7 @@ def get_video_path(
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
 	interval_window: IntervalWindow | None = None,
-	blur_people: bool = False,
 ) -> Path:
-	# Blurring exists for manual Dailies and the calendar-year Yearly backfill
-	# (scripts/yearly-backfill.py); the suffix keeps them apart from unblurred videos.
-	if blur_people and not (manual_run and timelapse_type in ("daily", "yearly")):
-		raise ValueError("Blurred videos are only allowed for manual daily and yearly runs.")
-
 	if daylight_buffer_minutes is not None and timelapse_type in ("monthly", "yearly"):
 		raise ValueError(f"{timelapse_type} does not use a daylight buffer.")
 
@@ -352,9 +343,6 @@ def get_video_path(
 
 		else:
 			suffix = ""
-
-		if blur_people:
-			suffix += "_blur"
 
 		return output_directory / f"{camera}_{target_date.isoformat()}{suffix}.mp4"
 
@@ -458,7 +446,6 @@ def create_image_timelapse(
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
 	interval_window: IntervalWindow | None = None,
-	blur_people: bool = False,
 ) -> Path:
 	output_path = get_video_path(
 		camera=camera,
@@ -467,7 +454,6 @@ def create_image_timelapse(
 		manual_run=manual_run,
 		daylight_buffer_minutes=daylight_buffer_minutes,
 		interval_window=interval_window,
-		blur_people=blur_people,
 	)
 
 	return encode_video(
@@ -511,29 +497,16 @@ def create_timelapse(
 	manual_run: bool = False,
 	daylight_buffer_minutes: int | None = None,
 	interval_window: IntervalWindow | None = None,
-	blur_people: bool = False,
 ) -> Path:
 	temp_directory = create_temp_directory(
 		camera,
 		target_date,
 	)
 
-	copied_images = copy_images_to_temp(
+	copy_images_to_temp(
 		images,
 		temp_directory,
 	)
-
-	# Only the temporary copies are blurred; a failure raises before anything is encoded.
-	if blur_people:
-		anonymize_frames(
-			camera=camera,
-			originals=[original for original, _ in copied_images],
-			frames=[frame for _, frame in copied_images],
-			detector_command=DETECTOR_COMMAND,
-			blur_settings=BLUR_SETTINGS,
-			# Checked only when blurring is asked for: a bad value must not stop normal videos.
-			drop_rules=parse_drop_rules(CONFIG["privacy"]),
-		)
 
 	video_path = create_image_timelapse(
 		camera=camera,
@@ -544,7 +517,6 @@ def create_timelapse(
 		manual_run=manual_run,
 		daylight_buffer_minutes=daylight_buffer_minutes,
 		interval_window=interval_window,
-		blur_people=blur_people,
 	)
 
 	cleanup_temp_directory(temp_directory)

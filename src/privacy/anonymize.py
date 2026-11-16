@@ -3,16 +3,9 @@ import math
 import os
 import signal
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 
-from src.logger import logger
-
-PRIVACY_STATE_ROOT = Path("state") / "privacy"
-
-# Small batches bound the cost of one hung detector call and free its memory regularly.
-DETECTOR_BATCH_SIZE = 50
-DETECTOR_BATCH_TIMEOUT_SECONDS = 900
 BLUR_TIMEOUT_SECONDS = 120
 
 # A detected box is dropped only if it overlaps a known false positive (privacy.ignore_boxes) this
@@ -50,7 +43,7 @@ class Box:
 	score: float
 	# Pixel block size set by the detector (vehicles and plates); None = the strength rule.
 	block: float | None = None
-	# What the detector saw ("person", "vehicle", "plate"); kept in cache and state so a box can
+	# What the detector saw ("person", "vehicle", "plate"); kept in the state so a box can
 	# be traced afterwards. Never changes how it is blurred.
 	label: str | None = None
 
@@ -127,9 +120,8 @@ def _box_number(raw: dict, key: str, image: str) -> float:
 def _call_detector(
 	command: list[str],
 	frames: list[Path],
-	timeout_seconds: float | None = None,
+	timeout_seconds: float,
 ) -> dict:
-	timeout_seconds = timeout_seconds or DETECTOR_BATCH_TIMEOUT_SECONDS
 	request = "".join(f"{frame.resolve()}\n" for frame in frames)
 
 	try:
@@ -186,7 +178,7 @@ def _call_detector(
 def run_detector(
 	command: list[str],
 	frames: list[Path],
-	timeout_seconds: float | None = None,
+	timeout_seconds: float,
 ) -> tuple[str, dict[Path, list[Box]]]:
 	payload = _call_detector(command, frames, timeout_seconds)
 	results = payload["results"]
@@ -209,7 +201,7 @@ def run_detector(
 
 # The top of a camera image shows sky, roofs or the camera's own mount, never a person close
 # enough to matter: a box mostly up there is a false positive (Scheunenviertel 2026-08-16: the
-# mount's hook, twice). Applied when blurring, so cached detections stay valid.
+# mount's hook, twice). Applied when blurring, not when detecting.
 # privacy.ignore_top_share sets the part (1/3 decided with Julius 2026-10-16); 0 switches it off.
 # privacy.ignore_top_share_per_camera gives one camera a value of its own instead.
 def split_top_band(boxes: list[Box], height: int, share: float) -> tuple[list[Box], list[Box]]:
@@ -342,108 +334,6 @@ def parse_drop_rules(privacy: dict) -> DropRules:
 		min_person_score={camera: float(score) for camera, score in min_person_score.items()},
 		top_share_by_camera={camera: float(share) for camera, share in top_share_by_camera.items()},
 	)
-
-
-# An empty request returns the detector id, so cached results can be validated without a run.
-def probe_detector_id(command: list[str]) -> str:
-	return _call_detector(command, [])["detector"]
-
-
-def _cache_path(camera: str) -> Path:
-	return PRIVACY_STATE_ROOT / f"{camera}.jsonl"
-
-
-def _file_identity(frame: Path) -> tuple[int, int]:
-	# copy2 keeps size and mtime, so the local copy identifies the original without asking the box.
-	stat = frame.stat()
-
-	return stat.st_size, stat.st_mtime_ns
-
-
-# Read cached results; a later line for the same image replaces an earlier one.
-def load_cache(camera: str) -> dict[str, dict]:
-	path = _cache_path(camera)
-
-	if not path.exists():
-		return {}
-
-	entries: dict[str, dict] = {}
-
-	with path.open(encoding="utf-8") as file:
-		for line in file:
-			line = line.strip()
-
-			if not line:
-				continue
-
-			try:
-				entry = json.loads(line)
-
-			except json.JSONDecodeError:
-				# A damaged line is only a cache miss; the frame is simply checked again.
-				logger.warning(f"Ignoring unreadable privacy cache line for camera: {camera}")
-				continue
-
-			if isinstance(entry, dict) and isinstance(entry.get("image"), str):
-				entries[entry["image"]] = entry
-
-	return entries
-
-
-def _cached_boxes(
-	entry: dict | None,
-	frame: Path,
-	detector: str,
-) -> list[Box] | None:
-	if entry is None or entry.get("detector") != detector:
-		return None
-
-	size, mtime_ns = _file_identity(frame)
-
-	if entry.get("size") != size or entry.get("mtime_ns") != mtime_ns:
-		return None
-
-	boxes = entry.get("boxes")
-
-	if not isinstance(boxes, list):
-		return None
-
-	try:
-		return [_parse_box(raw, frame.name) for raw in boxes]
-
-	except PrivacyCheckError:
-		return None
-
-
-# Every re-detection appends a line, so the file only grows; keep the newest line per image.
-# Written to a temporary file and swapped in, so a power cut leaves the old cache intact.
-def _compact_cache(camera: str) -> None:
-	path = _cache_path(camera)
-
-	if not path.exists():
-		return
-
-	lines = path.read_text(encoding="utf-8").splitlines()
-	entries = load_cache(camera)
-
-	if len(lines) == len(entries):
-		return
-
-	temporary = path.with_name(f".{path.name}.tmp")
-	temporary.write_text("".join(json.dumps(entry) + "\n" for entry in entries.values()))
-	temporary.replace(path)
-
-
-def _append_cache(
-	camera: str,
-	entries: list[dict],
-) -> None:
-	path = _cache_path(camera)
-	path.parent.mkdir(parents=True, exist_ok=True)
-
-	with path.open("a", encoding="utf-8") as file:
-		for entry in entries:
-			file.write(json.dumps(entry) + "\n")
 
 
 def _probe_dimensions(frame: Path) -> tuple[int, int]:
@@ -626,116 +516,3 @@ def blur_frame(
 	)
 
 	temporary.replace(frame)
-
-
-# Check every copied frame for people and blur them in place, failing closed on any doubt.
-def anonymize_frames(
-	camera: str,
-	originals: list[Path],
-	frames: list[Path],
-	detector_command: list[str] | None,
-	blur_settings: object,
-	drop_rules: DropRules | None = None,
-) -> None:
-	if not detector_command:
-		raise PrivacyCheckError("Blurring was requested but privacy.detector_command is not set.")
-
-	settings = parse_blur_settings(blur_settings)
-	rules = drop_rules or DropRules()
-
-	if len(originals) != len(frames):
-		raise PrivacyCheckError("Original and copied frame lists differ in length.")
-
-	detector = probe_detector_id(detector_command)
-	cache = load_cache(camera)
-
-	boxes_by_frame: dict[Path, list[Box]] = {}
-	unchecked: list[tuple[Path, Path]] = []
-
-	for original, frame in zip(originals, frames, strict=True):
-		cached = _cached_boxes(cache.get(original.name), frame, detector)
-
-		if cached is None:
-			unchecked.append((original, frame))
-
-		else:
-			boxes_by_frame[frame] = cached
-
-	logger.info(
-		f"Privacy check with {detector}: {len(frames) - len(unchecked)} cached, "
-		f"{len(unchecked)} to detect"
-	)
-
-	for start in range(0, len(unchecked), DETECTOR_BATCH_SIZE):
-		batch = unchecked[start : start + DETECTOR_BATCH_SIZE]
-		batch_detector, results = run_detector(detector_command, [frame for _, frame in batch])
-
-		# A model swap between calls would mix results the cache cannot tell apart.
-		if batch_detector != detector:
-			raise PrivacyCheckError(
-				f"Detector id changed during the run ({detector} -> {batch_detector})."
-			)
-
-		entries = []
-
-		for original, frame in batch:
-			boxes_by_frame[frame] = results[frame]
-			size, mtime_ns = _file_identity(frame)
-
-			entries.append(
-				{
-					"image": original.name,
-					"size": size,
-					"mtime_ns": mtime_ns,
-					"detector": detector,
-					"boxes": [asdict(box) for box in results[frame]],
-				}
-			)
-
-		_append_cache(camera, entries)
-
-	if unchecked:
-		_compact_cache(camera)
-
-	# Every detector call has returned (and its process exited) before the first FFmpeg blur.
-	frames_blurred = 0
-	detections_total = 0
-	ignored_total = 0
-
-	for original, frame in zip(originals, frames, strict=True):
-		boxes = boxes_by_frame.get(frame)
-
-		if boxes is None:
-			raise PrivacyCheckError(f"Frame was never checked: {original.name}")
-
-		if not boxes:
-			continue
-
-		try:
-			size = _probe_dimensions(frame)
-
-		except (OSError, subprocess.SubprocessError) as error:
-			raise PrivacyCheckError(f"Cannot read the size of {original.name}: {error}") from error
-
-		boxes, ignored = filter_boxes(boxes, size[1], rules, camera)
-		ignored_total += len(ignored)
-
-		for box in ignored:
-			logger.info(f"Ignored box in {original.name}: {asdict(box)}")
-
-		if not boxes:
-			continue
-
-		try:
-			blur_frame(frame, boxes, settings, size)
-
-		except (OSError, ValueError, subprocess.SubprocessError) as error:
-			raise PrivacyCheckError(f"Blurring failed for {original.name}: {error}") from error
-
-		frames_blurred += 1
-		detections_total += len(boxes)
-
-	logger.info(
-		f"Privacy summary for {camera}: frames={len(frames)} | blurred={frames_blurred} | "
-		f"detections={detections_total} | ignored={ignored_total} | detector={detector}"
-	)

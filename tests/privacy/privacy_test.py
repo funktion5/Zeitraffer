@@ -1,4 +1,3 @@
-import json
 import math
 import shutil
 import subprocess
@@ -13,7 +12,6 @@ from src.privacy.anonymize import (
 	BlurSettings,
 	Box,
 	PrivacyCheckError,
-	anonymize_frames,
 	blur_region,
 	parse_blur_settings,
 )
@@ -32,18 +30,11 @@ requires_ffmpeg = pytest.mark.skipif(
 # Stand-in for a real model: behaviour is selected by its first argument.
 FAKE_DETECTOR = """
 import json
-import os
 import sys
 import time
 
 mode = sys.argv[1]
 paths = [line.strip() for line in sys.stdin if line.strip()]
-
-log = os.environ.get("FAKE_DETECTOR_LOG")
-
-if log and paths:
-	with open(log, "a") as file:
-		file.write("\\n".join(paths) + "\\n")
 
 if mode == "fail":
 	sys.stderr.write("model file missing")
@@ -56,7 +47,6 @@ if mode == "garbage":
 if mode == "hang" and paths:
 	time.sleep(30)
 
-detector = "fake-2" if mode == "swap" and paths else "fake-1"
 results = {}
 
 for path in paths:
@@ -74,7 +64,7 @@ for path in paths:
 	else:
 		results[path] = []
 
-print(json.dumps({"detector": detector, "results": results}))
+print(json.dumps({"detector": "fake-1", "results": results}))
 """
 
 
@@ -86,60 +76,18 @@ def detector_script(tmp_path: Path) -> Path:
 	return script
 
 
-@pytest.fixture(autouse=True)
-def isolated_state(tmp_path: Path, monkeypatch) -> Path:
-	state_root = tmp_path / "state" / "privacy"
-	monkeypatch.setattr(privacy, "PRIVACY_STATE_ROOT", state_root)
-
-	return state_root
-
-
-@pytest.fixture
-def blur_calls(monkeypatch) -> list[tuple[str, list[Box]]]:
-	calls: list[tuple[str, list[Box]]] = []
-
-	monkeypatch.setattr(
-		privacy,
-		"blur_frame",
-		lambda frame, boxes, settings, size=None: calls.append((frame.name, boxes)),
-	)
-	# The fake frames are no real images; anonymize_frames reads their size before blurring.
-	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (1920, 1080))
-
-	return calls
-
-
 def detector_command(script: Path, mode: str = "ok") -> list[str]:
 	return [sys.executable, str(script), mode]
 
 
-# Mirror copy_images_to_temp: originals keep their names, copies are numbered frames.
-def make_frames(tmp_path: Path, count: int = 3) -> tuple[list[Path], list[Path]]:
-	original_dir = tmp_path / "cameras" / "Test-Camera"
-	temp_dir = tmp_path / "temp" / "Test-Camera"
-	original_dir.mkdir(parents=True)
-	temp_dir.mkdir(parents=True)
+# Numbered like the video's temporary frames; the fake detector only reads the names.
+def make_frames(tmp_path: Path, count: int = 3) -> list[Path]:
+	frames = [tmp_path / f"frame_{index:06d}.jpg" for index in range(1, count + 1)]
 
-	originals = []
-	frames = []
+	for index, frame in enumerate(frames):
+		frame.write_bytes(b"jpeg-bytes-" + bytes([index]))
 
-	for index in range(1, count + 1):
-		original = original_dir / f"20260101T12{index:02d}01.jpg"
-		original.write_bytes(b"jpeg-bytes-" + bytes([index]))
-
-		frame = temp_dir / f"frame_{index:06d}.jpg"
-		shutil.copy2(original, frame)
-
-		originals.append(original)
-		frames.append(frame)
-
-	return originals, frames
-
-
-def read_cache(state_root: Path) -> list[dict]:
-	path = state_root / "Test-Camera.jsonl"
-
-	return [json.loads(line) for line in path.read_text().splitlines()]
+	return frames
 
 
 # 1080 px high, top third up to y=360: only a box with more than half its height above that goes.
@@ -152,223 +100,6 @@ def test_split_top_band_drops_boxes_mostly_in_the_top_part() -> None:
 
 	assert kept == [tall_person, half]
 	assert dropped == [mount]
-
-
-def test_anonymize_skips_a_frame_whose_only_box_is_in_the_top_band(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	blur_calls,
-	monkeypatch,
-):
-	originals, frames = make_frames(tmp_path)
-	# The fake detector's box spans y 10-60; with a 100 px high frame, 0.4 puts the band at y 40.
-	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (100, 100))
-
-	anonymize_frames(
-		"Test-Camera",
-		originals,
-		frames,
-		detector_command(detector_script),
-		BLUR,
-		privacy.DropRules(top_share=0.4),
-	)
-
-	assert blur_calls == []
-	# Still cached unfiltered: the rule may change without a new detection.
-	assert read_cache(isolated_state)[0]["boxes"][0]["y0"] == 10
-
-
-def test_anonymize_requires_configured_detector(tmp_path: Path):
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match="detector_command is not set"):
-		anonymize_frames("Test-Camera", originals, frames, None, BLUR)
-
-
-def test_anonymize_blurs_only_frames_with_detections(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	blur_calls,
-):
-	originals, frames = make_frames(tmp_path)
-
-	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
-
-	assert [name for name, _ in blur_calls] == ["frame_000001.jpg"]
-	assert blur_calls[0][1] == [Box(x0=10, y0=10, x1=40, y1=60, score=0.31)]
-
-	# The cache is keyed on the original name, not the temporary frame number.
-	cache = read_cache(isolated_state)
-	assert [entry["image"] for entry in cache] == [original.name for original in originals]
-	assert {entry["detector"] for entry in cache} == {"fake-1"}
-
-
-def test_anonymize_uses_cache_on_rerun(
-	tmp_path: Path,
-	detector_script: Path,
-	monkeypatch,
-	blur_calls,
-):
-	log = tmp_path / "detector.log"
-	monkeypatch.setenv("FAKE_DETECTOR_LOG", str(log))
-	originals, frames = make_frames(tmp_path)
-	command = detector_command(detector_script)
-
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-	first_run_requests = log.read_text().splitlines()
-
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-
-	# Only the id probe ran the second time; it sends no paths, so nothing was logged.
-	assert log.read_text().splitlines() == first_run_requests
-	assert len(first_run_requests) == 3
-
-	# Cached boxes are still blurred, because the copies are fresh every run.
-	assert [name for name, _ in blur_calls] == ["frame_000001.jpg", "frame_000001.jpg"]
-
-
-def test_anonymize_rechecks_changed_files(
-	tmp_path: Path,
-	detector_script: Path,
-	monkeypatch,
-	blur_calls,
-):
-	log = tmp_path / "detector.log"
-	monkeypatch.setenv("FAKE_DETECTOR_LOG", str(log))
-	originals, frames = make_frames(tmp_path)
-	command = detector_command(detector_script)
-
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-	log.write_text("")
-
-	frames[1].write_bytes(b"a different and longer picture")
-
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-
-	assert log.read_text().splitlines() == [str(frames[1].resolve())]
-
-
-def test_anonymize_rechecks_results_from_another_detector(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	monkeypatch,
-	blur_calls,
-):
-	log = tmp_path / "detector.log"
-	monkeypatch.setenv("FAKE_DETECTOR_LOG", str(log))
-	originals, frames = make_frames(tmp_path)
-
-	isolated_state.mkdir(parents=True)
-	(isolated_state / "Test-Camera.jsonl").write_text(
-		"".join(
-			json.dumps(
-				{
-					"image": original.name,
-					"size": frame.stat().st_size,
-					"mtime_ns": frame.stat().st_mtime_ns,
-					"detector": "old-model-0",
-					"boxes": [],
-				}
-			)
-			+ "\n"
-			for original, frame in zip(originals, frames, strict=True)
-		)
-	)
-
-	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
-
-	assert len(log.read_text().splitlines()) == 3
-
-
-@pytest.mark.parametrize(
-	("mode", "message"),
-	[
-		("fail", "exit code 3"),
-		("garbage", "not valid JSON"),
-		("missing", "no result for frame_000002.jpg"),
-		("inverted", "empty or inverted box"),
-		("swap", "Detector id changed"),
-	],
-)
-def test_anonymize_fails_closed_on_bad_detector_output(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	blur_calls,
-	mode: str,
-	message: str,
-):
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match=message):
-		anonymize_frames(
-			"Test-Camera", originals, frames, detector_command(detector_script, mode), BLUR
-		)
-
-	# Nothing is blurred or cached from a batch that was not fully trusted.
-	assert blur_calls == []
-	assert not (isolated_state / "Test-Camera.jsonl").exists()
-
-
-def test_anonymize_fails_closed_on_detector_timeout(
-	tmp_path: Path,
-	detector_script: Path,
-	monkeypatch,
-	blur_calls,
-):
-	monkeypatch.setattr(privacy, "DETECTOR_BATCH_TIMEOUT_SECONDS", 1)
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match="timed out"):
-		anonymize_frames(
-			"Test-Camera", originals, frames, detector_command(detector_script, "hang"), BLUR
-		)
-
-	assert blur_calls == []
-
-
-def test_anonymize_fails_closed_when_detector_cannot_start(tmp_path: Path):
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match="could not be started"):
-		anonymize_frames(
-			"Test-Camera", originals, frames, [str(tmp_path / "no-such-detector")], BLUR
-		)
-
-
-def test_anonymize_fails_closed_when_blurring_fails(
-	tmp_path: Path,
-	detector_script: Path,
-	monkeypatch,
-):
-	def failing_blur(frame, boxes, settings, size=None):
-		raise subprocess.CalledProcessError(1, ["ffmpeg"])
-
-	monkeypatch.setattr(privacy, "blur_frame", failing_blur)
-	# The fake frames are no real images, and CI has no ffprobe: give them a size.
-	monkeypatch.setattr(privacy, "_probe_dimensions", lambda frame: (1920, 1080))
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match="Blurring failed for 20260101T120101.jpg"):
-		anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
-
-
-def test_anonymize_sends_frames_in_batches(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	monkeypatch,
-	blur_calls,
-):
-	monkeypatch.setattr(privacy, "DETECTOR_BATCH_SIZE", 2)
-	originals, frames = make_frames(tmp_path, count=5)
-
-	anonymize_frames("Test-Camera", originals, frames, detector_command(detector_script), BLUR)
-
-	assert len(read_cache(isolated_state)) == 5
 
 
 def test_blur_region_keeps_even_bounds_inside_the_image():
@@ -400,7 +131,7 @@ def test_pixelate_uses_the_detectors_block_size_when_given():
 	)
 
 
-def test_label_from_the_detector_is_kept_and_cached_as_given():
+def test_label_from_the_detector_is_kept_as_given():
 	raw = {"x0": 1, "y0": 1, "x1": 9, "y1": 9, "score": 0.5, "label": "vehicle", "block": 4}
 
 	box = privacy._parse_box(raw, "a.jpg")
@@ -459,28 +190,6 @@ def test_parse_blur_settings_rejects_invalid_values(change, message):
 def test_parse_blur_settings_rejects_missing_block():
 	with pytest.raises(PrivacyCheckError, match="missing"):
 		parse_blur_settings(None)
-
-
-def test_anonymize_rejects_invalid_blur_settings_before_detecting(
-	tmp_path: Path,
-	detector_script: Path,
-	monkeypatch,
-	blur_calls,
-):
-	log = tmp_path / "detector.log"
-	monkeypatch.setenv("FAKE_DETECTOR_LOG", str(log))
-	originals, frames = make_frames(tmp_path)
-
-	with pytest.raises(PrivacyCheckError, match="strength"):
-		anonymize_frames(
-			"Test-Camera",
-			originals,
-			frames,
-			detector_command(detector_script),
-			{**BLUR, "strength": 9},
-		)
-
-	assert not log.exists()
 
 
 def make_test_picture(path: Path) -> None:
@@ -714,28 +423,8 @@ def test_unreadable_image_size_is_a_privacy_error(monkeypatch, tmp_path: Path, o
 		privacy._probe_dimensions(tmp_path / "frame.jpg")
 
 
-def test_cache_keeps_only_the_newest_line_per_image(
-	tmp_path: Path,
-	detector_script: Path,
-	isolated_state: Path,
-	blur_calls,
-):
-	originals, frames = make_frames(tmp_path)
-	command = detector_command(detector_script)
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-
-	# A changed frame is detected again, which appends a second line for it.
-	frames[1].write_bytes(b"a different and longer picture")
-	anonymize_frames("Test-Camera", originals, frames, command, BLUR)
-
-	cache = read_cache(isolated_state)
-	assert [entry["image"] for entry in cache] == [original.name for original in originals]
-	assert cache[1]["size"] == len(b"a different and longer picture")
-	assert not list(isolated_state.glob(".*.tmp"))
-
-
 def test_explicit_detector_timeout_wins(tmp_path: Path, detector_script: Path) -> None:
-	_, frames = make_frames(tmp_path, count=1)
+	frames = make_frames(tmp_path, count=1)
 
 	with pytest.raises(PrivacyCheckError, match="timed out after 1 s"):
 		privacy.run_detector(detector_command(detector_script, "hang"), frames, 1)
@@ -744,7 +433,7 @@ def test_explicit_detector_timeout_wins(tmp_path: Path, detector_script: Path) -
 def test_run_detector_returns_the_boxes_of_every_frame(
 	tmp_path: Path, detector_script: Path
 ) -> None:
-	_, frames = make_frames(tmp_path)
+	frames = make_frames(tmp_path)
 
 	detector, boxes = privacy.run_detector(detector_command(detector_script), frames, 10)
 
@@ -769,14 +458,14 @@ def test_run_detector_returns_the_boxes_of_every_frame(
 def test_run_detector_fails_closed_on_bad_output(
 	tmp_path: Path, detector_script: Path, mode: str, message: str
 ) -> None:
-	_, frames = make_frames(tmp_path)
+	frames = make_frames(tmp_path)
 
 	with pytest.raises(PrivacyCheckError, match=message):
 		privacy.run_detector(detector_command(detector_script, mode), frames, 10)
 
 
 def test_run_detector_fails_closed_when_the_detector_cannot_start(tmp_path: Path) -> None:
-	_, frames = make_frames(tmp_path)
+	frames = make_frames(tmp_path)
 
 	with pytest.raises(PrivacyCheckError, match="could not be started"):
 		privacy.run_detector([str(tmp_path / "no-such-detector")], frames, 10)

@@ -117,7 +117,6 @@ def test_run_daily_job_creates_yesterdays_timelapse(
 		framerate,
 		manual_run=False,
 		daylight_buffer_minutes=None,
-		blur_people=False,
 	):
 		create_timelapse_calls.append(
 			{

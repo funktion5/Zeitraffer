@@ -53,7 +53,7 @@ def run_backfill(monkeypatch, tmp_path, find=None, release_errors=None, years=(2
 
 		return Path(f"videos/{camera}/manual-runs/yearly/video.mp4")
 
-	arguments = Namespace(years=list(years), cameras=["Cam"], force=True, blur_people=False)
+	arguments = Namespace(years=list(years), cameras=["Cam"], force=True)
 
 	monkeypatch.setattr(backfill, "parse_arguments", lambda: arguments)
 	monkeypatch.setattr(backfill, "load_config", lambda: CONFIG)

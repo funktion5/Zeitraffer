@@ -185,7 +185,7 @@ def assert_valid_config_structure(config: dict) -> None:
 		and all(isinstance(part, str) for part in detector_command)
 	)
 
-	# Invalid blur settings would stop every --blur-people run, so catch them here already.
+	# Invalid blur settings would stop every blur round, so catch them here already.
 	parse_blur_settings(privacy["blur"])
 
 	# The cameras the blur job may write to; names must pass the box writer's own check.
