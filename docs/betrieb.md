@@ -19,7 +19,8 @@ Nachtlauf. Danach lädt ein Skript die neuen Videos auf die Website hoch
 0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
 ```
 
-`./install.sh cron_hint` druckt diese Zeile. Der Upload-Schritt braucht die Zugangsdaten in
+`./install.sh cron_hint` druckt diese Zeile, dazu die beiden Zeilen der laufenden Verpixelung und
+ihres Wächters (alle 5 Minuten, [verpixelung-box.md](verpixelung-box.md#aufruf)). Der Upload-Schritt braucht die Zugangsdaten in
 `config/siteground.env` (siehe [Upload auf die Website](#upload-auf-die-website)); `./install.sh
 verify` warnt, wenn sie fehlen.
 

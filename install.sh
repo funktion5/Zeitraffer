@@ -440,7 +440,7 @@ step_verify() {
 step_cron_hint() {
 	log "Crontab: nothing was installed"
 	cat <<EOF
-Paste this line into 'crontab -e' yourself, and only after the old host's cron lines are gone: the
+Paste these lines into 'crontab -e' yourself, and only after the old host's cron lines are gone: the
 same job must never run on both hosts. Run each command once by hand first (docs/vps.md). If an
 older separate 04:00 flagger line is still there, delete it: the flagger would run twice.
 
@@ -454,7 +454,11 @@ older separate 04:00 flagger line is still there, delete it: the flagger would r
 # would otherwise fall back to ultrafast.
 0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; /bin/bash ${PROJECT_ROOT}/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> ${PROJECT_ROOT}/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
 
-Not included: the 5-minute live blur job (docs/verpixelung-box.md).
+# The live blur round and its watchdog, every 5 minutes around the clock (docs/verpixelung-box.md).
+# The round marks every checked image for the website; the 4-minute cap ends a stuck round before
+# the next one starts. The watchdog only reads and warns in logs/privacy/ about unchecked images.
+*/5 * * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && timeout -k 10 240 .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras
+*/5 * * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && timeout 60 .venv/bin/python3 -m src.privacy.blur_watch
 EOF
 }
 

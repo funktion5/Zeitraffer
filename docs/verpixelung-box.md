@@ -98,6 +98,8 @@ fände die nächste den Lock noch belegt und fiele aus.
 */5 * * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && timeout 60 .venv/bin/python3 -m src.privacy.blur_watch
 ```
 
+`./install.sh cron_hint` druckt beide Zeilen mit dem echten Projektpfad und Alias.
+
 Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
 [betrieb.md](betrieb.md#nächtlicher-produktionslauf)): in der ersten Nacht zwei Tage, danach jede
 Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
