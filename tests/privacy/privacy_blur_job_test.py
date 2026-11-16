@@ -9,6 +9,7 @@ from privacy_blur_box_test import (
 	OLD_AGE,
 	Setup,
 	blurred_bytes,
+	clean_bytes,
 	original_bytes,
 	record_in_own_month,
 )
@@ -108,7 +109,7 @@ def test_job_frames_are_blurred_and_only_those_copies_are_fetched_again(job, mon
 		"clean",
 	]
 	assert (job.setup.camera_dir / PERSON_A).read_bytes() == blurred_bytes(PERSON_A)
-	assert (job.setup.camera_dir / NOBODY).read_bytes() == original_bytes(NOBODY)
+	assert (job.setup.camera_dir / NOBODY).read_bytes() == clean_bytes(NOBODY)
 	# The job's copies are from before the blur: only the blurred ones are dropped, then fetched
 	# again, in that order.
 	assert job.source.released == [(CAMERA, [PERSON_A, PERSON_B])]
