@@ -52,11 +52,12 @@ def box(tmp_path: Path, monkeypatch) -> Box:
 	return Box(tmp_path, monkeypatch)
 
 
-def test_an_unchecked_image_is_stale_after_five_minutes(box: Box) -> None:
-	box.upload("20260615T135000.jpg", age_seconds=301)
-	box.upload("20260615T135800.jpg", age_seconds=120)
+# The round runs every 5 minutes, so a normal image is checked within about 6.
+def test_an_unchecked_image_is_stale_after_ten_minutes(box: Box) -> None:
+	box.upload("20260615T134500.jpg", age_seconds=601)
+	box.upload("20260615T135200.jpg", age_seconds=420)
 
-	assert box.stale() == ["20260615T135000.jpg"]
+	assert box.stale() == ["20260615T134500.jpg"]
 
 
 @pytest.mark.parametrize(
@@ -134,7 +135,7 @@ def test_main_warns_per_camera_and_still_exits_zero(box: Box, config, caplog) ->
 
 	warnings = [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
 	assert warnings == [
-		f"[{CAMERA}] 12 images unblurred for more than 5 minutes: "
+		f"[{CAMERA}] 12 images unblurred for more than 10 minutes: "
 		f"{', '.join(names[:10])} and 2 more"
 	]
 	assert "Stale check: 2 cameras, 12 stale images" in caplog.text
@@ -165,7 +166,7 @@ def test_a_failed_listing_is_an_error_and_the_next_camera_is_still_checked(
 	assert blur_watch.main(now=NOW) == 1
 
 	assert f"[{CAMERA}] Stale check failed: Storage box listing failed" in caplog.text
-	assert f"[{OTHER}] 1 images unblurred for more than 5 minutes" in caplog.text
+	assert f"[{OTHER}] 1 images unblurred for more than 10 minutes" in caplog.text
 
 
 def test_main_without_a_storage_box_is_an_error(config, caplog, monkeypatch) -> None:

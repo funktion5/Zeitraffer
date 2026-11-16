@@ -1,9 +1,11 @@
 # Plan: the live blur round in cron on the VPS
 
-Status: DRAFT 2026-10-30; **decided 2026-11-16 (Julius, later the same day):** cron every minute,
-**around the clock** (the detector runs 24/7, so the night rule of the round goes away), cap
-`timeout -k 10 300`. The watchdog is built first (branch `feature/blur-watchdog`, no night
-exception either). The pick-up side is decided with the colleague (KISS): every checked image gets
+Status: DRAFT 2026-10-30; **decided 2026-11-16 (Julius, later the same day):** cron **every 5
+minutes, around the clock** (the detector runs 24/7, so the night rule of the round goes away), cap
+`timeout -k 10 240`. Every 5 minutes is enough because the pick-up runs every 5 minutes and the
+website only renews its image every 15; the 4-minute cap keeps the lock free for the next round.
+The watchdog is built first (branch `feature/blur-watchdog`, limit 10 minutes, no night exception
+either). The pick-up side is decided with the colleague (KISS): every checked image gets
 the JPEG comment `blur:checked=true` (blurred and clean images; clean ones without a backup, the
 writer verifies the change is only the mark), and the pick-up job publishes only images of blur
 cameras that carry it. That replaces the minimum-age rule below; the mark gets its own plan and
@@ -149,6 +151,14 @@ For each `Replaced <name> with its blurred copy` line in `logs/privacy/<date>.lo
 with the time inside the image file name. The camera clock may differ by seconds, so read the
 spread and the median, not single values. If the median is well above a minute and it matters, look
 at option B.
+
+## Parked (2026-11-16, Julius: YAGNI)
+
+- The blur lock does not wait: a manual run of a blur camera that still has unchecked frames gives up
+  (`Blur not finished: another blur run holds the lock`) when a live round holds the lock at that
+  moment. Rare: recent and backfilled frames are confirmed, so such runs need no lock. Fix only if it
+  happens: let `blur_job` wait for the lock up to 5 minutes. The reverse is accepted: a long manual
+  run (SLSV before 2025-10-11) pauses the live round of every blur camera while it blurs.
 
 ## Out of scope
 
