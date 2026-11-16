@@ -1,10 +1,12 @@
 import contextlib
 import csv
 import importlib.util
+import sys
 from argparse import Namespace
 from datetime import date
 from pathlib import Path
 
+import pytest
 from frame_source_fakes import RecordingFrameSource
 
 import src.images as images_module
@@ -152,3 +154,11 @@ def test_a_failed_release_makes_the_run_exit_with_one(monkeypatch, tmp_path):
 	assert code == 1
 	assert events.count("release:Cam") == 2
 	assert [row["status"] for row in rows] == ["created", "created"]
+
+
+# The video-time blur is gone; frames of blur cameras are blurred on the box instead.
+def test_parse_arguments_rejects_blur_people(monkeypatch):
+	monkeypatch.setattr(sys, "argv", ["yearly-backfill.py", "--blur-people"])
+
+	with pytest.raises(SystemExit):
+		backfill.parse_arguments()

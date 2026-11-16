@@ -1542,3 +1542,11 @@ def test_parse_arguments_accepts_blur_people(monkeypatch):
 	args = main_module.parse_arguments()
 
 	assert args.blur_people is True
+
+
+# The video-time blur is gone; frames of blur cameras are blurred on the box instead.
+def test_parse_arguments_rejects_blur_people(monkeypatch):
+	monkeypatch.setattr(sys, "argv", ["main.py", "--date", "2026-06-28", "--blur-people"])
+
+	with pytest.raises(SystemExit):
+		main_module.parse_arguments()

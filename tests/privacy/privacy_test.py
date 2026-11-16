@@ -739,3 +739,44 @@ def test_explicit_detector_timeout_wins(tmp_path: Path, detector_script: Path) -
 
 	with pytest.raises(PrivacyCheckError, match="timed out after 1 s"):
 		privacy.run_detector(detector_command(detector_script, "hang"), frames, 1)
+
+
+def test_run_detector_returns_the_boxes_of_every_frame(
+	tmp_path: Path, detector_script: Path
+) -> None:
+	_, frames = make_frames(tmp_path)
+
+	detector, boxes = privacy.run_detector(detector_command(detector_script), frames, 10)
+
+	assert detector == "fake-1"
+	assert boxes == {
+		frames[0]: [Box(x0=10, y0=10, x1=40, y1=60, score=0.31)],
+		frames[1]: [],
+		frames[2]: [],
+	}
+
+
+# The box blur relies on these: a frame is never treated as clean on doubtful detector output.
+@pytest.mark.parametrize(
+	("mode", "message"),
+	[
+		("fail", "exit code 3"),
+		("garbage", "not valid JSON"),
+		("missing", "no result for frame_000002.jpg"),
+		("inverted", "empty or inverted box"),
+	],
+)
+def test_run_detector_fails_closed_on_bad_output(
+	tmp_path: Path, detector_script: Path, mode: str, message: str
+) -> None:
+	_, frames = make_frames(tmp_path)
+
+	with pytest.raises(PrivacyCheckError, match=message):
+		privacy.run_detector(detector_command(detector_script, mode), frames, 10)
+
+
+def test_run_detector_fails_closed_when_the_detector_cannot_start(tmp_path: Path) -> None:
+	_, frames = make_frames(tmp_path)
+
+	with pytest.raises(PrivacyCheckError, match="could not be started"):
+		privacy.run_detector([str(tmp_path / "no-such-detector")], frames, 10)
