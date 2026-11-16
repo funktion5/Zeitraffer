@@ -18,7 +18,7 @@ Alle Pfade sind relativ zum Projektordner.
 
 ## Ablauf
 
-Ein Lauf ist eine Runde; Cron startet jede Minute eine neue. Pro Kamera aus
+Ein Lauf ist eine Runde; Cron startet alle 5 Minuten eine neue. Pro Kamera aus
 `privacy.blur_cameras`:
 
 ```mermaid
@@ -89,11 +89,15 @@ Testlauf von Hand, nur für die genannte Kamera:
 .venv/bin/python3 -m src.privacy.blur_box --cameras BlurTest
 ```
 
-Cron für die laufende Runde (geplant, **noch nicht eingerichtet**; vorgesehen höchstens alle
-5 Minuten statt jede Minute):
+Cron für die laufende Runde und den [Wächter](#wächter) (entschieden am 16.11.2026, **noch nicht
+eingerichtet**): beide alle 5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
+ihre Bilder ebenfalls alle 5 Minuten abholt und ihr Bild nur alle 15 Minuten erneuert. Die Grenze
+von 4 Minuten (`timeout -k 10 240`) beendet eine hängende Runde, bevor die nächste startet; sonst
+fände die nächste den Lock noch belegt und fiele aus.
 
 ```cron
-*/5 * * * * cd <projektpfad> && .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras
+*/5 * * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && timeout -k 10 240 .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras
+*/5 * * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && timeout 60 .venv/bin/python3 -m src.privacy.blur_watch
 ```
 
 Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
@@ -130,6 +134,32 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 - Log: `logs/privacy/<Datum>.log`. Pro Kamera und Runde eine Zusammenfassung, z. B.
   `[Scheunenviertel] blurred=1 clean=0 night=0 settling=0 refused=0 failed=0 postponed=0`.
   `postponed` zählt die Bilder, die wegen der 40-Sekunden-Grenze auf die nächste Runde warten.
+
+## Wächter
+
+`src/privacy/blur_watch.py` meldet Bilder, die zu lange ungeprüft auf der Box liegen. Er fragt pro
+Kamera aus `privacy.blur_cameras` die Bildliste der letzten drei Tage ab (ein `ls`, kein Bild wird
+geladen) und vergleicht sie mit der Statusdatei. Ein Bild ist **liegen geblieben**, wenn es seit
+mehr als **10 Minuten** auf der Box liegt und weder `blurred` noch `clean` noch `night` ist (also
+ohne Eintrag, `refused` oder `replacing`). Eine Nachtausnahme gibt es nicht: der Detektor läuft
+rund um die Uhr.
+
+```bash
+.venv/bin/python3 -m src.privacy.blur_watch
+```
+
+- **Nur lesend:** kein Schreiben auf die Box, keine Statuszeile, kein Detektor, kein Lock. Er
+  meldet also auch dann, wenn eine Runde hängt oder der Detektor ausfällt.
+- **Log** (`logs/privacy/<Datum>.log`, neben den Runden): pro Kamera mit liegen gebliebenen
+  Bildern eine Warnung mit höchstens 10 Namen, z. B.
+  `[SLSV] 2 images unblurred for more than 10 minutes: …`, und bei jedem Lauf eine Abschlusszeile
+  `Stale check: 2 cameras, nothing stale` (bzw. `…, 2 stale images`). Fehlt diese Zeile, läuft der
+  Wächter selbst nicht.
+- Die Warnung wiederholt sich bei jedem Lauf, bis das Bild geprüft ist (Runde, Nachholen oder ein
+  von Hand gestartetes Video) oder aus den drei Tagen der Liste fällt.
+- **Exit-Code** 0, auch mit Warnungen; 1 nur, wenn die Box nicht erreichbar ist oder eine Liste
+  fehlschlägt (die anderen Kameras werden trotzdem geprüft).
+- Eine Push-Nachricht gibt es nicht; die Warnung steht nur im Log.
 
 ## Konfiguration
 
@@ -425,10 +455,15 @@ Gemessen auf dem Raspberry Pi 4 (2 GB):
 | Erkennung | ca. 7,5–10 Sekunden pro Bild, plus ca. 1 Sekunde Detektorstart |
 | Verpixeln | ca. 1 Sekunde pro Bild mit Personen |
 
-Zeit vom Upload bis zum verpixelten Bild: bis zu 60 Sekunden bis zur nächsten Runde, 15
-Sekunden Wartezeit für den Upload, dann ca. 10–15 Sekunden Bearbeitung. Nach einem Ausfall
-schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand von 12 Bildern
-(2 Stunden Ausfall bei SLSV) ist also nach etwa 3–4 Minuten abgearbeitet.
+Auf dem VPS gemessen (nächtliches Nachholen am 16.11.2026, ohne andere Last): ca. 5 Sekunden pro
+Bild ohne Person (SLSV, 70 Bilder), ca. 9 Sekunden pro verpixeltem Bild (Scheunenviertel, 47
+Bilder in 413 Sekunden).
+
+Zeit vom Upload bis zum verpixelten Bild: bis zu 5 Minuten bis zur nächsten Runde, 15 Sekunden
+Wartezeit für den Upload, dann 5–9 Sekunden Bearbeitung, also höchstens etwa 6 Minuten. Nach einem
+Ausfall schafft eine Runde pro Kamera einige Bilder (40-Sekunden-Grenze, mindestens eins); ein
+Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 Runden, 10–15 Minuten
+(Schätzung). Den Rest des Tages holt spätestens das nächtliche Nachholen um 02:00.
 
 ## Grenzen
 
@@ -467,6 +502,8 @@ schafft eine Runde pro Kamera etwa 4 Bilder (40-Sekunden-Grenze); ein Rückstand
 | `Blur not finished: another blur run holds the lock - skipping camera: …` | Das nächtliche Nachholen oder ein anderer Auftrag verpixelt gerade | **kein Video**; später noch einmal starten |
 | `Blur not finished: N of M not blurred yet: …` | Bilder des von Hand gestarteten Videos sind nicht bestätigt (Fehler, unvollständiger Upload, abgelehnt) | **kein Video**; Auftrag noch einmal starten, er macht beim Rest weiter; die Ursache steht im Log davor |
 | `… was blurred before, recorded and not blurred again` | Schutz vor doppelter Sicherung: das Bild war schon verpixelt | nichts |
+| `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Runde hängt, Detektor fällt aus, Box nicht erreichbar, Bild `refused` | Die Meldungen der Runden davor im selben Log lesen; die Ursache beheben, dann holt die nächste Runde nach. `refused`-Bilder holt ein von Hand gestartetes Daily des Tages nach |
+| `[<Kamera>] Stale check failed: …` (Wächter) | Die Bildliste der Box war nicht abrufbar | wie bei den Runden: ssh-Zugang und `TIMELAPSE_STORAGE_BOX` prüfen |
 | `Refused, stays unblurred: …` | Bild zu alt (die nächtliche Runde nimmt nur die letzten 48 Stunden) oder Namensformat unbekannt | **Bild bleibt unverpixelt**, bis ein von Hand gestartetes Video, das dieses Bild verwendet, es nachholt (dieser Lauf hebt die Altersgrenze an) |
 | `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Der Box-Job hat diese Bilder nicht bestätigt (`refused`, noch nicht bearbeitet, abgeschnittenes JPEG) | Das automatische Video entsteht aus den übrigen Bildern. Status ansehen: `grep -h '"status": "refused"' state/privacy/box/<Kamera>/*.jsonl`. Ein von Hand gestartetes Daily des Tages holt `refused`-Bilder nach; abgeschnittene Bilder bleiben dauerhaft draußen |
 | `[<Kamera>] Blur gate: no confirmed image - skipping camera.` | Kein einziges Bild war bestätigt (Nachholen ausgefallen, keine Statusdatei) | Die Kamera zählt als `skipped`, das bisherige Video bleibt; Protokoll des Nachholens in `logs/privacy/` prüfen |
