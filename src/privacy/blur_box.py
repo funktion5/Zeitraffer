@@ -40,7 +40,7 @@ from src.privacy.box_writer import (
 	BoxWriter,
 	BoxWriteRefused,
 )
-from src.privacy.checked_mark import add_mark
+from src.privacy.checked_mark import add_mark, has_mark, remove_mark
 from src.solar import get_sun_times
 from src.storage_box import StorageBox, get_storage_box
 from src.storage_filter import acquire_run_lock, list_images_for_dates
@@ -243,6 +243,17 @@ def _as_lists(boxes: list) -> list[list]:
 	]
 
 
+# The website's pick-up job publishes only images that carry the checked mark.
+def _add_mark(work_copy: Path, name: str) -> None:
+	try:
+		marked = add_mark(work_copy.read_bytes())
+
+	except ValueError as error:
+		raise PrivacyCheckError(f"Copy of {name} cannot be marked: {error}") from error
+
+	work_copy.write_bytes(marked)
+
+
 # One image from download to swap. Returns "blurred", "clean", "settling" or ALREADY_BLURRED;
 # anything else raises and leaves the image as it is: BoxWriteRefused (never writable) or
 # IMAGE_ERRORS (retried).
@@ -291,6 +302,23 @@ def _process_image(
 
 		return ALREADY_BLURRED
 
+	# A round cut off between marking and its status line: the mark shows it was checked. (A
+	# blurred image never gets here unrecorded: its status is written before the swap.)
+	data = work_copy.read_bytes()
+
+	if has_mark(data):
+		entry = {
+			"image": name,
+			"status": "clean",
+			"original_sha256": hashlib.sha256(remove_mark(data)).hexdigest(),
+			"marked_sha256": judged_hash,
+			"note": "found with the checked mark",
+		}
+		record_processed(state_root, camera, entry, now)
+		logger.info(f"[{camera}] {name} already carries the checked mark, recorded as clean")
+
+		return "clean"
+
 	detector, boxes_by_frame = run_detector(detector_command, [work_copy], DETECTOR_TIMEOUT_SECONDS)
 	boxes = boxes_by_frame[work_copy]
 	size = _probe_dimensions(work_copy) if boxes else None
@@ -305,11 +333,17 @@ def _process_image(
 	if ignored:
 		entry["ignored_boxes"] = _as_lists(ignored)
 
-	# The box must still hold exactly the judged bytes: the camera may rewrite the image during
-	# detection. Nothing found then means nothing to write at all.
+	# Nothing found: the image only gets the checked mark, without a backup. The writer checks
+	# that the box still holds the judged bytes (the camera may rewrite it during detection).
 	if not boxes:
-		if writer.image_hash(camera, name) != judged_hash:
-			raise PrivacyCheckError(f"{name} on the box differs from the checked copy; retrying.")
+		_add_mark(work_copy, name)
+
+		# A refusal here is not the image's fault: retry, not record.
+		try:
+			entry["marked_sha256"] = writer.mark_clean(camera, name, judged_hash, work_copy)
+
+		except BoxWriteRefused as error:
+			raise PrivacyCheckError(f"Marked copy of {name} not written: {error}") from error
 
 		record_processed(state_root, camera, {**entry, "status": "clean"}, now)
 
@@ -320,14 +354,8 @@ def _process_image(
 
 	blur_frame(work_copy, boxes, settings, size)
 
-	# The website's pick-up job publishes only marked images; the backup stays the bare original.
-	try:
-		marked = add_mark(work_copy.read_bytes())
-
-	except ValueError as error:
-		raise PrivacyCheckError(f"Blurred copy of {name} cannot be marked: {error}") from error
-
-	work_copy.write_bytes(marked)
+	# The backup above stays the bare original.
+	_add_mark(work_copy, name)
 
 	# A refusal here (e.g. blurring changed nothing) is not the image's fault: retry, not record.
 	try:
