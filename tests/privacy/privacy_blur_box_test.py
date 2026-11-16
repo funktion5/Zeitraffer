@@ -14,6 +14,7 @@ import src.privacy.blur_box as blur_box
 from src.privacy.anonymize import BlurSettings, DropRules, PrivacyCheckError
 from src.privacy.blur_box import Daylight
 from src.privacy.box_writer import BoxWriter
+from src.privacy.checked_mark import add_mark, has_mark, remove_mark
 from src.storage_box import StorageBox
 from src.storage_filter import acquire_run_lock
 
@@ -39,8 +40,9 @@ def original_bytes(name: str) -> bytes:
 	return b"\xff\xd8original-" + name.encode() + b"\xff\xd9"
 
 
+# What the box holds after a blur: the fake pixelation, carrying the checked mark.
 def blurred_bytes(name: str) -> bytes:
-	return b"\xff\xd8blurred" + original_bytes(name)
+	return add_mark(b"\xff\xd8blurred" + original_bytes(name))
 
 
 class Setup:
@@ -177,6 +179,8 @@ def test_person_is_blurred_on_the_box_after_verified_backup(setup: Setup) -> Non
 
 	assert summary.blurred == 1
 	assert image.read_bytes() == blurred_bytes(DAY_WITH_PERSON)
+	# The website's pick-up job publishes only marked images; the backup stays the bare original.
+	assert has_mark(image.read_bytes())
 	state = setup.states()[DAY_WITH_PERSON]
 	assert state["status"] == "blurred"
 	assert state["blurred_sha256"] == sha(image.read_bytes())
@@ -661,7 +665,7 @@ def test_person_image_rewritten_during_detection_is_not_blurred_yet(
 	os.utime(image, (NOW.timestamp() - 600,) * 2)
 
 	assert setup.run().blurred == 1
-	assert image.read_bytes().startswith(b"\xff\xd8blurred")
+	assert remove_mark(image.read_bytes()).startswith(b"\xff\xd8blurred")
 
 
 def test_only_images_with_people_are_backed_up(setup: Setup) -> None:
@@ -1143,7 +1147,8 @@ def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blu
 ) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
 	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
-	image.write_bytes(blurred_bytes(OLD_PERSON))
+	pi_blurred = b"\xff\xd8blurred" + original_bytes(OLD_PERSON)
+	image.write_bytes(pi_blurred)
 	make_backup(setup, OLD_PERSON, original_bytes(OLD_PERSON))
 
 	summary = blur_listed(setup, [OLD_PERSON])
@@ -1152,7 +1157,7 @@ def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blu
 	assert setup.detected() == []
 	assert setup.writes() == []
 	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == pi_blurred
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
 
