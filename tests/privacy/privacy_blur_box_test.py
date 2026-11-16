@@ -12,7 +12,6 @@ from privacy_fakes import FAKE_DETECTOR, FakeBox, run_in, sha
 
 import src.privacy.blur_box as blur_box
 from src.privacy.anonymize import BlurSettings, DropRules, PrivacyCheckError
-from src.privacy.blur_box import Daylight
 from src.privacy.box_writer import BoxWriter
 from src.privacy.checked_mark import add_mark, has_mark, remove_mark
 from src.storage_box import StorageBox
@@ -22,7 +21,6 @@ REMOTE = "user@box.example"
 CAMERA = "Test-Camera"
 TIMEZONE = "Europe/Berlin"
 LOCATION = {"latitude": 52.472, "longitude": 9.333, "timezone": TIMEZONE}
-DAYLIGHT = Daylight(LOCATION, 90)
 SETTINGS = BlurSettings(0.1, 0.25, 0.5)
 NOW = datetime(2026, 6, 15, 14, 0, tzinfo=ZoneInfo(TIMEZONE))
 
@@ -120,7 +118,6 @@ class Setup:
 			CAMERA,
 			self.detector,
 			SETTINGS,
-			DAYLIGHT,
 			self.state_root,
 			now,
 			**options,
@@ -235,15 +232,16 @@ def test_an_already_marked_image_is_recorded_clean_not_checked_again(setup: Setu
 	assert state["marked_sha256"] == sha(clean_bytes(DAY))
 
 
-def test_night_image_is_recorded_without_detection_or_writes(setup: Setup) -> None:
-	setup.upload(NIGHT, age_seconds=12 * 3600)
+# The detector runs around the clock: a night image is checked and marked like any other.
+def test_night_image_is_checked_and_marked_like_any_other(setup: Setup) -> None:
+	image = setup.upload(NIGHT, age_seconds=12 * 3600)
 
 	summary = setup.run()
 
-	assert summary.night == 1
-	assert setup.states()[NIGHT]["status"] == "night"
-	assert setup.detected() == []
-	assert setup.writes() == []
+	assert summary.clean == 1
+	assert setup.detected() == [NIGHT]
+	assert setup.states()[NIGHT]["status"] == "clean"
+	assert image.read_bytes() == clean_bytes(NIGHT)
 
 
 def test_fresh_upload_waits_without_writes(setup: Setup) -> None:
@@ -455,14 +453,14 @@ def test_blur_that_changes_nothing_is_retried_not_fatal(setup: Setup, monkeypatc
 	assert DAY_WITH_PERSON not in setup.states()
 
 
-# A dated name without a readable time must not pass as a night image.
-def test_image_without_readable_time_is_refused_not_taken_for_night(setup: Setup) -> None:
+# A dated name without a readable time cannot be placed by the writer's age limits.
+def test_image_without_readable_time_is_refused(setup: Setup) -> None:
 	name = "cam_260615_x.jpg"
 	setup.upload(name)
 
 	summary = setup.run()
 
-	assert (summary.night, summary.refused) == (0, 1)
+	assert summary.refused == 1
 	assert setup.states()[name]["status"] == "refused"
 
 
@@ -569,16 +567,6 @@ def test_unlimited_budget_processes_every_open_image(setup: Setup, monkeypatch) 
 	assert (summary.blurred, summary.postponed) == (3, 0)
 
 
-def test_night_name_uploaded_in_daylight_is_checked_not_skipped(setup: Setup, monkeypatch) -> None:
-	# The filename clock says 02:00, the upload happened at 13:50: trust neither alone.
-	setup.upload(NIGHT)
-	monkeypatch.setenv("FAKE_PEOPLE", NIGHT)
-
-	summary = setup.run()
-
-	assert (summary.night, summary.blurred) == (0, 1)
-
-
 # Matches the day's listing pattern, but no known format reads its date: refuse and log it.
 def test_unreadable_name_is_refused_and_logged_not_dropped(setup: Setup, caplog) -> None:
 	name = "IMG20260615-120000.jpg"
@@ -612,7 +600,6 @@ def test_time_budget_postpones_the_rest_newest_first(setup: Setup, monkeypatch) 
 			CAMERA,
 			setup.detector,
 			SETTINGS,
-			DAYLIGHT,
 			setup.state_root,
 			NOW,
 			time_budget_seconds=0,
@@ -989,7 +976,7 @@ def test_frame_at_night_time_is_still_checked(setup: Setup, monkeypatch) -> None
 
 	summary = blur_listed(setup, [name])
 
-	assert (summary.blurred, summary.night) == (1, 0)
+	assert summary.blurred == 1
 	assert setup.detected() == [name]
 
 

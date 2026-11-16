@@ -536,22 +536,18 @@ class BoxWriter:
 		temporary_path = self._temporary_path(camera, name)
 		_check_remote_path(temporary_path)
 		marked_hash = hashlib.sha256(data).hexdigest()
-
-		if self._hashes([image_path])[image_path] != original_sha256:
-			raise BoxWriteError(f"{name} on the box differs from the checked copy; retrying.")
-
 		argv = ["scp", "-q", *SSH_OPTIONS, str(local), f"{self.remote}:{temporary_path}"]
 		action = f"Upload of the marked {name}"
 		self._check_command(self._run(argv, UPLOAD_TIMEOUT_SECONDS, action), action)
 
-		# The camera may have rewritten the image during the upload: never overwrite that.
+		# The camera may have rewritten the image since it was judged: never overwrite that.
 		hashes = self._hashes([image_path, temporary_path])
 
 		if hashes[temporary_path] != marked_hash:
 			raise BoxWriteError(f"Uploaded copy of {name} does not match the local file")
 
 		if hashes[image_path] != original_sha256:
-			raise BoxWriteError(f"{name} changed during the upload; not marking it")
+			raise BoxWriteError(f"{name} changed since it was judged; not marking it")
 
 		self._check_command(
 			self._remote(("mv", "-T"), [temporary_path, image_path]),

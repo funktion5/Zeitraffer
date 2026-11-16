@@ -863,20 +863,7 @@ def test_mark_clean_refuses_anything_but_the_original_plus_the_mark(
 	assert not any(command.split(" ")[0] in WRITE_VERBS for command in box.remote_commands())
 
 
-def test_mark_clean_never_overwrites_an_image_the_camera_rewrote(
-	writer: BoxWriter, box: FakeBox, upload_root: Path
-) -> None:
-	rewritten = b"\xff\xd8rewritten by the camera\xff\xd9"
-	box.path(f"{CAMERA}/{NAME}").write_bytes(rewritten)
-
-	with pytest.raises(BoxWriteError, match="differs from the checked copy"):
-		writer.mark_clean(CAMERA, NAME, _sha(ORIGINAL), _local(upload_root, add_mark(ORIGINAL)))
-
-	assert box.path(f"{CAMERA}/{NAME}").read_bytes() == rewritten
-	assert not any(argv[0] == "scp" for argv in box.calls)
-
-
-# The camera may rewrite the image while the copy is uploading: checked again right before the swap.
+# The camera may rewrite the image after it was judged: checked right before the swap.
 def test_mark_clean_checks_the_box_again_before_the_swap(
 	writer: BoxWriter, box: FakeBox, upload_root: Path
 ) -> None:

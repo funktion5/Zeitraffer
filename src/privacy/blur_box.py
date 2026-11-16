@@ -41,7 +41,6 @@ from src.privacy.box_writer import (
 	BoxWriteRefused,
 )
 from src.privacy.checked_mark import add_mark, has_mark, remove_mark
-from src.solar import get_sun_times
 from src.storage_box import StorageBox, get_storage_box
 from src.storage_filter import acquire_run_lock, list_images_for_dates
 
@@ -73,12 +72,13 @@ REPLACING = "replacing"
 # Not a state: what _process_image returns for a frame that was found blurred already.
 ALREADY_BLURRED = "already blurred"
 # An image whose last state line is one of these is finished for every reader (the Daily gate, a
-# backfill): pixelated, found clean, or a night image the videos never use. Anything else, "refused"
-# and "replacing" included, may still show a person.
+# backfill): pixelated or found clean. "night" comes from rounds before the detector ran around the
+# clock (2026-11-16) and stays valid. Anything else, "refused" and "replacing" included, may still
+# show a person.
 CONFIRMED_STATUSES = frozenset({"blurred", "clean", "night"})
 JPEG_END_MARKER = b"\xff\xd9"
 
-# Today plus two days back: after an outage of up to two days, missed daytime images still reach
+# Today plus two days back: after an outage of up to two days, missed images still reach
 # the writer's logged "older than" refusal instead of silently falling out of the listing.
 LISTED_DAYS = 3
 
@@ -91,17 +91,10 @@ IMAGE_ERRORS = (
 )
 
 
-@dataclass(frozen=True)
-class Daylight:
-	location: dict
-	buffer_minutes: int
-
-
 @dataclass
 class BoxRoundSummary:
 	blurred: int = 0
 	clean: int = 0
-	night: int = 0
 	settling: int = 0
 	refused: int = 0
 	failed: int = 0
@@ -123,19 +116,6 @@ def is_complete_jpeg(path: Path) -> bool:
 		file.seek(-2, os.SEEK_END)
 
 		return file.read(2) == JPEG_END_MARKER
-
-
-# Same window as the Daily videos, so every frame that can end up in a video gets checked.
-def is_daylight(moment: datetime, daylight: Daylight) -> bool:
-	sunrise, sunset = get_sun_times(
-		target_date=moment.date(),
-		latitude=daylight.location["latitude"],
-		longitude=daylight.location["longitude"],
-		timezone=daylight.location["timezone"],
-	)
-	buffer = timedelta(minutes=daylight.buffer_minutes)
-
-	return sunrise - buffer <= moment <= sunset + buffer
 
 
 # One file per camera and month (by write time): the audit trail stays complete, while a round
@@ -221,15 +201,6 @@ def load_processed_for_names(
 	return _read_state([state_root / f"{camera}.jsonl", *sorted(months)])
 
 
-# Night only if both the filename clock and the upload time say so: a drifted camera clock or a
-# name without a readable time must not let a daytime image pass unchecked.
-def _is_night(moment: datetime | None, uploaded: int, daylight: Daylight) -> bool:
-	if moment is None or is_daylight(moment, daylight):
-		return False
-
-	return not is_daylight(datetime.fromtimestamp(uploaded, moment.tzinfo), daylight)
-
-
 # Coordinates only, never image content; they show recurring false positives.
 # [x0, y0, x1, y1, score] plus the detector's label when it gave one.
 def _as_lists(boxes: list) -> list[list]:
@@ -312,7 +283,6 @@ def _process_image(
 			"status": "clean",
 			"original_sha256": hashlib.sha256(remove_mark(data)).hexdigest(),
 			"marked_sha256": judged_hash,
-			"note": "found with the checked mark",
 		}
 		record_processed(state_root, camera, entry, now)
 		logger.info(f"[{camera}] {name} already carries the checked mark, recorded as clean")
@@ -464,7 +434,6 @@ def process_box_camera(
 	camera: str,
 	detector_command: list[str],
 	settings: BlurSettings,
-	daylight: Daylight,
 	state_root: Path,
 	now: datetime,
 	settle_seconds: float = DEFAULT_SETTLE_SECONDS,
@@ -473,26 +442,18 @@ def process_box_camera(
 ) -> BoxRoundSummary:
 	summary = BoxRoundSummary()
 	rules = rules or DropRules()
-	timezone = daylight.location["timezone"]
+	timezone = writer.timezone
 	processed = load_processed(state_root, camera, now)
 
 	today = now.date()
 	days = [today - timedelta(days=offset) for offset in range(LISTED_DAYS)]
 	uploaded = list_images_for_dates(storage_box, camera, days)
-	daytime: list[str] = []
-
-	for name, mtime in uploaded.items():
-		entry = processed.get(name)
-
-		if entry is not None and entry.get("status") != REPLACING:
-			continue
-
-		if _is_night(image_moment(name, timezone), mtime, daylight):
-			record_processed(state_root, camera, {"image": name, "status": "night"}, now)
-			summary.night += 1
-			continue
-
-		daytime.append(name)
+	# Day and night alike: the detector runs around the clock.
+	open_names = [
+		name
+		for name in uploaded
+		if (entry := processed.get(name)) is None or entry.get("status") == REPLACING
+	]
 
 	work_dir = WORK_ROOT / camera
 	work_dir.mkdir(parents=True, exist_ok=True)
@@ -500,15 +461,15 @@ def process_box_camera(
 	# Newest first, so after a backlog the image the website shows next is done first.
 	# A name without a readable time sorts last; the writer refuses it.
 	oldest = datetime.min.replace(tzinfo=ZoneInfo(timezone))
-	daytime.sort(key=lambda name: image_moment(name, timezone) or oldest, reverse=True)
+	open_names.sort(key=lambda name: image_moment(name, timezone) or oldest, reverse=True)
 
 	started = time.monotonic()
 
 	try:
-		for index, name in enumerate(daytime):
+		for index, name in enumerate(open_names):
 			# At least one image per round, so an image slower than the budget still gets done.
 			if index and time.monotonic() - started >= time_budget_seconds:
-				summary.postponed = len(daytime) - index
+				summary.postponed = len(open_names) - index
 				break
 
 			_handle_image(
@@ -535,10 +496,10 @@ def process_box_camera(
 
 
 # The frames a job hands over, instead of the last few days the nightly round lists: any age, any
-# month. There is no night rule, the job chose these frames itself, and no settle wait, they are
-# long finished. The writer's limits are the caller's choice: only a writer built for old frames
-# lets them through. Each state line goes on the page of the image's own month, so a later lookup
-# finds it. Newest first, so an interrupted run has done the latest frames.
+# month. There is no settle wait, they are long finished. The writer's limits are the caller's
+# choice: only a writer built for old frames lets them through. Each state line goes on the page of
+# the image's own month, so a later lookup finds it. Newest first, so an interrupted run has done
+# the latest frames.
 def blur_frames(
 	writer: BoxWriter,
 	camera: str,
@@ -652,7 +613,6 @@ def main(argv: list[str] | None = None) -> int:
 		return 1
 
 	location = config["location"]
-	daylight = Daylight(location, config["daylight_buffer_minutes"])
 	exit_code = 0
 
 	with ExitStack() as stack:
@@ -699,7 +659,6 @@ def main(argv: list[str] | None = None) -> int:
 					camera,
 					detector_command,
 					settings,
-					daylight,
 					args.state_dir,
 					datetime.now(ZoneInfo(location["timezone"])),
 					args.settle_seconds,
@@ -720,7 +679,7 @@ def main(argv: list[str] | None = None) -> int:
 
 			logger.info(
 				f"[{camera}] blurred={summary.blurred} clean={summary.clean} "
-				f"night={summary.night} settling={summary.settling} "
+				f"settling={summary.settling} "
 				f"refused={summary.refused} failed={summary.failed} "
 				f"postponed={summary.postponed}"
 			)
