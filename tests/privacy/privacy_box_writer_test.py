@@ -11,6 +11,7 @@ import pytest
 from privacy_fakes import FakeBox
 from privacy_fakes import sha as _sha
 from src.config import PROJECT_ROOT
+from src.privacy.checked_mark import add_mark
 from src.privacy.box_writer import (
 	ALLOWED_REMOTE_COMMANDS,
 	Backup,
@@ -404,6 +405,21 @@ def test_unchanged_blur_result_is_refused(writer: BoxWriter, upload_root: Path) 
 
 	with pytest.raises(BoxWriteRefused, match="identical"):
 		writer.upload_blurred(backup, source)
+
+
+# The checked mark changes the bytes but not the image: an unblurred original with the mark must
+# never pass as blurred, or the website would publish it as checked.
+def test_marked_but_unblurred_copy_is_refused(
+	writer: BoxWriter, box: FakeBox, upload_root: Path
+) -> None:
+	backup = writer.backup(CAMERA, NAME, _sha(ORIGINAL))
+	source = upload_root / "marked-original.jpg"
+	source.write_bytes(add_mark(ORIGINAL))
+
+	with pytest.raises(BoxWriteRefused, match="identical"):
+		writer.upload_blurred(backup, source)
+
+	assert (box.root / CAMERA / NAME).read_bytes() == ORIGINAL
 
 
 def test_corrupted_upload_is_detected(writer: BoxWriter, box: FakeBox, blurred_file: Path) -> None:

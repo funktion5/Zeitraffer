@@ -19,6 +19,7 @@ from zoneinfo import ZoneInfo
 from src.config import PROJECT_ROOT
 from src.images import extract_date, extract_time, image_moment
 from src.logger import logger
+from src.privacy.checked_mark import has_mark, remove_mark
 
 BACKUP_DIRECTORY_NAME = "original"
 DEFAULT_UPLOAD_ROOT = PROJECT_ROOT / "temp"
@@ -449,8 +450,10 @@ class BoxWriter:
 		temporary_path = self._temporary_path(backup.camera, backup.name)
 		_check_remote_path(temporary_path)
 		blurred_hash = hashlib.sha256(data).hexdigest()
+		# The checked mark changes bytes, not pixels: judge what lies under it.
+		content = remove_mark(data) if has_mark(data) else data
 
-		if blurred_hash == backup.sha256:
+		if hashlib.sha256(content).hexdigest() == backup.sha256:
 			raise BoxWriteRefused(f"Blurred copy of {backup.name} is identical to the original")
 
 		# An absolute local path is never mistaken for host:path by scp.

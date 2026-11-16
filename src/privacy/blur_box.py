@@ -40,6 +40,7 @@ from src.privacy.box_writer import (
 	BoxWriter,
 	BoxWriteRefused,
 )
+from src.privacy.checked_mark import add_mark
 from src.solar import get_sun_times
 from src.storage_box import StorageBox, get_storage_box
 from src.storage_filter import acquire_run_lock, list_images_for_dates
@@ -318,6 +319,15 @@ def _process_image(
 	entry["backup"] = backup.backup_name
 
 	blur_frame(work_copy, boxes, settings, size)
+
+	# The website's pick-up job publishes only marked images; the backup stays the bare original.
+	try:
+		marked = add_mark(work_copy.read_bytes())
+
+	except ValueError as error:
+		raise PrivacyCheckError(f"Blurred copy of {name} cannot be marked: {error}") from error
+
+	work_copy.write_bytes(marked)
 
 	# A refusal here (e.g. blurring changed nothing) is not the image's fault: retry, not record.
 	try:
