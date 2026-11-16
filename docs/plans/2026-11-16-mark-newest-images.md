@@ -45,7 +45,9 @@ extras/
 No `__init__.py` or `__main__.py`: one file runs with `python -m`, like `blur_watch.py`. Another
 optional add-on, if one ever comes, is one more file next to it.
 
-Three one-line hooks outside the folder, so it is still tested and checked like the rest:
+Four one-line hooks outside the folder, so it is still tested and checked like the rest (the
+Docker mount `../../extras` in `docker/zeitraffer-web/compose.yaml`, added with task 1, so the local
+test container sees the folder):
 `pyproject.toml` `testpaths` gets `"extras"` (pytest), the box-write guard test in
 `tests/privacy/privacy_box_writer_test.py` also scans `extras/` (it must never write to the box
 except through `BoxWriter`), and `docs/verpixelung-box.md` gets one line pointing to the README.
@@ -101,7 +103,8 @@ To connect it, the live round's cron line becomes (documented in the README, not
    is the original plus the mark, no backup, nothing else touched.
 3. **`main()`**: the camera list (box minus blur minus ignored cameras), one writer for exactly those,
    one failing camera does not stop the others, the summary line, exit codes.
-4. **The three hooks** (testpaths, guard test scans `extras/`, one docs line) and the folder's
+4. **The remaining hooks** (guard test scans `extras/`, one docs line; testpaths and the Docker
+   mount came with task 1) and the folder's
    `README.md` with the connect and disconnect steps.
 
 ## Afterwards in the pick-up script (the colleague's, after this is live)
