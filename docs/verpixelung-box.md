@@ -8,7 +8,8 @@ die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
 jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
-Die laufende Runde ist noch nicht eingerichtet.
+Die laufende Runde ist noch nicht eingerichtet. Seit dem 16.11.2026 bekommt jedes geprüfte Bild die
+[Markierung für die Webseite](#markierung-für-die-webseite), und es gibt keine Nachtregel mehr.
 
 Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
 Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
@@ -25,17 +26,15 @@ Ein Lauf ist eine Runde; Cron startet alle 5 Minuten eine neue. Pro Kamera aus
 flowchart TD
     L[Liste per SSH mit Upload-Zeiten:<br/>heute und zwei Tage zurück] --> S{In der Statusdatei?}
     S -- ja, erledigt --> X[übersprungen]
-    S -- nein --> N{Nacht?}
-    N -- ja --> NR[als night vermerkt,<br/>nichts geschrieben]
-    N -- nein --> R{seit 15 s ruhig?}
+    S -- nein --> R{seit 15 s ruhig?}
     R -- nein --> W[nächste Runde]
     R -- ja --> K[Download per SSH nach temp/<br/>vollständiges JPEG?]
     K -- nein --> W
     K -- ja --> D[Detektor]
     D --> P{Person oder Kennzeichen?}
-    P -- nein --> C[clean, nichts geschrieben]
+    P -- nein --> C[clean: Kopie markieren,<br/>hochladen, tauschen,<br/>ohne Sicherung]
     P -- ja --> B[Sicherung auf der Box<br/>original/]
-    B --> V[Kopie verpixeln,<br/>hochladen, tauschen]
+    B --> V[Kopie verpixeln, markieren,<br/>hochladen, tauschen]
 ```
 
 1. **Liste:** Ein einziger `ls -l --time-style=+%s`-Befehl über SSH holt die Bilder von heute,
@@ -45,10 +44,8 @@ flowchart TD
    diese Kamera ab, statt ein Bild stillschweigend zu übergehen.
 2. **Bereits erledigt:** Bilder mit einem Eintrag in der Statusdatei werden übersprungen, außer
    ihr Eintrag steht noch auf `replacing` (siehe [Stromausfall](#stromausfall-und-nachholen)).
-3. **Nacht:** Ein Bild gilt nur als Nachtbild, wenn **sowohl** die Uhrzeit im Dateinamen **als
-   auch** die Upload-Zeit auf der Box außerhalb von Sonnenaufgang − Puffer bis Sonnenuntergang +
-   Puffer liegen (`daylight_buffer_minutes`, 90 Minuten). Eine falsch gehende Kamerauhr lässt so
-   kein Tagbild als Nachtbild durch. Nachtbilder werden nur vermerkt.
+3. **Tag und Nacht:** Seit dem 16.11.2026 gibt es keine Nachtregel mehr; der Detektor prüft jedes
+   Bild, auch nachts. Ältere Einträge mit `night` gelten weiter als erledigt.
 4. **Upload fertig:** Laut Liste muss das Bild seit 15 Sekunden unverändert sein. Sonst kommt es
    in der nächsten Runde dran.
 5. **Vorprüfung:** Name und Zeitfenster werden geprüft, bevor eine Erkennung dafür läuft. Ein
@@ -61,12 +58,13 @@ flowchart TD
    120 Sekunden pro Bild, siehe [Zeitlimits](#zeitlimits)). Danach gelten `ignore_boxes`,
    `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` (siehe
    [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
-7. **Nichts gefunden:** Die Prüfsumme des Bildes auf der Box muss der geprüften Kopie entsprechen
-   (die Kamera kann das Bild inzwischen neu geschrieben haben). Dann wird das Bild als `clean`
-   vermerkt. **Auf die Box wird nichts geschrieben**, auch keine Sicherung.
+7. **Nichts gefunden:** Die Kopie bekommt die [Markierung](#markierung-für-die-webseite) und wird
+   **ohne Sicherung** getauscht. Vorher prüft der Schreibcode, dass die Kopie ohne Markierung genau
+   die geprüften Bytes sind und das Bild auf der Box noch das geprüfte ist (die Kamera kann es
+   inzwischen neu geschrieben haben). Dann wird das Bild als `clean` vermerkt.
 8. **Person oder Kennzeichen gefunden:** Erst jetzt wird das Original auf der Box nach `original/` gesichert und
    per SHA-256 geprüft. Die Sicherung muss genau die geprüften Bytes enthalten. Dann wird die
-   Kopie verpixelt, unter einem versteckten Namen hochgeladen, geprüft und in einem Schritt
+   Kopie verpixelt, markiert, unter einem versteckten Namen hochgeladen, geprüft und in einem Schritt
    gegen das Bild getauscht (siehe [Was auf der Box passiert](#was-auf-der-box-passiert)).
 
 Weicht das Bild auf der Box in Schritt 7 oder 8 von der geprüften Kopie ab, bleibt es unverändert
@@ -100,6 +98,8 @@ fände die nächste den Lock noch belegt und fiele aus.
 */5 * * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && timeout 60 .venv/bin/python3 -m src.privacy.blur_watch
 ```
 
+`./install.sh cron_hint` druckt beide Zeilen mit dem echten Projektpfad und Alias.
+
 Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
 [betrieb.md](betrieb.md#nächtlicher-produktionslauf)): in der ersten Nacht zwei Tage, danach jede
 Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
@@ -108,7 +108,7 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 |---|---|
 | `--cameras A B` | nur diese Kameras; jede muss in `privacy.blur_cameras` stehen |
 | `--all-blur-cameras` | alle Kameras aus `privacy.blur_cameras` (für Cron) |
-| `--catch-up` | 45 Minuten pro Kamera statt 40 Sekunden: die offenen Tagbilder der Liste (bis 48 Stunden alt) in einem Lauf; läuft nachts vor dem Zeitraffer-Lauf. Die Grenze gibt den Lock auch bei hängender Box rechtzeitig für die Videos frei |
+| `--catch-up` | 45 Minuten pro Kamera statt 40 Sekunden: die offenen Bilder der Liste (bis 48 Stunden alt) in einem Lauf; läuft nachts vor dem Zeitraffer-Lauf. Die Grenze gibt den Lock auch bei hängender Box rechtzeitig für die Videos frei |
 | `--settle-seconds N` | Wartezeit, bis ein Upload als fertig gilt (Standard 15) |
 | `--state-dir PFAD` | Ordner der Statusdateien (Standard `state/privacy/box/`) |
 
@@ -132,8 +132,30 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
   `privacy.blur_cameras` oder die Einstellungen sind ungültig. Sonst 0, auch wenn die Runde
   übersprungen wurde, weil noch eine andere läuft.
 - Log: `logs/privacy/<Datum>.log`. Pro Kamera und Runde eine Zusammenfassung, z. B.
-  `[Scheunenviertel] blurred=1 clean=0 night=0 settling=0 refused=0 failed=0 postponed=0`.
+  `[Scheunenviertel] blurred=1 clean=0 settling=0 refused=0 failed=0 postponed=0`.
   `postponed` zählt die Bilder, die wegen der 40-Sekunden-Grenze auf die nächste Runde warten.
+
+## Markierung für die Webseite
+
+Jedes geprüfte Bild trägt seit dem 16.11.2026 eine Markierung: einen JPEG-Kommentar mit dem Text
+`blur:checked=true`, direkt hinter den ersten zwei Bytes der Datei (`FF D8`). Es sind immer genau
+diese 21 Bytes: `FF FE 00 13`, dann `blur:checked=true`. Der Abholjob der Webseite veröffentlicht
+von Blur-Kameras nur Bilder mit dieser Markierung. Ein Bild, das der Detektor noch nicht geprüft
+hat, trägt keine und wird nicht veröffentlicht; die Webseite zeigt dann weiter das letzte geprüfte
+Bild.
+
+- **Verpixelte Bilder** bekommen sie vor dem Hochladen. Die Sicherung in `original/` bleibt ohne.
+- **Bilder ohne Person** bekommen sie auch, **ohne Sicherung**: Die Pixel ändern sich nicht, und
+  ohne die 21 Bytes ist die Datei wieder genau das Original. Das prüft der Schreibcode vor dem
+  Tausch.
+- Die Markierung ändert kein Pixel. FFmpeg, die Zeitraffer und die Vorschau zeigen dasselbe Bild.
+- Nur die laufende Runde und das nächtliche Nachholen markieren: sie liefern die neuen Bilder der
+  Webseite. Ein [von Hand gestartetes Video](#verpixelung-bei-von-hand-gestarteten-videos)
+  verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
+  16.11.2026).
+- Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
+- Code: `src/privacy/checked_mark.py`. Von Hand prüfen:
+  `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
 
 ## Wächter
 
@@ -244,10 +266,10 @@ Dateien in einem Kameraordner:
 
 | Datei | Bedeutung |
 |---|---|
-| `<name>.jpg` | das Bild; nach dem Tausch die verpixelte Fassung |
+| `<name>.jpg` | das Bild; nach dem Tausch die verpixelte bzw. markierte Fassung |
 | `original/<name>.<16 Zeichen Prüfsumme>.jpg` | gesichertes Original |
 | `original/.<sicherung>.tmp` | Sicherung während des Kopierens |
-| `.<name>.jpg.tmp` | hochgeladene verpixelte Fassung vor dem Tausch |
+| `.<name>.jpg.tmp` | hochgeladene verpixelte bzw. markierte Fassung vor dem Tausch |
 
 Die versteckten `.tmp`-Dateien enden nicht auf `.jpg`. Weder der nächtliche Lauf noch ein
 Programm, das nach `*.jpg` sucht, sieht so eine halb geschriebene Datei. Bleibt nach einem
@@ -256,13 +278,19 @@ weiteren Versuch (das Bild ist inzwischen älter als 48 Stunden), bleibt sie lie
 bewusst kein `rm`. Solche Reste lassen sich von Hand finden (`ls -a <Kamera>/ | grep '\.tmp$'`)
 und löschen.
 
-Ein Bild ohne Fund kostet einen Download und einen Befehl (`sha256sum`) und schreibt nichts.
+Befehle pro Bild ohne Fund (keine Sicherung):
+
+1. `scp` der markierten Kopie nach `.<name>.jpg.tmp`.
+2. `sha256sum` von Bild und Upload. Nur wenn das Bild noch das geprüfte ist und der Upload
+   unverändert ist: `mv -T` auf den Bildnamen.
+3. `sha256sum` des Bildes: Es muss jetzt die markierte Fassung sein.
+
 Befehle pro Bild mit Fund:
 
 1. `sha256sum` des Bildes; es muss der geprüften Kopie entsprechen.
 2. `cp -T` nach `original/.<sicherung>.tmp`, `sha256sum`, dann `mv -n -T` auf den endgültigen
    Namen. `-n`: Eine vorhandene Sicherung wird nie überschrieben.
-3. `scp` der verpixelten Kopie nach `.<name>.jpg.tmp`, dann `sha256sum`.
+3. `scp` der verpixelten, markierten Kopie nach `.<name>.jpg.tmp`, dann `sha256sum`.
 4. `sha256sum` von Bild, Sicherung und Upload. Nur wenn Bild und Sicherung noch das Original
    sind und der Upload unverändert ist: `mv -T` auf den Bildnamen.
 5. `sha256sum` des Bildes: Es muss jetzt die verpixelte Fassung sein.
@@ -321,13 +349,14 @@ Bild doppelt bearbeitet wird.
 
 | Status | Bedeutung | Nächste Runde |
 |---|---|---|
-| `night` | Nachtbild, nichts geschrieben | übersprungen |
-| `clean` | geprüft, keine Person, Bild unverändert | übersprungen |
+| `night` | Nachtbild aus Runden vor dem 16.11.2026, nichts geschrieben | übersprungen |
+| `clean` | geprüft, keine Person; das Bild trägt die Markierung (Einträge vor dem 16.11.2026: unverändert) | übersprungen |
 | `replacing` | Upload fertig, Tausch begonnen | wird geprüft (siehe unten) |
 | `blurred` | verpixelt und getauscht | übersprungen |
 | `refused` | kann nie geschrieben werden (zu alt, unbekanntes Namensformat); **bleibt unverpixelt** | übersprungen |
 
-Weitere Felder: `detector` und `original_sha256` (Prüfsumme der geprüften Fassung), bei
+Weitere Felder: `detector` und `original_sha256` (Prüfsumme der geprüften Fassung), bei `clean`
+zusätzlich `marked_sha256` (Prüfsumme der markierten Fassung auf der Box), bei
 verpixelten Bildern zusätzlich `backup`, `boxes` (je `[x0, y0, x1, y1, Sicherheit]`, dahinter das
 `label` des Detektors, sofern vorhanden) und
 `blurred_sha256`, bei übersprungenen Fehlerkennungen `ignored_boxes`, bei `refused` der Grund in
@@ -429,10 +458,10 @@ wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).
 
 ## Stromausfall und Nachholen
 
-- **Ausfall bis zwei Tage:** Die Liste reicht bis vorgestern zurück. Verpasste Tagbilder der
+- **Ausfall bis zwei Tage:** Die Liste reicht bis vorgestern zurück. Verpasste Bilder der
   letzten 48 Stunden werden nachgeholt, das neueste zuerst. Ältere werden als `refused`
   vermerkt und als Fehler geloggt, nie still übergangen.
-- **Ausfall über Mitternacht:** Gestern steht in der Liste; die letzten Tagbilder von gestern
+- **Ausfall über Mitternacht:** Gestern steht in der Liste; die letzten Bilder von gestern
   gehen also nicht verloren.
 - **Ausfall während der Sicherung:** Es bleibt höchstens `original/.<sicherung>.tmp` liegen, und
   der nächste Versuch überschreibt sie. Unter dem endgültigen Namen steht nie eine halbe Kopie.
@@ -440,6 +469,9 @@ wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).
   Prüfsumme der verpixelten Fassung in der Statusdatei. Die nächste Runde vergleicht sie mit
   dem Bild auf der Box. Stimmt sie, wird `blurred` nachgetragen, sonst wird das Bild neu
   bearbeitet.
+- **Ausfall zwischen Markieren und Statuseintrag:** Das Bild trägt schon die Markierung, hat aber
+  keinen Eintrag. Die nächste Runde erkennt die Markierung und vermerkt `clean`, ohne erneute
+  Prüfung und ohne zweite Markierung.
 - **Abgerissene Zeile in der Statusdatei:** Der nächste Eintrag beginnt in einer neuen Zeile;
   die beschädigte Zeile gilt als fehlender Eintrag.
 
@@ -467,9 +499,9 @@ Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 R
 
 ## Grenzen
 
-- **Die Webseite kann ein Original abholen**, wenn ihr Cron zwischen Kamera-Upload und Tausch
-  läuft. Das lässt sich nur auf dem Webserver ausschließen, z. B. indem er nur Bilder nimmt, die
-  mindestens 3 Minuten alt sind.
+- **Die Webseite kann ein Original abholen**, solange ihr Abholjob nicht nur markierte Bilder
+  nimmt (siehe [Markierung](#markierung-für-die-webseite)): wenn ihr Cron zwischen Kamera-Upload
+  und Tausch läuft. Mit der Regel „nur markierte Bilder“ ist das ausgeschlossen.
 - Zwischen der letzten Prüfung und dem Tausch liegen zwei getrennte Befehle (Millisekunden).
   Schreibt die Kamera genau dann unter demselben Namen neu, wird diese neue Fassung ohne
   Sicherung überschrieben. Bewusst hingenommen: Bei Dateinamen mit Uhrzeit kommt das praktisch

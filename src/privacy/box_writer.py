@@ -1,10 +1,12 @@
 """The only code allowed to write to the storage box.
 
-Three write operations, nothing else: back up an image, upload a blurred copy under a temporary
-name, swap it in. There is no delete and no general "run a command" function, and tests make sure
-no other module can write to the box. The reads (``fetch``, ``list_backups``, ``camera_exists``,
-``image_hash``) change nothing. The safety rules (allowed commands, name and age limits, backup
-cap, SHA-256 checks) are in docs/verpixelung-box.md, "Sicherheitsregeln".
+Four write operations, nothing else: back up an image, upload a blurred copy under a temporary name,
+swap it in, and swap in a clean image's copy that only adds the checked mark (no backup: removing
+the mark gives back the judged original). There is no delete and no general "run a command"
+function, and tests make sure no other module can write to the box. The reads (``fetch``,
+``list_backups``, ``camera_exists``, ``image_hash``) change nothing. The safety rules (allowed
+commands, name and age limits, backup cap, SHA-256 checks) are in docs/verpixelung-box.md,
+"Sicherheitsregeln".
 """
 
 import hashlib
@@ -19,6 +21,7 @@ from zoneinfo import ZoneInfo
 from src.config import PROJECT_ROOT
 from src.images import extract_date, extract_time, image_moment
 from src.logger import logger
+from src.privacy.checked_mark import JPEG_START_MARKER, has_mark, remove_mark
 
 BACKUP_DIRECTORY_NAME = "original"
 DEFAULT_UPLOAD_ROOT = PROJECT_ROOT / "temp"
@@ -64,7 +67,6 @@ ALLOWED_REMOTE_COMMANDS = {
 	("mv", "-T"),
 }
 
-JPEG_START_MARKER = b"\xff\xd8"
 JPEG_END_MARKER = b"\xff\xd9"
 SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"]
 
@@ -368,7 +370,7 @@ class BoxWriter:
 		action = f"Download of {name}"
 		self._check_command(self._run(argv, UPLOAD_TIMEOUT_SECONDS, action), action)
 
-	# The three write operations.
+	# The write operations.
 
 	def backup(self, camera: str, name: str, expected_sha256: str) -> Backup:
 		"""Copy the image to ``original/`` and return the verified backup.
@@ -429,14 +431,14 @@ class BoxWriter:
 
 		return backup
 
-	def upload_blurred(self, backup: Backup, local_file: Path) -> str:
-		"""Upload the blurred image under its temporary name and return its verified hash."""
+	# The local file to upload: inside the upload folder and a complete JPEG. Read once (~200 KB),
+	# so checking and hashing the same bytes is cheap.
+	def _read_upload(self, local_file: Path) -> tuple[Path, bytes]:
 		local = local_file.resolve()
 
 		if not local.is_relative_to(self.upload_root):
 			raise BoxWriteRefused(f"Upload source is outside {self.upload_root}: {local}")
 
-		# Read once: ~200 KB per image, so checking and hashing the same bytes is cheap.
 		data = local.read_bytes() if local.is_file() else b""
 
 		if len(data) < 4 or not (
@@ -444,13 +446,21 @@ class BoxWriter:
 		):
 			raise BoxWriteRefused(f"Upload source is not a complete JPEG: {local}")
 
+		return local, data
+
+	def upload_blurred(self, backup: Backup, local_file: Path) -> str:
+		"""Upload the blurred image under its temporary name and return its verified hash."""
+		local, data = self._read_upload(local_file)
+
 		# Validates the backup record before anything leaves this host.
 		self._backup_path(backup)
 		temporary_path = self._temporary_path(backup.camera, backup.name)
 		_check_remote_path(temporary_path)
 		blurred_hash = hashlib.sha256(data).hexdigest()
+		# The checked mark changes bytes, not pixels: judge what lies under it.
+		content = remove_mark(data) if has_mark(data) else data
 
-		if blurred_hash == backup.sha256:
+		if hashlib.sha256(content).hexdigest() == backup.sha256:
 			raise BoxWriteRefused(f"Blurred copy of {backup.name} is identical to the original")
 
 		# An absolute local path is never mistaken for host:path by scp.
@@ -494,3 +504,50 @@ class BoxWriter:
 			raise BoxWriteError(f"{backup.name} does not hold the blurred copy after replacing")
 
 		logger.info(f"[{backup.camera}] Replaced {backup.name} with its blurred copy")
+
+	def mark_clean(self, camera: str, name: str, original_sha256: str, local_file: Path) -> str:
+		"""Swap in a clean image's copy that carries the checked mark; return its verified hash.
+
+		No backup: under the mark the copy must be exactly the judged original, so no pixel changes.
+		Everything about the copy is checked here, before the box is contacted.
+		"""
+		self.check(camera, name)
+		local, data = self._read_upload(local_file)
+
+		if not has_mark(data):
+			raise BoxWriteRefused(f"Copy of {name} has no checked mark")
+
+		# This is what makes a backup unnecessary, and keeps a blurred copy from passing as clean.
+		if hashlib.sha256(remove_mark(data)).hexdigest() != original_sha256:
+			raise BoxWriteRefused(
+				f"Copy of {name} differs from the judged original beyond the mark"
+			)
+
+		image_path = self._image_path(camera, name)
+		temporary_path = self._temporary_path(camera, name)
+		_check_remote_path(temporary_path)
+		marked_hash = hashlib.sha256(data).hexdigest()
+		argv = ["scp", "-q", *SSH_OPTIONS, str(local), f"{self.remote}:{temporary_path}"]
+		action = f"Upload of the marked {name}"
+		self._check_command(self._run(argv, UPLOAD_TIMEOUT_SECONDS, action), action)
+
+		# The camera may have rewritten the image since it was judged: never overwrite that.
+		hashes = self._hashes([image_path, temporary_path])
+
+		if hashes[temporary_path] != marked_hash:
+			raise BoxWriteError(f"Uploaded copy of {name} does not match the local file")
+
+		if hashes[image_path] != original_sha256:
+			raise BoxWriteError(f"{name} changed since it was judged; not marking it")
+
+		self._check_command(
+			self._remote(("mv", "-T"), [temporary_path, image_path]),
+			f"Marking {name}",
+		)
+
+		if self._hashes([image_path])[image_path] != marked_hash:
+			raise BoxWriteError(f"{name} does not hold the marked copy after the swap")
+
+		logger.info(f"[{camera}] Marked {name} as checked")
+
+		return marked_hash

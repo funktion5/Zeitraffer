@@ -12,8 +12,8 @@ from privacy_fakes import FAKE_DETECTOR, FakeBox, run_in, sha
 
 import src.privacy.blur_box as blur_box
 from src.privacy.anonymize import BlurSettings, DropRules, PrivacyCheckError
-from src.privacy.blur_box import Daylight
 from src.privacy.box_writer import BoxWriter
+from src.privacy.checked_mark import add_mark, has_mark, remove_mark
 from src.storage_box import StorageBox
 from src.storage_filter import acquire_run_lock
 
@@ -21,7 +21,6 @@ REMOTE = "user@box.example"
 CAMERA = "Test-Camera"
 TIMEZONE = "Europe/Berlin"
 LOCATION = {"latitude": 52.472, "longitude": 9.333, "timezone": TIMEZONE}
-DAYLIGHT = Daylight(LOCATION, 90)
 SETTINGS = BlurSettings(0.1, 0.25, 0.5)
 NOW = datetime(2026, 6, 15, 14, 0, tzinfo=ZoneInfo(TIMEZONE))
 
@@ -39,8 +38,20 @@ def original_bytes(name: str) -> bytes:
 	return b"\xff\xd8original-" + name.encode() + b"\xff\xd9"
 
 
-def blurred_bytes(name: str) -> bytes:
+# What the box holds after a clean check: the untouched original, carrying the checked mark.
+def clean_bytes(name: str) -> bytes:
+	return add_mark(original_bytes(name))
+
+
+# What a manual run leaves after a blur: the fake pixelation without the mark, which only the
+# round sets (it feeds the website).
+def unmarked_blurred_bytes(name: str) -> bytes:
 	return b"\xff\xd8blurred" + original_bytes(name)
+
+
+# What the box holds after a blur of the round: the fake pixelation, carrying the checked mark.
+def blurred_bytes(name: str) -> bytes:
+	return add_mark(b"\xff\xd8blurred" + original_bytes(name))
 
 
 class Setup:
@@ -113,7 +124,6 @@ class Setup:
 			CAMERA,
 			self.detector,
 			SETTINGS,
-			DAYLIGHT,
 			self.state_root,
 			now,
 			**options,
@@ -155,6 +165,12 @@ class Setup:
 			if argv[0] == "scp" and argv[-2].startswith(f"{REMOTE}:")
 		]
 
+	# A clean image is only marked: one upload and one swap per name, never a backup.
+	def only_marked(self, *names: str) -> bool:
+		backup = any(command.startswith(("cp ", "mkdir ")) for command in self.writes())
+
+		return self.swaps() == list(names) and not backup
+
 	def swaps(self) -> list[str]:
 		return [command.split("/")[-1] for command in self.writes() if command.startswith("mv -T ")]
 
@@ -177,6 +193,8 @@ def test_person_is_blurred_on_the_box_after_verified_backup(setup: Setup) -> Non
 
 	assert summary.blurred == 1
 	assert image.read_bytes() == blurred_bytes(DAY_WITH_PERSON)
+	# The website's pick-up job publishes only marked images; the backup stays the bare original.
+	assert has_mark(image.read_bytes())
 	state = setup.states()[DAY_WITH_PERSON]
 	assert state["status"] == "blurred"
 	assert state["blurred_sha256"] == sha(image.read_bytes())
@@ -186,28 +204,49 @@ def test_person_is_blurred_on_the_box_after_verified_backup(setup: Setup) -> Non
 	assert setup.leftovers() == []
 
 
-def test_image_without_people_stays_byte_identical(setup: Setup) -> None:
+# A clean image keeps every pixel: it only gets the checked mark, and never a backup.
+def test_image_without_people_only_gets_the_checked_mark(setup: Setup) -> None:
 	image = setup.upload(DAY)
 
 	summary = setup.run()
 
 	assert summary.clean == 1
-	assert image.read_bytes() == original_bytes(DAY)
-	assert setup.states()[DAY]["status"] == "clean"
-	# Detect first, back up only with people: nothing at all is written for a clean image.
-	assert setup.writes() == []
+	assert image.read_bytes() == clean_bytes(DAY)
+	state = setup.states()[DAY]
+	assert state["status"] == "clean"
+	assert state["original_sha256"] == sha(original_bytes(DAY))
+	assert state["marked_sha256"] == sha(clean_bytes(DAY))
+	assert setup.only_marked(DAY)
 	assert not (setup.camera_dir / "original").exists()
 
 
-def test_night_image_is_recorded_without_detection_or_writes(setup: Setup) -> None:
-	setup.upload(NIGHT, age_seconds=12 * 3600)
+# A round cut off between the swap and its status line: the mark shows the image was checked.
+def test_an_already_marked_image_is_recorded_clean_not_checked_again(setup: Setup) -> None:
+	image = setup.upload(DAY)
+	image.write_bytes(clean_bytes(DAY))
+	os.utime(image, (NOW.timestamp() - 600,) * 2)
 
 	summary = setup.run()
 
-	assert summary.night == 1
-	assert setup.states()[NIGHT]["status"] == "night"
+	assert summary.clean == 1
 	assert setup.detected() == []
 	assert setup.writes() == []
+	assert image.read_bytes() == clean_bytes(DAY)
+	state = setup.states()[DAY]
+	assert state["status"] == "clean"
+	assert state["marked_sha256"] == sha(clean_bytes(DAY))
+
+
+# The detector runs around the clock: a night image is checked and marked like any other.
+def test_night_image_is_checked_and_marked_like_any_other(setup: Setup) -> None:
+	image = setup.upload(NIGHT, age_seconds=12 * 3600)
+
+	summary = setup.run()
+
+	assert summary.clean == 1
+	assert setup.detected() == [NIGHT]
+	assert setup.states()[NIGHT]["status"] == "clean"
+	assert image.read_bytes() == clean_bytes(NIGHT)
 
 
 def test_fresh_upload_waits_without_writes(setup: Setup) -> None:
@@ -419,14 +458,14 @@ def test_blur_that_changes_nothing_is_retried_not_fatal(setup: Setup, monkeypatc
 	assert DAY_WITH_PERSON not in setup.states()
 
 
-# A dated name without a readable time must not pass as a night image.
-def test_image_without_readable_time_is_refused_not_taken_for_night(setup: Setup) -> None:
+# A dated name without a readable time cannot be placed by the writer's age limits.
+def test_image_without_readable_time_is_refused(setup: Setup) -> None:
 	name = "cam_260615_x.jpg"
 	setup.upload(name)
 
 	summary = setup.run()
 
-	assert (summary.night, summary.refused) == (0, 1)
+	assert summary.refused == 1
 	assert setup.states()[name]["status"] == "refused"
 
 
@@ -533,16 +572,6 @@ def test_unlimited_budget_processes_every_open_image(setup: Setup, monkeypatch) 
 	assert (summary.blurred, summary.postponed) == (3, 0)
 
 
-def test_night_name_uploaded_in_daylight_is_checked_not_skipped(setup: Setup, monkeypatch) -> None:
-	# The filename clock says 02:00, the upload happened at 13:50: trust neither alone.
-	setup.upload(NIGHT)
-	monkeypatch.setenv("FAKE_PEOPLE", NIGHT)
-
-	summary = setup.run()
-
-	assert (summary.night, summary.blurred) == (0, 1)
-
-
 # Matches the day's listing pattern, but no known format reads its date: refuse and log it.
 def test_unreadable_name_is_refused_and_logged_not_dropped(setup: Setup, caplog) -> None:
 	name = "IMG20260615-120000.jpg"
@@ -576,7 +605,6 @@ def test_time_budget_postpones_the_rest_newest_first(setup: Setup, monkeypatch) 
 			CAMERA,
 			setup.detector,
 			SETTINGS,
-			DAYLIGHT,
 			setup.state_root,
 			NOW,
 			time_budget_seconds=0,
@@ -661,7 +689,7 @@ def test_person_image_rewritten_during_detection_is_not_blurred_yet(
 	os.utime(image, (NOW.timestamp() - 600,) * 2)
 
 	assert setup.run().blurred == 1
-	assert image.read_bytes().startswith(b"\xff\xd8blurred")
+	assert remove_mark(image.read_bytes()).startswith(b"\xff\xd8blurred")
 
 
 def test_only_images_with_people_are_backed_up(setup: Setup) -> None:
@@ -723,8 +751,8 @@ def test_box_on_the_known_sign_is_ignored_and_recorded(setup: Setup, monkeypatch
 	summary = _run_with_sign(setup, monkeypatch, [[706, 557, 741, 640]])
 
 	assert summary.clean == 1
-	assert image.read_bytes() == original_bytes(DAY_WITH_PERSON)
-	assert setup.writes() == []
+	assert image.read_bytes() == clean_bytes(DAY_WITH_PERSON)
+	assert setup.only_marked(DAY_WITH_PERSON)
 	assert setup.states()[DAY_WITH_PERSON]["ignored_boxes"] == [[706, 557, 741, 640, 0.9]]
 
 
@@ -795,8 +823,8 @@ def test_box_mostly_in_the_top_band_is_ignored_and_recorded(setup: Setup, monkey
 	summary = setup.run(rules=DropRules(top_share=1 / 3))
 
 	assert summary.clean == 1
-	assert image.read_bytes() == original_bytes(DAY_WITH_PERSON)
-	assert setup.writes() == []
+	assert image.read_bytes() == clean_bytes(DAY_WITH_PERSON)
+	assert setup.only_marked(DAY_WITH_PERSON)
 	assert setup.states()[DAY_WITH_PERSON]["ignored_boxes"] == [[1545, 20, 1918, 480, 0.9]]
 
 
@@ -823,7 +851,7 @@ def test_image_gone_between_listing_and_download_is_retried(setup: Setup, monkey
 
 	assert (summary.clean, summary.failed) == (1, 1)
 	assert DAY_WITH_PERSON not in setup.states()
-	assert setup.writes() == []
+	assert setup.only_marked(DAY)
 
 
 # An image whose size cannot be read fails alone; it used to stop the whole round, every minute.
@@ -911,7 +939,7 @@ def test_listed_old_frame_is_blurred_and_recorded_in_its_own_month(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert summary.blurred == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
 	assert not (setup.state_root / CAMERA / "2026-06.jsonl").exists()
@@ -933,6 +961,7 @@ def test_default_writer_limits_still_refuse_an_old_frame(setup: Setup, monkeypat
 	assert setup.writes() == []
 
 
+# Manual runs never mark: the mark is only for the website's new images.
 def test_frame_without_people_is_recorded_clean_without_writes(setup: Setup) -> None:
 	image = setup.upload(OLD_CLEAN, age_seconds=OLD_AGE)
 
@@ -953,7 +982,7 @@ def test_frame_at_night_time_is_still_checked(setup: Setup, monkeypatch) -> None
 
 	summary = blur_listed(setup, [name])
 
-	assert (summary.blurred, summary.night) == (1, 0)
+	assert summary.blurred == 1
 	assert setup.detected() == [name]
 
 
@@ -982,7 +1011,7 @@ def test_frame_refused_earlier_is_tried_again_with_the_larger_limit(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert summary.blurred == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 
 
@@ -1025,6 +1054,7 @@ def test_drop_rules_carry_over_to_listed_frames(setup: Setup, monkeypatch) -> No
 
 	assert summary.clean == 1
 	assert image.read_bytes() == original_bytes(OLD_PERSON)
+	assert setup.writes() == []
 	assert setup.states()[OLD_PERSON]["ignored_boxes"] == [[706, 557, 741, 640, 0.9]]
 
 
@@ -1143,7 +1173,9 @@ def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blu
 ) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
 	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
-	image.write_bytes(blurred_bytes(OLD_PERSON))
+	# The Pi blurred without a mark.
+	pi_blurred = unmarked_blurred_bytes(OLD_PERSON)
+	image.write_bytes(pi_blurred)
 	make_backup(setup, OLD_PERSON, original_bytes(OLD_PERSON))
 
 	summary = blur_listed(setup, [OLD_PERSON])
@@ -1152,7 +1184,7 @@ def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blu
 	assert setup.detected() == []
 	assert setup.writes() == []
 	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == pi_blurred
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
 
@@ -1169,7 +1201,7 @@ def test_a_frame_that_still_matches_its_backup_is_processed_normally(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert (summary.blurred, summary.already_blurred) == (1, 0)
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
 
 

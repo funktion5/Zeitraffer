@@ -11,6 +11,7 @@ import pytest
 from privacy_fakes import FakeBox
 from privacy_fakes import sha as _sha
 from src.config import PROJECT_ROOT
+from src.privacy.checked_mark import add_mark
 from src.privacy.box_writer import (
 	ALLOWED_REMOTE_COMMANDS,
 	Backup,
@@ -406,6 +407,21 @@ def test_unchanged_blur_result_is_refused(writer: BoxWriter, upload_root: Path) 
 		writer.upload_blurred(backup, source)
 
 
+# The checked mark changes the bytes but not the image: an unblurred original with the mark must
+# never pass as blurred, or the website would publish it as checked.
+def test_marked_but_unblurred_copy_is_refused(
+	writer: BoxWriter, box: FakeBox, upload_root: Path
+) -> None:
+	backup = writer.backup(CAMERA, NAME, _sha(ORIGINAL))
+	source = upload_root / "marked-original.jpg"
+	source.write_bytes(add_mark(ORIGINAL))
+
+	with pytest.raises(BoxWriteRefused, match="identical"):
+		writer.upload_blurred(backup, source)
+
+	assert (box.root / CAMERA / NAME).read_bytes() == ORIGINAL
+
+
 def test_corrupted_upload_is_detected(writer: BoxWriter, box: FakeBox, blurred_file: Path) -> None:
 	backup = writer.backup(CAMERA, NAME, _sha(ORIGINAL))
 	box.corrupt_upload = True
@@ -798,5 +814,79 @@ def test_list_backups_refuses_a_camera_that_is_not_selected(
 ) -> None:
 	with pytest.raises(BoxWriteRefused):
 		writer.list_backups(OTHER_CAMERA)
+
+	assert box.calls == []
+
+
+# Clean images: the untouched original plus the checked mark, swapped in without a backup. Proof
+# instead of a backup: under the mark the copy must be exactly the original that was judged.
+
+
+def _local(upload_root: Path, data: bytes) -> Path:
+	path = upload_root / "marked.jpg"
+	path.write_bytes(data)
+
+	return path
+
+
+def test_mark_clean_swaps_in_the_marked_original_without_a_backup(
+	writer: BoxWriter, box: FakeBox, upload_root: Path
+) -> None:
+	marked = add_mark(ORIGINAL)
+
+	marked_hash = writer.mark_clean(CAMERA, NAME, _sha(ORIGINAL), _local(upload_root, marked))
+
+	assert marked_hash == _sha(marked)
+	assert box.path(f"{CAMERA}/{NAME}").read_bytes() == marked
+	assert not box.path(f"{CAMERA}/original").exists()
+	assert not box.path(f"{CAMERA}/.{NAME}.tmp").exists()
+
+
+@pytest.mark.parametrize(
+	("data", "message"),
+	[
+		(add_mark(ORIGINAL)[:-2], "complete JPEG"),
+		(ORIGINAL, "no checked mark"),
+		# A blurred image must never be passed off as clean: no backup would hold its original.
+		(add_mark(BLURRED), "differs from the judged original"),
+	],
+)
+def test_mark_clean_refuses_anything_but_the_original_plus_the_mark(
+	writer: BoxWriter, box: FakeBox, upload_root: Path, data: bytes, message: str
+) -> None:
+	with pytest.raises(BoxWriteRefused, match=message):
+		writer.mark_clean(CAMERA, NAME, _sha(ORIGINAL), _local(upload_root, data))
+
+	# Refused before anything reaches the box.
+	assert box.path(f"{CAMERA}/{NAME}").read_bytes() == ORIGINAL
+	assert not any(argv[0] == "scp" for argv in box.calls)
+	assert not any(command.split(" ")[0] in WRITE_VERBS for command in box.remote_commands())
+
+
+# The camera may rewrite the image after it was judged: checked right before the swap.
+def test_mark_clean_checks_the_box_again_before_the_swap(
+	writer: BoxWriter, box: FakeBox, upload_root: Path
+) -> None:
+	rewritten = b"\xff\xd8rewritten during the upload\xff\xd9"
+
+	def rewrite(argv: list[str]) -> None:
+		if argv[0] == "scp":
+			box.path(f"{CAMERA}/{NAME}").write_bytes(rewritten)
+			box.after_command = None
+
+	box.after_command = rewrite
+
+	with pytest.raises(BoxWriteError, match="changed"):
+		writer.mark_clean(CAMERA, NAME, _sha(ORIGINAL), _local(upload_root, add_mark(ORIGINAL)))
+
+	assert box.path(f"{CAMERA}/{NAME}").read_bytes() == rewritten
+	assert not any(command.startswith("mv ") for command in box.remote_commands())
+
+
+def test_mark_clean_keeps_the_writers_limits(box: FakeBox, upload_root: Path) -> None:
+	writer = _writer(box, upload_root, now=NOW + timedelta(days=30))
+
+	with pytest.raises(BoxWriteRefused, match="older than"):
+		writer.mark_clean(CAMERA, NAME, _sha(ORIGINAL), _local(upload_root, add_mark(ORIGINAL)))
 
 	assert box.calls == []
