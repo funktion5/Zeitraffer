@@ -40,7 +40,7 @@ from src.privacy.box_writer import (
 	BoxWriter,
 	BoxWriteRefused,
 )
-from src.privacy.checked_mark import add_mark, has_mark, remove_mark
+from src.privacy.checked_mark import add_mark, has_mark
 from src.storage_box import StorageBox, get_storage_box
 from src.storage_filter import acquire_run_lock, list_images_for_dates
 
@@ -283,7 +283,6 @@ def _process_image(
 		entry = {
 			"image": name,
 			"status": "clean",
-			"original_sha256": hashlib.sha256(remove_mark(data)).hexdigest(),
 			"marked_sha256": judged_hash,
 		}
 		record_processed(state_root, camera, entry, now)

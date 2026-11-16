@@ -234,7 +234,6 @@ def test_an_already_marked_image_is_recorded_clean_not_checked_again(setup: Setu
 	assert image.read_bytes() == clean_bytes(DAY)
 	state = setup.states()[DAY]
 	assert state["status"] == "clean"
-	assert state["original_sha256"] == sha(original_bytes(DAY))
 	assert state["marked_sha256"] == sha(clean_bytes(DAY))
 
 
@@ -1174,7 +1173,8 @@ def test_a_frame_with_a_backup_that_no_longer_matches_is_recorded_as_already_blu
 ) -> None:
 	monkeypatch.setenv("FAKE_PEOPLE", OLD_PERSON)
 	image = setup.upload(OLD_PERSON, age_seconds=OLD_AGE)
-	pi_blurred = b"\xff\xd8blurred" + original_bytes(OLD_PERSON)
+	# The Pi blurred without a mark.
+	pi_blurred = unmarked_blurred_bytes(OLD_PERSON)
 	image.write_bytes(pi_blurred)
 	make_backup(setup, OLD_PERSON, original_bytes(OLD_PERSON))
 

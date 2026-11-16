@@ -21,7 +21,7 @@ from zoneinfo import ZoneInfo
 from src.config import PROJECT_ROOT
 from src.images import extract_date, extract_time, image_moment
 from src.logger import logger
-from src.privacy.checked_mark import has_mark, remove_mark
+from src.privacy.checked_mark import JPEG_START_MARKER, has_mark, remove_mark
 
 BACKUP_DIRECTORY_NAME = "original"
 DEFAULT_UPLOAD_ROOT = PROJECT_ROOT / "temp"
@@ -67,7 +67,6 @@ ALLOWED_REMOTE_COMMANDS = {
 	("mv", "-T"),
 }
 
-JPEG_START_MARKER = b"\xff\xd8"
 JPEG_END_MARKER = b"\xff\xd9"
 SSH_OPTIONS = ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"]
 
@@ -432,20 +431,26 @@ class BoxWriter:
 
 		return backup
 
-	def upload_blurred(self, backup: Backup, local_file: Path) -> str:
-		"""Upload the blurred image under its temporary name and return its verified hash."""
+	# The local file to upload: inside the upload folder and a complete JPEG. Read once (~200 KB),
+	# so checking and hashing the same bytes is cheap.
+	def _read_upload(self, local_file: Path) -> tuple[Path, bytes]:
 		local = local_file.resolve()
 
 		if not local.is_relative_to(self.upload_root):
 			raise BoxWriteRefused(f"Upload source is outside {self.upload_root}: {local}")
 
-		# Read once: ~200 KB per image, so checking and hashing the same bytes is cheap.
 		data = local.read_bytes() if local.is_file() else b""
 
 		if len(data) < 4 or not (
 			data.startswith(JPEG_START_MARKER) and data.endswith(JPEG_END_MARKER)
 		):
 			raise BoxWriteRefused(f"Upload source is not a complete JPEG: {local}")
+
+		return local, data
+
+	def upload_blurred(self, backup: Backup, local_file: Path) -> str:
+		"""Upload the blurred image under its temporary name and return its verified hash."""
+		local, data = self._read_upload(local_file)
 
 		# Validates the backup record before anything leaves this host.
 		self._backup_path(backup)
@@ -507,21 +512,7 @@ class BoxWriter:
 		Everything about the copy is checked here, before the box is contacted.
 		"""
 		self.check(camera, name)
-
-		if not SHA256.fullmatch(original_sha256):
-			raise BoxWriteRefused(f"Invalid original hash for {name}")
-
-		local = local_file.resolve()
-
-		if not local.is_relative_to(self.upload_root):
-			raise BoxWriteRefused(f"Upload source is outside {self.upload_root}: {local}")
-
-		data = local.read_bytes() if local.is_file() else b""
-
-		if len(data) < 4 or not (
-			data.startswith(JPEG_START_MARKER) and data.endswith(JPEG_END_MARKER)
-		):
-			raise BoxWriteRefused(f"Upload source is not a complete JPEG: {local}")
+		local, data = self._read_upload(local_file)
 
 		if not has_mark(data):
 			raise BoxWriteRefused(f"Copy of {name} has no checked mark")
