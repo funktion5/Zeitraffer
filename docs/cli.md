@@ -277,7 +277,6 @@ historisches Weekly gemeinsam mit einem weiteren Job
 --daylight-buffer-minutes mit monthly oder yearly
 --window-time / --window-tolerance-minutes ohne --target-date
 --window-time / --window-tolerance-minutes mit daily oder weekly
---blur-people außerhalb eines historischen Daily
 ```
 
 ## Verpixelung bei historischen Läufen (Standard)
@@ -303,32 +302,5 @@ python3 -m src.main --jobs monthly --target-date 2026-10-05 --cameras SLSV
 
 Ablauf, Schutz vor doppelten Sicherungen, Grenzen und Fehlersuche:
 [docs/verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos).
-
-## Personen verpixeln (Test)
-
-`--blur-people` erkennt Personen in den Bildern eines historischen Daily und verpixelt sie vor
-dem Encoding. Die Funktion ist ein Test und nur mit `--date` oder `--jobs daily --target-date`
-erlaubt:
-
-```bash
-python3 -m src.main \
-	--date 2026-06-28 \
-	--cameras SLSV \
-	--blur-people
-```
-
-- Das Video heißt dann zum Beispiel
-  `videos/SLSV/manual-runs/daily/SLSV_2026-06-28_90min_blur.mp4`, damit es nie mit einem
-  unbearbeiteten Video verwechselt wird.
-- Bearbeitet werden nur die Kopien unter `temp/`, die Originale bleiben unverändert.
-- **Fail closed:** Bei jedem Zweifel der Erkennung bricht der Lauf ab und es entsteht kein
-  Video. Ein ungeprüftes Bild wird nie verwendet.
-- Ergebnisse der Erkennung werden in `state/privacy/<Kamera>.jsonl` zwischengespeichert; ein
-  erneuter Lauf prüft nur neue oder geänderte Bilder.
-- Die Erkennung dauerte auf dem früheren Raspberry Pi 4 ca. 7,5–10 Sekunden pro Bild (der VPS ist unvermessen).
-
-Von `--blur-people` noch nicht abgedeckt: automatische Läufe, Weekly, Monthly, Yearly und die
-Weboberfläche. Die Verpixelung auf der Box (siehe oben) gilt dagegen für alle historischen Läufe.
-
-Installation des Modells, alle Einstellungen, Cache, Detektor-Protokoll und Fehlersuche:
+Installation des Modells, Einstellungen, Detektor-Protokoll und Fehlersuche:
 [docs/verpixelung.md](verpixelung.md).

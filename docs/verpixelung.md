@@ -1,47 +1,17 @@
 # Verpixelung von Personen und Kennzeichen
 
-Erkennt Personen und Fahrzeuge in den Bildern eines Videos und macht Personen und Kennzeichen
-vor dem Encoding unkenntlich. Der Code liegt in `src/privacy/`.
+Erkennt Personen und Fahrzeuge in Kamerabildern und macht Personen und Kennzeichen unkenntlich.
+Der Code liegt in `src/privacy/`.
 
-**Stand:** Testfunktion. Sie ist für historische Tagesvideos (`--date` oder
-`--jobs daily --target-date`) und für Kalenderjahr-Yearlys mit
-`scripts/yearly-backfill.py --blur-people` verfügbar (Endung `_blur`, siehe
-[werkzeuge.md](werkzeuge.md#yearly-backfill-für-kalenderjahre)). Automatische Läufe, Weekly, Monthly und die Weboberfläche verpixeln noch
-nicht.
+Diese Seite beschreibt das, was jede Verpixelung gemeinsam nutzt: Detektor, Installation,
+Einstellungen und die Regeln, welche Boxen verworfen werden. Wann und wo verpixelt wird (die
+nächtliche Runde auf der Storage Box und die von Hand gestarteten Videos von Blur-Kameras),
+beschreibt [verpixelung-box.md](verpixelung-box.md).
 
-Seit dem 05.11.2026 gilt zusätzlich der Standard für von Hand gestartete Läufe: Bei Kameras aus
-`privacy.blur_cameras` werden die Bilder vorher auf der Storage Box verpixelt, ohne Schalter. Das
-beschreibt [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos);
-diese Seite gilt für `--blur-people`.
-
-Neue Kamerabilder direkt auf der Storage Box zu verpixeln, bevor die Webseite sie abholt,
-beschreibt [verpixelung-box.md](verpixelung-box.md) (in Entwicklung).
+Die frühere Verpixelung beim Erstellen eines Videos (`--blur-people`, Videos mit der Endung
+`_blur`) wurde am 16.11.2026 entfernt; sie war seit der Box-Verpixelung ungenutzt.
 
 Alle Pfade sind relativ zum Projektordner.
-
-## Ablauf
-
-```mermaid
-flowchart LR
-    O[Originalbilder<br/>Storage Box] --> K[Kopien in temp/]
-    K --> C{Im Cache?}
-    C -- ja --> B[Boxen aus Cache]
-    C -- nein --> D[Detektor<br/>src/privacy/detect.py]
-    D --> B
-    B --> P{Personen?}
-    P -- nein --> E[Bild unverändert]
-    P -- ja --> F[FFmpeg verpixelt die Kopie]
-    E --> V[Video]
-    F --> V
-```
-
-1. Die Bilder werden wie bei jedem Lauf nach `temp/` kopiert. **Nur diese Kopien werden
-   bearbeitet**, die Originale bleiben unverändert.
-2. Bilder, die schon geprüft wurden, kommen aus dem Cache. Alle anderen gehen in Paketen zu
-   50 Bildern an den Detektor, der als eigener Prozess läuft.
-3. Erst wenn alle Pakete geprüft sind und der Detektor beendet ist, verpixelt FFmpeg jede Kopie
-   mit Personen in einem Durchgang.
-4. Danach wird das Video wie gewohnt erstellt.
 
 ## Installation
 
@@ -72,20 +42,8 @@ flowchart LR
 
    Erwartete Ausgabe: `{"detector": "yolox_2022nov-…", "results": {}}`.
 
-Fehlt das Modell, bricht ein Lauf mit `--blur-people` ab, bevor ein Bild bearbeitet wird.
-
-## Aufruf
-
-```bash
-.venv/bin/python3 -m src.main --date 2026-06-28 --cameras SLSV --blur-people
-```
-
-- Erlaubt nur für historische Tagesvideos (`--date` oder `--jobs daily --target-date`).
-  Jede andere Kombination wird abgelehnt.
-- Das Video bekommt die Endung `_blur`, z. B.
-  `videos/SLSV/manual-runs/daily/SLSV_2026-06-28_90min_blur.mp4`. So wird es nie mit einem
-  unbearbeiteten Video verwechselt, und weder Aufräumen noch Weekly greifen darauf zu.
-- Ein erneuter Lauf ersetzt das vorhandene `_blur`-Video.
+Fehlt das Modell, endet jeder Detektor-Aufruf mit einem Fehler und kein Bild gilt als verpixelt
+(siehe [Fehlersuche](#fehlersuche)).
 
 ## Konfiguration
 
@@ -116,9 +74,9 @@ Abschnitt `privacy` in `config/config.json`:
 }
 ```
 
-`blur_cameras` nutzt nur die [Box-Verpixelung](verpixelung-box.md#konfiguration): Sie schreibt
-ausschließlich in diese Kameras und bricht ohne Eintrag ab. Der Videomodus (`--blur-people`)
-ignoriert die Liste.
+`blur_cameras` nennt die Kameras, die verpixelt werden
+([verpixelung-box.md](verpixelung-box.md#konfiguration)): Die Box-Verpixelung schreibt
+ausschließlich in diese Kameras und bricht ohne Eintrag ab.
 
 Ein Teil dieser Werte lässt sich auch auf der Weboberfläche ändern, im Reiter **Verpixelung**
 ([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp)): `blur_cameras`, die
@@ -129,8 +87,8 @@ gelten darüber ([konfiguration.md](konfiguration.md#einstellungen-der-weboberfl
 
 ### `detector_command`
 
-Die Befehlszeile des Detektors als Liste, nie als Shell-Text. Steht hier `null`, bricht jeder
-Lauf mit `--blur-people` ab.
+Die Befehlszeile des Detektors als Liste, nie als Shell-Text. Steht hier `null`, verpixelt
+nichts: Die Box-Verpixelung bricht mit `privacy.detector_command is not set.` ab.
 
 | Option des Detektors | Bedeutung | Standard |
 |---|---|---|
@@ -166,8 +124,7 @@ Kamerahalterung, keine Person, die man erkennen könnte. Anlass: Bei Scheunenvie
 Detektor zweimal die Halterung oben rechts für eine Person, einmal mit einer 373 × 460 px großen
 Box in der Dämmerung. Am 2026-08-16 betraf die Regel nur diese 2 von 1965 Boxen.
 
-Die Regel greift beim Verpixeln, nicht im Detektor: Gespeicherte Erkennungen bleiben gültig,
-eine Änderung des Werts braucht keine neue Erkennung. `0` schaltet die Regel ab.
+Die Regel greift beim Verpixeln, nicht im Detektor. `0` schaltet die Regel ab.
 
 `skip_labels`: pro Kamera die Erkennungsarten, die dort nie verpixelt werden. Erlaubt sind nur
 `vehicle` und `plate`, **nie `person`**. Anlass: Bei SLSV stehen Boote auf Trailern mit Rädern,
@@ -184,9 +141,8 @@ Segelsäcke, Winschen und Trailerteile als Personen. In einer Stichprobe von 40 
 bleiben bei SLSV 506 statt 781 Boxen; dafür können **einzelne entfernte Personen unverpixelt
 bleiben**. Nur für Kameras setzen, bei denen das vertretbar ist.
 
-Alle vier Regeln gelten im Video-Modus und im Box-Job gleich (eine gemeinsame Funktion,
-`filter_boxes`). Verworfene Boxen stehen im Log (`Ignored box in …`) bzw. beim Box-Job in der
-Statusdatei unter `ignored_boxes`. Alle Werte werden bei jedem Start geprüft: Ein Tippfehler wie
+Alle vier Regeln greifen in einer gemeinsamen Funktion (`filter_boxes`). Verworfene Boxen stehen
+in der Statusdatei des Box-Jobs unter `ignored_boxes`. Alle Werte werden bei jedem Start geprüft: Ein Tippfehler wie
 `ignore_top_share: 3.33` würde sonst stillschweigend jede Box verwerfen, deshalb bricht der Lauf
 mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5, auch für jeden Wert in `ignore_top_share_per_camera`; Boxen mit vier ganzen Zahlen,
 `x1 > x0`, `y1 > y0`; bei `skip_labels` eine nicht leere Liste aus `vehicle`/`plate`; bei `min_person_score` eine Zahl
@@ -223,8 +179,7 @@ Warum mitwachsend statt fest 4 px: Je näher ein Auto, desto größer sein Kennz
 Kennzeichen von 75 px Breite hat bei 4 px etwa 2 Blöcke pro Zeichen und ist unlesbar; eines von
 120 px Breite hätte bei festen 4 px 3–4 Blöcke pro Zeichen und könnte wieder lesbar werden. So
 bekommt jedes Kennzeichen ungefähr gleich viele Blöcke. Eine Änderung von
-`--vehicle-block-ratio` ändert die Detektor-Kennung und führt zu einer neuen Erkennung (beim
-Tagesvideo ca. 11 Minuten statt 2).
+`--vehicle-block-ratio` ändert die Detektor-Kennung.
 
 Bei 4 px ist kein Zeichen mehr lesbar. Bekannt und bewusst in Kauf genommen: Bei sehr feiner
 Verpixelung lässt sich ein Kennzeichen mit bekannter Schrift (FE-Schrift) unter Aufwand per
@@ -250,49 +205,32 @@ wird; der Konfigurationstest prüft die Werte zusätzlich.
   vollständig unkenntlich.**
 - Verpixelt wird immer ein Rechteck in Blöcken. Weichzeichnen (`blur`) und Ellipsen gab es
   früher; sie wurden nie genutzt und am 2026-10-16 entfernt.
-- Neue `blur`-Werte lösen keine neue Erkennung aus: Ein erneuter Lauf nimmt die Boxen aus dem
-  Cache und verpixelt nur neu.
 
 ## Sicherheitsregeln (fail closed)
 
-Im Zweifel entsteht **kein** Video. Der Lauf bricht mit `PrivacyCheckError` ab, wenn:
+Im Zweifel gilt ein Bild **nicht** als verpixelt. Ein Fehler `PrivacyCheckError` entsteht, wenn:
 
 - `detector_command` fehlt oder der Detektor nicht startet,
-- der Detektor mit Fehler endet oder ein Paket länger als 900 Sekunden braucht,
+- der Detektor mit Fehler endet oder länger braucht als erlaubt (Box-Verpixelung: 120 Sekunden),
 - die Ausgabe kein gültiges JSON ist oder eine Detektor-Kennung fehlt,
 - ein angefragtes Bild im Ergebnis fehlt oder eine Box ungültig ist,
-- sich die Detektor-Kennung während des Laufs ändert,
 - das Verpixeln eines Bildes fehlschlägt (FFmpeg-Fehler oder mehr als 120 Sekunden),
 - eine Box vollständig außerhalb des Bildes liegt.
 
-Ein ungeprüftes oder nicht verpixeltes Bild wird nie verwendet.
+Die Box-Verpixelung lässt das Bild dann unverändert und versucht es in der nächsten Runde erneut.
+Ein automatisches Video lässt solche unbestätigten Bilder weg, ein von Hand gestartetes Video
+einer Blur-Kamera entsteht dann nicht ([verpixelung-box.md](verpixelung-box.md)).
 
-## Cache
+## Detektor-Kennung
 
-Ergebnisse werden pro Kamera in `state/privacy/<Kamera>.jsonl` gespeichert, eine Zeile pro
-Bild:
-
-| Feld | Inhalt |
-|---|---|
-| `image` | Dateiname des Originals |
-| `size`, `mtime_ns` | Größe und Änderungszeit, zur Erkennung geänderter Bilder |
-| `detector` | Detektor-Kennung |
-| `boxes` | erkannte Boxen: Koordinaten, Sicherheit, `label` (`person`, `vehicle`, `plate`; ältere Einträge ohne) und bei Fahrzeugen und Kennzeichen `block` |
-
-Gespeichert werden nur Koordinaten, keine Bildausschnitte. Ein Bild wird neu geprüft, wenn es
-sich geändert hat oder eine andere Detektor-Kennung gilt. Die Kennung enthält Modellname,
-Prüfsumme des Modells, Laufzeit, Kachelung, Schwelle und die Fahrzeug-Einstellungen, z. B.
-`yolox_2022nov-c5c2d13e-ort-t2-c0.25-u2-v0.55-vc0.15-ps-b0.0133` (`u2` = Zusammenfassen als
-Vereinigung, bei Personen auch für Boxen, die fast ganz in einer anderen liegen; `v` =
-Kennzeichenbereich, `vc` = Fahrzeug-Schwelle, `ps` = Kennzeichensuche, `b` = Blockgröße). Ein
-anderes Modell oder eine andere Einstellung führt also automatisch zu einer neuen Prüfung.
-`ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` gehören nicht dazu, weil sie erst beim
-Verpixeln greifen: Eine Änderung braucht keine neue Erkennung, nur ein neues Video.
-Eine beschädigte Zeile gilt nur als fehlender Eintrag.
-
-Jede neue Erkennung hängt eine Zeile an. Nach jedem Lauf, der etwas neu erkannt hat, wird die
-Datei auf die neueste Zeile pro Bild verkleinert; das geschieht über eine temporäre Datei, die
-erst zum Schluss die alte ersetzt, ein Stromausfall lässt den alten Cache also intakt.
+Jede Erkennung wird mit der Kennung des Detektors gespeichert (in der Statusdatei des Box-Jobs,
+Feld `detector`). Gespeichert werden nur Koordinaten, keine Bildausschnitte. Die Kennung enthält
+Modellname, Prüfsumme des Modells, Laufzeit, Kachelung, Schwelle und die Fahrzeug-Einstellungen,
+z. B. `yolox_2022nov-c5c2d13e-ort-t2-c0.25-u2-v0.55-vc0.15-ps-b0.0133` (`u2` = Zusammenfassen
+als Vereinigung, bei Personen auch für Boxen, die fast ganz in einer anderen liegen; `v` =
+Kennzeichenbereich, `vc` = Fahrzeug-Schwelle, `ps` = Kennzeichensuche, `b` = Blockgröße).
+`ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` gehören
+nicht dazu, weil sie erst beim Verpixeln greifen.
 
 Der Detektor liest die Bilder ohne EXIF-Drehung (`IMREAD_IGNORE_ORIENTATION`), also genau so,
 wie FFmpeg sie verpixelt. Sonst lägen die Boxen bei einer Kamera mit Drehungs-Angabe daneben.
@@ -312,8 +250,8 @@ Protokoll einhält:
 - Jeder angefragte Pfad muss enthalten sein; eine leere Liste heißt „geprüft, nichts zu
   verpixeln".
 - Jede Box ist ein zu verpixelnder Bereich. `label` (`person`, `vehicle` oder `plate`, optional)
-  dient nur der Nachvollziehbarkeit: Es wird im Cache und in der Statusdatei des Box-Jobs
-  gespeichert, ändert aber nicht, wie verpixelt wird.
+  dient nur der Nachvollziehbarkeit: Es wird in der Statusdatei des Box-Jobs gespeichert,
+  ändert aber nicht, wie verpixelt wird.
 - `block` (optional, mindestens 1) ist die Blockgröße in Pixeln für `pixelate`; fehlt es, gilt
   `blur.strength`.
 - Personen und Fahrzeuge werden getrennt zusammengefasst (NMS), damit eine Person vor einem Auto
@@ -329,11 +267,9 @@ Gemessen auf dem Raspberry Pi 4 (2 GB):
 |---|---|
 | Erkennung | ca. 7,5–10 Sekunden pro Bild, unabhängig davon, ob Personen darauf sind |
 | Verpixeln | ca. 1 Sekunde pro Bild mit Personen; Bilder ohne Personen kosten nichts |
-| Tagesvideo, erster Lauf (ca. 70 Bilder) | ca. 12–13 Minuten |
-| Tagesvideo, erneuter Lauf aus dem Cache | ca. 2 Minuten |
 
-Arbeitsspeicher: Der Detektor braucht ca. 210 MB. Während eines Laufs waren bis zu 87 % des
-Speichers belegt; Detektor und FFmpeg laufen nie gleichzeitig.
+Arbeitsspeicher: Der Detektor braucht ca. 210 MB. Messungen der Box-Verpixelung auf dem VPS
+stehen in [verpixelung-box.md](verpixelung-box.md).
 
 ## Grenzen
 
@@ -348,22 +284,18 @@ Speichers belegt; Detektor und FFmpeg laufen nie gleichzeitig.
 - Ein Auto, das in einem Bild nicht erkannt wird, wird in diesem Bild nicht verpixelt. Die
   niedrigere Schwelle für Fahrzeuge (`--vehicle-threshold`) verringert das, schließt es aber nicht
   aus.
-- Ein Weekly setzt sich aus den unbearbeiteten Tagesvideos zusammen und enthält deshalb keine
-  verpixelten Personen.
 
 ## Fehlersuche
 
 | Meldung im Log | Ursache | Lösung |
 |---|---|---|
-| `Blurring was requested but privacy.detector_command is not set.` | `detector_command` ist `null` | Befehl in `config.json` eintragen |
+| `privacy.detector_command is not set.` | `detector_command` ist `null` | Befehl in `config.json` eintragen |
 | `Detector could not be started: …` | Python oder Skript nicht gefunden | Lauf aus dem Projektordner starten, `.venv` prüfen |
 | `Detector failed with exit code …` | Modell fehlt, Paket fehlt oder Bild nicht lesbar | Installation prüfen (siehe oben), Meldung des Detektors im Log lesen |
-| `Detector timed out after 900 s …` | Rechner überlastet | andere Läufe abwarten, Arbeitsspeicher prüfen |
+| `Detector timed out after 120 s …` | Rechner überlastet | andere Läufe abwarten, Arbeitsspeicher prüfen |
 | `privacy.blur.<Wert> must be …` | ungültiger Wert in `blur` | Wert laut Tabelle korrigieren |
-| `Detector id changed during the run` | Modell während des Laufs ausgetauscht | Lauf erneut starten |
 | `No blurrable region left for …` | Detektor meldet eine Box außerhalb des Bildes | Detektor bzw. Modell prüfen |
 | `Detector box for … has an invalid 'block'` bzw. `'label'` | Detektor liefert eine Blockgröße unter 1 oder ein Label, das kein Text ist | Detektor prüfen; mit dem mitgelieferten `detect.py` tritt das nicht auf |
-| `Ignored box in …` (kein Fehler) | Box passte zu `ignore_boxes`, lag überwiegend im oberen Drittel (`ignore_top_share`) , hat ein Label aus `skip_labels` oder liegt unter `min_person_score` | Nur prüfen, wenn dort doch eine echte Person war; dann die Regel anpassen |
 | `privacy.ignore_top_share must be …`, `privacy.ignore_top_share_per_camera for … must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen). Die Seite „Einstellungen“ lässt solche Werte nicht speichern; ein Fehler kommt hier nur aus einer von Hand bearbeiteten Datei |
 | `privacy.min_person_score for … must be a number from 0 to 0.5` | Tippfehler; ein höherer Wert würde deutlich sichtbare Personen verwerfen | Wert korrigieren |
 | `privacy.skip_labels for … may only list vehicle, plate` | leere Liste, Tippfehler oder `person` eingetragen | nur `vehicle` und/oder `plate` eintragen; Personen werden immer verpixelt |
@@ -374,9 +306,14 @@ Ohne Logmeldung, beim Ansehen des Videos:
 | Beobachtung | Ursache | Lösung |
 |---|---|---|
 | Kennzeichen knapp über dem verpixelten Bereich | Blickwinkel der Kamera: Kennzeichen sitzt höher im Fahrzeugkasten | `--vehicle-plate-share` erhöhen (heute `0.55`), nie den Bereich verschieben; Bildnummer notieren |
-| Auto in einem Bild verpixelt, im nächsten nicht | Erkennungssicherheit schwankt von Bild zu Bild | `--vehicle-threshold` prüfen (`0.15`); Bildnummer notieren, Cache-Eintrag ansehen |
-| Nur ein halbes Auto bzw. eine halbe Person verpixelt | früher: Kachelgrenze bei x = 768 (seit 2026-10-16 behoben, Kennung `-u2`) | Video mit aktuellem Detektor neu erzeugen |
+| Auto in einem Bild verpixelt, im nächsten nicht | Erkennungssicherheit schwankt von Bild zu Bild | `--vehicle-threshold` prüfen (`0.15`); Bildnummer notieren, Eintrag in der Statusdatei ansehen |
+| Nur ein halbes Auto bzw. eine halbe Person verpixelt | früher: Kachelgrenze bei x = 768 (seit 2026-10-16 behoben, Kennung `-u2`) | betrifft nur Bilder, die vorher verpixelt wurden; ein neues Video ändert daran nichts (siehe unten) |
 | Große Pixelfläche oben im Bild ohne Person | Fehlerkennung, z. B. Kamerahalterung | liegt sie überwiegend im oberen Drittel, verwirft `ignore_top_share` (bzw. der Wert der Kamera) sie; sonst als `ignore_boxes` eintragen, am bequemsten auf der Weboberfläche (Reiter Verpixelung, Rahmen auf dem Bild ziehen) |
-| Boote, Anhänger oder Stege verpixelt, obwohl es dort keine Autos gibt | Detektor hält Boote auf Trailern für Fahrzeuge | Kamera in `skip_labels` mit `["vehicle", "plate"]` eintragen, Video neu erzeugen (Cache bleibt gültig) |
-| Bootsplanen, Segelsäcke oder Winschen verpixelt | Detektor hält sie für Personen (meist geringe Sicherheit) | `min_person_score` für die Kamera setzen (SLSV: `0.35`), Video neu erzeugen; nimmt in Kauf, dass entfernte Personen unverpixelt bleiben |
+| Boote, Anhänger oder Stege verpixelt, obwohl es dort keine Autos gibt | Detektor hält Boote auf Trailern für Fahrzeuge | Kamera in `skip_labels` mit `["vehicle", "plate"]` eintragen; gilt für Bilder, die danach verpixelt werden |
+| Bootsplanen, Segelsäcke oder Winschen verpixelt | Detektor hält sie für Personen (meist geringe Sicherheit) | `min_person_score` für die Kamera setzen (SLSV: `0.35`); gilt für Bilder, die danach verpixelt werden; nimmt in Kauf, dass entfernte Personen unverpixelt bleiben |
 | Auto zu grob verpixelt | `--vehicle-block-ratio` fehlt oder ist `0` | Wert `0.0133` setzen |
+
+Eine geänderte Regel oder ein neuer Detektor wirkt nur auf Bilder, die danach verpixelt werden.
+Schon verpixelte Bilder auf der Box bleiben so, auch bei einem neuen Video: Ein von Hand gestarteter
+Lauf überspringt bestätigte Bilder. Das unverpixelte Original liegt in `<Kamera>/original/` auf der
+Box; ein Werkzeug, das es zurücklegt und neu verpixelt, gibt es nicht.

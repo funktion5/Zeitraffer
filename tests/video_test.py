@@ -6,7 +6,6 @@ import pytest
 
 import src.video as video_module
 from src.interval_window import SUNSET, IntervalWindow
-from src.privacy.anonymize import PrivacyCheckError, parse_drop_rules
 from src.video import (
 	cleanup_automatic_video_retention,
 	cleanup_temp_directory,
@@ -100,19 +99,17 @@ def test_copy_images_to_temp(tmp_path: Path):
 		image.write_bytes(COMPLETE_JPEG)
 		images.append(image)
 
-	copied_images = copy_images_to_temp(
+	copy_images_to_temp(
 		images,
 		temp_directory,
 	)
 
-	assert [original for original, _ in copied_images] == images
-	assert [frame.name for _, frame in copied_images] == [
+	assert sorted(path.name for path in temp_directory.iterdir()) == [
 		"frame_000001.jpg",
 		"frame_000002.jpg",
 		"frame_000003.jpg",
 	]
-
-	assert all(frame.exists() for _, frame in copied_images)
+	assert all(image.exists() for image in images)
 
 
 # A cut-off camera upload is left out and the frame numbers stay gapless for FFmpeg.
@@ -131,15 +128,11 @@ def test_copy_images_to_temp_skips_truncated_images(tmp_path: Path):
 		image.write_bytes(content)
 		images.append(image)
 
-	copied_images = copy_images_to_temp(
+	copy_images_to_temp(
 		images,
 		temp_directory,
 	)
 
-	assert copied_images == [
-		(images[0], temp_directory / "frame_000001.jpg"),
-		(images[2], temp_directory / "frame_000002.jpg"),
-	]
 	assert sorted(path.name for path in temp_directory.iterdir()) == [
 		"frame_000001.jpg",
 		"frame_000002.jpg",
@@ -689,8 +682,6 @@ def test_create_timelapse(
 	):
 		calls.append("copy_images_to_temp")
 
-		return []
-
 	def fake_create_image_timelapse(
 		camera,
 		target_date,
@@ -700,7 +691,6 @@ def test_create_timelapse(
 		manual_run=False,
 		daylight_buffer_minutes=None,
 		interval_window=None,
-		blur_people=False,
 	):
 		calls.append("create_image_timelapse")
 
@@ -772,7 +762,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		images,
 		temp_directory,
 	):
-		return []
+		pass
 
 	def fake_create_image_timelapse(
 		camera,
@@ -783,7 +773,6 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		manual_run=False,
 		daylight_buffer_minutes=None,
 		interval_window=None,
-		blur_people=False,
 	):
 		raise subprocess.CalledProcessError(
 			returncode=1,
@@ -1190,154 +1179,3 @@ def test_get_video_path_rejects_interval_window_for_daily_and_weekly(timelapse_t
 			manual_run=True,
 			interval_window=IntervalWindow(target=time(18, 30), tolerance_minutes=60),
 		)
-
-
-# A blurred video must never share a name with an unblurred one.
-def test_get_video_path_adds_blur_suffix_for_manual_daily():
-	path = get_video_path(
-		camera="SLSV",
-		target_date=date(2026, 6, 28),
-		timelapse_type="daily",
-		manual_run=True,
-		daylight_buffer_minutes=60,
-		blur_people=True,
-	)
-
-	assert path == Path("videos/SLSV/manual-runs/daily/SLSV_2026-06-28_60min_blur.mp4")
-
-
-# The calendar-year backfill may blur too; the old unblurred video keeps its own name.
-def test_get_video_path_adds_blur_suffix_for_manual_yearly():
-	path = get_video_path(
-		camera="SLSV",
-		target_date=date(2025, 12, 31),
-		timelapse_type="yearly",
-		manual_run=True,
-		blur_people=True,
-	)
-
-	assert path == Path("videos/SLSV/manual-runs/yearly/SLSV_2025-12-31_blur.mp4")
-
-
-@pytest.mark.parametrize(
-	("timelapse_type", "manual_run"),
-	[
-		("daily", False),
-		("weekly", True),
-		("monthly", True),
-		("yearly", False),
-	],
-)
-def test_get_video_path_rejects_blur_outside_manual_daily_and_yearly(timelapse_type, manual_run):
-	with pytest.raises(ValueError, match="only allowed for manual daily and yearly"):
-		get_video_path(
-			camera="SLSV",
-			target_date=date(2026, 6, 28),
-			timelapse_type=timelapse_type,
-			manual_run=manual_run,
-			blur_people=True,
-		)
-
-
-def patch_timelapse_steps(monkeypatch, tmp_path: Path, calls: list) -> list[Path]:
-	frames = [tmp_path / "frame_000001.jpg", tmp_path / "frame_000002.jpg"]
-
-	monkeypatch.setattr(video_module, "create_temp_directory", lambda camera, target_date: tmp_path)
-	monkeypatch.setattr(
-		video_module,
-		"copy_images_to_temp",
-		lambda images, temp_directory: calls.append("copy") or list(zip(images, frames)),
-	)
-	monkeypatch.setattr(
-		video_module,
-		"create_image_timelapse",
-		lambda **kwargs: calls.append(("encode", kwargs["blur_people"])) or Path("out.mp4"),
-	)
-	monkeypatch.setattr(
-		video_module,
-		"cleanup_temp_directory",
-		lambda temp_directory: calls.append("cleanup"),
-	)
-
-	return frames
-
-
-def test_create_timelapse_blurs_copies_before_encoding(tmp_path: Path, monkeypatch):
-	calls = []
-	frames = patch_timelapse_steps(monkeypatch, tmp_path, calls)
-	images = [Path("/mnt/cameras/SLSV/a.jpg"), Path("/mnt/cameras/SLSV/b.jpg")]
-
-	monkeypatch.setattr(video_module, "DETECTOR_COMMAND", ["detector"])
-	monkeypatch.setattr(video_module, "BLUR_SETTINGS", {"strength": 0.1})
-	monkeypatch.setattr(
-		video_module,
-		"anonymize_frames",
-		lambda **kwargs: calls.append(("anonymize", kwargs)),
-	)
-
-	create_timelapse(
-		camera="SLSV",
-		target_date=date(2026, 6, 28),
-		images=images,
-		timelapse_type="daily",
-		framerate=10,
-		manual_run=True,
-		blur_people=True,
-	)
-
-	assert calls[0] == "copy"
-	assert calls[1] == (
-		"anonymize",
-		{
-			"camera": "SLSV",
-			"originals": images,
-			"frames": frames,
-			"detector_command": ["detector"],
-			"blur_settings": {"strength": 0.1},
-			"drop_rules": parse_drop_rules(video_module.CONFIG["privacy"]),
-		},
-	)
-	assert calls[2:] == [("encode", True), "cleanup"]
-
-
-def test_create_timelapse_does_not_encode_after_privacy_failure(tmp_path: Path, monkeypatch):
-	calls = []
-	patch_timelapse_steps(monkeypatch, tmp_path, calls)
-
-	def failing_anonymize(**kwargs):
-		raise PrivacyCheckError("detector failed")
-
-	monkeypatch.setattr(video_module, "anonymize_frames", failing_anonymize)
-
-	with pytest.raises(PrivacyCheckError):
-		create_timelapse(
-			camera="SLSV",
-			target_date=date(2026, 6, 28),
-			images=[Path("a.jpg"), Path("b.jpg")],
-			timelapse_type="daily",
-			framerate=10,
-			manual_run=True,
-			blur_people=True,
-		)
-
-	assert calls == ["copy"]
-
-
-def test_create_timelapse_skips_privacy_step_by_default(tmp_path: Path, monkeypatch):
-	calls = []
-	patch_timelapse_steps(monkeypatch, tmp_path, calls)
-	monkeypatch.setattr(
-		video_module,
-		"anonymize_frames",
-		lambda **kwargs: calls.append("anonymize"),
-	)
-
-	create_timelapse(
-		camera="SLSV",
-		target_date=date(2026, 6, 28),
-		images=[Path("a.jpg")],
-		timelapse_type="daily",
-		framerate=10,
-	)
-
-	assert "anonymize" not in calls

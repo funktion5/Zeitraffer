@@ -1,9 +1,8 @@
 # Verpixelung auf der Storage Box
 
 Verpixelt Personen und Kennzeichen in neuen Kamerabildern **direkt auf der Storage Box**, bevor
-die Webseite sie abholt. Das Original wird vorher auf der Box gesichert. Die Videoverpixelung mit `--blur-people`
-beschreibt [verpixelung.md](verpixelung.md); Installation, Detektor und die `blur`-Werte gelten
-für beide.
+die Webseite sie abholt. Das Original wird vorher auf der Box gesichert. Installation, Detektor,
+die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md](verpixelung.md).
 
 **Stand:** Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest` (47 Bilder: 20
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
@@ -153,8 +152,7 @@ darüber, siehe unten):
 - `BlurTest` ist der Testordner. Er steht auch in `ignored_cameras`, sonst würden der nächtliche
   Lauf und die Weboberfläche ihn als Kamera behandeln. Nach dem Test wird er aus beiden Listen
   entfernt.
-- `ignore_boxes`: bekannte Fehlerkennungen pro Kamera, siehe unten. Gilt seit 2026-10-16 auch
-  im Video-Modus.
+- `ignore_boxes`: bekannte Fehlerkennungen pro Kamera, siehe unten.
 - `ignore_top_share`: Boxen überwiegend im oberen Bilddrittel werden verworfen und unter
   `ignored_boxes` festgehalten, wie in
   [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score).
@@ -394,8 +392,7 @@ Bilder keine Person zeigen (313 offene Bilder in 28 Minuten). Das Weekly (alle T
 
 - automatische Läufe (verpixeln nie),
 - Videos, die es schon gibt: sie werden nicht nachträglich verpixelt,
-- `scripts/yearly-backfill.py`: eigener Weg, nur mit `--blur-people` ([werkzeuge.md](werkzeuge.md)),
-- der Videomodus `--blur-people`: ein eigener Weg ([verpixelung.md](verpixelung.md)).
+- `scripts/yearly-backfill.py`: verpixelt nicht ([werkzeuge.md](werkzeuge.md)).
 
 In der Weboberfläche steht bei Blur-Kameras ein Hinweis unter dem Formular, dass die Erstellung
 wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).

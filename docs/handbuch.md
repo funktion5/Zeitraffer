@@ -205,8 +205,6 @@ Details: [flagger.md](flagger.md).
   [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Fortschritt:
   `tail -f logs/<job>/$(date +%F).log` (die Zeile `Blur:` nennt die Zahl der Bilder, jede
   `Replaced`-Zeile ist ein fertiges Bild).
-- In einem Tagesvideo: `--blur-people` an einen historischen Daily-Lauf anhängen
-  ([verpixelung.md](verpixelung.md)).
 - Direkt auf der Storage Box: `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`
   ([verpixelung-box.md](verpixelung-box.md)). Schreibt auf die Box; vorher die dortige Anleitung
   lesen. Mit `--catch-up` (45 Minuten pro Kamera) holt es die offenen Bilder der letzten 48 Stunden
