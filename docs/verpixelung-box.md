@@ -154,6 +154,8 @@ Bild.
   verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
   16.11.2026).
 - Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
+  Optional markiert [`extras/mark_newest.py`](../extras/README.md) bei allen übrigen Kameras das
+  neueste Bild ungeprüft (nicht angeschlossen; anschließen per Cron-Zeile, siehe dort).
 - Code: `src/privacy/checked_mark.py`. Von Hand prüfen:
   `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
 

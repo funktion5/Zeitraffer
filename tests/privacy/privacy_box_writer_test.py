@@ -650,7 +650,7 @@ def test_default_clock_is_timezone_aware(box: FakeBox) -> None:
 
 # Structural guard: a write to the storage box can only come from box_writer.py. Any other
 # Python file that starts ssh/scp/sftp/rsync must be listed here as read-only or pull-only and is
-# checked for write commands.
+# checked for write commands. The optional extras/ are scanned too: they reuse BoxWriter.
 WRITER_MODULE = "src/privacy/box_writer.py"
 # storage_box.py holds the ssh call; storage_filter.py builds the read-only commands it sends.
 READ_ONLY_SSH_MODULES = {"src/storage_box.py", "src/storage_filter.py"}
@@ -663,9 +663,10 @@ REMOTE_PROGRAMS = {"ssh", "scp", "sftp", "rsync", "sshfs"}
 def _python_files() -> list[Path]:
 	return sorted(
 		path
-		for folder in ("src", "scripts", "nas")
+		for folder in ("src", "scripts", "nas", "extras")
 		for path in (PROJECT_ROOT / folder).rglob("*.py")
-		if "__pycache__" not in path.parts
+		# Tests talk to a fake box and may name ssh/scp; only code that runs is checked.
+		if "__pycache__" not in path.parts and not path.name.endswith("_test.py")
 	)
 
 
