@@ -99,19 +99,17 @@ def test_copy_images_to_temp(tmp_path: Path):
 		image.write_bytes(COMPLETE_JPEG)
 		images.append(image)
 
-	copied_images = copy_images_to_temp(
+	copy_images_to_temp(
 		images,
 		temp_directory,
 	)
 
-	assert [original for original, _ in copied_images] == images
-	assert [frame.name for _, frame in copied_images] == [
+	assert sorted(path.name for path in temp_directory.iterdir()) == [
 		"frame_000001.jpg",
 		"frame_000002.jpg",
 		"frame_000003.jpg",
 	]
-
-	assert all(frame.exists() for _, frame in copied_images)
+	assert all(image.exists() for image in images)
 
 
 # A cut-off camera upload is left out and the frame numbers stay gapless for FFmpeg.
@@ -130,15 +128,11 @@ def test_copy_images_to_temp_skips_truncated_images(tmp_path: Path):
 		image.write_bytes(content)
 		images.append(image)
 
-	copied_images = copy_images_to_temp(
+	copy_images_to_temp(
 		images,
 		temp_directory,
 	)
 
-	assert copied_images == [
-		(images[0], temp_directory / "frame_000001.jpg"),
-		(images[2], temp_directory / "frame_000002.jpg"),
-	]
 	assert sorted(path.name for path in temp_directory.iterdir()) == [
 		"frame_000001.jpg",
 		"frame_000002.jpg",
@@ -688,8 +682,6 @@ def test_create_timelapse(
 	):
 		calls.append("copy_images_to_temp")
 
-		return []
-
 	def fake_create_image_timelapse(
 		camera,
 		target_date,
@@ -770,7 +762,7 @@ def test_create_timelapse_keeps_temp_on_video_error(
 		images,
 		temp_directory,
 	):
-		return []
+		pass
 
 	def fake_create_image_timelapse(
 		camera,

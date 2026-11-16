@@ -271,17 +271,17 @@ def is_complete_jpeg(path: Path) -> bool:
 
 
 # Copy selected images locally and rename them as sequential FFmpeg frames. The check runs on the
-# local copy, so it costs no extra read of the camera storage. Returns (original, frame) pairs.
+# local copy, so it costs no extra read of the camera storage.
 def copy_images_to_temp(
 	images: list[Path],
 	temp_directory: Path,
-) -> list[tuple[Path, Path]]:
+) -> None:
 	logger.info(f"Copying {len(images)} images to temporary directory")
 
-	copied_images = []
+	copied = 0
 
 	for image in images:
-		destination = temp_directory / f"frame_{len(copied_images) + 1:06d}.jpg"
+		destination = temp_directory / f"frame_{copied + 1:06d}.jpg"
 
 		shutil.copy2(
 			image,
@@ -295,19 +295,17 @@ def copy_images_to_temp(
 
 			continue
 
-		copied_images.append((image, destination))
+		copied += 1
 
-	skipped = len(images) - len(copied_images)
+	skipped = len(images) - copied
 
 	if skipped:
 		logger.warning(f"Skipped {skipped} of {len(images)} truncated images")
 
-	if images and not copied_images:
+	if images and not copied:
 		raise OSError(f"No complete images left to encode in {temp_directory}")
 
-	logger.debug(f"Copied {len(copied_images)} temporary frames")
-
-	return copied_images
+	logger.debug(f"Copied {copied} temporary frames")
 
 
 # Return the output path for automatic or explicit-date timelapses.
