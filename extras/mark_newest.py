@@ -7,14 +7,26 @@ it to the live round's cron line.
 """
 
 import hashlib
+import json
 import shlex
+import subprocess
+import sys
+from collections import Counter
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from src.images import date_patterns, image_moment
-from src.privacy.box_writer import BoxWriter
+from src.config import PROJECT_ROOT, load_config
+from src.images import date_patterns, get_cameras, image_moment
+from src.logger import configure_file_logging, logger
+from src.privacy.box_writer import BoxWriter, BoxWriteRefused
 from src.privacy.checked_mark import add_mark, has_mark
-from src.storage_box import StorageBox
+from src.storage_box import StorageBox, get_storage_box
+
+# The last marked image per camera, so an unchanged camera costs no download.
+STATE_FILE = PROJECT_ROOT / "state" / "privacy" / "newest-marked.json"
+WORK_ROOT = PROJECT_ROOT / "temp" / "mark-newest"
+OUTCOMES = ("marked", "unchanged", "settling", "incomplete", "none", "failed")
 
 LISTING_TIMEOUT_SECONDS = 30
 # An upload younger than this may still be in progress; the next run takes it.
@@ -121,3 +133,79 @@ def mark_camera(
 
 	finally:
 		work_copy.unlink(missing_ok=True)
+
+
+# A missing or damaged file only costs one download per camera; it never stops the run.
+def load_marked() -> dict[str, str]:
+	try:
+		data = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+
+	except FileNotFoundError:
+		return {}
+
+	except (OSError, json.JSONDecodeError) as error:
+		logger.warning(f"Unreadable {STATE_FILE.name}, starting from scratch: {error}")
+		return {}
+
+	if not isinstance(data, dict):
+		return {}
+
+	return {key: value for key, value in data.items() if isinstance(value, str)}
+
+
+# Written to a temporary file and swapped in, so a power cut leaves the old file intact.
+def save_marked(marked: dict[str, str]) -> None:
+	STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+	temporary = STATE_FILE.with_name(f".{STATE_FILE.name}.tmp")
+	temporary.write_text(json.dumps(marked, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+	temporary.replace(STATE_FILE)
+
+
+def main(now: datetime | None = None) -> int:
+	configure_file_logging("privacy")
+
+	config = load_config()
+	timezone = config["location"]["timezone"]
+	# Blur cameras are marked by the blur round itself; ignored folders are never written.
+	skipped = set((config.get("privacy") or {}).get("blur_cameras") or [])
+	skipped |= set(config.get("ignored_cameras") or [])
+	now = now or datetime.now(ZoneInfo(timezone))
+
+	try:
+		storage_box = get_storage_box()
+		cameras = [camera for camera in get_cameras() if camera not in skipped]
+		# Only these cameras are writable in this run.
+		writer = BoxWriter(
+			storage_box.remote,
+			storage_box.base_directory,
+			cameras,
+			timezone,
+			upload_root=WORK_ROOT,
+		)
+
+	except (OSError, BoxWriteRefused, ZoneInfoNotFoundError) as error:
+		logger.error(f"No storage box: {error}")
+		return 1
+
+	WORK_ROOT.mkdir(parents=True, exist_ok=True)
+	marked = load_marked()
+	counts: Counter[str] = Counter()
+
+	for camera in cameras:
+		try:
+			counts[mark_camera(writer, storage_box, camera, marked, now, WORK_ROOT)] += 1
+
+		# One camera's trouble must not stop the others; the next run tries again.
+		except (OSError, ValueError, subprocess.SubprocessError) as error:
+			logger.error(f"[{camera}] Not marked: {error}")
+			counts["failed"] += 1
+
+	save_marked(marked)
+	summary = " ".join(f"{outcome}={counts[outcome]}" for outcome in OUTCOMES)
+	logger.info(f"Newest marked: {len(cameras)} cameras | {summary}")
+
+	return 1 if counts["failed"] else 0
+
+
+if __name__ == "__main__":
+	sys.exit(main())

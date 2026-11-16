@@ -1,11 +1,14 @@
+import json
 import os
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
 from privacy_fakes import FakeBox, run_in
 
+import extras.mark_newest as mark_newest
 from extras.mark_newest import mark_camera, newest_image
 from src.privacy.box_writer import BoxWriter
 from src.privacy.checked_mark import add_mark
@@ -186,3 +189,112 @@ def test_hidden_files_and_the_backup_folder_are_never_marked(box: Box) -> None:
 
 	assert box.mark() == "marked"
 	assert box.marked == {CAMERA: OLDER}
+
+
+# main(): every camera of the box except the blur cameras and the ignored ones.
+
+BLURRED = "SLSV"
+IGNORED = "BlurTest"
+OTHER = "Kitestrand"
+
+
+@pytest.fixture
+def run(box: Box, tmp_path: Path, monkeypatch):
+	for camera in (BLURRED, IGNORED, OTHER):
+		(box.root / camera).mkdir()
+
+	config = {
+		"location": {"timezone": TIMEZONE},
+		"ignored_cameras": [IGNORED],
+		"privacy": {"blur_cameras": [BLURRED]},
+	}
+	monkeypatch.setattr(mark_newest, "load_config", lambda: config)
+	monkeypatch.setattr(mark_newest, "get_storage_box", lambda: StorageBox(REMOTE, ""))
+	monkeypatch.setattr(
+		mark_newest, "get_cameras", lambda: sorted([CAMERA, BLURRED, IGNORED, OTHER])
+	)
+	monkeypatch.setattr(mark_newest, "STATE_FILE", tmp_path / "state" / "newest-marked.json")
+	monkeypatch.setattr(mark_newest, "WORK_ROOT", box.work)
+	# The real writer, but talking to the fake box.
+	monkeypatch.setattr(
+		mark_newest, "BoxWriter", partial(BoxWriter, runner=box.fake, clock=lambda: NOW)
+	)
+
+	return lambda: mark_newest.main(now=NOW)
+
+
+def upload_to(box: Box, camera: str, name: str) -> Path:
+	path = box.root / camera / name
+	path.write_bytes(jpeg(name))
+	moment = NOW.timestamp() - 600
+	os.utime(path, (moment, moment))
+
+	return path
+
+
+def test_main_marks_only_cameras_that_are_neither_blurred_nor_ignored(
+	box: Box, run, caplog
+) -> None:
+	paths = {camera: upload_to(box, camera, NEWEST) for camera in (CAMERA, BLURRED, IGNORED, OTHER)}
+
+	assert run() == 0
+
+	assert paths[CAMERA].read_bytes() == add_mark(jpeg(NEWEST))
+	assert paths[OTHER].read_bytes() == add_mark(jpeg(NEWEST))
+	# The blur round marks its own cameras; ignored folders are never written.
+	assert paths[BLURRED].read_bytes() == jpeg(NEWEST)
+	assert paths[IGNORED].read_bytes() == jpeg(NEWEST)
+	assert "Newest marked: 2 cameras | marked=2" in caplog.text
+
+
+def test_the_state_file_spares_the_next_run_every_download(box: Box, run) -> None:
+	upload_to(box, CAMERA, NEWEST)
+	upload_to(box, OTHER, NEWEST)
+
+	assert run() == 0
+	assert json.loads(mark_newest.STATE_FILE.read_text()) == {CAMERA: NEWEST, OTHER: NEWEST}
+
+	box.fake.calls.clear()
+
+	assert run() == 0
+	assert box.fake.calls == []
+
+
+def test_one_failing_camera_does_not_stop_the_others(box: Box, run, monkeypatch, caplog) -> None:
+	upload_to(box, CAMERA, NEWEST)
+	other = upload_to(box, OTHER, NEWEST)
+	real = mark_newest.mark_camera
+
+	def failing(writer, storage_box, camera, *args):
+		if camera == CAMERA:
+			raise OSError("Storage box listing failed")
+
+		return real(writer, storage_box, camera, *args)
+
+	monkeypatch.setattr(mark_newest, "mark_camera", failing)
+
+	assert run() == 1
+
+	assert other.read_bytes() == add_mark(jpeg(NEWEST))
+	assert f"[{CAMERA}] Not marked: Storage box listing failed" in caplog.text
+	assert "failed=1" in caplog.text
+
+
+def test_main_without_a_storage_box_is_an_error(box: Box, run, monkeypatch, caplog) -> None:
+	def no_box():
+		raise OSError("TIMELAPSE_STORAGE_BOX is not set")
+
+	monkeypatch.setattr(mark_newest, "get_storage_box", no_box)
+
+	assert run() == 1
+	assert "No storage box: TIMELAPSE_STORAGE_BOX is not set" in caplog.text
+
+
+# A damaged state file only costs one download per camera; it never stops the run.
+def test_an_unreadable_state_file_starts_from_scratch(box: Box, run) -> None:
+	upload_to(box, CAMERA, NEWEST)
+	mark_newest.STATE_FILE.parent.mkdir(parents=True)
+	mark_newest.STATE_FILE.write_text("{not json")
+
+	assert run() == 0
+	assert json.loads(mark_newest.STATE_FILE.read_text()) == {CAMERA: NEWEST}
