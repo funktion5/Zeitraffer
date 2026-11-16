@@ -240,6 +240,8 @@ def _process_image(
 	state_root: Path,
 	now: datetime,
 	backups: dict[str, set[str]] | None = None,
+	*,
+	mark: bool,
 ) -> str:
 	# Refuse before spending a download and a detection on an image that may never be written.
 	writer.check(camera, name)
@@ -303,17 +305,22 @@ def _process_image(
 	if ignored:
 		entry["ignored_boxes"] = _as_lists(ignored)
 
-	# Nothing found: the image only gets the checked mark, without a backup. The writer checks
-	# that the box still holds the judged bytes (the camera may rewrite it during detection).
+	# Nothing found. The box must still hold the judged bytes: the camera may rewrite the image
+	# during detection. The round then adds the checked mark (no backup; the writer checks the
+	# bytes itself), a manual run writes nothing.
 	if not boxes:
-		_add_mark(work_copy, name)
+		if mark:
+			_add_mark(work_copy, name)
 
-		# A refusal here is not the image's fault: retry, not record.
-		try:
-			entry["marked_sha256"] = writer.mark_clean(camera, name, judged_hash, work_copy)
+			# A refusal here is not the image's fault: retry, not record.
+			try:
+				entry["marked_sha256"] = writer.mark_clean(camera, name, judged_hash, work_copy)
 
-		except BoxWriteRefused as error:
-			raise PrivacyCheckError(f"Marked copy of {name} not written: {error}") from error
+			except BoxWriteRefused as error:
+				raise PrivacyCheckError(f"Marked copy of {name} not written: {error}") from error
+
+		elif writer.image_hash(camera, name) != judged_hash:
+			raise PrivacyCheckError(f"{name} on the box differs from the checked copy; retrying.")
 
 		record_processed(state_root, camera, {**entry, "status": "clean"}, now)
 
@@ -324,8 +331,9 @@ def _process_image(
 
 	blur_frame(work_copy, boxes, settings, size)
 
-	# The backup above stays the bare original.
-	_add_mark(work_copy, name)
+	# Only the round marks (it feeds the website); the backup above stays the bare original.
+	if mark:
+		_add_mark(work_copy, name)
 
 	# A refusal here (e.g. blurring changed nothing) is not the image's fault: retry, not record.
 	try:
@@ -363,6 +371,8 @@ def _handle_image(
 	recorded_at: datetime,
 	summary: BoxRoundSummary,
 	backups: dict[str, set[str]] | None = None,
+	*,
+	mark: bool,
 ) -> None:
 	# One image at a time; a failure of any kind affects only that image.
 	try:
@@ -392,6 +402,7 @@ def _handle_image(
 			state_root,
 			recorded_at,
 			backups,
+			mark=mark,
 		)
 
 	except BoxWriteDeferred as error:
@@ -486,6 +497,7 @@ def process_box_camera(
 				state_root,
 				now,
 				summary,
+				mark=True,
 			)
 
 	finally:
@@ -547,6 +559,8 @@ def blur_frames(
 				moments[name],
 				summary,
 				backups,
+				# The mark is for the website's new images; manual runs leave clean ones untouched.
+				mark=False,
 			)
 
 	finally:

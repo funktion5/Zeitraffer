@@ -43,7 +43,13 @@ def clean_bytes(name: str) -> bytes:
 	return add_mark(original_bytes(name))
 
 
-# What the box holds after a blur: the fake pixelation, carrying the checked mark.
+# What a manual run leaves after a blur: the fake pixelation without the mark, which only the
+# round sets (it feeds the website).
+def unmarked_blurred_bytes(name: str) -> bytes:
+	return b"\xff\xd8blurred" + original_bytes(name)
+
+
+# What the box holds after a blur of the round: the fake pixelation, carrying the checked mark.
 def blurred_bytes(name: str) -> bytes:
 	return add_mark(b"\xff\xd8blurred" + original_bytes(name))
 
@@ -934,7 +940,7 @@ def test_listed_old_frame_is_blurred_and_recorded_in_its_own_month(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert summary.blurred == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
 	assert not (setup.state_root / CAMERA / "2026-06.jsonl").exists()
@@ -956,16 +962,17 @@ def test_default_writer_limits_still_refuse_an_old_frame(setup: Setup, monkeypat
 	assert setup.writes() == []
 
 
-def test_frame_without_people_is_recorded_clean_and_only_marked(setup: Setup) -> None:
+# Manual runs never mark: the mark is only for the website's new images.
+def test_frame_without_people_is_recorded_clean_without_writes(setup: Setup) -> None:
 	image = setup.upload(OLD_CLEAN, age_seconds=OLD_AGE)
 
 	summary = blur_listed(setup, [OLD_CLEAN])
 
 	assert summary.clean == 1
-	assert image.read_bytes() == clean_bytes(OLD_CLEAN)
+	assert image.read_bytes() == original_bytes(OLD_CLEAN)
 	assert setup.states()[OLD_CLEAN]["status"] == "clean"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
-	assert setup.only_marked(OLD_CLEAN)
+	assert setup.writes() == []
 
 
 # A frame of a job's list is judged as it is: no night rule, the job already chose it.
@@ -1005,7 +1012,7 @@ def test_frame_refused_earlier_is_tried_again_with_the_larger_limit(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert summary.blurred == 1
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert setup.states()[OLD_PERSON]["status"] == "blurred"
 
 
@@ -1047,7 +1054,8 @@ def test_drop_rules_carry_over_to_listed_frames(setup: Setup, monkeypatch) -> No
 	summary = blur_listed(setup, [OLD_PERSON], rules=DropRules(ignore_boxes={CAMERA: [SIGN]}))
 
 	assert summary.clean == 1
-	assert image.read_bytes() == clean_bytes(OLD_PERSON)
+	assert image.read_bytes() == original_bytes(OLD_PERSON)
+	assert setup.writes() == []
 	assert setup.states()[OLD_PERSON]["ignored_boxes"] == [[706, 557, 741, 640, 0.9]]
 
 
@@ -1193,7 +1201,7 @@ def test_a_frame_that_still_matches_its_backup_is_processed_normally(
 	summary = blur_listed(setup, [OLD_PERSON])
 
 	assert (summary.blurred, summary.already_blurred) == (1, 0)
-	assert image.read_bytes() == blurred_bytes(OLD_PERSON)
+	assert image.read_bytes() == unmarked_blurred_bytes(OLD_PERSON)
 	assert len(list((setup.camera_dir / "original").glob("*.jpg"))) == 1
 
 

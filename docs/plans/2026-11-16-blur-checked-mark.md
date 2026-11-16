@@ -21,6 +21,8 @@ live (Julius, 2026-11-16).
 - The colleague's job keeps its own list of blur cameras; images of other cameras never get a mark
   and are published as today.
 - No new folder, no extra copy, no extra file next to the images.
+- Only the round (live and 02:00 catch-up) marks; manual runs (`blur_frames`) blur as before, without
+  the mark, and leave clean frames untouched (Julius, 2026-11-16 after the review: cleaner).
 
 ## Design
 

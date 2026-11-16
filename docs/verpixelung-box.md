@@ -147,6 +147,10 @@ Bild.
   ohne die 21 Bytes ist die Datei wieder genau das Original. Das prüft der Schreibcode vor dem
   Tausch.
 - Die Markierung ändert kein Pixel. FFmpeg, die Zeitraffer und die Vorschau zeigen dasselbe Bild.
+- Nur die laufende Runde und das nächtliche Nachholen markieren: sie liefern die neuen Bilder der
+  Webseite. Ein [von Hand gestartetes Video](#verpixelung-bei-von-hand-gestarteten-videos)
+  verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
+  16.11.2026).
 - Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
 - Code: `src/privacy/checked_mark.py`. Von Hand prüfen:
   `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
