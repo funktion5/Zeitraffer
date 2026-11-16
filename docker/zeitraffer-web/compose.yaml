@@ -29,6 +29,7 @@ services:
       - ../../src:/home/zeitraffer/timelapse/src:ro
       - ../../scripts:/home/zeitraffer/timelapse/scripts:ro
       - ../../tests:/home/zeitraffer/timelapse/tests:ro
+      - ../../extras:/home/zeitraffer/timelapse/extras:ro
       - ../../pyproject.toml:/home/zeitraffer/timelapse/pyproject.toml:ro
       - ../../requirements.txt:/home/zeitraffer/timelapse/requirements.txt:ro
       # Read by the tests of the installer, the backup script and the NAS helper (tests/scripts/).
