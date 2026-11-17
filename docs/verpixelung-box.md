@@ -5,7 +5,7 @@ die Webseite sie abholt. Bei einem Fund wird das Original vorher auf der Box ges
 ohne Fund bekommen nur die Markierung. Installation, Detektor,
 die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md](verpixelung.md).
 
-**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest` (47 Bilder: 20
+**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Testordner `BlurTest` (am 17.11.2026 gelöscht; 47 Bilder: 20
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
 jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).

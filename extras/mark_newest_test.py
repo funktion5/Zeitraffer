@@ -194,7 +194,7 @@ def test_hidden_files_and_the_backup_folder_are_never_marked(box: Box) -> None:
 # main(): every camera of the box except the blur cameras and the ignored ones.
 
 BLURRED = "SLSV"
-IGNORED = "BlurTest"
+IGNORED = "Stillgelegt"
 OTHER = "Kitestrand"
 
 

@@ -13,19 +13,19 @@ FILE_TIME = 1_700_000_000
 SAVED = '{"status": "saved", "errors": [], "mtime": 456}'
 WRAPPER = "/usr/local/sbin/timelapse-web-settings"
 CAMERAS = ("Alpha", "Scheunenviertel", "SLSV")
-BLUR_CAMERAS = ("BlurTest", "Scheunenviertel", "SLSV")
+BLUR_CAMERAS = ("Beta", "Scheunenviertel", "SLSV")
 BLANK = {"x0": "", "y0": "", "x1": "", "y1": ""}
 
 BASE = {
 	"location": {"latitude": 52.472, "longitude": 9.333, "timezone": "Europe/Berlin"},
-	"ignored_cameras": ["BlurTest"],
+	"ignored_cameras": ["Beta"],
 	"privacy": {
-		"blur_cameras": ["BlurTest", "Scheunenviertel", "SLSV"],
+		"blur_cameras": ["Beta", "Scheunenviertel", "SLSV"],
 		"blur": {"strength": 0.08, "padding_ratio": 0.05, "feather": 0.5},
 		"ignore_top_share": 0.333,
 		"min_person_score": {"SLSV": 0.35},
 		"ignore_boxes": {
-			"BlurTest": [[703, 557, 742, 643]],
+			"Beta": [[703, 557, 742, 643]],
 			"Scheunenviertel": [[1, 2, 3, 4], [5, 6, 7, 8]],
 		},
 	},
@@ -39,7 +39,7 @@ FLOATS = {
 
 # What the page sends for each blur camera's own top share when nothing was changed: the global
 # value (the writer then stores nothing).
-TOPS = {"BlurTest": "0.333", "Scheunenviertel": "0.333", "SLSV": "0.333"}
+TOPS = {"Beta": "0.333", "Scheunenviertel": "0.333", "SLSV": "0.333"}
 
 # Every control that carries an explanation, by element id.
 EXPLAINED = [
@@ -96,9 +96,9 @@ def privacy_post(
 		"privacy": {
 			"floats": {**FLOATS, **(floats or {})},
 			"top": {**TOPS, **(top or {})},
-			"score": {"BlurTest": "0", "Scheunenviertel": "0", "SLSV": "0.35", **(score or {})},
+			"score": {"Beta": "0", "Scheunenviertel": "0", "SLSV": "0.35", **(score or {})},
 			"boxes": {
-				"BlurTest": box_rows(base_boxes["BlurTest"]),
+				"Beta": box_rows(base_boxes["Beta"]),
 				"Scheunenviertel": box_rows(base_boxes["Scheunenviertel"]),
 				"SLSV": box_rows([]),
 				**(boxes or {}),
@@ -205,7 +205,7 @@ def test_the_camera_list_shows_listed_ignored_and_blur_cameras(tmp_path):
 
 	assert camera_boxes(out) == {
 		"Alpha": False,
-		"BlurTest": True,
+		"Beta": True,
 		"Scheunenviertel": True,
 		"SLSV": True,
 	}
@@ -255,7 +255,7 @@ def test_cameras_that_already_blur_are_marked_and_the_warning_is_shown(tmp_path)
 	important = tag_of(out, r'<p[^>]*class="privacy-important"[^>]*>.*?</p>', re.S)
 
 	# sorted() orders by character code ("SL" before "Sc"), so sort the expectation the same way.
-	assert sorted(live) == sorted(["BlurTest", "Scheunenviertel", "SLSV"])
+	assert sorted(live) == sorted(["Beta", "Scheunenviertel", "SLSV"])
 	assert "Wichtig" in important
 	assert "schon läuft" in important
 
@@ -281,9 +281,9 @@ def test_every_blur_camera_has_its_score_and_its_boxes(tmp_path):
 	out, _ = render(tmp_path)
 	pattern = r'<fieldset[^>]*class="[^"]*privacy-camera[^"]*"[^>]*data-camera="([^"]+)"'
 
-	assert re.findall(pattern, out) == ["BlurTest", "Scheunenviertel", "SLSV"]
+	assert re.findall(pattern, out) == ["Beta", "Scheunenviertel", "SLSV"]
 
-	first = tag_of(out, r'<input[^>]*name="privacy\[boxes\]\[BlurTest\]\[0\]\[x0\]"[^>]*>')
+	first = tag_of(out, r'<input[^>]*name="privacy\[boxes\]\[Beta\]\[0\]\[x0\]"[^>]*>')
 
 	assert 'value="703"' in first
 	# Exactly the saved boxes: no empty rows stand by.
@@ -305,7 +305,7 @@ def test_no_empty_rows_are_offered(tmp_path):
 	out, _ = render(tmp_path)
 
 	assert len(box_rows_of(out, "Scheunenviertel")) == 2
-	assert len(box_rows_of(out, "BlurTest")) == 1
+	assert len(box_rows_of(out, "Beta")) == 1
 	assert box_rows_of(out, "SLSV") == []
 
 	# A row the script adds takes the next free index, after the saved ones.
@@ -325,11 +325,11 @@ def test_a_camera_without_boxes_says_so(tmp_path):
 			tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S),
 			r'<p[^>]*class="privacy-boxes-empty"[^>]*>',
 		)
-		for camera in ("BlurTest", "Scheunenviertel", "SLSV")
+		for camera in ("Beta", "Scheunenviertel", "SLSV")
 	}
 
 	assert not re.search(r"\shidden[\s>]", notes["SLSV"])
-	assert re.search(r"\shidden[\s>]", notes["BlurTest"])
+	assert re.search(r"\shidden[\s>]", notes["Beta"])
 	assert re.search(r"\shidden[\s>]", notes["Scheunenviertel"])
 
 
@@ -452,16 +452,16 @@ def test_a_valid_save_sends_the_privacy_values_to_the_wrapper_and_redirects(tmp_
 	assert args[3:6] == [WRAPPER, "privacy", "0"]
 	assert sent_values(args) == {
 		"privacy": {
-			"blur_cameras": ["BlurTest", "Scheunenviertel", "SLSV"],
+			"blur_cameras": ["Beta", "Scheunenviertel", "SLSV"],
 			"blur": {"strength": 0.1, "padding_ratio": 0.05, "feather": 0.5},
 			"ignore_top_share_per_camera": {
-				"BlurTest": 0.333,
+				"Beta": 0.333,
 				"Scheunenviertel": 0.333,
 				"SLSV": 0.333,
 			},
-			"min_person_score": {"BlurTest": 0, "Scheunenviertel": 0, "SLSV": 0.35},
+			"min_person_score": {"Beta": 0, "Scheunenviertel": 0, "SLSV": 0.35},
 			"ignore_boxes": {
-				"BlurTest": [[703, 557, 742, 643]],
+				"Beta": [[703, 557, 742, 643]],
 				"Scheunenviertel": [[1, 2, 3, 4], [5, 6, 7, 8]],
 				"SLSV": [],
 			},
@@ -528,7 +528,7 @@ def test_every_blur_camera_has_its_own_top_share_field_in_its_block(tmp_path):
 
 	out, _ = render(tmp_path)
 
-	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+	for camera in ("Beta", "Scheunenviertel", "SLSV"):
 		field = top_field(out, camera)
 		slider = tag_of(out, rf'<input[^>]*data-slider-for="privacy-top-{camera}"[^>]*>')
 		block = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
@@ -563,17 +563,17 @@ def test_a_top_share_in_config_json_is_the_standard_of_that_camera(tmp_path):
 
 	assert 'value="0.2"' in top_field(out, "SLSV")
 	assert 'data-default="0.2"' in top_field(out, "SLSV")
-	assert 'data-default="0.333"' in top_field(out, "BlurTest")
+	assert 'data-default="0.333"' in top_field(out, "Beta")
 
 
 def test_each_cameras_top_share_is_sent_as_its_own_value(tmp_path):
 	prepare(tmp_path)
 
-	_, args = render(tmp_path, privacy_post(top={"SLSV": "0,1", "BlurTest": "0"}), sudo_out=SAVED)
+	_, args = render(tmp_path, privacy_post(top={"SLSV": "0,1", "Beta": "0"}), sudo_out=SAVED)
 	sent = sent_values(args)["privacy"]
 
 	assert sent["ignore_top_share_per_camera"] == {
-		"BlurTest": 0,
+		"Beta": 0,
 		"Scheunenviertel": 0.333,
 		"SLSV": 0.1,
 	}
@@ -757,11 +757,11 @@ def test_a_camera_the_form_did_not_send_gets_no_boxes_entry(tmp_path):
 	prepare(tmp_path)
 	post = privacy_post()
 	for field in ("top", "score", "boxes"):
-		del post["privacy"][field]["BlurTest"]
+		del post["privacy"][field]["Beta"]
 
 	_, args = render(tmp_path, post, sudo_out=SAVED)
 
-	assert "BlurTest" not in sent_values(args)["privacy"].get("ignore_boxes", {})
+	assert "Beta" not in sent_values(args)["privacy"].get("ignore_boxes", {})
 
 
 def test_invalid_values_are_shown_next_to_their_controls_with_what_was_typed(tmp_path):
@@ -818,7 +818,7 @@ def test_each_block_heading_names_its_camera_for_screen_readers(tmp_path):
 	out, _ = render(tmp_path)
 	spoken = []
 
-	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+	for camera in ("Beta", "Scheunenviertel", "SLSV"):
 		fieldset = tag_of(out, rf'<fieldset[^>]*data-camera="{camera}"[^>]*>.*?</fieldset>', re.S)
 		titles = re.findall(r'<h2[^>]*class="privacy-boxes-title"[^>]*>(.*?)</h2>', fieldset, re.S)
 
@@ -974,7 +974,7 @@ def test_every_row_button_says_which_camera_and_which_row_it_belongs_to(tmp_path
 	out, _ = render(tmp_path)
 	script = read_scripts("verpixelung.js")
 
-	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+	for camera in ("Beta", "Scheunenviertel", "SLSV"):
 		pattern = r'<button[^>]*data-add-box[^>]*aria-label="[^"]*' + camera + r'[^"]*"[^>]*>'
 		assert "Rahmen hinzufügen" in tag_of(out, pattern)
 	# The remove buttons are numbered with their row by the script.
@@ -1075,7 +1075,7 @@ def test_the_refresh_button_is_script_only_and_carries_no_field(tmp_path):
 
 	out, _ = render(tmp_path)
 
-	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+	for camera in ("Beta", "Scheunenviertel", "SLSV"):
 		block = preview_block(out, camera)
 		button = tag_of(block, r"<button[^>]*data-preview-refresh[^>]*>")
 
@@ -1152,7 +1152,7 @@ def test_the_draw_button_is_a_script_only_toggle(tmp_path):
 
 	out, _ = render(tmp_path)
 
-	for camera in ("BlurTest", "Scheunenviertel", "SLSV"):
+	for camera in ("Beta", "Scheunenviertel", "SLSV"):
 		button = tag_of(preview_block(out, camera), r"<button[^>]*data-preview-draw[^>]*>")
 
 		assert 'type="button"' in button

@@ -86,7 +86,7 @@ def test_a_failed_write_keeps_the_old_file_and_leaves_no_temporary_file(tmp_path
 
 
 def test_ignored_cameras_are_left_out(list_path, monkeypatch):
-	listing(monkeypatch, ["Alpha", "Blurtest", "Gamma"], ignored=["Blurtest"])
+	listing(monkeypatch, ["Alpha", "Stillgelegt", "Gamma"], ignored=["Stillgelegt"])
 
 	assert main() == 0
 
@@ -96,7 +96,7 @@ def test_ignored_cameras_are_left_out(list_path, monkeypatch):
 # The nightly wrapper reads the cameras it has to verify from here, one per line. Only the names go
 # to stdout: logging goes to stderr, so nothing else can end up in that list.
 def test_the_names_are_printed_one_per_line(list_path, monkeypatch, capsys):
-	listing(monkeypatch, ["Alpha", "Blurtest", "Gamma"], ignored=["Blurtest"])
+	listing(monkeypatch, ["Alpha", "Stillgelegt", "Gamma"], ignored=["Stillgelegt"])
 
 	assert main() == 0
 

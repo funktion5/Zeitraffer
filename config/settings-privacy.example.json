@@ -1,5 +1,5 @@
 {
   "privacy": {
-    "blur_cameras": ["BlurTest", "Scheunenviertel", "SLSV"]
+    "blur_cameras": ["Scheunenviertel", "SLSV"]
   }
 }
