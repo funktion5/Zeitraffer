@@ -324,13 +324,7 @@ Ohne lokale PHP-Installation über den Container:
 docker run --rm -v "$PWD/frontend":/w php:8.4-cli sh -c 'for f in /w/f5-webcams/f5-webcams.php /w/f5-webcams/includes/*.php; do php -l "$f"; done'
 ```
 
-Für die Berechnungen des Players (Zeitanzeige, Sprung um ein Bild) gibt es Node-Tests ohne zusätzliche Abhängigkeit:
-
-```bash
-node --test tests/frontend/*.test.js
-```
-
-Sie laufen nicht in der GitHub-Action, die nur die Python-Pipeline und die PHP-Weboberfläche prüft. Das Aussehen und die Bedienung des Players werden von Hand im Browser geprüft (Checkliste siehe „Checkliste zur Abnahme“).
+Den Player (Zeitanzeige, Sprung um ein Bild, Aussehen und Bedienung) prüft man von Hand im Browser in der lokalen Docker-WordPress-Umgebung (Checkliste siehe „Checkliste zur Abnahme“).
 
 ## Fehlerbehebung (WordPress-Frontend)
 
