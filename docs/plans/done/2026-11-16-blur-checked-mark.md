@@ -1,5 +1,7 @@
 # Plan: the "checked" mark in every blurred or clean image
 
+**DONE 2026-11-16:** merged (PR #9) and live; manual tests passed 2026-11-17 (docs: `docs/verpixelung-box.md`).
+
 Status: DRAFT 2026-11-16, for Julius's review. Branch `feature/blur-checked-mark` (from `main` after
 the watchdog, PR #8). Decisions behind it: [2026-10-30-live-blur-cron.md](2026-10-30-live-blur-cron.md)
 (status block, 2026-11-16).

@@ -4,11 +4,11 @@ Zusätzlich zur PHP-Weboberfläche zeigt ein WordPress-Plugin die fertigen Video
 WordPress-Seite: „F5 Webcams“ (`frontend/f5-webcams/`, ein eigenes Repository). Es enthält den Player
 und den Shortcode `[zeitraffer]`, die Kameraeinträge (sie entscheiden, welche Kamera sichtbar ist) und
 die Videoübersicht im Admin. Dieses Dokument beschreibt, wie das zusammenspielt und wie es lokal
-entwickelt und getestet wird. Der Player selbst ist **nur lesend**: Er startet keine Jobs, schreibt keine Dateien und hat keine Formulare, AJAX- oder REST-Endpunkte. Geschrieben wird nur im Admin: der Scan speichert je Kamera den Dateinamen des neuesten Videos als Beitragsmeta, und die Löschknöpfe entfernen Videodateien, aber nur bei Kameras, die nicht veröffentlicht sind (siehe „Videos im Kameraeintrag“). Entwickelt wird es lokal auf dem Mac in einer Docker-Umgebung; die Pi-Weboberfläche bleibt davon unberührt.
+entwickelt und getestet wird. Der Player selbst ist **nur lesend**: Er startet keine Jobs, schreibt keine Dateien und hat keine Formulare, AJAX- oder REST-Endpunkte. Geschrieben wird nur im Admin: der Scan speichert je Kamera den Dateinamen des neuesten Videos als Beitragsmeta, und die Löschknöpfe entfernen Videodateien, aber nur bei Kameras, die nicht veröffentlicht sind (siehe „Videos im Kameraeintrag“). Entwickelt wird es lokal auf dem Mac in einer Docker-Umgebung; der VPS und seine Weboberfläche bleiben davon unberührt.
 
 ```text
-Pi: videos/<Kamera>/<Zeitraum>/*.mp4
-  → docker/pull-videos.sh (rsync, nur Lesen auf dem Pi)
+VPS: videos/<Kamera>/<Zeitraum>/*.mp4
+  → docker/pull-videos.sh (rsync, nur Lesen auf dem VPS)
   → Mac: videos/
   → Docker-Container "wordpress": wp-content/uploads/zeitraffer/ (schreibgeschützt)
   → Plugin frontend/f5-webcams (Player, Shortcode [zeitraffer], Kameraeinträge, Sichtbarkeit)
@@ -18,7 +18,7 @@ Pi: videos/<Kamera>/<Zeitraum>/*.mp4
 ## Voraussetzungen für das Frontend
 
 - Docker Desktop (mit `docker compose`) auf dem Mac
-- SSH-Zugang zum Pi per Schlüssel; Benutzer und Adresse stehen in `docker/.env` (Variable `PI`, siehe Schritt 1); der Pi muss im Netz erreichbar sein
+- SSH-Zugang zum VPS per Schlüssel; der ssh-Alias steht in `docker/.env` (Variable `PI`, siehe Schritt 1; der Name stammt aus der Zeit des Raspberry Pi)
 - `rsync` auf dem Mac (bei macOS vorhanden)
 - Port `8080` auf dem Mac ist frei
 
@@ -29,7 +29,7 @@ cd docker
 cp .env.example .env         # danach die Werte eintragen, siehe unten
 docker compose up -d
 cd ..
-docker/pull-videos.sh        # Videos vom Pi holen
+docker/pull-videos.sh        # Videos vom VPS holen
 ```
 
 Danach WordPress einmalig installieren, das Plugin aktivieren und den Shortcode in eine Seite einbauen (Details unten).
@@ -51,7 +51,7 @@ Alle Werte in `docker/.env` ausfüllen. Die Datenbankwerte sind frei wählbar, e
 | `DB_USER` | Datenbankbenutzer für WordPress |
 | `DB_PASSWORD` | Passwort dieses Benutzers |
 | `DB_ROOT_PASSWORD` | Root-Passwort der MariaDB |
-| `PI` | Benutzer und Adresse des Pi für `pull-videos.sh`, Format `benutzer@adresse` |
+| `PI` | ssh-Login des VPS für `pull-videos.sh`: ein Alias aus `~/.ssh/config` oder `benutzer@adresse` (der Name stammt aus der Zeit des Raspberry Pi) |
 
 Bleibt ein Wert leer, startet die Datenbank nicht oder WordPress kann sich nicht verbinden. Compose liest die `.env` aus dem Ordner `docker/` und löst alle Pfade relativ zu diesem Ordner auf.
 
@@ -61,14 +61,12 @@ Die Konfiguration lässt sich vorab prüfen:
 docker compose config
 ```
 
-## Schritt 2: Videos vom Pi holen
+## Schritt 2: Videos vom VPS holen
 
-Hinweis (Stand 30.10.2026): Die Videos entstehen seit dem Umzug auf dem VPS, der Pi ist stillgelegt.
-Skript und Variable heißen noch `pull-videos.sh` und `PI`, nehmen aber jeden ssh-Login, auch einen
-Alias aus `~/.ssh/config`: `PI=<ssh-alias-des-VPS> docker/pull-videos.sh`. Das ist noch nicht
-ausprobiert; der Pfad `timelapse/videos/` gilt auf dem VPS ebenfalls.
+Hinweis: Das Skript stammt aus der Zeit des Raspberry Pi; mit dem VPS ist es noch nicht ausprobiert
+(der Pfad `timelapse/videos/` gilt dort ebenfalls).
 
-Der Container erwartet die Videos unter `videos/` im Projektordner, in derselben Struktur wie auf dem Pi:
+Der Container erwartet die Videos unter `videos/` im Projektordner, in derselben Struktur wie auf dem VPS:
 
 ```text
 videos/<Kamera>/<daily|weekly|monthly|yearly>/<Kamera>_<Datum>.mp4
@@ -82,20 +80,20 @@ docker/pull-videos.sh -n     # Probelauf: zeigt nur, was passieren würde
 docker/pull-videos.sh        # Probelauf anzeigen, nach Bestätigung (y) wirklich spiegeln
 ```
 
-Das Skript **spiegelt** den Ordner `~/timelapse/videos/` des Pi-Logins nach `videos/`:
+Das Skript **spiegelt** den Ordner `~/timelapse/videos/` des VPS-Logins nach `videos/`:
 
 - Neue und geänderte Dateien werden kopiert.
-- Dateien, die auf dem Pi nicht mehr existieren, werden lokal **gelöscht**, damit keine veralteten Videos übrig bleiben. Deshalb zeigt das Skript immer zuerst einen Probelauf und fragt nach, bevor es etwas ändert.
+- Dateien, die auf dem VPS nicht mehr existieren, werden lokal **gelöscht**, damit keine veralteten Videos übrig bleiben. Deshalb zeigt das Skript immer zuerst einen Probelauf und fragt nach, bevor es etwas ändert.
 - `manual-runs/` und versteckte Dateien (z. B. unfertige Renderings) werden weder kopiert noch gelöscht.
-- Auf dem Pi wird nichts verändert.
+- Auf dem VPS wird nichts verändert.
 
 `PI` wird aus der Umgebung oder aus `docker/.env` gelesen; ein einmaliger anderer Wert lässt sich so übergeben:
 
 ```bash
-PI=benutzer@<Pi-Adresse> docker/pull-videos.sh
+PI=<ssh-alias> docker/pull-videos.sh
 ```
 
-Achtung bei eigenen Testvideos in `videos/`: Sie stehen im Probelauf unter den Löschungen, sofern sie auf dem Pi nicht existieren.
+Achtung bei eigenen Testvideos in `videos/`: Sie stehen im Probelauf unter den Löschungen, sofern sie auf dem VPS nicht existieren.
 
 ## Schritt 3: Container starten
 
@@ -326,13 +324,7 @@ Ohne lokale PHP-Installation über den Container:
 docker run --rm -v "$PWD/frontend":/w php:8.4-cli sh -c 'for f in /w/f5-webcams/f5-webcams.php /w/f5-webcams/includes/*.php; do php -l "$f"; done'
 ```
 
-Für die Berechnungen des Players (Zeitanzeige, Sprung um ein Bild) gibt es Node-Tests ohne zusätzliche Abhängigkeit:
-
-```bash
-node --test tests/frontend/*.test.js
-```
-
-Sie laufen nicht in der GitHub-Action, die nur die Python-Pipeline und die PHP-Weboberfläche prüft. Das Aussehen und die Bedienung des Players werden von Hand im Browser geprüft (Checkliste siehe „Checkliste zur Abnahme“).
+Den Player (Zeitanzeige, Sprung um ein Bild, Aussehen und Bedienung) prüft man von Hand im Browser in der lokalen Docker-WordPress-Umgebung (Checkliste siehe „Checkliste zur Abnahme“).
 
 ## Fehlerbehebung (WordPress-Frontend)
 
@@ -346,7 +338,7 @@ Sie laufen nicht in der GitHub-Action, die nur die Python-Pipeline und die PHP-W
 | Der Kasten „Videos“ oder der Player zeigt noch das vorherige Video | Der Scan läuft alle 10 Minuten; im Kameraeintrag **Jetzt prüfen** drücken. |
 | Port 8080 belegt | In `docker/docker-compose.yml` den linken Teil von `"8080:80"` ändern, z. B. `"8081:80"`, und neu starten. |
 | Datenbankfehler beim Start | `docker/.env` unvollständig. Alle `DB_*`-Werte setzen. Wurden Werte nach dem ersten Start geändert, bleibt die Datenbank mit den alten Zugangsdaten bestehen; dann `docker compose down -v` und neu installieren. |
-| `pull-videos.sh` bricht ab oder hängt | Pi nicht erreichbar oder kein SSH-Schlüssel eingerichtet. Verbindung mit `ssh benutzer@<Pi-Adresse>` prüfen; fehlt `PI`, bricht das Skript mit einem Hinweis ab. |
+| `pull-videos.sh` bricht ab oder hängt | VPS nicht erreichbar oder kein SSH-Schlüssel eingerichtet. Verbindung mit `ssh <ssh-alias>` prüfen; fehlt `PI`, bricht das Skript mit einem Hinweis ab. |
 
 ## Wichtig für den Live-Betrieb
 

@@ -18,7 +18,7 @@ steht, was wo zu finden ist.
 
 1. **Kamera** – Jede Webcam macht den ganzen Tag über regelmäßig ein Foto und lädt es hoch.
 2. **Storage Box** – Ein Online-Speicher. Hier landen alle Bilder aller Kameras. Er ist
-   das Archiv: Das Programm liest von hier nur, es räumt hier nichts weg.
+   das Archiv: Das Programm löscht hier nichts und liest nur, außer beim Verpixeln (siehe unten).
 3. **Zeitraffer-Server** – Ein Server, auf dem das Programm läuft. Jede Nacht holt er
    sich die Bilder, wählt die passenden aus und setzt daraus die Videos zusammen.
 4. **Website** – Der Server lädt die fertigen Videos auf die Website hoch. Das WordPress-Plugin
@@ -32,7 +32,7 @@ Jede Nacht um 2 Uhr startet der Server von selbst vier Schritte nacheinander. Ni
 ```
  02:00 Uhr
    │
-   ├─ 1. Menschen unkenntlich machen   (nur bei Kameras, auf denen Menschen zu sehen sind)
+   ├─ 1. Menschen unkenntlich machen   (nachholen, was tagsüber liegen geblieben ist)
    │
    ├─ 2. Videos bauen                  (Tag, Woche, Monat, Jahr – für jede Kamera)
    │
@@ -44,6 +44,10 @@ Jede Nacht um 2 Uhr startet der Server von selbst vier Schritte nacheinander. Ni
 Geht bei einem Schritt etwas schief, laufen die nächsten trotzdem weiter. Jeder Lauf schreibt einen
 Bericht, in dem sich Fehler nachlesen lassen.
 
+Außerdem arbeitet der Server rund um die Uhr: Alle 5 Minuten prüft er die neuen Bilder der Kameras,
+auf denen Menschen zu sehen sein können, und macht sie unkenntlich (siehe „Menschen und Kennzeichen“). Ein
+Wächter meldet im Protokoll, wenn ein Bild länger als 10 Minuten ungeprüft liegen bleibt.
+
 ## Die vier Videos
 
 | Video | Was es zeigt | Welche Bilder |
@@ -51,21 +55,24 @@ Bericht, in dem sich Fehler nachlesen lassen.
 | **Tagesvideo** | gestern | alle Bilder bei Tageslicht, vom Sonnenaufgang bis zum Sonnenuntergang |
 | **Wochenvideo** | die letzten 7 Tage | die sieben Tagesvideos hintereinander |
 | **Monatsvideo** | die letzten 30 Tage | jeden Tag die Bilder um die Mittagszeit |
-| **Jahresvideo** | das letzte Jahr | jeden Tag bis zu fünf Bilder um die Mittagszeit |
+| **Jahresvideo** | die letzten 12 Monate | jeden Tag bis zu fünf Bilder um die Mittagszeit |
 
 - Von jedem Video bleibt immer das neueste. Auf dem Server bleiben außerdem die Tagesvideos der
   letzten 7 Tage, auf der Website je Kamera und Videoart die zwei neuesten.
 - War eine Kamera so lange ausgefallen, dass für ein Monats- oder Jahresvideo zu viele Tage fehlen
   (beim Monat müssen 25 von 30 Tagen Bilder haben, beim Jahr 300 Tage), wird dieses Video in der
   Nacht ausgelassen. Das alte Video bleibt dann stehen.
-- **Die Originalbilder verändert das Zeitraffer-Programm nie.** Die einzige Ausnahme ist das
-  Unkenntlichmachen von Menschen (siehe unten): Dort ersetzt eine verpixelte Fassung das Bild auf
-  dem Online-Speicher, und das Original wird vorher gesichert.
+- **Die Originalbilder verändert das Zeitraffer-Programm nie.** Ausnahmen gibt es nur bei den
+  Kameras mit Verpixelung (siehe unten): Dort ersetzt eine verpixelte Fassung das Bild auf dem
+  Online-Speicher, und das Original wird vorher gesichert. Und jedes geprüfte Bild bekommt einen
+  unsichtbaren Vermerk „geprüft“; am Bild selbst ändert der nichts.
 
 ## Menschen und Kennzeichen – der Datenschutz
 
 Auf manchen Kameras sind Menschen oder Autokennzeichen zu erkennen. Bei diesen Kameras (derzeit
-Scheunenviertel und SLSV) macht das Programm sie jede Nacht unkenntlich, **bevor** Videos gebaut werden.
+Scheunenviertel und SLSV) prüft das Programm jedes neue Bild innerhalb weniger Minuten und macht
+Menschen unkenntlich, bei Scheunenviertel auch Autokennzeichen, **bevor** das Bild auf der Website
+erscheint oder in ein Video kommt. Die Website zeigt von diesen Kameras nur Bilder, die als „geprüft“ vermerkt sind.
 
 ```
  Bild vom Online-Speicher
@@ -80,7 +87,8 @@ Scheunenviertel und SLSV) macht das Programm sie jede Nacht unkenntlich, **bevor
  die Stelle wird verpixelt             │
           │                            │
           ▼                            ▼
- Erst jetzt darf das Bild in ein Video
+ Vermerk „geprüft“: erst jetzt darf das Bild
+ auf die Website und in ein Video
 ```
 
 Der Grundsatz heißt: **Im Zweifel lieber kein Video als ein ungeprüftes Bild.**
@@ -105,8 +113,8 @@ geschützt und nicht für das offene Internet gedacht. Dort kann man:
   selbst bestellten.
 - auf der Seite **Highlights** Bilder ansehen, groß anzeigen, herunterladen und löschen, auf denen
   das Programm Tiere oder Flugobjekte gefunden hat (Vögel, Flugzeuge, Drachen). Das Programm irrt
-  sich manchmal, darum zeigt die Seite nur die Markierung, und **ein Mensch entscheidet**. Treffer
-  bleiben 30 Tage erhalten. Gedacht ist das für die Auswahl guter Motive, zum Beispiel für YouTube.
+  sich manchmal, darum löscht oder veröffentlicht die Seite nichts von selbst; **ein Mensch
+  entscheidet**. Treffer bleiben 30 Tage erhalten (in den Einstellungen änderbar). Gedacht ist das für die Auswahl guter Motive, zum Beispiel für YouTube.
 
 - die **automatischen Videos einer Kamera neu erstellen lassen**, zum Beispiel wenn die Kamera in der
   Nacht ausgefallen war, und sie danach **auf die Website übertragen**. Beides steckt auf der Seite
@@ -116,9 +124,11 @@ geschützt und nicht für das offene Internet gedacht. Dort kann man:
   braucht: zum Beispiel in welcher Qualität die Videos entstehen, welche Kameras verarbeitet werden
   oder wie die Verpixelung arbeitet. Bei der Verpixelung kann man auf einem echten Kamerabild
   einzeichnen, wo etwas fälschlich verpixelt wird (ein Poller, ein Boot, die Kamerahalterung).
-  Das Bild ist immer eins, das die Verpixelung schon geprüft hat, nie ein Rohbild. Weil
+  Das Bild ist immer ein Bild, das die Verpixelung schon geprüft hat, nie ein Rohbild. Weil
   die Verpixelung eine Datenschutz-Einstellung ist, fragt die Seite vor dem Speichern noch einmal
-  nach. Eine Änderung gilt ab dem nächsten Auftrag, laufende Aufträge bleiben unberührt.
+  nach. Eine Änderung gilt ab dem nächsten Auftrag, laufende Aufträge bleiben unberührt. Wer dort
+  eine Kamera zur Verpixelung hinzufügt oder entfernt, muss dieselbe Änderung auch in der Liste der
+  Website machen (siehe Punkt 7 unter „Wenn ein Video fehlt oder zu alt ist“).
 
 Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 
@@ -129,17 +139,30 @@ Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
    ausgefallen, dass zu viele Tage ohne Bilder sind (siehe „Die vier Videos“). Kamera und ihren
    Upload zur Storage Box prüfen. Das Video kommt von selbst wieder, sobald genug Tage da sind.
 3. **Bei einer Kamera mit Menschen im Bild fehlen Videos:** Möglicherweise sind Bilder noch nicht
-   geprüft (siehe „Menschen und Kennzeichen“). Meist gleicht sich das in der nächsten Nacht aus; was
-   dahintersteckt, steht in [docs/verpixelung-box.md](docs/verpixelung-box.md#sperre-in-automatischen-videos).
+   geprüft (siehe „Menschen und Kennzeichen“). Meist entsteht das Video trotzdem, nur ohne die
+   ungeprüften Bilder. Fehlt das Tagesvideo ganz, ist vermutlich die Verpixelung ausgefallen; läuft
+   sie wieder, lässt es sich am selben Tag neu erstellen (Punkt 6). Monats- und Jahresvideos holt
+   die nächste Nacht von selbst nach. Was dahintersteckt, steht in [docs/verpixelung-box.md](docs/verpixelung-box.md#sperre-in-automatischen-videos).
 4. **Alle Videos sind alt:** Vermutlich ist der nächtliche Lauf nicht gelaufen. Das sieht man im
    Bericht des Laufs; wie man ihn liest, steht im [Handbuch](docs/handbuch.md#nächtlicher-lauf).
-5. **Das Video ist auf dem Server, aber nicht auf der Website:** Dann ist der Upload hängengeblieben.
-   Was in den Protokollen steht und was zu tun ist:
+5. **Das Video ist auf dem Server, aber nicht auf der Website:** Dann ist der Upload
+   fehlgeschlagen. Die nächste Nacht versucht es von selbst noch einmal; schneller geht es über die
+   Leiste auf der Kameraseite (Punkt 6). Was in den Protokollen steht und was zu tun ist:
    [Handbuch – Upload auf die Website](docs/handbuch.md#upload-auf-die-website).
 6. **Ein Video fehlt, weil die Kamera in der Nacht ausgefallen war, und sie läuft wieder:** Auf der
    Seite der Kamera in der Weboberfläche die Leiste „Automatische Videos neu erstellen und
    hochladen“ öffnen, die fehlenden Videos neu erstellen, ansehen und danach auf die Website
-   übertragen ([so geht es](docs/weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)).
+   übertragen ([so geht es](docs/weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)). Das geht nur
+   für den Vortag. Ältere Tage lassen sich als eigenes Video bestellen; solche Videos kommen aber
+   nicht auf die Website.
+
+7. **Das Webcam-Bild auf der Website ist bei Scheunenviertel oder SLSV alt, oder es zeigt einen
+   Menschen unverpixelt:** Die Website holt die Bilder dieser Kameras nur, wenn sie geprüft sind, und
+   dafür führt sie eine eigene Liste der Kameras. Diese Liste und die Liste auf der Seite
+   „Einstellungen → Verpixelung“ müssen genau gleich sein:
+   [Handbuch – Kamera zur Verpixelung hinzufügen oder entfernen](docs/handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
+   Andere Ursachen: Die Verpixelung läuft gerade nicht, oder die Erkennung hat den Menschen
+   übersehen; beides steht im [Handbuch unter „Verpixelung“](docs/handbuch.md#verpixelung-1).
 
 Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.md](docs/handbuch.md).
 
@@ -169,8 +192,9 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | das WordPress-Plugin verstehen | [docs/wordpress.md](docs/wordpress.md) |
 | einen Lauf von Hand starten | [docs/cli.md](docs/cli.md) |
 | Hilfsprogramme nutzen (Speicherfilter, Jahresvideos nachholen, NAS-Archiv) | [docs/werkzeuge.md](docs/werkzeuge.md) und [docs/nas.md](docs/nas.md) |
+| Zusatzmodule ansehen, die vorhanden, aber nicht eingeschaltet sind | [extras/README.md](extras/README.md) |
 | nachlesen, was früher war (Raspberry Pi, Docker-Test) | [archive/README.md](archive/README.md) |
-| YouTube-Beschreibungen schreiben | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md) und [youtube/texts](docs/youtube/youtube-texts.md) |
+| YouTube-Beschreibungen schreiben | [Regeln für die Texte](docs/youtube/youtube-description-prompt.md) und [fertige Texte](docs/youtube/youtube-texts.md) |
 | Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
 | den Code und die Ordner verstehen | [docs/architektur.md](docs/architektur.md) |
 | Einstellungen ändern (die Seite „Einstellungen“, `config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) und [docs/weboberflaeche.md](docs/weboberflaeche.md#einstellungen) |
@@ -179,9 +203,9 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 
 ## Was noch fehlt
 
-Nachtlauf, Upload und Highlights laufen jede Nacht von selbst. Offen ist noch eine Sache: Neue
-Bilder werden bisher nur einmal pro Nacht verpixelt, nicht laufend am Tag. Dafür gibt es nur einen
-Entwurf, entschieden ist nichts.
+Nachtlauf, Upload und Highlights laufen jede Nacht von selbst, die Verpixelung neuer Bilder seit dem
+16.11.2026 alle 5 Minuten rund um die Uhr. Offen ist noch: Die Weboberfläche läuft ohne HTTPS und
+ist deshalb nur aus dem Büronetz erreichbar.
 
 ## Für Entwickler
 

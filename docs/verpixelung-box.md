@@ -1,15 +1,18 @@
 # Verpixelung auf der Storage Box
 
 Verpixelt Personen und Kennzeichen in neuen Kamerabildern **direkt auf der Storage Box**, bevor
-die Webseite sie abholt. Das Original wird vorher auf der Box gesichert. Installation, Detektor,
+die Webseite sie abholt. Bei einem Fund wird das Original vorher auf der Box gesichert; Bilder
+ohne Fund bekommen nur die Markierung. Installation, Detektor,
 die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md](verpixelung.md).
 
 **Stand:** Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest` (47 Bilder: 20
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
 jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
-Die laufende Runde ist noch nicht eingerichtet. Seit dem 16.11.2026 bekommt jedes geprüfte Bild die
-[Markierung für die Webseite](#markierung-für-die-webseite), und es gibt keine Nachtregel mehr.
+Seit dem 16.11.2026 (12:45) startet Cron die Runde und den [Wächter](#wächter) alle 5 Minuten,
+jedes geprüfte Bild bekommt die [Markierung für die Webseite](#markierung-für-die-webseite),
+und es gibt keine Nachtregel mehr. Der Abholjob der Website veröffentlicht von Blur-Kameras nur
+markierte Bilder; seine Kameraliste muss zu unserer passen (siehe [Konfiguration](#konfiguration)).
 
 Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
 Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
@@ -81,14 +84,14 @@ wieder mit dem neuesten Bild an. Neue Uploads warten also nie hinter einem lange
 
 ## Aufruf
 
-Testlauf von Hand, nur für die genannte Kamera:
+Lauf von Hand, nur für die genannte Kamera:
 
 ```bash
-.venv/bin/python3 -m src.privacy.blur_box --cameras BlurTest
+.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>
 ```
 
-Cron für die laufende Runde und den [Wächter](#wächter) (entschieden am 16.11.2026, **noch nicht
-eingerichtet**): beide alle 5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
+Cron für die laufende Runde und den [Wächter](#wächter) (eingerichtet am 16.11.2026): beide alle
+5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
 ihre Bilder ebenfalls alle 5 Minuten abholt und ihr Bild nur alle 15 Minuten erneuert. Die Grenze
 von 4 Minuten (`timeout -k 10 240`) beendet eine hängende Runde, bevor die nächste startet; sonst
 fände die nächste den Lock noch belegt und fiele aus.
@@ -100,9 +103,12 @@ fände die nächste den Lock noch belegt und fiele aus.
 
 `./install.sh cron_hint` druckt beide Zeilen mit dem echten Projektpfad und Alias.
 
-Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
-[betrieb.md](betrieb.md#nächtlicher-produktionslauf)): in der ersten Nacht zwei Tage, danach jede
-Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
+Dazu kommt das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
+[betrieb.md](betrieb.md#nächtlicher-produktionslauf)): Es prüft um 02:00 die Bilder der letzten
+48 Stunden, die die Runden nicht geschafft haben, z. B. nach einem Ausfall. Die 45 Minuten gelten
+je Kamera, bei zwei Kameras dauert es also bis etwa 90 Minuten. Startet um 02:00 gleichzeitig eine
+Runde und bekommt sie die Sperre zuerst, fällt das Nachholen in dieser Nacht aus (`Skipped`); die
+Runden arbeiten den Rest ab.
 
 | Option | Bedeutung |
 |---|---|
@@ -120,7 +126,8 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
 - Steht eine Kamera nicht in `privacy.blur_cameras`, bricht der Lauf ab, bevor die Box
   kontaktiert wird.
 - Der Lauf nimmt einen eigenen Lock (`state/privacy-blur.lock`), nicht den Lock des nächtlichen
-  Laufs. Läuft noch eine Runde, wird die neue übersprungen.
+  Laufs. Denselben Lock halten die Runde, das Nachholen und die Verpixelung eines von Hand
+  gestarteten Videos. Ist er belegt, wird der neue Lauf übersprungen (`Skipped`, Exit-Code 0).
 - Die Verpixelung läuft auch parallel zum nächtlichen Lauf. Gemessen: Die Encodes des
   nächtlichen Laufs belegen höchstens 52–69 % des Arbeitsspeichers, der Detektor braucht ca.
   220 MB (12 %) zusätzlich; das passt (Messung auf dem früheren Pi mit 2 GB, der VPS hat 3,8 GB).
@@ -129,7 +136,9 @@ Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
   Entschieden am 2026-10-16: keine Pause und keine Speichergrenze.
 - Exit-Code 1, wenn ein Bild fehlgeschlagen oder abgelehnt ist, und wenn der Lauf vor dem ersten
   Bild abbricht: `privacy.detector_command` fehlt, eine Kamera steht nicht in
-  `privacy.blur_cameras` oder die Einstellungen sind ungültig. Sonst 0, auch wenn die Runde
+  `privacy.blur_cameras`, die Einstellungen sind ungültig, `TIMELAPSE_STORAGE_BOX` fehlt
+  (`No storage box`), die Box ist nicht beschreibbar (`Cannot write to the storage box`), ein
+  Kameraordner fehlt (`Camera folder not found`) oder die Runde bricht ab (`Round aborted`). Sonst 0, auch wenn die Runde
   übersprungen wurde, weil noch eine andere läuft.
 - Log: `logs/privacy/<Datum>.log`. Pro Kamera und Runde eine Zusammenfassung, z. B.
   `[Scheunenviertel] blurred=1 clean=0 settling=0 refused=0 failed=0 postponed=0`.
@@ -152,11 +161,14 @@ Bild.
 - Nur die laufende Runde und das nächtliche Nachholen markieren: sie liefern die neuen Bilder der
   Webseite. Ein [von Hand gestartetes Video](#verpixelung-bei-von-hand-gestarteten-videos)
   verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
-  16.11.2026).
+  16.11.2026). Bilder von heute oder gestern, die ein solches Video zuerst bearbeitet, gelten danach
+  als erledigt: Die Runde nimmt sie nicht mehr, sie bleiben ohne Markierung und erscheinen nicht auf
+  der Webseite. Die Webseite zeigt dann bis zum nächsten neuen Bild das vorige.
 - Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
   Optional markiert [`extras/mark_newest.py`](../extras/README.md) bei allen übrigen Kameras das
   neueste Bild ungeprüft (nicht angeschlossen; anschließen per Cron-Zeile, siehe dort).
-- Code: `src/privacy/checked_mark.py`. Von Hand prüfen:
+- Code: `src/privacy/checked_mark.py`. Von Hand prüfen, an einer lokalen Kopie (z. B. vorher
+  `scp <ssh-alias>:<Kamera>/<bild>.jpg .`) oder am öffentlichen Bild der Webseite:
   `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
 
 ## Wächter
@@ -191,9 +203,9 @@ In `config/config.json` (die Weboberfläche legt ihre Änderungen daran in `conf
 darüber, siehe unten):
 
 ```json
-"ignored_cameras": ["…", "BlurTest"],
+"ignored_cameras": ["…"],
 "privacy": {
-  "blur_cameras": ["BlurTest", "Scheunenviertel"],
+  "blur_cameras": ["Scheunenviertel", "SLSV"],
   "ignore_boxes": {"Scheunenviertel": [[703, 557, 742, 643]]},
   "ignore_top_share": 0.333,
   "detector_command": ["…"],
@@ -203,16 +215,17 @@ darüber, siehe unten):
 
 - `blur_cameras`: die Kameraordner, in die die Verpixelung schreiben darf. Der
   Konfigurationstest prüft die Namen mit denselben Regeln wie der Schreibcode.
-- `BlurTest` ist der Testordner. Er steht auch in `ignored_cameras`, sonst würden der nächtliche
-  Lauf und die Weboberfläche ihn als Kamera behandeln. Nach dem Test wird er aus beiden Listen
-  entfernt.
+- **Der Abholjob der Website hat eine eigene Liste** (`webcam_list.config`, auf dem Server des
+  Abholskripts, nicht in diesem Repository). Sie muss dieselben Kameras enthalten wie
+  `blur_cameras`; wer die eine ändert, ändert die andere mit. Reihenfolge und Folgen:
+  [Handbuch](handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
 - `ignore_boxes`: bekannte Fehlerkennungen pro Kamera, siehe unten.
 - `ignore_top_share`: Boxen überwiegend im oberen Bilddrittel werden verworfen und unter
   `ignored_boxes` festgehalten, wie in
   [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score).
   `ignore_top_share_per_camera` ersetzt den Wert für eine Kamera.
 - `skip_labels`: pro Kamera `vehicle`/`plate`, die nie verpixelt werden (nicht im Beispiel oben;
-  heute nur SLSV, keine Box-Job-Kamera), siehe ebenda.
+  heute nur SLSV), siehe ebenda.
 - `min_person_score`: pro Kamera Mindestsicherheit für Personen (heute nur SLSV, `0.35`), siehe
   ebenda.
 - `detector_command` und `blur`: wie in [verpixelung.md](verpixelung.md#konfiguration).
@@ -223,11 +236,14 @@ lassen sich `blur_cameras`, die drei `blur`-Werte, `min_person_score`, `ignore_b
 `load_config()` legt sie über `config.json`. Der nächste Lauf liest sie, der Nachtlauf ebenso wie ein von Hand gestartetes Video.
 Für die Box-Verpixelung heißt das:
 
-- Eine **neu angehakte** Kamera wird ab der nächsten Nacht verpixelt, einschließlich der Bilder von
-  heute und den zwei Tagen davor. Ihre ersten automatischen Videos nutzen nur bestätigte Bilder
+- Eine **neu angehakte** Kamera wird ab der nächsten Runde (alle 5 Minuten) verpixelt, einschließlich
+  der Bilder von heute und den zwei Tagen davor (die Runden arbeiten den Rückstand nach und nach ab,
+  den Rest holt das Nachholen um 02:00). Ihre ersten automatischen Videos nutzen nur bestätigte Bilder
   ([Sperre](#sperre-in-automatischen-videos)) und können deshalb übersprungen oder kurz sein. Sie
   nutzt die Schwellen des Detektors für alle Kameras; ihre Qualität ist erst nach einem Blick auf
   die ersten Ergebnisse geprüft.
+- **Beide Fälle gehören auch in `webcam_list.config` des Abholjobs**, in der Reihenfolge aus dem
+  [Handbuch](handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
 - Eine **abgewählte** Kamera wird nicht mehr verpixelt. Bei einer Kamera, die schon läuft, zeigt der
   Reiter „Wichtig!“ und einen eigenen Block im Bestätigungsdialog: Ihre neuen Bilder blieben
   unverpixelt, und die Videos zeigen Menschen wieder erkennbar.
@@ -277,8 +293,9 @@ Die versteckten `.tmp`-Dateien enden nicht auf `.jpg`. Weder der nächtliche Lau
 Programm, das nach `*.jpg` sucht, sieht so eine halb geschriebene Datei. Bleibt nach einem
 Abbruch eine `.tmp`-Datei liegen, überschreibt der nächste Versuch sie. Kommt es zu keinem
 weiteren Versuch (das Bild ist inzwischen älter als 48 Stunden), bleibt sie liegen: Der Job hat
-bewusst kein `rm`. Solche Reste lassen sich von Hand finden (`ls -a <Kamera>/ | grep '\.tmp$'`)
-und löschen.
+bewusst kein `rm`. Solche Reste lassen sich von Hand finden
+(`ssh <ssh-alias> ls -a <Kamera> <Kamera>/original | grep '\.tmp$'`, mit dem Basisordner davor,
+falls `TIMELAPSE_STORAGE_BOX` einen nennt) und löschen.
 
 Befehle pro Bild ohne Fund (keine Sicherung):
 
@@ -321,7 +338,7 @@ meldete nur „Skipped". Das ist seit 2026-10-16 ausgeschlossen.
 
 Im Zweifel bleibt das Bild **unverändert**. Der Schreibcode erzwingt:
 
-- **Erlaubte Befehle:** nur `ls -1d`, `sha256sum`, `mkdir`, `cp -T`, `mv -n -T` und `mv -T`,
+- **Erlaubte Befehle:** nur `ls -1d`, `ls -1` (Inhalt von `original/`), `sha256sum`, `mkdir`, `cp -T`, `mv -n -T` und `mv -T`,
   dazu `scp` für Upload und Download. Kein `rm`. `cp -T` darf nur auf versteckte `.tmp`-Namen schreiben.
 - **Erlaubte Ordner:** nur die Kameras des aktuellen Laufs.
 - **Namen:** Kamera- und Bildnamen müssen einem festen Zeichensatz entsprechen (Buchstaben,
@@ -423,9 +440,12 @@ Ablauf pro Kamera:
    Monat bekommt kein Video, seine Bilder sind aber verpixelt. Yearly verpixelt nach der Auswahl der
    fünf Bilder pro Tag.
 
-**Sperren:** Der Lauf nimmt `state/privacy-blur.lock` nur, solange er verpixelt; dieselbe Sperre
-hält das nächtliche Nachholen. Ist sie belegt, entsteht kein Video
-(`Blur not finished: another blur run holds the lock`). Dazu hält der Auftrag wie jeder Auftrag die
+**Sperren:** Der Lauf nimmt `state/privacy-blur.lock` nur, solange er verpixelt. Dieselbe Sperre
+halten die Runde alle 5 Minuten und das Nachholen um 02:00. Ist sie belegt, entsteht kein Video
+(`Blur not finished: another blur run holds the lock`, Weboberfläche: „Gerade läuft eine andere
+Verpixelung“); kurz warten und neu starten. Solange das Video verpixelt (bis zu einer Stunde),
+fallen die Runden aus (`Skipped`), der Wächter warnt, und die Webseite bekommt keine neuen Bilder
+der Blur-Kameras. Dazu hält der Auftrag wie jeder Auftrag die
 Laufsperre `state/zeitraffer-run.lock`. **Läuft er über 02:00 hinaus, fällt der Nachtlauf aus.**
 
 **Grenzen des Schreibers:** Der Schreiber lässt nur Bilder bis zu einem Höchstalter und höchstens
@@ -532,18 +552,19 @@ Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 R
 | `No storage box: TIMELAPSE_STORAGE_BOX is not set` | Die Variable fehlt in der Cron-Zeile oder der Shell | `TIMELAPSE_STORAGE_BOX=<ssh-alias>` setzen |
 | `Unsafe storage box remote: '…'` | Der Alias enthält ein unzulässiges Zeichen | erlaubt: Buchstaben, Ziffern, `.`, `_`, `-` (am Anfang Buchstabe oder Ziffer), optional `benutzer@host`; Eintrag in `~/.ssh/config` und Cron-Zeile angleichen |
 | `Camera folder not found on the storage box` | Ordner fehlt auf der Box | Name in `blur_cameras` prüfen |
-| `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | vorige Runde läuft noch | nichts; die nächste Runde holt nach |
-| `Blur not finished: another blur run holds the lock - skipping camera: …` | Das nächtliche Nachholen oder ein anderer Auftrag verpixelt gerade | **kein Video**; später noch einmal starten |
+| `Skipped: Another timelapse run holds the lock: …privacy-blur.lock` | Die vorige Runde, das Nachholen oder ein von Hand gestartetes Video hält die Sperre | nichts; die nächste Runde holt nach |
+| `Blur not finished: another blur run holds the lock - skipping camera: …` | Eine Runde (alle 5 Minuten), das Nachholen oder ein anderer Auftrag verpixelt gerade | **kein Video**; später noch einmal starten |
 | `Blur not finished: N of M not blurred yet: …` | Bilder des von Hand gestarteten Videos sind nicht bestätigt (Fehler, unvollständiger Upload, abgelehnt) | **kein Video**; Auftrag noch einmal starten, er macht beim Rest weiter; die Ursache steht im Log davor |
 | `… was blurred before, recorded and not blurred again` | Schutz vor doppelter Sicherung: das Bild war schon verpixelt | nichts |
 | `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Runde hängt, Detektor fällt aus, Box nicht erreichbar, Bild `refused` | Die Meldungen der Runden davor im selben Log lesen; die Ursache beheben, dann holt die nächste Runde nach. `refused`-Bilder holt ein von Hand gestartetes Daily des Tages nach |
 | `[<Kamera>] Stale check failed: …` (Wächter) | Die Bildliste der Box war nicht abrufbar | wie bei den Runden: ssh-Zugang und `TIMELAPSE_STORAGE_BOX` prüfen |
-| `Refused, stays unblurred: …` | Bild zu alt (die nächtliche Runde nimmt nur die letzten 48 Stunden) oder Namensformat unbekannt | **Bild bleibt unverpixelt**, bis ein von Hand gestartetes Video, das dieses Bild verwendet, es nachholt (dieser Lauf hebt die Altersgrenze an) |
+| `Refused, stays unblurred: …` | Bild zu alt (Runde und Nachholen nehmen nur die letzten 48 Stunden) oder Namensformat unbekannt | **Bild bleibt unverpixelt**, bis ein von Hand gestartetes Video, das dieses Bild verwendet, es nachholt (dieser Lauf hebt die Altersgrenze an) |
 | `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Der Box-Job hat diese Bilder nicht bestätigt (`refused`, noch nicht bearbeitet, abgeschnittenes JPEG) | Das automatische Video entsteht aus den übrigen Bildern. Status ansehen: `grep -h '"status": "refused"' state/privacy/box/<Kamera>/*.jsonl`. Ein von Hand gestartetes Daily des Tages holt `refused`-Bilder nach; abgeschnittene Bilder bleiben dauerhaft draußen |
 | `[<Kamera>] Blur gate: no confirmed image - skipping camera.` | Kein einziges Bild war bestätigt (Nachholen ausgefallen, keine Statusdatei) | Die Kamera zählt als `skipped`, das bisherige Video bleibt; Protokoll des Nachholens in `logs/privacy/` prüfen |
 | `Monthly coverage too low` oder `Yearly coverage too low` direkt nach einer `Blur gate`-Zeile | Durch die Sperre fehlen so viele Tage, dass die Mindestabdeckung unterschritten ist | Kamera wird übersprungen; fehlende Bilder bestätigen lassen (Nachholen prüfen, von Hand gestartetes Monthly) |
 | `Deferred …: … lies in the future` | Uhrzeit im Dateinamen mehr als 2 h voraus | Kamerauhr prüfen; wird jede Runde neu versucht |
 | `Deferred …: Limit of 300 backups per run reached` | sehr großer Rückstand | nichts; die nächste Runde macht weiter |
+| `Not processed, retrying next round: …` mit `changed since it was judged; not marking it` | Die Kamera hat das Bild während der Prüfung neu geschrieben | nichts; die nächste Runde prüft es erneut |
 | `Not processed, retrying next round: …` | Fehler bei diesem Bild (Detektor, SSH, Prüfsumme) | Meldung dahinter lesen; wird jede Runde neu versucht |
 | `… has been incomplete for over 10 minutes.` | Upload der Kamera hängt | Kamera bzw. FTP-Upload prüfen; **Bild bleibt bis dahin unverpixelt** |
 | `Cannot write to the storage box: …` | ungültiger Kameraname oder ungültige Zeitzone in der Konfiguration | `config.json` prüfen |

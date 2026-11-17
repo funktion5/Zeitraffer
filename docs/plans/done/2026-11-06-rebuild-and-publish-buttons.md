@@ -1,5 +1,7 @@
 # Rebuild and publish buttons (web UI)
 
+**DONE 2026-11-09:** built and live on the VPS (docs: `docs/weboberflaeche.md`).
+
 Status: DRAFT design, 2026-11-06. Not approved, nothing built.
 
 ## Why

@@ -77,9 +77,13 @@ Beispiel:
 }
 ```
 
+`ignored_cameras`: Diese Kameras bekommen keine Videos, keine Highlights und keinen Upload und
+erscheinen nicht in der Weboberfläche. Die Verpixelung gilt weiter, solange die Kamera in
+`privacy.blur_cameras` steht.
+
 `automatic_daylight_buffer_minutes` ist der Zeitpuffer vor Sonnenaufgang und nach
 Sonnenuntergang für das automatische Daily, abhängig vom Monat des Zieltags (Schlüssel `"1"` bis
-`"12"`, alle zwölf müssen vorhanden sein): Mai bis Juli 90, März, April, August und September 60, sonst 30 Minuten.
+`"12"`, alle zwölf müssen vorhanden sein): Mai bis Juli 90, Februar bis April und August bis Oktober 60, November bis Januar 30 Minuten.
 Das automatische Weekly wird aus den Dailys zusammengesetzt und übernimmt den Puffer damit pro Tag.
 Historische Daily- und Weekly-Läufe nutzen dagegen immer den festen Wert `daylight_buffer_minutes`
 (oder den per CLI gewählten), weil dieser im Dateinamen steht. Die Weboberfläche fragt keinen
@@ -101,7 +105,8 @@ Die Weboberfläche bietet höchstens 30 und 365 an, damit der Wert in jedem Jahr
 
 `image_scan_stall_timeout_seconds` (Sekunden): Meldet der Bildscan einer Kamera so lange keinen
 Fortschritt, wird er abgebrochen und die Kamera übersprungen. Gemessen wird Stillstand, nicht
-die Gesamtdauer. `log_retention_days` (Tage): ältere Logdateien werden beim Start gelöscht.
+die Gesamtdauer. `log_retention_days` (Tage): ältere Tageslogs (`<Ordner>/JJJJ-MM-TT.log`) werden beim Start
+gelöscht; `logs/nightly/`, `logs/settings.log` und `logs/siteground-delivery.log` nicht.
 `timelapse.*_framerate` (Bilder pro Sekunde im Video; Weekly nutzt den Daily-Wert),
 `timelapse.ffmpeg_threads` (Threads pro FFmpeg-Aufruf) und `timelapse.crf` (x264-Qualität,
 ganze Zahl von 0 bis 51; niedriger ist besser und größer, höher ist kleiner; Standard 28)
@@ -134,7 +139,7 @@ Kolleginnen und Kollegen auf der Seite **Einstellungen** der Weboberfläche änd
 | `config/settings-privacy.json` | Verpixelung | `privacy` |
 
 Beide sind in Git ignoriert und gibt es je Host einmal; die Datei auf dem VPS ist maßgeblich.
-`config/settings.example.json` zeigt die Form. Fehlt eine Datei, gelten ihre Werte nicht.
+`config/settings.example.json` und `config/settings-privacy.example.json` zeigen die Form. Fehlt eine Datei, gelten ihre Werte nicht.
 
 - **Rangfolge:** `config.json`, darüber `settings.json`, darüber `settings-privacy.json`
   (`load_config()` in `src/config.py`). Objekte werden Schlüssel für Schlüssel gemischt (ein Monat des
@@ -217,11 +222,11 @@ braucht es nur `TIMELAPSE_STORAGE_BOX`; die Cron-Zeilen setzen sie.
 | `TIMELAPSE_STORAGE_BOX` | keiner | Name des Eintrags der Storage Box in `~/.ssh/config`, optional mit Basisordner: `<ssh-alias>[:<basisordner>]`. Benutzer, Port und Schlüssel stehen unter dem Alias, nie im Repository. Ohne ihn und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Lauf mit einer Fehlermeldung ab |
 | `TIMELAPSE_FRAME_SOURCE` | automatisch | Woher die Jobs die Kamerabilder lesen: `local` (Ordner aus `TIMELAPSE_CAMERA_ROOT`) oder `ssh` (Dateiliste per ssh von der Storage Box, Bilder per rsync in einen Zwischenspeicher unter `temp/frame-cache/`). Ohne Angabe gilt `local`, wenn `TIMELAPSE_CAMERA_ROOT` gesetzt ist, sonst `ssh`, wenn `TIMELAPSE_STORAGE_BOX` gesetzt ist |
 | `TIMELAPSE_NAS_ARCHIVE` | keiner | Ordner mit den Kamera-Zips des NAS-Archivs, nur für die Helfer `zip_extract.py` und `seqzip_extract.py` ([docs/nas.md](nas.md)). Ohne ihn brechen die beiden Helfer mit einer Fehlermeldung ab |
-| `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`) | Encoder-Preset (`ultrafast` … `placebo`): schneller, aber größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
+| `TIMELAPSE_X264_PRESET` | x264-Standard (`medium`); `timelapse-nightly-staged`: `ultrafast` | Encoder-Preset (`ultrafast` … `placebo`): schnellere Presets erzeugen größere Dateien; `ultrafast` braucht deutlich weniger Arbeitsspeicher |
 | `TIMELAPSE_X264_CRF` | `timelapse.crf` aus `config/config.json` (28) | x264-Qualität für einen Lauf (ganze Zahl 0 bis 51; niedriger = besser und größer). Ein ungültiger Wert bricht das Encodieren mit einer Fehlermeldung ab |
-| `TIMELAPSE_PROJECT_ROOT` | `~/timelapse` des ausführenden Benutzers | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
+| `TIMELAPSE_PROJECT_ROOT` | Web-Wrapper: `~/timelapse` des ausführenden Benutzers; `timelapse-nightly-staged`: der Projektordner, in dem das Skript liegt | Projektordner für die Web-Wrapper und `timelapse-nightly-staged` |
 | `TIMELAPSE_NIGHTLY_PYTHON` | `.venv/bin/python3` im Projekt | Python für `timelapse-nightly-staged` |
 
 Nur für Tests gedacht sind `TIMELAPSE_DISABLE_FILE_LOGGING` (setzt `tests/conftest.py`) und
-`TIMELAPSE_WEB_*` (`PYTHON`, `LOCK_FILE`, `STATUS_HELPER`, `STATUS_ROOT`, `WORKER`), mit denen die
+`TIMELAPSE_WEB_*` (`PYTHON`, `LOCK_FILE`, `STATUS_HELPER`, `STATUS_ROOT`, `WORKER`, `WORKER_REBUILD`, `WORKER_PUBLISH`, `PUBLISH_SCRIPT`), mit denen die
 Tests die Web-Wrapper umleiten; `sudo` setzt die Umgebung im Betrieb ohnehin zurück.

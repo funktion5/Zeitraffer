@@ -37,7 +37,7 @@ wenn die Runde fehlschlug):
 */5 * * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && timeout -k 10 240 .venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras; timeout 60 .venv/bin/python3 -m extras.mark_newest
 ```
 
-Danach kann der Abholjob die Liste der Blur-Kameras (`blur_cameras.conf`) weglassen und bei **jeder**
+Danach kann der Abholjob die Liste der Blur-Kameras (`webcam_list.config`) weglassen und bei **jeder**
 Kamera nur markierte Bilder hochladen.
 
 ### Abschalten

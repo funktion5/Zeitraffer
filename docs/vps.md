@@ -9,11 +9,11 @@ passiert. Platzhalter: `<vps>` ist der ssh-Alias des neuen Hosts in `~/.ssh/conf
 er nicht unter `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die
 unverschlüsselten Videos hochgeladen.
 
-**Stand 09.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
-des Pi ist leer, die Crontab des VPS enthält eine Zeile (02:00: Verpixelung nachholen, Nachtlauf,
-Upload der Videos auf die Website, danach der Flagger); es ist dieselbe Zeile, die
-`./install.sh cron_hint` druckt ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Die
-Läufe vom 7. bis 9.11.2026 gingen mit allen 17 Kameras ohne Fehler durch.
+**Stand 17.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
+des Pi ist leer, die Crontab des VPS enthält drei Zeilen, dieselben, die `./install.sh cron_hint`
+druckt: 02:00 (Verpixelung nachholen, Nachtlauf, Upload der Videos auf die Website, danach der
+Flagger, [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) sowie seit dem 16.11.2026 alle
+5 Minuten die laufende Verpixelung und ihr Wächter ([verpixelung-box.md](verpixelung-box.md#aufruf)).
 
 Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Jobs lesen die Bilder per ssh von der
 Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-staged`; der frühere
@@ -79,8 +79,9 @@ Host storagebox
     IdentitiesOnly yes
 ```
 
-Der Name hinter `Host` ist frei; `install.sh` erwartet `storagebox`, ein anderer Name kommt als
-`BOX_ALIAS=<name> ./install.sh`. Den öffentlichen Teil auf die Box bringen, bei Hetzner laut deren
+Den Namen `storagebox` hinter `Host` beibehalten: `install.sh` erwartet ihn, und die Web-Wrapper
+verwenden ihn fest. `BOX_ALIAS=<name> ./install.sh` nimmt zwar einen anderen Namen, aber dann
+funktioniert die Weboberfläche nicht. Den öffentlichen Teil auf die Box bringen, bei Hetzner laut deren
 Doku über SFTP:
 
 ```bash
@@ -224,20 +225,19 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
 - **Port 80:** Bei `WEB_PORT` ungleich 80 lauscht Apache weiter auf 80 (Debian-Standard in
   `ports.conf`) und zeigt dort die Debian-Standardseite. Auf dem VPS sperrt das die Hetzner-Firewall.
   Auf einem Host ohne Firewall `Listen 80` in `/etc/apache2/ports.conf` auskommentieren.
-- **Flagger und laufende Verpixelung:** Der Flagger steht am Ende der 02:00-Zeile und startet damit
-  erst nach dem Nachtlauf und dem Upload, ohne feste Uhrzeit. Die laufende Verpixelung neuer Bilder
-  ist nicht in Cron (Entwurf: [Plan](plans/2026-10-30-live-blur-cron.md)).
+- **Flagger:** Er steht am Ende der 02:00-Zeile und startet damit erst nach dem Nachtlauf und dem
+  Upload, ohne feste Uhrzeit.
 - **Passwort des Uploads:** `install.sh` legt `config/siteground.env` im Schritt `upload_login` aus
   der Vorlage `config/siteground.env.example` an, aber leer. Die drei Werte trägt man von Hand ein
   ([Upload auf die Website](betrieb.md#upload-auf-die-website)); `./install.sh verify` warnt, solange
   einer fehlt.
 - **Upload ohne Verschlüsselung:** Das Upload-Skript nutzt einfaches FTP (`ftp://`). Die Zugangsdaten
   stehen in `config/siteground.env`, nicht im Repository.
-- **Weboberfläche für das Team:** Die Oberfläche des Pi zeigt seit dem Umzug keine neuen Videos
-  mehr. Der Zugang zur Oberfläche des VPS (HTTP auf `WEB_PORT`, HTTPS steht aus) ist für die
-  Kolleginnen und Kollegen noch zu klären.
+- **Weboberfläche für das Team:** Die Oberfläche des VPS ist über HTTP auf `WEB_PORT` nur aus dem
+  Büronetz erreichbar (Hetzner-Firewall) und mit Basic Auth geschützt; HTTPS steht aus (siehe
+  „TLS und Port“). Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
 - **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard, wie auf
   dem Pi); der Nachtlauf dauerte damit rund 41 Minuten (Lauf vom 29.10., noch mit dem früheren CRF).
   Die Qualität steht seit dem 30.10.2026 auf CRF 28 (`timelapse.crf` in `config/config.json`); an
-  einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB).
-  Die Laufzeit des Nachtlaufs mit CRF 28 zeigen die ersten Nächte ([Plan](plans/done/2026-10-30-video-crf.md)).
+  einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB)
+  ([Plan](plans/done/2026-10-30-video-crf.md)).

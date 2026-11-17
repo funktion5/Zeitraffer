@@ -26,14 +26,15 @@ sudo apt-get install -y \
   git python3 python3-venv python3-pip \
   ffmpeg rsync curl cron \
   apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
+sudo systemctl enable --now cron
 ```
 
 ## Python-Umgebung einrichten
 
-Voraussetzung ist **Python 3.13** (`python3 --version`); Debian 13 (trixie) bringt es mit. Auf
-Systemen mit älterem Python, etwa Ubuntu 24.04 (3.12), muss Python 3.13 zusätzlich installiert
-und die virtuelle Umgebung damit angelegt werden (`python3.13 -m venv .venv`); das ist bisher
-nicht getestet.
+Empfohlen ist **Python 3.13** (`python3 --version`); Debian 13 (trixie) bringt es mit. `install.sh`
+bricht unter 3.11 ab und warnt unter 3.13; `src/` läuft auch mit 3.11. Auf Systemen mit älterem
+Python, etwa Ubuntu 24.04 (3.12), kann man Python 3.13 zusätzlich installieren und die virtuelle
+Umgebung damit anlegen (`python3.13 -m venv .venv`); das ist bisher nicht getestet.
 
 Virtuelle Umgebung erstellen und aktivieren:
 
@@ -49,7 +50,7 @@ python3 -m pip install -r requirements.txt
 ```
 
 `requirements.txt` enthält auch die Entwicklungswerkzeuge pytest und Ruff. Ruff ist auf eine feste
-Version gepinnt, damit lokal, im Pre-Push-Hook und in GitHub Actions identisch formatiert wird;
+Version gepinnt, damit lokal, in einem lokalen Pre-Push-Hook (falls eingerichtet) und in GitHub Actions identisch formatiert wird;
 die Konfiguration liegt in `pyproject.toml`.
 
 Für die Verpixelung von Personen wird zusätzlich ein Erkennungsmodell im Ordner `models/`
@@ -67,8 +68,9 @@ Voraussetzungen:
 
 - ein SSH-Schlüssel nur für die Storage Box im Konto `<benutzer>`, ohne Passphrase (Cron braucht
   ihn ohne Eingabe)
-- ein Eintrag in `~/.ssh/config` mit Benutzer, Host, Port und Schlüssel; `install.sh` erwartet den
-  Namen `storagebox`:
+- ein Eintrag in `~/.ssh/config` mit Benutzer, Host, Port und Schlüssel, unter dem Namen
+  `storagebox`. Diesen Namen beibehalten: Die Web-Wrapper verwenden ihn fest (`sudo` setzt die
+  Umgebung zurück), mit einem anderen Alias funktioniert die Weboberfläche nicht:
 
 ```text
 Host storagebox
@@ -94,13 +96,14 @@ TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list
 
 ## Cron installieren oder prüfen
 
-Der Eintrag aus [Zeitplanung mit Cron](betrieb.md#zeitplanung-mit-cron) wird über
+`./install.sh cron_hint` druckt die drei Zeilen (02:00-Zeile, Verpixelungs-Runde, Wächter) mit
+echtem Pfad und Alias ([Zeitplanung mit Cron](betrieb.md#zeitplanung-mit-cron)). Jeden Befehl erst
+einmal von Hand ausführen, dann die Zeilen für den Benutzer `<benutzer>` einfügen:
 
 ```bash
 crontab -e
 ```
-
-für den Benutzer `<benutzer>` installiert. Anschließend prüfen:
+ Anschließend prüfen:
 
 ```bash
 crontab -l
@@ -124,8 +127,8 @@ Browser
 Die aktive Site verwendet sinngemäß folgende Konfiguration:
 
 ```apache
-<VirtualHost *:80>
-    ServerName <hostname>.local
+<VirtualHost *:<port>>
+    ServerName <servername>
 
     DocumentRoot <projektpfad>/web/public
     DirectoryIndex index.php
@@ -164,7 +167,9 @@ sudo apache2ctl configtest
 sudo systemctl reload apache2
 ```
 
-Die Site wird unter `http://<hostname>.local/` oder über die IP-Adresse des Servers geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
+Der Schritt `apache` von `install.sh` schreibt diese Datei mit `SERVER_NAME` und `WEB_PORT`; ist der
+Port nicht 80, legt er eine eigene `Listen`-Zeile an. Die Site wird unter
+`http://<servername>:<port>/` geöffnet. Der Alias `/videos/` stellt MP4-Dateien bereit und unterstützt die Browser-Wiedergabe. Er umfasst derzeit den gesamten Verzeichnisbaum `videos/`.
 
 Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
@@ -190,10 +195,12 @@ sudo systemctl reload apache2
 Prüfung:
 
 ```bash
-curl -i http://localhost/            # erwartet: 401 Unauthorized
-curl -i http://localhost/videos/     # erwartet: 401 Unauthorized
-curl -i -u <login> http://localhost/  # erwartet: 200 OK nach Passworteingabe
+curl -i http://localhost:<port>/            # erwartet: 401 Unauthorized
+curl -i http://localhost:<port>/videos/     # erwartet: 401 Unauthorized
+curl -i -u <login> http://localhost:<port>/  # erwartet: 200 OK nach Passworteingabe
 ```
+
+`<port>` ist `WEB_PORT` (Standard 80).
 
 ### Wrapper installieren
 
