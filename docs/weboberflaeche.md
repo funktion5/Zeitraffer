@@ -139,7 +139,7 @@ Der Trigger verwendet denselben Lock wie Cron:
 <projektpfad>/state/zeitraffer-run.lock
 ```
 
-Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft. Ein Auftrag einer Blur-Kamera dauert wegen der Verpixelung lange (gemessen: ein Monatsvideo mit 360 Bildern 55 Minuten) und hält den Lock die ganze Zeit; läuft er über 02:00 hinaus, fällt der Nachtlauf aus.
+Dadurch können ein Web-Job, der nächtliche Produktionslauf und der Wiederanlauf nach einem Neustart nicht gleichzeitig arbeiten. Ist der Lock bereits belegt, meldet die Oberfläche, dass ein anderer Timelapse-Job läuft. Ein Auftrag einer Blur-Kamera dauert wegen der Verpixelung lange (gemessen: ein Monatsvideo mit rund 350 Bildern 55 Minuten) und hält den Lock die ganze Zeit; läuft er über 02:00 hinaus, fällt der Nachtlauf aus.
 
 ## Neu erstellen wie der Nachtlauf
 

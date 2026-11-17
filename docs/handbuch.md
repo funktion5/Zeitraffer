@@ -54,7 +54,9 @@ Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinan
 | Videos aus Weboberfläche und Befehl | `videos/<Kamera>/manual-runs/<job>/` |
 | Highlights | `videos/<Kamera>/highlights/<Datum>/` |
 | Protokolle | `logs/<job>/<Datum>.log`, z. B. `logs/daily/` oder `logs/flagger/`. Verpixelung und Wächter: `logs/privacy/<Datum>.log` |
-| Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
+| Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt`, die volle Ausgabe in `logs/nightly/<Lauf>/main.out` |
+| Protokoll des Uploads auf die Website | `logs/siteground-delivery.log` (enthält den FTP-Zugang, nicht weitergeben) |
+| Protokoll der gespeicherten Einstellungen | `logs/settings.log` |
 | Laufsperre | `state/zeitraffer-run.lock` |
 | Sperre der Box-Verpixelung | `state/privacy-blur.lock` |
 | Status der Box-Verpixelung | `state/privacy/box/<Kamera>/<JJJJ-MM>.jsonl` |
@@ -67,16 +69,26 @@ Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinan
 
 ### Grundregeln
 
-- **Immer nur ein Lauf auf einmal.** Nachtlauf, Web-Aufträge, Flagger, Speicherfilter, Backfill und
-  das nächtliche Nachholen der Verpixelung teilen sich eine Sperre: `state/zeitraffer-run.lock`.
-  Wer sie nicht bekommt, bricht ab oder überspringt. Die Verpixelung alle 5 Minuten hat ihre eigene
-  Sperre (`state/privacy-blur.lock`) und läuft deshalb auch neben einem Zeitraffer-Lauf.
+- **Immer nur ein Lauf auf einmal.** Nachtlauf, Web-Aufträge (auch der Upload über die
+  Weboberfläche), Flagger, Speicherfilter, Backfill und das nächtliche Nachholen der Verpixelung
+  teilen sich eine Sperre: `state/zeitraffer-run.lock`. Wer sie nicht bekommt, bricht ab oder
+  überspringt. Die Verpixelung alle 5 Minuten hat ihre eigene Sperre (`state/privacy-blur.lock`)
+  und läuft deshalb auch neben einem Zeitraffer-Lauf.
+- **Auch die Verpixelungs-Sperre teilen sich drei:** die Runde alle 5 Minuten, das Nachholen um
+  02:00 und die Verpixelung eines von Hand gestarteten Videos. Daraus folgt:
+  - Läuft gerade eine Runde, scheitert ein von Hand gestartetes Video einer Blur-Kamera mit „Gerade
+    läuft eine andere Verpixelung. Bitte später noch einmal versuchen.“ Einfach kurz warten.
+  - Solange ein von Hand gestartetes Video verpixelt (bis zu einer Stunde), fallen die Runden aus
+    (`Skipped` im Protokoll). Der Wächter warnt dann, und die Website bekommt so lange keine neuen
+    Bilder der Blur-Kameras.
+  - Um 02:00 starten Runde und Nachholen gleichzeitig. Gewinnt die Runde, fällt das Nachholen in
+    dieser Nacht aus (`Skipped`); die Runden arbeiten den Rest danach ab.
 - **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln vorher ihre Bilder
-  auf der Storage Box und halten so lange die Laufsperre (gemessen: ein Monatsvideo mit 360 Bildern
+  auf der Storage Box und halten so lange die Laufsperre (gemessen: ein Monatsvideo mit rund 350 Bildern
   brauchte 55 Minuten). Läuft so ein Auftrag über 02:00 hinaus, fällt der Nachtlauf aus.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur. Die einzige Ausnahme ist
   die Verpixelung: Sie sichert das Original und ersetzt es dann durch die verpixelte Fassung. Außerdem
-  schreibt sie in jedes geprüfte Bild die Markierung `blur:checked=true` (21 Bytes, kein Pixel
+  schreibt die Runde (alle 5 Minuten und beim Nachholen) in jedes geprüfte Bild die Markierung `blur:checked=true` (21 Bytes, kein Pixel
   ändert sich). Bilder ohne Person bekommen die Markierung ohne Sicherung
   ([verpixelung-box.md](verpixelung-box.md#markierung-für-die-webseite)).
 - **Die Blur-Kameras stehen in zwei Listen, und beide müssen gleich sein:** unsere (Reiter
@@ -88,14 +100,14 @@ Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinan
 - **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst,
   wenn sie neu installiert ist ([Installation](installation.md#wrapper-installieren)).
 - **Ein Neustart von Apache bricht einen laufenden Web-Auftrag ab.** Vorher mit
-  `ls state/web-jobs/*.pid` nachsehen, ob einer läuft.
+  `pgrep -af timelapse-web-worker` nachsehen, ob einer läuft.
 
 ### Läuft gerade etwas?
 
 ```bash
 cd ~/timelapse
 flock -n state/zeitraffer-run.lock -c true && echo "Sperre frei" || echo "Sperre belegt"
-pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
+pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch|timelapse-web-worker"
 ```
 
 `blur_box --all-blur-cameras` (ohne `--catch-up`) und `blur_watch` tauchen alle 5 Minuten kurz
@@ -177,7 +189,7 @@ gestern als Zieltag und prüft danach das Ergebnis:
 
 ```bash
 setsid -f env TIMELAPSE_X264_PRESET=medium scripts/timelapse-nightly-staged > ~/nightly-console.log 2>&1 < /dev/null
-cat logs/nightly/$(ls -t logs/nightly | head -1)/report.txt   # die letzte Zeile nennt Kameras und Fehler
+cat logs/nightly/$(ls -t logs/nightly | head -1)/report.txt   # die letzten Zeilen nennen Kameras und Fehler
 ```
 
 Nur `src.main`, ohne die Prüfung durch den Wrapper:
@@ -240,7 +252,8 @@ da. Details: [flagger.md](flagger.md).
   ihre Bilder selbst. Dafür gibt es keinen Schalter
   ([verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Den
   Fortschritt zeigt `tail -f logs/<job>/$(date +%F).log`: Die Zeile `Blur:` nennt die Zahl der
-  Bilder, jede Zeile `Replaced` ist ein fertiges Bild.
+  Bilder, jede Zeile `Replaced` ist ein verpixeltes Bild. Bilder ohne Person erscheinen nicht
+  einzeln. Von Hand gestartete Videos markieren keine Bilder.
 - **Direkt auf der Storage Box** verpixelt
   `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`. Das schreibt auf die Box, also
   vorher [verpixelung-box.md](verpixelung-box.md) lesen. Mit `--catch-up` (45 Minuten pro Kamera)
@@ -296,12 +309,13 @@ Die Sicherung läuft auf dem eigenen Rechner (macOS oder Linux), im Repository-O
 ist der ssh-Alias des Hosts, den man sichert:
 
 ```bash
-BACKUP_HOST=<ssh-alias> ./backup.sh              # models/, state/, crontab.txt
+BACKUP_HOST=<ssh-alias> ./backup.sh              # models/, state/, Einstellungsdateien, crontab.txt
 BACKUP_HOST=<ssh-alias> VIDEOS=1 ./backup.sh     # zusätzlich videos/
 ```
 
 Die Sicherung landet in `~/timelapse-backup`. Drin sind das Erkennungsmodell, der Status (auch der
-der Verpixelung), die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos. Geheimnisse sind
+der Verpixelung), die beiden Einstellungsdateien `config/settings.json` und
+`config/settings-privacy.json`, die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos. Geheimnisse sind
 nicht drin: Die Anmeldung der Weboberfläche legt `install.sh` neu an, das Passwort für den Upload
 trägt man von Hand ein. Wie man die Sicherung auf einem neuen Host einspielt
 (`./install.sh restore`): [vps.md](vps.md).
@@ -321,12 +335,15 @@ von gestern.
 crontab -l                                   # ist die 02:00-Zeile da?
 uptime                                       # lief der Rechner um 02:00?
 flock -n ~/timelapse/state/zeitraffer-run.lock -c true && echo frei || echo belegt
-pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
+pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch|timelapse-web-worker"
 ```
 
-**Ursache:** Cron startet den Lauf mit `flock -n`. War die Sperre um 02:00 belegt (von einem
-Web-Auftrag, dem Flagger, dem Speicherfilter oder einem hängenden Lauf), beendet sich der Lauf
-**ohne jede Meldung**. Seltener fehlt die Crontab, oder der Rechner war aus.
+**Ursache:** Die Sperre war um 02:00 belegt, von einem Web-Auftrag, dem Flagger, dem
+Speicherfilter oder einem hängenden Lauf. Dann fällt das Nachholen der Verpixelung ohne Meldung
+aus, und der Nachtlauf-Wrapper endet sofort mit Exit-Code 75. Seine Meldung
+(`Another timelapse run holds state/zeitraffer-run.lock.`) geht nur an Cron; einen Ordner unter
+`logs/nightly/` legt er dann nicht an. Ob der Flagger danach lief, zeigt
+`grep Skipped logs/flagger/<heute>.log`. Seltener fehlt die Crontab, oder der Rechner war aus.
 
 **Lösung:** Den blockierenden Prozess abwarten oder beenden, dann den
 [Lauf von Hand starten](#nächtlicher-lauf). Fehlt die Crontab, sie wie in der
@@ -347,7 +364,7 @@ ssh <ssh-alias> ls | head -3                                                    
 TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list           # listet die Kameras
 ```
 
-**Ursache:** Eins von diesen:
+**Ursache:** Eine dieser Ursachen:
 
 - Netzwerk oder Storage Box sind nicht erreichbar.
 - Schlüssel oder Host-Key passen nicht mehr (`Permission denied`, `Host key verification failed`).
@@ -357,8 +374,10 @@ TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list          
 **Lösung:** Die ssh-Verbindung von Hand testen und den Eintrag samt Schlüssel in `~/.ssh/config`
 richten ([Installation](installation.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh
 einen geänderten Host-Key (`REMOTE HOST IDENTIFICATION HAS CHANGED`), erst den Fingerabdruck mit
-der Hetzner-Oberfläche vergleichen, dann neu bestätigen (`ssh-keygen -R <host>`). Danach den Lauf
-von Hand starten.
+der Hetzner-Oberfläche vergleichen. Dann den alten Eintrag löschen und beim nächsten `ssh` den neuen
+bestätigen. Die Storage Box nutzt einen eigenen Port, deshalb mit Klammern:
+`ssh-keygen -R '[<box-host>]:<box-port>'` (Host und Port zeigt `ssh -G <ssh-alias>`). Danach den
+Lauf von Hand starten.
 
 ### Bildsuche bricht ab („stalled“)
 
@@ -663,12 +682,16 @@ nachdem jemand Dateien von Hand kopiert hat.
 **Prüfen:** `cat state/web-jobs/cameras.json` als Projektbenutzer. Fehlt die Datei oder steht nur
 `[]` darin, kennt die Weboberfläche keine Kamera.
 
-**Ursache:** Die Liste schreiben der Nachtlauf und `python3 -m src.camera_list`. Sie ist leer, wenn
-einer dieser Fälle eintritt:
+**Ursache:** Die Liste schreibt der Nachtlauf, außerdem `.venv/bin/python3 -m src.camera_list`.
+Eine leere Liste schreiben beide nie: Klappt das Auflisten nicht, melden sie
+`Camera list not updated: …` und lassen die alte Datei stehen. Leer ist die Seite deshalb nur in
+zwei Fällen:
 
-- Sie wurde noch nie geschrieben.
-- Die Storage Box war beim letzten Versuch nicht erreichbar. Dann bleibt die alte Liste stehen.
+- Die Liste wurde noch nie geschrieben.
 - Alle Kameras stehen in `ignored_cameras`.
+
+Zeigt die Seite eine alte Liste (eine neue Kamera fehlt), war die Storage Box beim letzten Versuch
+nicht erreichbar.
 
 **Lösung:** Die Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar))
 und die Liste einmal von Hand schreiben:
@@ -714,7 +737,7 @@ cmp scripts/web/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
 tail /var/log/apache2/zeitraffer-error.log
 ```
 
-**Ursache:** Eins von diesen:
+**Ursache:** Eine dieser Ursachen:
 
 - Die sudoers-Regel fehlt.
 - Der installierte Wrapper fehlt oder ist veraltet.
@@ -756,6 +779,13 @@ steht dort „Bitte das Anwendungsprotokoll prüfen.“
 **Ursache:** Fast immer zu wenige Bilder. Die Kamera hatte an dem Tag keine Bilder, Monat oder Jahr
 liegen unter der Mindestabdeckung, oder einem historischen Weekly fehlt einer der 7 Tage (alle 7
 sind Pflicht). Der Auftrag gilt als fehlgeschlagen, sobald kein neues Video entsteht.
+
+Bei einer Blur-Kamera gibt es zwei weitere Gründe:
+
+- „Gerade läuft eine andere Verpixelung. Bitte später noch einmal versuchen.“: Eine Runde oder ein
+  anderer Auftrag verpixelt gerade. Ein paar Minuten warten und neu starten.
+- „Von N Bildern sind M noch nicht verpixelt …“: Ein Teil der Bilder ließ sich in diesem Lauf nicht
+  verpixeln. Den Auftrag noch einmal starten; er macht dort weiter.
 
 **Lösung:** Ein anderes Datum, Fenster oder einen anderen Videotyp wählen. Sonst den Fehler wie
 beim [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen.
@@ -857,7 +887,10 @@ zeigen. Details stehen im Apache-Fehlerprotokoll.
 
 - 64: falsche Eingabe oder zu langer Text.
 - 69: Die Python-Umgebung unter `~/timelapse/.venv` fehlt.
-- 65 und 73: die beiden Fälle aus der Tabelle (Wert ungültig, inzwischen geändert).
+- 1: Das Schreiben ist gescheitert.
+
+Die Fälle „Wert ungültig“ und „inzwischen geändert“ aus der Tabelle stehen nicht im Protokoll;
+die Seite zeigt sie direkt an.
 
 Scheitert das Schreiben selbst, prüfen, ob der Projektbenutzer in `config/` schreiben darf.
 
@@ -883,7 +916,7 @@ aktualisieren“ meldet einen Fehler.
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera geprüft, etwa weil sie gerade erst angehakt wurde. Nachtbilder zählen nicht; die notiert sie ohne Erkennung | in ein paar Minuten erneut versuchen, nach der nächsten Runde bei Tageslicht. Die Zahlenfelder für Rahmen gehen auch ohne Bild |
+| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat noch kein Bild dieser Kamera geprüft, etwa weil sie gerade erst angehakt wurde | nach der nächsten Runde (5 Minuten) erneut versuchen. Die Zahlenfelder für Rahmen gehen auch ohne Bild |
 | „Diese Kamera wird nicht verpixelt.“ | Die Kamera steht nicht in der gespeicherten Liste der Blur-Kameras | erst speichern, dann aktualisieren |
 | „Die Speicherbox hat nicht rechtzeitig geantwortet.“ | Der Wrapper hat nach 90 Sekunden abgebrochen | später erneut versuchen; die Verbindung zur Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)) |
 | „Das Bild konnte nicht geholt werden.“ | Der Wrapper fehlt oder ist gescheitert, die Box antwortet nicht, oder das Bild ist beschädigt | Apache-Fehlerprotokoll: `Preview wrapper failed with exit code <N>`. `sudo -l -U www-data` muss `timelapse-web-preview` zeigen. Im Anwendungsprotokoll nach `Preview failed` oder `not fit to show` suchen |
@@ -911,7 +944,9 @@ ausgeführt mit `onnxruntime`.
 ### Modelldatei fehlt
 
 **Symptom:** `Flagger not started: model file missing: models/object_detection_yolox_2022nov.onnx`.
-Die Verpixelung bricht in dem Fall ab, statt ein ungeprüftes Video zu bauen.
+Auch die Verpixelung kann ohne Modell nichts prüfen: Die Runde meldet je Bild
+`Not processed, retrying next round: …`, der Wächter warnt, und ein von Hand gestartetes Video
+einer Blur-Kamera scheitert. Ungeprüfte Bilder gibt sie nie frei.
 
 **Lösung:** `models/` aus der Sicherung zurückspielen (`./install.sh restore`) oder das Modell neu
 herunterladen ([verpixelung.md](verpixelung.md#installation)). Die Sicherung ist besser: Mit
@@ -972,8 +1007,10 @@ Jede Box ist `[x0, y0, x1, y1, Sicherheit, Label]`, in Pixeln des Originalbilds.
   Die Rahmen landen in `config/settings-privacy.json`.
 - **Von Hand:** in `config/config.json`.
 
-Beides wirkt ab dem nächsten Lauf, ohne Neustart. Vorher prüfen, dass keine echte Person mit
-wegfällt: Eine Box wird verworfen, wenn sie einen Rahmen zu mindestens 50 % überlappt.
+Beides wirkt ab dem nächsten Lauf, ohne Neustart. Eine Box wird nur verworfen, wenn sie fast
+deckungsgleich mit einem Rahmen ist: Schnittfläche geteilt durch Gesamtfläche mindestens 0,5. Den
+Rahmen deshalb eng um das Objekt ziehen. Eine kleine Person in einem großen Rahmen bleibt
+verpixelt.
 
 **Mit Claude (empfohlen):** In einer Claude-Sitzung im Projekt etwa so beauftragen:
 
@@ -1023,9 +1060,10 @@ python3 -m json.tool config/settings.json > /dev/null && echo "Datei ist gültig
 - `Settings value ignored`: Ein einzelner Wert ist ungültig, etwa außerhalb der Grenzen. Nur dieser
   Wert fällt weg, der Rest gilt.
 
-Die Liste der Blur-Kameras bleibt dabei erhalten, weil `config.json` dieselben Kameras als Standard
-hat. Verloren gehen aber die Feineinstellungen je Kamera: Fehlen die Rahmen, verpixelt die Runde
-wieder bekannte Fehltreffer.
+Ist `settings-privacy.json` betroffen, fällt auch die Liste der Blur-Kameras auf den Standard aus
+`config.json` zurück. Eine Kamera, die nur im Reiter hinzugefügt wurde, wird dann nicht mehr
+verpixelt und markiert. Außerdem gehen die Feineinstellungen je Kamera verloren: Fehlen die
+Rahmen, verpixelt die Runde wieder bekannte Fehltreffer.
 
 **Lösung:** Die Werte auf der Seite „Einstellungen“ neu eintragen und speichern; die Seite schreibt
 immer eine gültige Datei. Weil sie die kaputte Datei ebenfalls nicht lesen kann, zeigt sie die
@@ -1058,7 +1096,8 @@ Zweifel bricht die Verpixelung ab und schreibt nichts. Ein Abbruch ist also kein
 | `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Sie hängt oder läuft nicht, der Detektor fällt aus, oder die Box ist nicht erreichbar | die Rundenzeilen im selben Protokoll lesen (`logs/privacy/<Datum>.log`), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
 | Im Protokoll fehlt die Zeile `Stale check: …` | Der Wächter selbst läuft nicht | die Cron-Zeile mit `crontab -l` prüfen |
 | Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also markiert niemand ihre Bilder. Oder die Runde läuft nicht (siehe Wächter) | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) und die Markierung des neuesten Bildes prüfen |
-| Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, also prüft der Abholjob dort keine Markierung | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) |
+| Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, also prüft der Abholjob dort keine Markierung. Oder die Erkennung hat die Person übersehen | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)); steht sie schon drin, siehe [Erkennung liegt falsch](#erkennung-liegt-falsch) |
+| `Skipped: …privacy-blur.lock…` in den Rundenzeilen | Ein anderer Verpixelungslauf hält die Sperre: das Nachholen oder ein von Hand gestartetes Video | nichts, solange es vorbeigeht. Die nächste Runde holt die Bilder nach |
 | `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Ein automatisches Video einer Blur-Kamera nimmt nur bestätigte Bilder. N Bilder waren nicht bestätigt; das Video entsteht aus den übrigen | meist nichts; Details in [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
 | `[<Kamera>] Blur gate: no confirmed image - skipping camera.` | Kein einziges Bild war bestätigt. Die Kamera wird übersprungen, ihr bisheriges Video bleibt | prüfen, ob die Verpixelung läuft (Wächter, Protokoll), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
 | `Unsafe storage box remote: '<Wert>'` | Der Alias in `TIMELAPSE_STORAGE_BOX` (der Teil vor einem `:`) enthält ein unerlaubtes Zeichen. Erlaubt sind Buchstaben, Ziffern, `.`, `_` und `-`, am Anfang ein Buchstabe oder eine Ziffer (damit ssh den Wert nie als Option liest), optional als `benutzer@host` | den Eintrag in `~/.ssh/config` passend umbenennen oder den Alias in der Cron-Zeile korrigieren |
@@ -1105,10 +1144,10 @@ ssh-Meldung bei einem geänderten Host-Key, die rsync durchreicht.
 | `ssh was not found on this computer.` oder `rsync was not found on this computer.` | Das Werkzeug fehlt auf dem eigenen Rechner | installieren |
 | `[WARN] models/ could not be saved.` und am Ende `Not saved: …` | rsync konnte den Ordner nicht holen: Er fehlt auf dem Host, `PROJECT_DIR` ist falsch, oder die Verbindung riss ab | die rsync-Meldung davor lesen, Alias und `PROJECT_DIR` prüfen. Alles andere ist gesichert, und den Lauf kann man einfach wiederholen |
 | `No crontab on <alias> (or it is not readable).` | Der Host hat keine Crontab | nichts tun: `crontab.txt` bleibt leer, die Sicherung ist trotzdem vollständig |
-| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Der Host wurde neu installiert | erst den Fingerabdruck prüfen, dann `ssh-keygen -R <host>` |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Der Host wurde neu installiert | erst den Fingerabdruck prüfen, dann `ssh-keygen -R <host>` (bei einem anderen Port als 22: `ssh-keygen -R '[<host>]:<port>'`) und beim nächsten `ssh` neu bestätigen |
 | `BACKUP_DIR must be an absolute path: …` (bei `install.sh`) | `BACKUP_DIR` ist ein relativer Pfad | einen absoluten Pfad angeben |
 | `No backup folder at …: nothing to restore` | Es liegt keine Sicherung bereit | bei einem Neuaufbau ohne Sicherung normal. Sonst die Sicherung nach `~/timelapse-backup` kopieren und `./install.sh restore` starten |
-| `… holds no models/, state/ or videos/: nothing restored.` | Im Sicherungsordner fehlen alle drei Ordner | den Inhalt prüfen: `ls ~/timelapse-backup` |
+| `… holds no models/, state/, videos/ or config/settings.json: nothing restored.` | Im Sicherungsordner fehlt alles, was `restore` zurückspielt | den Inhalt prüfen: `ls ~/timelapse-backup` |
 
 Wie man den Server einrichtet: [vps.md](vps.md).
 
@@ -1122,8 +1161,9 @@ Wie man den Server einrichtet: [vps.md](vps.md).
 
 **Ursache:** Die CI-Umgebung unterscheidet sich vom Server:
 
-- **Kein FFmpeg oder ffprobe.** Ein Test, der ohne FFmpeg nicht läuft, braucht die Markierung
-  `requires_ffmpeg` oder muss den FFmpeg-Aufruf ersetzen.
+- **Kein FFmpeg oder ffprobe.** Ein Test, der ohne FFmpeg nicht läuft, braucht ein
+  `pytest.mark.skipif(shutil.which("ffmpeg") is None, …)` (so wie `requires_ffmpeg` in
+  `tests/privacy/privacy_test.py`) oder muss den FFmpeg-Aufruf ersetzen.
 - **Xdebug ist geladen.** Eine Exception aus einem PHP-Konstruktor (etwa `new DateTimeZone(...)`)
   wird dort zu einem `Error`, und den fängt `catch (Exception)` nicht. Deshalb Eingaben vorher
   prüfen, statt Exceptions zu fangen.
@@ -1154,8 +1194,8 @@ statt der GNU-Versionen, `spawn` statt `fork`. Stand 29.10.2026, ohne `onnxrunti
 
 ```bash
 .venv/bin/python3 -m pytest
-ruff check .
-ruff format --check .
+.venv/bin/python3 -m ruff check .
+.venv/bin/python3 -m ruff format --check .
 ```
 
 Schlägt dort mehr fehl als die bekannten macOS-Fälle, ist der Fehler echt.
