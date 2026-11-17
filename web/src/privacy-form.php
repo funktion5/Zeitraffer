@@ -618,7 +618,7 @@ function renderPrivacyPreview(string $camera, ?array $info): void
 				<figcaption><?= settingsHtml(previewCaption($info)) ?></figcaption>
 			</figure>
 		<?php else: ?>
-			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.</p>
+			<p class="privacy-preview-empty">Für diese Kamera gibt es noch kein Bild. Es entsteht, sobald die Verpixelung ein Bild dieser Kamera geprüft hat, meist nach wenigen Minuten (sie läuft alle 5 Minuten).</p>
 		<?php endif; ?>
 		<div class="privacy-help" data-draw-help hidden>
 			<p>So malst du einen Rahmen: Drücke „Rahmen bearbeiten“. Dann ziehst du mit der Maus oder dem Finger ein Rechteck über die Stelle, die kein Mensch ist. Die Zahlen unten füllen sich von selbst. Du kannst die Zahlen auch selbst eintippen.</p>
