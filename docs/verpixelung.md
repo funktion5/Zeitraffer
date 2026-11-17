@@ -5,7 +5,8 @@ Der Code liegt in `src/privacy/`.
 
 Diese Seite beschreibt das, was jede Verpixelung gemeinsam nutzt: Detektor, Installation,
 Einstellungen und die Regeln, welche Boxen verworfen werden. Wann und wo verpixelt wird (die
-nächtliche Runde auf der Storage Box und die von Hand gestarteten Videos von Blur-Kameras),
+Runde alle 5 Minuten und das Nachholen um 02:00 auf der Storage Box sowie die von Hand gestarteten
+Videos von Blur-Kameras),
 beschreibt [verpixelung-box.md](verpixelung-box.md).
 
 Die frühere Verpixelung beim Erstellen eines Videos (`--blur-people`, Videos mit der Endung
@@ -51,7 +52,7 @@ Abschnitt `privacy` in `config/config.json`:
 
 ```json
 "privacy": {
-  "blur_cameras": ["Scheunenviertel"],
+  "blur_cameras": ["Scheunenviertel", "SLSV"],
   "ignore_boxes": {"Scheunenviertel": [[703, 557, 742, 643]]},
   "ignore_top_share": 0.333,
   "skip_labels": {"SLSV": ["vehicle", "plate"]},
@@ -118,8 +119,8 @@ Koordinaten findet (von Hand oder mit Claude):
 Höhe im oberen Teil des Bildes liegt (hier oberes Drittel), wird verworfen. `ignore_top_share_per_camera`
 gibt einer Kamera einen eigenen Wert (`{"Scheunenviertel": 0.2}`), der für sie den globalen
 **ersetzt**; `0` schaltet den Streifen dort ab. Die Weboberfläche schreibt nur diesen Wert je Kamera.
-Ein Rahmen aus `ignore_boxes` kann den Streifen nicht ersetzen: Er verwirft nur Boxen, die ihn zu
-mindestens 50 % überlappen, der Streifen jede, die überwiegend in ihm liegt. Dort sind Himmel, Dächer, Wasser oder die
+Ein Rahmen aus `ignore_boxes` kann den Streifen nicht ersetzen: Er verwirft nur Boxen, deren Schnitt durch
+Vereinigung mit ihm mindestens 0,5 ist (also fast deckungsgleiche), der Streifen jede, die überwiegend in ihm liegt. Dort sind Himmel, Dächer, Wasser oder die
 Kamerahalterung, keine Person, die man erkennen könnte. Anlass: Bei Scheunenviertel hielt der
 Detektor zweimal die Halterung oben rechts für eine Person, einmal mit einer 373 × 460 px großen
 Box in der Dämmerung. Am 2026-08-16 betraf die Regel nur diese 2 von 1965 Boxen.
@@ -144,7 +145,7 @@ bleiben**. Nur für Kameras setzen, bei denen das vertretbar ist.
 Alle vier Regeln greifen in einer gemeinsamen Funktion (`filter_boxes`). Verworfene Boxen stehen
 in der Statusdatei des Box-Jobs unter `ignored_boxes`. Alle Werte werden bei jedem Start geprüft: Ein Tippfehler wie
 `ignore_top_share: 3.33` würde sonst stillschweigend jede Box verwerfen, deshalb bricht der Lauf
-mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5, auch für jeden Wert in `ignore_top_share_per_camera`; Boxen mit vier ganzen Zahlen,
+mit einer Fehlermeldung ab (erlaubt: 0 bis unter 0,5, auch für jeden Wert in `ignore_top_share_per_camera`; Boxen mit vier ganzen Zahlen ab 0,
 `x1 > x0`, `y1 > y0`; bei `skip_labels` eine nicht leere Liste aus `vehicle`/`plate`; bei `min_person_score` eine Zahl
 von 0 bis 0,5). Kamerabezogene Regeln nur, wo sie nötig sind; eine Kamera mit Personen im oberen Drittel
 (Hang, Balkon) bräuchte eine Ausnahme.
@@ -268,7 +269,7 @@ Gemessen auf dem Raspberry Pi 4 (2 GB):
 | Erkennung | ca. 7,5–10 Sekunden pro Bild, unabhängig davon, ob Personen darauf sind |
 | Verpixeln | ca. 1 Sekunde pro Bild mit Personen; Bilder ohne Personen kosten nichts |
 
-Arbeitsspeicher: Der Detektor braucht ca. 210 MB. Messungen der Box-Verpixelung auf dem VPS
+Arbeitsspeicher: Der Detektor braucht ca. 210–220 MB. Messungen der Box-Verpixelung auf dem VPS
 stehen in [verpixelung-box.md](verpixelung-box.md).
 
 ## Grenzen
@@ -296,7 +297,7 @@ stehen in [verpixelung-box.md](verpixelung-box.md).
 | `privacy.blur.<Wert> must be …` | ungültiger Wert in `blur` | Wert laut Tabelle korrigieren |
 | `No blurrable region left for …` | Detektor meldet eine Box außerhalb des Bildes | Detektor bzw. Modell prüfen |
 | `Detector box for … has an invalid 'block'` bzw. `'label'` | Detektor liefert eine Blockgröße unter 1 oder ein Label, das kein Text ist | Detektor prüfen; mit dem mitgelieferten `detect.py` tritt das nicht auf |
-| `privacy.ignore_top_share must be …`, `privacy.ignore_top_share_per_camera for … must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen). Die Seite „Einstellungen“ lässt solche Werte nicht speichern; ein Fehler kommt hier nur aus einer von Hand bearbeiteten Datei |
+| `privacy.ignore_top_share must be …`, `privacy.ignore_top_share_per_camera for … must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen). Der Reiter „Verpixelung“ lässt solche Werte nicht speichern; ein Fehler kommt hier nur aus einer von Hand bearbeiteten Datei |
 | `privacy.min_person_score for … must be a number from 0 to 0.5` | Tippfehler; ein höherer Wert würde deutlich sichtbare Personen verwerfen | Wert korrigieren |
 | `privacy.skip_labels for … may only list vehicle, plate` | leere Liste, Tippfehler oder `person` eingetragen | nur `vehicle` und/oder `plate` eintragen; Personen werden immer verpixelt |
 | `Cannot read the size of …` | FFprobe liefert keine oder eine unerwartete Bildgröße (Bild beschädigt) | Bild prüfen; im Box-Job betrifft das nur dieses Bild, es wird jede Runde erneut versucht |
