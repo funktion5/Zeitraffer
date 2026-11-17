@@ -1093,24 +1093,24 @@ Siehe [wordpress.md](wordpress.md#fehlerbehebung-wordpress-frontend).
 
 ## Fehler: Sicherung und Wiederherstellung
 
-Meldungen von `backup.sh` und vom Schritt `restore` des Installers, dazu die ssh-Meldung bei
-geändertem Host-Key, die rsync durchreicht.
+Die Meldungen kommen von `backup.sh` und vom Schritt `restore` des Installers. Dazu kommt die
+ssh-Meldung bei einem geänderten Host-Key, die rsync durchreicht.
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| `BACKUP_HOST is not set: …` | der ssh-Alias fehlt | `BACKUP_HOST=<alias> ./backup.sh` oder den Alias in `backup.env` eintragen |
-| `Invalid BACKUP_HOST: …` | der Alias beginnt nicht mit Buchstabe oder Ziffer oder enthält andere Zeichen als Buchstaben, Ziffern, `.`, `_`, `@` und `-` | den Alias aus `~/.ssh/config` verwenden |
-| `Invalid PROJECT_DIR (relative to the host's home, no '..'): …` | der Pfad ist absolut, enthält `..` oder Zeichen außer Buchstaben, Ziffern, `.`, `_`, `/` und `-` | relativ zum Home-Ordner des Hosts angeben, zum Beispiel `timelapse` |
+| `BACKUP_HOST is not set: …` | Der ssh-Alias fehlt | `BACKUP_HOST=<alias> ./backup.sh` oder den Alias in `backup.env` eintragen |
+| `Invalid BACKUP_HOST: …` | Der Alias beginnt nicht mit Buchstabe oder Ziffer, oder er enthält andere Zeichen als Buchstaben, Ziffern, `.`, `_`, `@` und `-` | den Alias aus `~/.ssh/config` verwenden |
+| `Invalid PROJECT_DIR (relative to the host's home, no '..'): …` | Der Pfad ist absolut, enthält `..` oder andere Zeichen als Buchstaben, Ziffern, `.`, `_`, `/` und `-` | den Pfad relativ zum Home-Ordner des Hosts angeben, zum Beispiel `timelapse` |
 | `VIDEOS must be 0 or 1.` | `VIDEOS` hat einen anderen Wert | `0` oder `1` setzen |
-| `ssh was not found on this computer.` oder `rsync was not found on this computer.` | Werkzeug fehlt auf dem eigenen Rechner | installieren |
-| `[WARN] models/ could not be saved.` und am Ende `Not saved: …` | rsync konnte den Ordner nicht holen (Ordner fehlt auf dem Host, `PROJECT_DIR` falsch, Verbindung) | die rsync-Meldung davor lesen, Alias und `PROJECT_DIR` prüfen; alles andere ist gesichert, der Lauf ist wiederholbar |
-| `No crontab on <alias> (or it is not readable).` | der Host hat keine Crontab | nichts: `crontab.txt` bleibt leer, die Sicherung ist trotzdem vollständig |
-| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Host neu installiert | Fingerabdruck prüfen, dann `ssh-keygen -R <host>` |
-| `BACKUP_DIR must be an absolute path: …` (bei `install.sh`) | `BACKUP_DIR` ist relativ | absoluten Pfad angeben |
-| `No backup folder at …: nothing to restore` | es liegt keine Sicherung bereit | bei einem Neuaufbau ohne Sicherung normal; sonst die Sicherung nach `~/timelapse-backup` kopieren und `./install.sh restore` starten |
-| `… holds no models/, state/ or videos/: nothing restored.` | der Sicherungsordner enthält keinen dieser Ordner | Inhalt prüfen: `ls ~/timelapse-backup` |
+| `ssh was not found on this computer.` oder `rsync was not found on this computer.` | Das Werkzeug fehlt auf dem eigenen Rechner | installieren |
+| `[WARN] models/ could not be saved.` und am Ende `Not saved: …` | rsync konnte den Ordner nicht holen: Er fehlt auf dem Host, `PROJECT_DIR` ist falsch, oder die Verbindung riss ab | die rsync-Meldung davor lesen, Alias und `PROJECT_DIR` prüfen. Alles andere ist gesichert, und den Lauf kann man einfach wiederholen |
+| `No crontab on <alias> (or it is not readable).` | Der Host hat keine Crontab | nichts tun: `crontab.txt` bleibt leer, die Sicherung ist trotzdem vollständig |
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` | Der Host wurde neu installiert | erst den Fingerabdruck prüfen, dann `ssh-keygen -R <host>` |
+| `BACKUP_DIR must be an absolute path: …` (bei `install.sh`) | `BACKUP_DIR` ist ein relativer Pfad | einen absoluten Pfad angeben |
+| `No backup folder at …: nothing to restore` | Es liegt keine Sicherung bereit | bei einem Neuaufbau ohne Sicherung normal. Sonst die Sicherung nach `~/timelapse-backup` kopieren und `./install.sh restore` starten |
+| `… holds no models/, state/ or videos/: nothing restored.` | Im Sicherungsordner fehlen alle drei Ordner | den Inhalt prüfen: `ls ~/timelapse-backup` |
 
-Einrichtung des Servers: [vps.md](vps.md).
+Wie man den Server einrichtet: [vps.md](vps.md).
 
 ---
 
@@ -1122,37 +1122,43 @@ Einrichtung des Servers: [vps.md](vps.md).
 
 **Ursache:** Die CI-Umgebung unterscheidet sich vom Server:
 
-- **kein FFmpeg/ffprobe:** Ein Test, der ohne es nicht läuft, braucht die Markierung
+- **Kein FFmpeg oder ffprobe.** Ein Test, der ohne FFmpeg nicht läuft, braucht die Markierung
   `requires_ffmpeg` oder muss den FFmpeg-Aufruf ersetzen.
-- **Xdebug ist geladen:** Eine Exception aus einem PHP-Konstruktor (z. B. `new DateTimeZone(...)`)
-  wird dort zu einem `Error`, den `catch (Exception)` nicht fängt. Eingaben vorher prüfen statt
-  Exceptions zu fangen.
-- **PHP-Version nicht festgelegt:** CI nimmt das PHP von `ubuntu-latest` (mindestens 8.3). Im
-  Web-Code nichts verwenden, was nur in neueren Versionen existiert (z. B. `array_any`).
+- **Xdebug ist geladen.** Eine Exception aus einem PHP-Konstruktor (etwa `new DateTimeZone(...)`)
+  wird dort zu einem `Error`, und den fängt `catch (Exception)` nicht. Deshalb Eingaben vorher
+  prüfen, statt Exceptions zu fangen.
+- **Die PHP-Version ist nicht festgelegt.** CI nimmt das PHP von `ubuntu-latest` (mindestens 8.3).
+  Im Web-Code nichts verwenden, was es nur in neueren Versionen gibt (etwa `array_any`).
 
-**Lösung:** Lokal ohne FFmpeg testen, indem `ffmpeg`/`ffprobe` aus dem `PATH` genommen werden, und
+**Lösung:** Lokal ohne FFmpeg testen, indem man `ffmpeg` und `ffprobe` aus dem `PATH` nimmt, und
 den Test entsprechend anpassen.
 
 ### Push wird blockiert
 
-**Ursache:** Nur wenn lokal ein Pre-Push-Hook (`.git/hooks/pre-push`, nicht versioniert) eingerichtet
-ist: Er führt `ruff check`, `ruff format --check` und `pytest` aus und bricht bei einem Fehler ab
-([architektur.md](architektur.md#github-actions-und-pre-push-hook)). Im Klon auf dem Mac steht
-Stand 30.10.2026 keiner; dort prüft erst CI.
+**Ursache:** Das passiert nur, wenn lokal ein Pre-Push-Hook eingerichtet ist
+(`.git/hooks/pre-push`, nicht in git). Er führt `ruff check`, `ruff format --check` und `pytest` aus
+und bricht bei einem Fehler ab ([architektur.md](architektur.md#github-actions-und-pre-push-hook)).
+Im Klon auf dem Mac gibt es keinen (Stand 30.10.2026); dort prüft erst CI.
 
-**Lösung:** `ruff format .` und den Fehler beheben. `git push --no-verify` nur im Notfall; CI prüft
-dasselbe ohnehin.
+**Lösung:** `ruff format .` ausführen und den Fehler beheben. `git push --no-verify` nur im Notfall;
+CI prüft ohnehin dasselbe.
 
 ### Tests laufen auf dem Mac nicht vollständig durch
 
-**Ursache:** Auf macOS schlagen rund 67 Tests aus Plattformgründen fehl (BSD-`ls` und BSD-`date`
-statt GNU, `spawn` statt `fork`; Stand 29.10.2026: 897 bestanden, 67 fehlgeschlagen, ohne
-`onnxruntime`). Das ist kein Fehler im Code.
+**Ursache:** Auf macOS schlagen rund 67 Tests aus Plattformgründen fehl: BSD-`ls` und BSD-`date`
+statt der GNU-Versionen, `spawn` statt `fork`. Stand 29.10.2026, ohne `onnxruntime`: 897 bestanden,
+67 fehlgeschlagen. Das ist kein Fehler im Code.
 
-**Lösung:** Maßgeblich sind der VPS und CI (beide Linux). Änderungen pushen und auf dem VPS mit
-`git pull` holen ([vps.md](vps.md#code-auf-den-vps-bringen)) und dort
-`.venv/bin/python3 -m pytest`, `ruff check .` und `ruff format --check .` ausführen. Fehlschläge,
-die über die bekannten macOS-Fälle hinausgehen, sind echt.
+**Lösung:** Maßgeblich sind der VPS und CI, beide unter Linux. Änderungen pushen, auf dem VPS mit
+`git pull` holen ([vps.md](vps.md#code-auf-den-vps-bringen)) und dort ausführen:
+
+```bash
+.venv/bin/python3 -m pytest
+ruff check .
+ruff format --check .
+```
+
+Schlägt dort mehr fehl als die bekannten macOS-Fälle, ist der Fehler echt.
 
 ---
 
@@ -1167,12 +1173,12 @@ free -m
 ps -eo rss,args --sort=-rss | head -10
 ```
 
-**Ursache:** Neben dem Lauf belegen oft VS-Code-Server Speicher, die nach einer abgebrochenen
-Verbindung (Mac im Ruhezustand) oder einem VS-Code-Update weiterlaufen.
+**Ursache:** Neben dem Lauf belegen oft alte VS-Code-Server Speicher. Sie laufen weiter, wenn die
+Verbindung abgebrochen ist (Mac im Ruhezustand) oder nach einem VS-Code-Update.
 
 **Lösung:**
 
-- Alte VS-Code-Server beenden, z. B. über „Remote-SSH: Kill VS Code Server on Host…“ in VS Code.
+- Alte VS-Code-Server beenden, etwa über „Remote-SSH: Kill VS Code Server on Host…“ in VS Code.
 - Während eines großen Renders keine weiteren Läufe oder Tests starten.
-- `TIMELAPSE_X264_PRESET=ultrafast` senkt den Speicherbedarf des Encoders deutlich (größere
-  Dateien; [Konfiguration](konfiguration.md#umgebungsvariablen)).
+- `TIMELAPSE_X264_PRESET=ultrafast` senkt den Speicherbedarf des Encoders deutlich, macht die
+  Dateien aber größer ([Konfiguration](konfiguration.md#umgebungsvariablen)).
