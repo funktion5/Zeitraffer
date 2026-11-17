@@ -1,5 +1,7 @@
 # Rebuild and publish buttons Implementation Plan
 
+**DONE 2026-11-09:** built and live on the VPS (docs: `docs/weboberflaeche.md`).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Two web UI features on a camera page: a Rebuild form (checkboxes per job) that reruns the automatic night jobs for one camera, and ONE Publish button that sends that camera's videos to SiteGround through the existing delivery script.
@@ -8,7 +10,7 @@
 
 **Tech Stack:** Python 3.13 (stays runnable on 3.11), PHP (plain, behind Apache), Bash, pytest (PHP and Bash tested as subprocesses).
 
-**Spec:** `docs/plans/2026-11-06-rebuild-and-publish-buttons.md` (approved by Julius 2026-11-06). One correction to it: the delivery script's dry run makes no FTP connection, so the confirm window lists the files that WOULD be sent (newest automatic video per period); "already on the site" shows afterwards as "übersprungen" in the result.
+**Spec:** `docs/plans/done/2026-11-06-rebuild-and-publish-buttons.md` (approved by Julius 2026-11-06). One correction to it: the delivery script's dry run makes no FTP connection, so the confirm window lists the files that WOULD be sent (newest automatic video per period); "already on the site" shows afterwards as "übersprungen" in the result.
 
 ## Global Constraints
 

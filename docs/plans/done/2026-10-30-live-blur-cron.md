@@ -1,5 +1,7 @@
 # Plan: the live blur round in cron on the VPS
 
+**DONE 2026-11-16:** live round and watchdog run from cron every 5 minutes on the VPS since 12:45 (docs: `docs/verpixelung-box.md`).
+
 Status: DRAFT 2026-10-30; **decided 2026-11-16 (Julius, later the same day):** cron **every 5
 minutes, around the clock** (the detector runs 24/7, so the night rule of the round goes away), cap
 `timeout -k 10 240`. Every 5 minutes is enough because the pick-up runs every 5 minutes and the

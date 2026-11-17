@@ -1,5 +1,7 @@
 # Plan: mark the newest image of every camera that is not blurred
 
+**DONE 2026-11-16:** built and merged (PR #10) as `extras/mark_newest.py`; not connected on the VPS (docs: `extras/README.md`).
+
 Status: DRAFT 2026-11-16, reviewed by Julius the same evening (three changes below, "Decided"). Branch `feature/mark-newest-images` (from `main` after
 the checked mark, PR #9). Builds on `2026-11-16-blur-checked-mark.md` (the mark itself).
 
