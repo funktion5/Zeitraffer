@@ -5,7 +5,7 @@ die Webseite sie abholt. Bei einem Fund wird das Original vorher auf der Box ges
 ohne Fund bekommen nur die Markierung. Installation, Detektor,
 die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md](verpixelung.md).
 
-**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Ordner `BlurTest` (47 Bilder: 20
+**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Testordner `BlurTest` (am 17.11.2026 gelöscht; 47 Bilder: 20
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
 jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
@@ -158,12 +158,12 @@ Bild.
   ohne die 21 Bytes ist die Datei wieder genau das Original. Das prüft der Schreibcode vor dem
   Tausch.
 - Die Markierung ändert kein Pixel. FFmpeg, die Zeitraffer und die Vorschau zeigen dasselbe Bild.
-- Nur die laufende Runde und das nächtliche Nachholen markieren: sie liefern die neuen Bilder der
+- Die Runde und das Nachholen markieren jedes geprüfte Bild: sie liefern die neuen Bilder der
   Webseite. Ein [von Hand gestartetes Video](#verpixelung-bei-von-hand-gestarteten-videos)
-  verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
-  16.11.2026). Bilder von heute oder gestern, die ein solches Video zuerst bearbeitet, gelten danach
-  als erledigt: Die Runde nimmt sie nicht mehr, sie bleiben ohne Markierung und erscheinen nicht auf
-  der Webseite. Die Webseite zeigt dann bis zum nächsten neuen Bild das vorige.
+  markiert nur Bilder aus den Tagen, die auch die Runde nimmt (heute und die zwei Tage davor). Diese
+  Bilder gelten danach als erledigt, und die Runde kommt nicht mehr zu ihnen; ohne die Markierung
+  erschienen sie nie auf der Webseite. Ältere Bilder verpixelt es ohne Markierung und lässt Bilder
+  ohne Person unberührt.
 - Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
   Optional markiert [`extras/mark_newest.py`](../extras/README.md) bei allen übrigen Kameras das
   neueste Bild ungeprüft (nicht angeschlossen; anschließen per Cron-Zeile, siehe dort).

@@ -18,12 +18,12 @@ const PREVIEW_CAMERA_PATTERN = '/^[A-Za-z0-9][A-Za-z0-9_-]*$/D';
 const PREVIEW_MAX_DIMENSION = 20000;
 const PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 
-// The kinds of frame the script may publish ("status" in the .json file). Not "night": the blur
-// job records it without running the detector.
+// The kinds of frame the script may publish ("status" in the .json file). Not "night": an old status
+// from before 2026-11-16, recorded without running the detector.
 const PREVIEW_KINDS = ["blurred", "clean"];
 
 const PREVIEW_OK_MESSAGE = "Das Bild wurde aktualisiert.";
-const PREVIEW_NONE_MESSAGE = "Für diese Kamera gibt es noch kein geprüftes Bild. Es entsteht, sobald die Verpixelung in der Nacht Bilder dieser Kamera geprüft hat.";
+const PREVIEW_NONE_MESSAGE = "Für diese Kamera gibt es noch kein geprüftes Bild. Es entsteht, sobald die Verpixelung ein Bild dieser Kamera geprüft hat, meist nach wenigen Minuten (sie läuft alle 5 Minuten).";
 const PREVIEW_UNKNOWN_MESSAGE = "Diese Kamera wird nicht verpixelt.";
 const PREVIEW_FAILED_MESSAGE = "Das Bild konnte nicht geholt werden. Bitte später noch einmal versuchen.";
 const PREVIEW_TIMEOUT_MESSAGE = "Die Speicherbox hat nicht rechtzeitig geantwortet. Bitte später noch einmal versuchen.";

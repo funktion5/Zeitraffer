@@ -107,7 +107,7 @@ def test_job_frames_are_blurred_and_only_those_copies_are_fetched_again(job, mon
 		"blurred",
 		"clean",
 	]
-	# A manual run blurs without the mark and leaves clean frames untouched.
+	# These frames are older than the round's days: blurred without the mark, clean ones untouched.
 	assert (job.setup.camera_dir / PERSON_A).read_bytes() == unmarked_blurred_bytes(PERSON_A)
 	assert (job.setup.camera_dir / NOBODY).read_bytes() == original_bytes(NOBODY)
 	# The job's copies are from before the blur: only the blurred ones are dropped, then fetched

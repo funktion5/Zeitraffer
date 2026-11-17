@@ -642,7 +642,7 @@
 
 					cameraChanges.push(
 						element.checked
-							? `${element.value}: wird ab der nächsten Nacht verpixelt`
+							? `${element.value}: wird nach wenigen Minuten verpixelt`
 							: `${element.value}: wird NICHT mehr verpixelt${live}`,
 					);
 				}

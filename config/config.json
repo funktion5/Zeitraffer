@@ -1,5 +1,5 @@
 {
-  "_note": "Keys that can be changed on the web UI page Einstellungen are stored in config/settings.json, and a value there overrides this file. Change those keys on that page, not here. Which keys: docs/konfiguration.md.",
+  "_note": "Keys that can be changed on the web UI page Einstellungen are stored in config/settings.json (tab Allgemein) and config/settings-privacy.json (tab Verpixelung), and a value there overrides this file. Change those keys on that page, not here. Which keys: docs/konfiguration.md.",
   "location": {
     "latitude": 52.472,
     "longitude": 9.333,
@@ -34,8 +34,7 @@
     "Reolink",
     "Wunstorf-Marktplatz",
     "SVG",
-    "Hafenstrasse",
-    "BlurTest"
+    "Hafenstrasse"
   ],
   "timelapse": {
     "daily_framerate": 10,
@@ -46,12 +45,10 @@
   },
   "privacy": {
     "blur_cameras": [
-      "BlurTest",
       "Scheunenviertel",
       "SLSV"
     ],
     "ignore_boxes": {
-      "BlurTest": [[703, 557, 742, 643]],
       "Scheunenviertel": [
         [703, 557, 742, 643],
         [1676, 636, 1720, 736],

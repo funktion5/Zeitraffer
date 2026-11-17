@@ -43,8 +43,8 @@ def clean_bytes(name: str) -> bytes:
 	return add_mark(original_bytes(name))
 
 
-# What a manual run leaves after a blur: the fake pixelation without the mark, which only the
-# round sets (it feeds the website).
+# What a manual run leaves after blurring an old frame: the fake pixelation without the mark,
+# which only frames of the round's days get (they feed the website).
 def unmarked_blurred_bytes(name: str) -> bytes:
 	return b"\xff\xd8blurred" + original_bytes(name)
 
@@ -961,7 +961,7 @@ def test_default_writer_limits_still_refuse_an_old_frame(setup: Setup, monkeypat
 	assert setup.writes() == []
 
 
-# Manual runs never mark: the mark is only for the website's new images.
+# An old frame stays unmarked: the mark is only for the website's new images.
 def test_frame_without_people_is_recorded_clean_without_writes(setup: Setup) -> None:
 	image = setup.upload(OLD_CLEAN, age_seconds=OLD_AGE)
 
@@ -972,6 +972,35 @@ def test_frame_without_people_is_recorded_clean_without_writes(setup: Setup) -> 
 	assert setup.states()[OLD_CLEAN]["status"] == "clean"
 	assert (setup.state_root / CAMERA / "2026-03.jsonl").exists()
 	assert setup.writes() == []
+
+
+# A manual run that reaches a frame of the round's days first records it as done, so the round
+# never comes back to mark it. The manual run therefore marks those frames itself.
+def test_recent_frames_of_a_manual_run_get_the_checked_mark(setup: Setup, monkeypatch) -> None:
+	monkeypatch.setenv("FAKE_PEOPLE", DAY_WITH_PERSON)
+	clean = setup.upload(DAY)
+	blurred = setup.upload(DAY_WITH_PERSON)
+
+	summary = blur_listed(setup, [DAY, DAY_WITH_PERSON])
+
+	assert (summary.clean, summary.blurred) == (1, 1)
+	assert clean.read_bytes() == clean_bytes(DAY)
+	assert blurred.read_bytes() == blurred_bytes(DAY_WITH_PERSON)
+	assert "marked_sha256" in setup.states()[DAY]
+
+
+# The round lists today and the two days before; an older frame of a manual run stays unmarked.
+def test_manual_run_marks_only_the_rounds_days(setup: Setup) -> None:
+	last_listed = "20260613T120000.jpg"
+	too_old = "20260612T120000.jpg"
+	inside = setup.upload(last_listed, age_seconds=2 * 24 * 3600)
+	outside = setup.upload(too_old, age_seconds=3 * 24 * 3600)
+
+	summary = blur_listed(setup, [last_listed, too_old])
+
+	assert summary.clean == 2
+	assert inside.read_bytes() == clean_bytes(last_listed)
+	assert outside.read_bytes() == original_bytes(too_old)
 
 
 # A frame of a job's list is judged as it is: no night rule, the job already chose it.

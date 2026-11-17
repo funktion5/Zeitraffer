@@ -155,7 +155,7 @@ $cameraDefaults = static function (string $camera) use ($basePrivacy): array {
 
 			<fieldset class="settings-group">
 				<legend>Welche Kameras werden verpixelt?</legend>
-				<p class="settings-hint">Ein Haken bedeutet: Die Bilder dieser Kamera werden verpixelt, wenn Menschen darauf zu sehen sind. Eine neu angehakte Kamera wird ab der nächsten Nacht verpixelt, auch die Bilder von heute und den zwei Tagen davor.</p>
+				<p class="settings-hint">Ein Haken bedeutet: Die Bilder dieser Kamera werden verpixelt, wenn Menschen darauf zu sehen sind. Eine neu angehakte Kamera wird nach wenigen Minuten verpixelt (die Verpixelung läuft alle 5 Minuten), auch die Bilder von heute und den zwei Tagen davor.</p>
 				<p class="privacy-important"><strong>Wichtig!</strong> Bei einer Kamera, die schon läuft und verpixelt, darf der Haken nicht weg. Sonst sind Menschen auf ihren Videos sofort wieder zu erkennen. Diese Kameras sind mit „läuft schon“ markiert.</p>
 				<?php if (isset($fieldErrors["privacy.blur_cameras"])): ?>
 					<p class="field-error" id="privacy-blur-cameras-error"><?= settingsHtml($fieldErrors["privacy.blur_cameras"]) ?></p>
