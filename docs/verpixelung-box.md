@@ -158,12 +158,12 @@ Bild.
   ohne die 21 Bytes ist die Datei wieder genau das Original. Das prüft der Schreibcode vor dem
   Tausch.
 - Die Markierung ändert kein Pixel. FFmpeg, die Zeitraffer und die Vorschau zeigen dasselbe Bild.
-- Nur die laufende Runde und das nächtliche Nachholen markieren: sie liefern die neuen Bilder der
+- Die Runde und das Nachholen markieren jedes geprüfte Bild: sie liefern die neuen Bilder der
   Webseite. Ein [von Hand gestartetes Video](#verpixelung-bei-von-hand-gestarteten-videos)
-  verpixelt wie bisher ohne Markierung und lässt Bilder ohne Person unberührt (Entscheidung
-  16.11.2026). Bilder von heute oder gestern, die ein solches Video zuerst bearbeitet, gelten danach
-  als erledigt: Die Runde nimmt sie nicht mehr, sie bleiben ohne Markierung und erscheinen nicht auf
-  der Webseite. Die Webseite zeigt dann bis zum nächsten neuen Bild das vorige.
+  markiert nur Bilder aus den Tagen, die auch die Runde nimmt (heute und die zwei Tage davor). Diese
+  Bilder gelten danach als erledigt, und die Runde kommt nicht mehr zu ihnen; ohne die Markierung
+  erschienen sie nie auf der Webseite. Ältere Bilder verpixelt es ohne Markierung und lässt Bilder
+  ohne Person unberührt.
 - Bilder von vor dem 16.11.2026 und Bilder von Kameras ohne Verpixelung tragen keine Markierung.
   Optional markiert [`extras/mark_newest.py`](../extras/README.md) bei allen übrigen Kameras das
   neueste Bild ungeprüft (nicht angeschlossen; anschließen per Cron-Zeile, siehe dort).

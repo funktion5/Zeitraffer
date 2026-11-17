@@ -253,7 +253,7 @@ da. Details: [flagger.md](flagger.md).
   ([verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Den
   Fortschritt zeigt `tail -f logs/<job>/$(date +%F).log`: Die Zeile `Blur:` nennt die Zahl der
   Bilder, jede Zeile `Replaced` ist ein verpixeltes Bild. Bilder ohne Person erscheinen nicht
-  einzeln. Von Hand gestartete Videos markieren keine Bilder.
+  einzeln. Von Hand gestartete Videos markieren nur Bilder von heute und den zwei Tagen davor.
 - **Direkt auf der Storage Box** verpixelt
   `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`. Das schreibt auf die Box, also
   vorher [verpixelung-box.md](verpixelung-box.md) lesen. Mit `--catch-up` (45 Minuten pro Kamera)
@@ -1095,7 +1095,7 @@ Zweifel bricht die Verpixelung ab und schreibt nichts. Ein Abbruch ist also kein
 |---|---|---|
 | `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Sie hängt oder läuft nicht, der Detektor fällt aus, oder die Box ist nicht erreichbar | die Rundenzeilen im selben Protokoll lesen (`logs/privacy/<Datum>.log`), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
 | Im Protokoll fehlt die Zeile `Stale check: …` | Der Wächter selbst läuft nicht | die Cron-Zeile mit `crontab -l` prüfen |
-| Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also markiert niemand ihre Bilder. Oder die Runde läuft nicht (siehe Wächter). Oder ein von Hand gestartetes Video hat die neuesten Bilder zuerst verpixelt; die bekommen keine Markierung, und die Website wartet auf das nächste neue Bild | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) und die Markierung des neuesten Bildes prüfen |
+| Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also markiert niemand ihre Bilder. Oder die Runde läuft nicht (siehe Wächter) | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) und die Markierung des neuesten Bildes prüfen |
 | Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, also prüft der Abholjob dort keine Markierung. Oder die Erkennung hat die Person übersehen | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)); steht sie schon drin, siehe [Erkennung liegt falsch](#erkennung-liegt-falsch) |
 | `Skipped: …privacy-blur.lock…` in den Rundenzeilen | Ein anderer Verpixelungslauf hält die Sperre: das Nachholen oder ein von Hand gestartetes Video | nichts, solange es vorbeigeht. Die nächste Runde holt die Bilder nach |
 | `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Ein automatisches Video einer Blur-Kamera nimmt nur bestätigte Bilder. N Bilder waren nicht bestätigt; das Video entsteht aus den übrigen | meist nichts; Details in [verpixelung-box.md](verpixelung-box.md#fehlersuche) |

@@ -538,6 +538,9 @@ def blur_frames(
 	# One listing of the backups per run, and only when there is something to blur. Without it there
 	# is no guard, so a failing listing stops the run instead of blurring on a guess.
 	backups = writer.list_backups(camera) if open_names else {}
+	# The round skips frames recorded as done. A frame of its days that this run reaches first would
+	# never get the mark and never reach the website, so this run marks those frames itself.
+	first_listed_day = now.date() - timedelta(days=LISTED_DAYS - 1)
 	work_dir = WORK_ROOT / camera
 	work_dir.mkdir(parents=True, exist_ok=True)
 
@@ -558,8 +561,8 @@ def blur_frames(
 				moments[name],
 				summary,
 				backups,
-				# The mark is for the website's new images; manual runs leave clean ones untouched.
-				mark=False,
+				# The mark is for the website's new images; older clean frames stay untouched.
+				mark=moments[name].date() >= first_listed_day,
 			)
 
 	finally:
