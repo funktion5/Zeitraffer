@@ -79,8 +79,9 @@ Host storagebox
     IdentitiesOnly yes
 ```
 
-Der Name hinter `Host` ist frei; `install.sh` erwartet `storagebox`, ein anderer Name kommt als
-`BOX_ALIAS=<name> ./install.sh`. Den öffentlichen Teil auf die Box bringen, bei Hetzner laut deren
+Den Namen `storagebox` hinter `Host` beibehalten: `install.sh` erwartet ihn, und die Web-Wrapper
+verwenden ihn fest. `BOX_ALIAS=<name> ./install.sh` nimmt zwar einen anderen Namen, aber dann
+funktioniert die Weboberfläche nicht. Den öffentlichen Teil auf die Box bringen, bei Hetzner laut deren
 Doku über SFTP:
 
 ```bash

@@ -39,8 +39,9 @@ Videos dieser Kameras nur aus Bildern, die der Box-Job bestätigt hat
 ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); im Code gilt das für das Daily seit
 dem 05.11.2026, für Monthly und Yearly seit dem 09.11.2026.
 
-`flock -n` verwendet einen nicht blockierenden Lock. Läuft bereits ein Prozess mit demselben Lock,
-wird kein zweiter Produktionslauf gestartet; der Wrapper meldet das und endet mit Status 75.
+`flock -n` wartet nicht: Hält ein anderer Job die Sperre, fällt das Nachholen der Verpixelung in
+dieser Nacht ohne Eintrag in `logs/privacy/` aus. Der Wrapper nimmt die Sperre selbst; ist sie
+belegt, startet er keinen zweiten Lauf, meldet das und endet mit Status 75.
 
 ### Wiederanlauf nach Neustart
 
@@ -56,15 +57,18 @@ Nachtlauf, Flagger, Weboberfläche und Speicherfilter verwenden dieselbe Sperre:
 <projektpfad>/state/zeitraffer-run.lock
 ```
 
-Dadurch können sie nicht überlappen. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die
-Anwendung schreibt ihre eigenen Job-Logs.
+Dadurch können sie nicht überlappen. Die Verpixelungs-Runde alle 5 Minuten und ihr Wächter nehmen
+diese Sperre nicht (die Runde hat `state/privacy-blur.lock`); sie laufen also auch während des
+Nachtlaufs. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen
+Job-Logs.
 
 ### Upload auf die Website
 
 Nach dem Nachtlauf lädt `scripts/copy_zeitraffer_videos_vps2siteground.sh` die fertigen Videos
 per FTP in den Ordner der Website, den das WordPress-Plugin liest
 ([wordpress.md](wordpress.md#videos-auf-die-live-seite-bringen-welche-dateien-dürfen-raus)).
-Welche Dateien dabei überhaupt in Frage kommen, bestimmt `scripts/list-deliverable-videos.py`.
+Welche Dateien dabei überhaupt in Frage kommen, bestimmt `scripts/list-deliverable-videos.py`: je
+Kamera und Videotyp nur das neueste nicht leere Video, Kameras aus `ignored_cameras` nie.
 
 ```bash
 scripts/copy_zeitraffer_videos_vps2siteground.sh [<Kamera>] [--run]
@@ -108,7 +112,8 @@ erst, wenn der Nachtlauf mit allen Videos fertig ist, egal wie lange der dauert;
 Uhrzeit gibt es nicht. Die Schritte sind mit `;` verbunden: Ein Fehler im einen Schritt hält den
 nächsten nicht auf. Der Flagger nimmt die Sperre selbst, gehört also nicht in `flock -c`;
 Arbeitsverzeichnis und `TIMELAPSE_STORAGE_BOX` stammen vom Anfang der Zeile (`cd`, `export`). Er
-prüft den Vortag und braucht für fünf Kameras ca. 40 Minuten (gemessen auf dem früheren Host).
+prüft den Vortag. Die Dauer je Kamera steht in `logs/flagger/` (`seconds=`); Messwerte:
+[flagger.md](flagger.md).
 
 - Hält ein anderer Job die Sperre, wenn der Flagger startet (zum Beispiel ein Web-Auftrag),
   überspringt er die Nacht und schreibt nur `Skipped:` in `logs/flagger/`.
@@ -172,7 +177,7 @@ crontab -l
 
 ### Yearly
 
-- Fenster: exaktes Kalenderjahr bis einschließlich Enddatum — 365 oder 366 Tage, je nachdem ob ein Schalttag (29. Februar) im Zeitraum liegt; kein fest codiertes 365-Tage-Fenster mehr
+- Fenster: ein Jahr bis einschließlich Enddatum (ab dem Tag nach demselben Datum im Vorjahr), also 365 oder 366 Tage, je nachdem ob ein Schalttag (29. Februar) im Zeitraum liegt
 - Enddatum: standardmäßig gestern oder explizites `--target-date`
 - Quelle: Originalbilder
 - tägliche Kandidaten aus 10:30 bis 13:30 Uhr (`interval_window`, historisch verschiebbar)
@@ -412,7 +417,10 @@ System RAM
 
 Auf Mehrkernsystemen kann die FFmpeg-CPU-Auslastung von `psutil` über 100 Prozent liegen. Hohe CPU-Auslastung allein bedeutet daher keinen fehlgeschlagenen Lauf.
 
-Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert.
+Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert. Sie gilt nur für die Tageslogs
+(`<Ordner>/JJJJ-MM-TT.log`). `logs/nightly/`, `logs/settings.log` und `logs/siteground-delivery.log`
+löscht das Programm nie; sie müssen von Hand gekürzt werden. Das Upload-Protokoll enthält den
+FTP-Zugang.
 
 Operative Fehler wie
 
