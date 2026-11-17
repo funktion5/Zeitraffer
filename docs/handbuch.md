@@ -123,57 +123,64 @@ grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
 
 ## Installation
 
-Kurzfassung als Checkliste. Die vollständigen Schritte stehen im
-[Installation](installation.md); auf einem frischen Debian- oder
-Ubuntu-Host erledigt `install.sh` die Schritte 1, 2, 7 und die Dateirechte, legt die leere
-Login-Datei des Uploads an und spielt, wenn eine Sicherung bereitliegt, Modell, Status und Videos
-zurück (Schritt 3); den Zugang zur Storage Box (Schritt 5) und Cron (Schritt 6) richtet man nach
-[vps.md](vps.md) von Hand ein.
+Die Kurzfassung als Checkliste; alle Schritte im Detail stehen in [installation.md](installation.md).
 
-| # | Schritt | Funktioniert, wenn |
+Auf einem frischen Debian- oder Ubuntu-Host erledigt `install.sh` schon einiges: die Schritte 1, 2
+und 7, die Dateirechte und die leere Login-Datei für den Upload. Liegt eine Sicherung bereit,
+spielt es auch Modell, Status und Videos zurück (Schritt 3). Von Hand bleiben der Zugang zur
+Storage Box (Schritt 5) und Cron (Schritt 6), beschrieben in [vps.md](vps.md).
+
+| # | Schritt | Klappt, wenn |
 |---|---|---|
-| 1 | Systempakete installieren ([Installation](installation.md#systempakete-installieren)) | `ffmpeg -version`, `php -v`, `rsync --version` antworten |
+| 1 | Systempakete installieren ([Installation](installation.md#systempakete-installieren)) | `ffmpeg -version`, `php -v` und `rsync --version` antworten |
 | 2 | Python 3.13 und virtuelle Umgebung ([Installation](installation.md#python-umgebung-einrichten)) | `.venv/bin/python3 --version` zeigt 3.13 |
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
-| 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
+| 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` ist grün |
 | 5 | Zugriff auf die Storage Box einrichten ([Installation](installation.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: 02:00 mit Verpixelung nachholen, Nachtlauf, Upload und Flagger, dazu alle 5 Minuten die laufende Verpixelung und ihren Wächter (`./install.sh cron_hint` druckt alle drei, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
-| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
-| 8 | Tests | `.venv/bin/python3 -m pytest` grün |
-| 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |
+| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: die 02:00-Zeile (Verpixelung nachholen, Nachtlauf, Upload, Flagger) und die beiden 5-Minuten-Zeilen (Verpixelung und Wächter). `./install.sh cron_hint` druckt alle drei ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
+| 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`, und `./install.sh verify` zeigt kein `WARNING` (es prüft nur, repariert nichts) |
+| 8 | Tests | `.venv/bin/python3 -m pytest` ist grün |
+| 9 | Ersten Lauf von Hand starten (siehe unten) | `logs/daily/<Datum>.log` endet mit einer Zusammenfassung mit `created` > 0 |
 
 ---
 
 ## Jobs starten
 
-Alle Befehle im Projektordner (`cd ~/timelapse`). Vorher prüfen, ob gerade etwas läuft (siehe
-[Überblick](#läuft-gerade-etwas)). Lange Läufe, die das Schließen des Terminals überleben sollen,
-abgekoppelt starten:
+Alle Befehle laufen im Projektordner (`cd ~/timelapse`). Vorher kurz prüfen, ob schon etwas läuft
+([Läuft gerade etwas?](#läuft-gerade-etwas)).
+
+Ein langer Lauf soll weiterlaufen, auch wenn man das Terminal schließt? Dann abgekoppelt starten:
 
 ```bash
 setsid nohup <befehl> > logs/manuell-$(date +%F_%H%M).out 2>&1 < /dev/null &
-kill -TERM -- -<PID>      # abgekoppelten Lauf beenden (PID aus pgrep)
+kill -TERM -- -<PID>      # so beendet man ihn wieder (PID aus pgrep)
 ```
 
 ### Nächtlicher Lauf
 
-Auf dem Server liest jeder Befehl die Bilder per ssh; dafür muss `TIMELAPSE_STORAGE_BOX` gesetzt
-sein. Die Cron-Zeilen setzen sie selbst, in der Shell einmal `export TIMELAPSE_STORAGE_BOX=<ssh-alias>`.
-Alternativ liest `TIMELAPSE_CAMERA_ROOT` die Bilder aus einem lokalen Ordner (zum Beispiel dem
-NAS-Archiv, [nas.md](nas.md)); `TIMELAPSE_FRAME_SOURCE` (`local` oder `ssh`) erzwingt eine der
-beiden Quellen. Ohne `TIMELAPSE_STORAGE_BOX` und ohne `TIMELAPSE_CAMERA_ROOT` bricht ein Befehl
-mit einer Fehlermeldung ab.
+Jeder Befehl liest die Bilder per ssh von der Storage Box. Dafür muss `TIMELAPSE_STORAGE_BOX`
+gesetzt sein. Die Cron-Zeilen tun das selbst; in der Shell einmal
+`export TIMELAPSE_STORAGE_BOX=<ssh-alias>` eingeben.
 
-Der Lauf startet automatisch um 02:00 Uhr über Cron (Zeilen:
-[betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Von Hand (alle Kameras, alle vier Jobs, Zieltag
-gestern) über denselben Wrapper wie Cron, der die Sperre selbst nimmt und das Ergebnis prüft:
+Andere Bildquellen:
+
+- `TIMELAPSE_CAMERA_ROOT` liest die Bilder aus einem lokalen Ordner, zum Beispiel aus dem
+  NAS-Archiv ([nas.md](nas.md)).
+- `TIMELAPSE_FRAME_SOURCE` (`local` oder `ssh`) erzwingt eine der beiden Quellen.
+- Ist weder `TIMELAPSE_STORAGE_BOX` noch `TIMELAPSE_CAMERA_ROOT` gesetzt, bricht jeder Befehl mit
+  einer Fehlermeldung ab.
+
+Cron startet den Lauf um 02:00 Uhr (die Zeile steht in
+[betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Von Hand startet man ihn über denselben
+Wrapper wie Cron. Er nimmt die Sperre selbst, baut alle vier Videoarten für alle Kameras mit
+gestern als Zieltag und prüft danach das Ergebnis:
 
 ```bash
 setsid -f env TIMELAPSE_X264_PRESET=medium scripts/timelapse-nightly-staged > ~/nightly-console.log 2>&1 < /dev/null
-cat logs/nightly/$(ls -t logs/nightly | head -1)/report.txt   # Bericht; die letzte Zeile nennt Kameras und Fehler
+cat logs/nightly/$(ls -t logs/nightly | head -1)/report.txt   # die letzte Zeile nennt Kameras und Fehler
 ```
 
-Nur `src.main` ohne die Prüfung des Wrappers:
+Nur `src.main`, ohne die Prüfung durch den Wrapper:
 
 ```bash
 flock -n state/zeitraffer-run.lock -c '.venv/bin/python3 -m src.main'
@@ -188,18 +195,24 @@ flock -n state/zeitraffer-run.lock -c '.venv/bin/python3 -m src.main'
 .venv/bin/python3 -m src.main --jobs monthly --target-date <Datum> --window-time sunset --window-tolerance-minutes 60
 ```
 
-Videos mit `--target-date` landen unter `videos/<Kamera>/manual-runs/` und werden nie automatisch
-gelöscht. Alle Optionen und unzulässigen Kombinationen: [cli.md](cli.md).
+Videos mit `--target-date` landen in `videos/<Kamera>/manual-runs/` und werden nie automatisch
+gelöscht. Alle Optionen und welche Kombinationen nicht erlaubt sind: [cli.md](cli.md).
 
 ### Über die Weboberfläche
 
-Kamera wählen, Videotyp und Zieldatum (vorbelegt: gestern) eintragen, „Video erstellen“. Bis der
-Auftrag fertig ist, bleibt der Button gesperrt; das Ergebnis meldet ein Fenster, bei einem
-Fehlschlag mit dem Grund, sofern bekannt. Der Auftrag schreibt in dasselbe Protokoll wie der
-entsprechende Befehl. Auf der Kameraseite stehen auch die nächtlichen Videos zum Ansehen und
-Herunterladen (Liste „Automatische Videos“, ohne Löschen). Die Seite „Einstellungen“ ändert einen
-Teil der Werte aus `config.json` ohne Handarbeit (Reiter „Allgemein“ und „Verpixelung“). Siehe
-[weboberflaeche.md](weboberflaeche.md).
+- **Video bestellen:** Kamera wählen, Videotyp und Zieldatum eintragen (vorbelegt ist gestern),
+  dann „Video erstellen“. Der Button bleibt gesperrt, bis der Auftrag fertig ist. Ein Fenster meldet
+  das Ergebnis, bei einem Fehlschlag mit dem Grund, wenn er bekannt ist. Der Auftrag schreibt in
+  dasselbe Protokoll wie der passende Befehl.
+- **Nächtliche Videos:** Sie stehen auf der Kameraseite in der Liste „Automatische Videos“ zum
+  Ansehen und Herunterladen. Löschen lassen sie sich dort nicht.
+- **Automatische Videos neu erstellen und hochladen:** Die aufklappbare Leiste auf der Kameraseite
+  baut die Nachtjobs einer Kamera neu und überträgt sie danach auf die Website, etwa nach einem
+  Kameraausfall ([weboberflaeche.md](weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)).
+- **Einstellungen:** Die Seite „Einstellungen“ ändert einen Teil der Werte aus `config.json`, ohne
+  dass man eine Datei anfassen muss (Reiter „Allgemein“ und „Verpixelung“).
+
+Mehr dazu: [weboberflaeche.md](weboberflaeche.md).
 
 ### Highlights-Flagger
 
@@ -209,61 +222,69 @@ Teil der Werte aus `config.json` ohne Handarbeit (Reiter „Allgemein“ und „
 tail -f logs/flagger/$(date +%F).log                                               # Fortschritt
 ```
 
-Ein neuer Lauf für denselben Tag ersetzt dessen Ordner; vorher gelöschte Bilder kommen zurück.
-Details: [flagger.md](flagger.md).
+Ein neuer Lauf für denselben Tag ersetzt dessen Ordner. Vorher gelöschte Bilder sind danach wieder
+da. Details: [flagger.md](flagger.md).
 
 ### Verpixelung
 
-- Bei einem von Hand gestarteten Video (Weboberfläche oder `--target-date`) einer Blur-Kamera: nichts
-  tun, es verpixelt seine Bilder selbst (Standard, kein Schalter,
-  [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Fortschritt:
-  `tail -f logs/<job>/$(date +%F).log` (die Zeile `Blur:` nennt die Zahl der Bilder, jede
-  `Replaced`-Zeile ist ein fertiges Bild).
-- Im Betrieb läuft alles per Cron: die laufende Runde und der Wächter alle 5 Minuten, das Nachholen
-  um 02:00 (`./install.sh cron_hint` druckt alle Zeilen). Läuft die Runde? Im Protokoll muss alle
-  5 Minuten eine Zeile `[<Kamera>] blurred=… clean=… …` und eine Wächter-Zeile
-  `Stale check: … nothing stale` stehen: `tail -n 20 logs/privacy/$(date +%F).log`.
-- Direkt auf der Storage Box: `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`
-  ([verpixelung-box.md](verpixelung-box.md)). Schreibt auf die Box; vorher die dortige Anleitung
-  lesen. Mit `--catch-up` (45 Minuten pro Kamera) holt es die offenen Bilder der letzten 48 Stunden
-  in einem Lauf nach; so läuft es nachts per Cron.
-- Markierung eines Bildes prüfen (auch das Bild auf der Website, öffentlich):
-  `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
+- **Im Normalbetrieb muss man nichts tun.** Cron startet die Verpixelung und den Wächter alle
+  5 Minuten und das Nachholen um 02:00 (`./install.sh cron_hint` druckt die Zeilen). Ob sie läuft,
+  zeigt das Protokoll: Alle 5 Minuten kommt pro Kamera eine Zeile `[<Kamera>] blurred=… clean=… …`
+  und vom Wächter `Stale check: … nothing stale`.
+
+  ```bash
+  tail -n 20 logs/privacy/$(date +%F).log
+  ```
+
+- **Von Hand gestartete Videos einer Blur-Kamera** (Weboberfläche oder `--target-date`) verpixeln
+  ihre Bilder selbst. Dafür gibt es keinen Schalter
+  ([verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Den
+  Fortschritt zeigt `tail -f logs/<job>/$(date +%F).log`: Die Zeile `Blur:` nennt die Zahl der
+  Bilder, jede Zeile `Replaced` ist ein fertiges Bild.
+- **Direkt auf der Storage Box** verpixelt
+  `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`. Das schreibt auf die Box, also
+  vorher [verpixelung-box.md](verpixelung-box.md) lesen. Mit `--catch-up` (45 Minuten pro Kamera)
+  holt es alle offenen Bilder der letzten 48 Stunden in einem Lauf nach, so wie nachts.
+- **Ist ein Bild markiert?** Das geht auch mit dem öffentlichen Bild auf der Website:
+
+  ```bash
+  head -c 32 <bild>.jpg | grep -a 'blur:checked=true'
+  ```
 
 #### Blur-Kamera hinzufügen oder entfernen
 
 Welche Kameras verpixelt werden, steht an **zwei** Stellen. Beide Listen müssen immer dieselben
-Kameras enthalten, mit denselben Ordnernamen wie auf der Storage Box (Groß- und Kleinschreibung
-zählt):
+Kameras enthalten, mit genau denselben Ordnernamen wie auf der Storage Box (Groß- und
+Kleinschreibung zählt).
 
-1. **Unsere Liste:** Reiter „Verpixelung“ der Weboberfläche (`privacy.blur_cameras`, gespeichert in
-   `config/settings-privacy.json`; Standard in `config/config.json`). Sie sagt, wo die Runde
-   verpixelt und markiert.
+1. **Unsere Liste:** der Reiter „Verpixelung“ der Weboberfläche (`privacy.blur_cameras`,
+   gespeichert in `config/settings-privacy.json`, Standard in `config/config.json`). Sie bestimmt,
+   wo die Runde verpixelt und markiert.
 2. **Die Liste des Abholjobs:** `webcam_list.config` auf dem Server, auf dem das Abholskript der
-   Website läuft (der genaue Pfad ist im Skript eingetragen). Eine Zeile pro Kamera, `#` für
-   Kommentare. Sie sagt, bei welchen Kameras die Website **nur markierte** Bilder veröffentlicht.
-   Sie liegt nicht in diesem Repository: per ssh auf diesem Server anmelden, die Datei mit einem
-   Editor öffnen, die Zeile ergänzen oder löschen, speichern. Der nächste Lauf des Abholskripts
-   liest sie neu.
+   Website läuft (der genaue Pfad steht im Skript). Eine Zeile pro Kamera, `#` leitet einen
+   Kommentar ein. Sie bestimmt, bei welchen Kameras die Website **nur markierte** Bilder
+   veröffentlicht. Die Datei liegt nicht in diesem Repository. So ändert man sie: per ssh auf
+   diesem Server anmelden, die Datei im Editor öffnen, die Zeile ergänzen oder löschen, speichern.
+   Der nächste Lauf des Abholskripts liest sie neu.
 
-Eine Änderung an der einen Liste ist erst fertig, wenn die andere genauso geändert ist. Was sonst
-passiert:
+Eine Änderung ist erst fertig, wenn beide Listen geändert sind. Sonst passiert Folgendes:
 
-| Kamera steht nur … | Folge |
+| Die Kamera steht nur … | Folge |
 |---|---|
-| in unserer Liste | Die Website prüft die Markierung nicht und kann ein Bild **unverpixelt** veröffentlichen, bevor die Runde es getauscht hat (Datenschutz) |
-| in `webcam_list.config` | Kein Bild der Kamera wird mehr markiert; die Website zeigt dauerhaft das letzte markierte Bild und bekommt kein neues |
+| in unserer Liste | Die Website prüft die Markierung nicht. Sie kann ein Bild **unverpixelt** veröffentlichen, bevor die Runde es getauscht hat (Datenschutz) |
+| in `webcam_list.config` | Kein Bild der Kamera wird mehr markiert. Die Website zeigt dauerhaft das letzte markierte Bild und bekommt kein neues |
 
-Reihenfolge, damit kein unverpixeltes Bild durchrutscht: Beim **Hinzufügen** zuerst unsere Liste
-speichern und warten, bis im Protokoll die erste Zeile `[<Kamera>] blurred=… clean=…` steht, dann
-`webcam_list.config` ergänzen (dazwischen zeigt die Website schlimmstenfalls ein paar Minuten lang
-ungeprüfte Bilder wie bisher). Beim **Entfernen** zuerst `webcam_list.config` ändern, dann unsere
-Liste.
+Die Reihenfolge verhindert, dass ein unverpixeltes Bild durchrutscht:
+
+- **Hinzufügen:** erst unsere Liste speichern. Warten, bis im Protokoll die erste Zeile
+  `[<Kamera>] blurred=… clean=…` steht. Dann die Kamera in `webcam_list.config` eintragen.
+  Dazwischen zeigt die Website schlimmstenfalls ein paar Minuten lang ungeprüfte Bilder, wie bisher.
+- **Entfernen:** erst aus `webcam_list.config` löschen, dann aus unserer Liste.
 
 ### Werkzeuge
 
 ```bash
-.venv/bin/python3 -m src.storage_filter --cameras <Kamera>          # Liste leerer/doppelter Bilder, löscht nichts
+.venv/bin/python3 -m src.storage_filter --cameras <Kamera>          # listet leere und doppelte Bilder, löscht nichts
 .venv/bin/python3 scripts/yearly-backfill.py --years 2026 --cameras <Kamera>
 ```
 
@@ -271,19 +292,19 @@ Details: [werkzeuge.md](werkzeuge.md); NAS-Archiv: [nas.md](nas.md).
 
 ### Sicherung
 
-Auf dem eigenen Rechner (macOS oder Linux) im Repository-Ordner, mit dem ssh-Alias des
-Hosts, von dem gesichert wird:
+Die Sicherung läuft auf dem eigenen Rechner (macOS oder Linux), im Repository-Ordner. `BACKUP_HOST`
+ist der ssh-Alias des Hosts, den man sichert:
 
 ```bash
 BACKUP_HOST=<ssh-alias> ./backup.sh              # models/, state/, crontab.txt
 BACKUP_HOST=<ssh-alias> VIDEOS=1 ./backup.sh     # zusätzlich videos/
 ```
 
-Die Sicherung landet in `~/timelapse-backup`. Sie enthält das Erkennungsmodell, den Status
-(darunter den der Verpixelung), die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos, aber
-keine Geheimnisse: Die Anmeldung der Weboberfläche legt `install.sh` neu an, das Passwort des
-Uploads trägt man von Hand ein. Einspielen auf einem neuen Host (`./install.sh restore`):
-[vps.md](vps.md).
+Die Sicherung landet in `~/timelapse-backup`. Drin sind das Erkennungsmodell, der Status (auch der
+der Verpixelung), die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos. Geheimnisse sind
+nicht drin: Die Anmeldung der Weboberfläche legt `install.sh` neu an, das Passwort für den Upload
+trägt man von Hand ein. Wie man die Sicherung auf einem neuen Host einspielt
+(`./install.sh restore`): [vps.md](vps.md).
 
 ---
 
