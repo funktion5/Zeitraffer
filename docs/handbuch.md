@@ -905,16 +905,17 @@ Verpixelung schon geprüft hat, nie ein Rohbild.
 
 ## Fehler: Erkennung, Highlights und Verpixelung
 
-Flagger und Verpixelung nutzen das Erkennungsmodell YOLOX (`models/`, über `onnxruntime`).
+Flagger und Verpixelung nutzen dasselbe Erkennungsmodell: YOLOX, abgelegt in `models/` und
+ausgeführt mit `onnxruntime`.
 
 ### Modelldatei fehlt
 
-**Symptom:** `Flagger not started: model file missing: models/object_detection_yolox_2022nov.onnx`;
-bei der Verpixelung bricht der Lauf ab, statt ein ungeprüftes Video zu erzeugen.
+**Symptom:** `Flagger not started: model file missing: models/object_detection_yolox_2022nov.onnx`.
+Die Verpixelung bricht in dem Fall ab, statt ein ungeprüftes Video zu bauen.
 
-**Lösung:** `models/` aus der Sicherung zurückspielen (`./install.sh restore`; bevorzugt: dieselbe Datei hält
-zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
-([verpixelung.md](verpixelung.md#installation)).
+**Lösung:** `models/` aus der Sicherung zurückspielen (`./install.sh restore`) oder das Modell neu
+herunterladen ([verpixelung.md](verpixelung.md#installation)). Die Sicherung ist besser: Mit
+derselben Datei bleiben zwischengespeicherte Ergebnisse gültig.
 
 ### Modell lässt sich nicht laden
 
@@ -925,51 +926,54 @@ zwischengespeicherte Ergebnisse gültig) oder neu herunterladen
 ```
 
 **Ursache:** `onnxruntime` oder OpenCV fehlen in der virtuellen Umgebung oder passen nicht zur
-Plattform; seltener eine beschädigte Modelldatei.
+Plattform. Seltener ist die Modelldatei beschädigt.
 
-**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`; Modelldatei mit der aus der
-Sicherung vergleichen (`sha256sum models/*.onnx`).
+**Lösung:** `.venv/bin/python3 -m pip install -r requirements.txt`. Die Modelldatei mit der aus der
+Sicherung vergleichen: `sha256sum models/*.onnx`.
 
 ### Erkennung liegt falsch
 
-**Symptom:** Highlights zeigen Unsinn (ein Busch als „Giraffe?“, ein Kondensstreifen als „Drachen?“)
-oder übersehen Tiere; die Verpixelung trifft Schilder oder übersieht Personen.
+**Symptom:** Die Highlights zeigen Unsinn (ein Busch als „Giraffe?“, ein Kondensstreifen als
+„Drachen?“) oder übersehen Tiere. Oder die Verpixelung trifft Schilder und übersieht Personen.
 
-**Ursache:** YOLOX erkennt Alltagsklassen, keine Rehe, Schwäne oder Ballons, und rät bei kleinen,
-fernen Objekten. Einzelne Fehltreffer sind normal.
+**Ursache:** YOLOX kennt Alltagsdinge, aber keine Rehe, Schwäne oder Ballons, und bei kleinen,
+fernen Objekten rät es. Einzelne Fehltreffer sind normal.
 
 **Lösung:**
 
-- Flagger: Feststehende Objekte filtert er selbst. Schwellen und den Filter für feststehende Objekte
-  in `src/flagger/groups.py` nur mit echten Beispielbildern ändern ([flagger.md](flagger.md)).
-- Verpixelung: bekannte Fehlerkennungen ausschließen, am bequemsten auf der Weboberfläche im Reiter
-  „Verpixelung“ (Rahmen auf dem Kamerabild ziehen, oberen Rand und Mindest-Sicherheit je Kamera
-  einstellen); von Hand über `ignore_boxes`, `ignore_top_share`, `skip_labels` und
-  `min_person_score` in der Config
+- **Flagger:** Feststehende Objekte filtert er selbst. Die Schwellen und diesen Filter in
+  `src/flagger/groups.py` nur mit echten Beispielbildern ändern ([flagger.md](flagger.md)).
+- **Verpixelung:** Bekannte Fehlerkennungen ausschließen. Am einfachsten geht das im Reiter
+  „Verpixelung“ der Weboberfläche: Rahmen auf das Kamerabild ziehen, oberen Rand und
+  Mindest-Sicherheit je Kamera einstellen. Von Hand geht es über `ignore_boxes`,
+  `ignore_top_share`, `skip_labels` und `min_person_score`
   ([verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
 
 ### Ein feststehendes Objekt wird immer wieder verpixelt
 
-**Symptom:** Auf der Storage Box ist in vielen Bildern einer Kamera dasselbe Objekt verpixelt
-(Beispiel 2026-10-23: die Ankerkette vor dem Gebäude bei Scheunenviertel).
+**Symptom:** Auf der Storage Box ist bei einer Kamera in vielen Bildern dasselbe Objekt verpixelt
+(Beispiel vom 23.10.2026: die Ankerkette vor dem Gebäude bei Scheunenviertel).
 
 **Ursache:** Der Detektor hält das Objekt für eine Person, meist mit niedriger Sicherheit
-(0,25–0,6). Weil es sich nicht bewegt, trifft es jedes Mal dieselbe Stelle.
+(0,25 bis 0,6). Weil es sich nicht bewegt, trifft es jedes Mal dieselbe Stelle.
 
-**Prüfen:** Welche Boxen an derselben Stelle wiederkehren, steht in der Statusdatei:
+**Prüfen:** Welche Boxen immer wieder an derselben Stelle auftauchen, steht in der Statusdatei:
 
 ```bash
 grep -h '"status": "blurred"' state/privacy/box/<Kamera>/*.jsonl | head -3
 ```
 
-Jede Box ist `[x0, y0, x1, y1, Sicherheit, Label]` in Pixeln des Originalbilds.
+Jede Box ist `[x0, y0, x1, y1, Sicherheit, Label]`, in Pixeln des Originalbilds.
 
-**Lösung:** Die wiederkehrenden Stellen als `ignore_boxes` der Kamera eintragen: auf der Weboberfläche im
-Reiter „Verpixelung“ mit „Rahmen bearbeiten“ ein Rechteck über die Stelle ziehen und speichern
-([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp)), oder von Hand in
-`config/config.json`. Wirkt ab dem nächsten Lauf, ohne Neustart; auf der Seite eingetragene Rahmen stehen
-in `config/settings-privacy.json`. Vorher prüfen, dass keine echte Person
-mitfällt: eine Box wird verworfen, wenn sie eine Ignorierfläche zu mindestens 50 % überlappt.
+**Lösung:** Die wiederkehrenden Stellen als `ignore_boxes` der Kamera eintragen:
+
+- **Auf der Weboberfläche:** im Reiter „Verpixelung“ mit „Rahmen bearbeiten“ ein Rechteck über die
+  Stelle ziehen und speichern ([weboberflaeche.md](weboberflaeche.md#reiter-verpixelung-verpixelungphp)).
+  Die Rahmen landen in `config/settings-privacy.json`.
+- **Von Hand:** in `config/config.json`.
+
+Beides wirkt ab dem nächsten Lauf, ohne Neustart. Vorher prüfen, dass keine echte Person mit
+wegfällt: Eine Box wird verworfen, wenn sie einen Rahmen zu mindestens 50 % überlappt.
 
 **Mit Claude (empfohlen):** In einer Claude-Sitzung im Projekt etwa so beauftragen:
 
@@ -978,80 +982,108 @@ mitfällt: eine Box wird verworfen, wenn sie eine Ignorierfläche zu mindestens 
 > das Objekt ist und keine Person, und schlage `ignore_boxes` vor. Zeig, wie viele der bisherigen
 > Treffer sie verwerfen und welche echten Personen bleiben.
 
-Claude wertet die Statusdatei aus, schaut sich einen Bildausschnitt an, prüft die Flächen gegen
-alle bisherigen Boxen und trägt sie nach Freigabe in die Config ein. Aufwand am Beispiel
-Ankerkette: rund 10 Minuten, ca. 15–20k Tokens (Schätzung). Ergebnis dort: 28 von 35 Treffern
-verworfen, die übrigen 7 waren echte Personen neben der Kette.
+Claude wertet die Statusdatei aus, sieht sich einen Bildausschnitt an, prüft die Rahmen gegen alle
+bisherigen Boxen und trägt sie nach Freigabe ein. Bei der Ankerkette dauerte das rund 10 Minuten
+(geschätzt 15.000 bis 20.000 Tokens). Ergebnis: 28 von 35 Treffern verworfen; die übrigen 7 waren
+echte Personen neben der Kette.
 
 **Grenzen:**
 
-- Bereits verpixelte Bilder behalten die Verpixelung; sie stehen als `blurred` in der
-  Statusdatei und werden nicht neu bearbeitet. Das Original liegt in `<Kamera>/original/`.
-- Die Flächen sind feste Pixel. Verschiebt sich die Kamera um mehr als etwa ein Drittel der
-  Boxbreite (bei der Kette ca. 15 Pixel), wird das Objekt wieder verpixelt. Dann die Flächen
-  neu bestimmen, wie oben.
+- Schon verpixelte Bilder bleiben verpixelt. Sie stehen als `blurred` in der Statusdatei und werden
+  nicht neu bearbeitet. Das Original liegt in `<Kamera>/original/`.
+- Die Rahmen sind feste Pixel. Verschiebt sich die Kamera um mehr als etwa ein Drittel der
+  Boxbreite (bei der Kette ca. 15 Pixel), wird das Objekt wieder verpixelt. Dann die Rahmen neu
+  bestimmen, wie oben.
 - Steht eine Person genau vor dem Objekt, bleibt sie unverpixelt (wie beim Wegweiser).
+
+### Einstellungsdatei wird ignoriert
+
+**Symptom:** Im Protokoll eines Laufs steht
+
+```text
+WARNING | Settings file ignored (settings-privacy.json): …
+WARNING | Settings value ignored: …
+```
+
+und die Werte von der Seite „Einstellungen“ wirken nicht. Rahmen, oberer Rand oder
+Mindest-Sicherheit einer Kamera sind zum Beispiel wieder auf dem Standard.
+
+**Prüfen:**
+
+```bash
+python3 -m json.tool config/settings-privacy.json > /dev/null && echo "Datei ist gültig"
+python3 -m json.tool config/settings.json > /dev/null && echo "Datei ist gültig"
+```
+
+**Ursache:**
+
+- `Settings file ignored`: Die Datei ist kein gültiges JSON oder nicht lesbar, meist weil jemand
+  sie von Hand bearbeitet hat. Dann gilt **die ganze Datei nicht**, und alle Werte kommen aus
+  `config/config.json`.
+- `Settings value ignored`: Ein einzelner Wert ist ungültig, etwa außerhalb der Grenzen. Nur dieser
+  Wert fällt weg, der Rest gilt.
+
+Die Liste der Blur-Kameras bleibt dabei erhalten, weil `config.json` dieselben Kameras als Standard
+hat. Verloren gehen aber die Feineinstellungen je Kamera: Fehlen die Rahmen, verpixelt die Runde
+wieder bekannte Fehltreffer.
+
+**Lösung:** Die Werte auf der Seite „Einstellungen“ neu eintragen und speichern; die Seite schreibt
+immer eine gültige Datei. Weil sie die kaputte Datei ebenfalls nicht lesen kann, zeigt sie die
+Standardwerte. Welche Werte vorher eingestellt waren, steht in `logs/settings.log` (alter und neuer
+Wert je Speicherung). Wer die Datei doch von Hand ändert, prüft sie danach mit `json.tool` (siehe
+oben).
 
 ### Flagger startet nicht oder überspringt
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| `Skipped: ...` | Sperre belegt | später erneut starten |
-| `Flagger not started: ...` mit unbekannter oder ignorierter Kamera | Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`; dann startet der Flagger für **alle** Kameras nicht. Die Seite „Einstellungen“ speichert diese Kombination nicht, sie entsteht nur durch Handarbeit in einer Datei | die Kamera aus `flagger.cameras` oder aus `ignored_cameras` nehmen (in `config.json`, `config/settings.json` oder auf der Seite) |
-| `Flagger not started: flagger.retention_days must be at least 7` | Wert unter einer Woche, von Hand eingetragen; die Seite lässt weniger als 7 nicht zu | Wert auf mindestens 7 setzen |
-| `[<Kamera>] no images for <Datum> - nothing written` | keine Tagesbilder | wie [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
-| gelöschtes Highlight ist wieder da | der Tag wurde neu geprüft, der Ordner ersetzt | erneut löschen |
+| `Skipped: ...` | Die Sperre ist belegt | später erneut starten |
+| `Flagger not started: ...` mit einer unbekannten oder ignorierten Kamera | Eine Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`. Dann startet der Flagger für **keine** Kamera. Die Seite „Einstellungen“ speichert so etwas nicht; es entsteht nur durch Handarbeit in einer Datei | die Kamera aus `flagger.cameras` oder aus `ignored_cameras` nehmen (in `config.json`, `config/settings.json` oder auf der Seite) |
+| `Flagger not started: flagger.retention_days must be at least 7` | Von Hand ein Wert unter einer Woche eingetragen; die Seite lässt das nicht zu | Wert auf mindestens 7 setzen |
+| `[<Kamera>] no images for <Datum> - nothing written` | Es gibt keine Bilder von diesem Tag | wie [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
+| `Skipping unreadable or truncated image: <Datei>` | Das Bild ist abgeschnitten oder kaputt (abgebrochener Upload) | nichts; das Bild wird nur nicht geprüft. Häuft es sich, den Upload der Kamera prüfen |
+| `Skipping image without a parseable time: <Datei>` | Aus dem Dateinamen lässt sich keine Uhrzeit lesen | nichts, solange es Einzelfälle sind. Bei allen Bildern einer Kamera: neues Namensformat, siehe [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
+| Ein gelöschtes Highlight ist wieder da | Der Tag wurde neu geprüft, und der Ordner wurde ersetzt | erneut löschen |
 
-Highlights-Seite: [highlights-seite.md](highlights-seite.md#fehlersuche).
+Fehler auf der Highlights-Seite: [highlights-seite.md](highlights-seite.md#fehlersuche).
 
 ### Verpixelung
 
-Fehlerbilder und Lösungen stehen in den eigenen Tabellen:
-[verpixelung.md](verpixelung.md#fehlersuche) (Videos) und
-[verpixelung-box.md](verpixelung-box.md#fehlersuche) (Storage Box). Grundsatz: Im Zweifel bricht
-die Verpixelung ab und schreibt nichts; ein Abbruch ist also kein Datenverlust.
-
-`Unsafe storage box remote: '<Wert>'` heißt: Der Alias in `TIMELAPSE_STORAGE_BOX` (der Teil vor
-einem `:`) enthält ein Zeichen, das die Verpixelung nicht akzeptiert. Erlaubt sind Buchstaben,
-Ziffern, `.`, `_` und `-` (am Anfang ein Buchstabe oder eine Ziffer, damit der Wert nie als
-ssh-Option gelesen wird), optional als `benutzer@host`. Den Eintrag in `~/.ssh/config` danach
-benennen oder den Alias in der Cron-Zeile korrigieren.
-
-Die Meldungen `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` und
-`[<Kamera>] Blur gate: no confirmed image - skipping camera.` kommen aus der Sperre der
-automatischen Videos von Blur-Kameras.
-Das erste heißt: N Bilder hat der Box-Job nicht bestätigt, das Video entsteht aus den übrigen; das
-zweite: gar kein Bild war bestätigt, die Kamera wird übersprungen und ihr bisheriges Video bleibt.
-Ursachen, Prüfung und Lösung:
-[verpixelung-box.md](verpixelung-box.md#fehlersuche).
+Die vollständigen Tabellen mit Fehlerbildern stehen in [verpixelung.md](verpixelung.md#fehlersuche)
+(Videos) und [verpixelung-box.md](verpixelung-box.md#fehlersuche) (Storage Box). Der Grundsatz: Im
+Zweifel bricht die Verpixelung ab und schreibt nichts. Ein Abbruch ist also kein Datenverlust.
 
 | Meldung oder Beobachtung | Ursache | Lösung |
 |---|---|---|
-| `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Runde hängt oder läuft nicht, Detektor fällt aus, Box nicht erreichbar | Rundenzeilen im selben Protokoll lesen (`logs/privacy/<Datum>.log`), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
-| Keine Zeile `Stale check: …` im Protokoll | Der Wächter selbst läuft nicht | Cron-Zeile mit `crontab -l` prüfen |
-| Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also wird nichts markiert; oder die Runde läuft nicht (siehe Wächter) | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)); Markierung des neuesten Bildes prüfen |
-| Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, der Abholjob prüft die Markierung dort nicht | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) |
+| `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Sie hängt oder läuft nicht, der Detektor fällt aus, oder die Box ist nicht erreichbar | die Rundenzeilen im selben Protokoll lesen (`logs/privacy/<Datum>.log`), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
+| Im Protokoll fehlt die Zeile `Stale check: …` | Der Wächter selbst läuft nicht | die Cron-Zeile mit `crontab -l` prüfen |
+| Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also markiert niemand ihre Bilder. Oder die Runde läuft nicht (siehe Wächter) | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) und die Markierung des neuesten Bildes prüfen |
+| Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, also prüft der Abholjob dort keine Markierung | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) |
+| `[<Kamera>] Blur gate: left out N of M unconfirmed images: …` | Ein automatisches Video einer Blur-Kamera nimmt nur bestätigte Bilder. N Bilder waren nicht bestätigt; das Video entsteht aus den übrigen | meist nichts; Details in [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
+| `[<Kamera>] Blur gate: no confirmed image - skipping camera.` | Kein einziges Bild war bestätigt. Die Kamera wird übersprungen, ihr bisheriges Video bleibt | prüfen, ob die Verpixelung läuft (Wächter, Protokoll), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
+| `Unsafe storage box remote: '<Wert>'` | Der Alias in `TIMELAPSE_STORAGE_BOX` (der Teil vor einem `:`) enthält ein unerlaubtes Zeichen. Erlaubt sind Buchstaben, Ziffern, `.`, `_` und `-`, am Anfang ein Buchstabe oder eine Ziffer (damit ssh den Wert nie als Option liest), optional als `benutzer@host` | den Eintrag in `~/.ssh/config` passend umbenennen oder den Alias in der Cron-Zeile korrigieren |
 
 ### Upload auf die Website
 
-Das Protokoll steht in `logs/siteground-delivery.log`; je Kamera endet es mit
+Das Protokoll steht in `logs/siteground-delivery.log`. Für jede Kamera endet es mit
 `Ergebnis: hochgeladen=… übersprungen=… fehlgeschlagen=… gelöscht=…`
 ([betrieb.md](betrieb.md#upload-auf-die-website)).
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| `Die Liste der freigegebenen Videos konnte nicht erstellt werden.` | `scripts/list-deliverable-videos.py` ist fehlgeschlagen, z. B. weil `videos/` fehlt | das Skript einzeln ausführen und die Meldung lesen |
-| `Die Liste ist leer: Es wird nichts gesendet und nichts gelöscht.` oder `Die Liste ist leer: Für <Kamera> wird nichts gesendet und nichts gelöscht.` | keine freigegebenen Videos (alle Kameras in `ignored_cameras`, noch keine Videos) bzw. die genannte Kamera ist nicht freigegeben | Liste prüfen: `.venv/bin/python3 scripts/list-deliverable-videos.py` |
-| `SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen ausgefüllt sein.` | `config/siteground.env` fehlt oder ist unvollständig | `./install.sh upload_login` legt sie aus der Vorlage an (leer), dann die drei Werte eintragen, siehe [betrieb.md](betrieb.md#upload-auf-die-website) |
-| `Es läuft bereits ein anderer Lauf.` (Rückgabewert 3) | für diese Kamera läuft schon ein Upload | warten und wiederholen |
-| `Upload fehlgeschlagen: …` oder `Umbenennen fehlgeschlagen: …` | FTP-Verbindung oder Rechte auf der Website | Aufgeräumt wird in diesem Ordner dann nicht (`Aufräumen von … übersprungen`); Verbindung prüfen, die nächste Nacht lädt erneut hoch |
-| `Mindestens eine Kamera ist fehlgeschlagen.` | siehe die Zeilen darüber im Protokoll | je Kamera behandeln |
+| `Die Liste der freigegebenen Videos konnte nicht erstellt werden.` | `scripts/list-deliverable-videos.py` ist gescheitert, zum Beispiel weil `videos/` fehlt | das Skript einzeln ausführen und seine Meldung lesen |
+| `Die Liste ist leer: Es wird nichts gesendet und nichts gelöscht.` (oder `… Für <Kamera> wird nichts gesendet …`) | Es gibt keine freigegebenen Videos (alle Kameras in `ignored_cameras` oder noch keine Videos), bzw. die genannte Kamera ist nicht freigegeben | die Liste prüfen: `.venv/bin/python3 scripts/list-deliverable-videos.py` |
+| `SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen ausgefüllt sein.` | `config/siteground.env` fehlt oder ist unvollständig | `./install.sh upload_login` legt die Datei aus der Vorlage an (leer); dann die drei Werte eintragen ([betrieb.md](betrieb.md#upload-auf-die-website)) |
+| `Es läuft bereits ein anderer Lauf.` (Rückgabewert 3) | Für diese Kamera läuft schon ein Upload | warten und wiederholen |
+| `Upload fehlgeschlagen: …` oder `Umbenennen fehlgeschlagen: …` | Die FTP-Verbindung oder die Rechte auf der Website | Verbindung prüfen; die nächste Nacht lädt erneut hoch. In diesem Ordner wird dann nicht aufgeräumt (`Aufräumen von … übersprungen`) |
+| `Mindestens eine Kamera ist fehlgeschlagen.` | siehe die Zeilen darüber im Protokoll | jede Kamera einzeln behandeln |
 
 ### Speicherfilter
 
-`TIMELAPSE_STORAGE_BOX is not set` heißt: Die Storage Box ist nicht angegeben; die Variable setzen
-([Konfiguration](konfiguration.md#umgebungsvariablen)). Kommt trotz gesetzter Variable `Storage box listing
-failed`, siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar).
+- `TIMELAPSE_STORAGE_BOX is not set`: Die Storage Box ist nicht angegeben. Die Variable setzen
+  ([Konfiguration](konfiguration.md#umgebungsvariablen)).
+- `Storage box listing failed`, obwohl die Variable gesetzt ist: siehe
+  [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar).
 
 ### WordPress
 
