@@ -312,32 +312,33 @@ trägt man von Hand ein. Wie man die Sicherung auf einem neuen Host einspielt
 
 ### Heute Nacht lief nichts, es gibt kein Protokoll
 
-**Symptom:** Für heute fehlt `logs/daily/<heute>.log`; in `videos/<Kamera>/daily/` gibt es kein Video
+**Symptom:** `logs/daily/<heute>.log` fehlt, und in `videos/<Kamera>/daily/` gibt es kein Video
 von gestern.
 
 **Prüfen:**
 
 ```bash
-crontab -l                                   # 02:00-Zeile vorhanden?
+crontab -l                                   # ist die 02:00-Zeile da?
 uptime                                       # lief der Rechner um 02:00?
 flock -n ~/timelapse/state/zeitraffer-run.lock -c true && echo frei || echo belegt
 pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
 ```
 
-**Ursache:** Cron startet den Lauf mit `flock -n`. Ist die Sperre um 02:00 belegt (Web-Auftrag,
-Flagger, Speicherfilter, ein hängender Lauf), beendet sich der Lauf **ohne jede Meldung**. Seltener:
-Crontab fehlt oder der Rechner war aus.
+**Ursache:** Cron startet den Lauf mit `flock -n`. War die Sperre um 02:00 belegt (von einem
+Web-Auftrag, dem Flagger, dem Speicherfilter oder einem hängenden Lauf), beendet sich der Lauf
+**ohne jede Meldung**. Seltener fehlt die Crontab, oder der Rechner war aus.
 
 **Lösung:** Den blockierenden Prozess abwarten oder beenden, dann den
-[Lauf von Hand starten](#nächtlicher-lauf). Fehlt die Crontab, sie nach
-[Installation](installation.md#cron-installieren-oder-prüfen) wieder eintragen.
+[Lauf von Hand starten](#nächtlicher-lauf). Fehlt die Crontab, sie wie in der
+[Installation](installation.md#cron-installieren-oder-prüfen) beschrieben wieder eintragen.
 
 ### Kamera-Speicher nicht erreichbar
 
-**Symptom:** Im Protokoll steht direkt am Anfang `Failed to access camera storage.` mit einem
-`OSError` (zum Beispiel `Storage box listing failed ...` oder `TIMELAPSE_STORAGE_BOX is not set`)
-oder einem `ValueError` (`No frame source configured: set TIMELAPSE_CAMERA_ROOT ... or
-TIMELAPSE_STORAGE_BOX ...`), und es entstehen gar keine Videos.
+**Symptom:** Gleich am Anfang des Protokolls steht `Failed to access camera storage.`, und es
+entsteht kein einziges Video. Dazu kommt einer dieser Fehler:
+
+- ein `OSError`, zum Beispiel `Storage box listing failed ...` oder `TIMELAPSE_STORAGE_BOX is not set`
+- ein `ValueError`: `No frame source configured: set TIMELAPSE_CAMERA_ROOT ... or TIMELAPSE_STORAGE_BOX ...`
 
 **Prüfen:**
 
@@ -346,30 +347,38 @@ ssh <ssh-alias> ls | head -3                                                    
 TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list           # listet die Kameras
 ```
 
-**Ursache:** Netzwerk oder Storage Box nicht erreichbar, Schlüssel oder Host-Key passt nicht mehr
-(`Permission denied`, `Host key verification failed`), der Eintrag in `~/.ssh/config` fehlt, oder
-`TIMELAPSE_STORAGE_BOX` ist nicht gesetzt (in der Cron-Zeile oder in der Shell).
+**Ursache:** Eins von diesen:
 
-**Lösung:** Die ssh-Verbindung von Hand prüfen und den Eintrag samt Schlüssel in `~/.ssh/config`
-richten ([Installation](installation.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh einen
-geänderten Host-Key (`REMOTE HOST IDENTIFICATION HAS CHANGED`), den Fingerabdruck mit der
-Hetzner-Oberfläche vergleichen, bevor man ihn neu bestätigt (`ssh-keygen -R <host>`). Danach den Lauf von Hand starten.
+- Netzwerk oder Storage Box sind nicht erreichbar.
+- Schlüssel oder Host-Key passen nicht mehr (`Permission denied`, `Host key verification failed`).
+- Der Eintrag in `~/.ssh/config` fehlt.
+- `TIMELAPSE_STORAGE_BOX` ist nicht gesetzt, in der Cron-Zeile oder in der Shell.
+
+**Lösung:** Die ssh-Verbindung von Hand testen und den Eintrag samt Schlüssel in `~/.ssh/config`
+richten ([Installation](installation.md#zugriff-auf-die-storage-box), [vps.md](vps.md)). Meldet ssh
+einen geänderten Host-Key (`REMOTE HOST IDENTIFICATION HAS CHANGED`), erst den Fingerabdruck mit
+der Hetzner-Oberfläche vergleichen, dann neu bestätigen (`ssh-keygen -R <host>`). Danach den Lauf
+von Hand starten.
 
 ### Bildsuche bricht ab („stalled“)
 
-**Symptom:** `TimeoutError: ... stalled for camera: <Kamera>` im Protokoll; diese Kamera fehlt, die
-anderen laufen weiter.
+**Symptom:** Im Protokoll steht `TimeoutError: ... stalled for camera: <Kamera>`. Diese Kamera
+fehlt, die anderen laufen weiter.
 
-**Prüfen:** wie bei [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar), dazu
-`time ssh <ssh-alias> ls <Kamera> | wc -l` (ein Ordner mit rund 190.000 Dateien braucht einige Sekunden).
+**Prüfen:** wie bei [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar), dazu:
 
-**Ursache:** Die Storage Box antwortet für diesen Ordner nicht mehr rechtzeitig (Netzwerk,
-überlastete Box, sehr viele Dateien). Der Lauf bricht die Suche nach `image_scan_stall_timeout_seconds`
-ohne Fortschritt ab, statt ewig zu hängen. Beim Holen der Bilder wiederholt das Programm einen
-fehlgeschlagenen rsync nach Pausen von 30 und 120 Sekunden.
+```bash
+time ssh <ssh-alias> ls <Kamera> | wc -l     # ein Ordner mit rund 190.000 Dateien braucht einige Sekunden
+```
 
-**Lösung:** Verbindung prüfen, die Kamera mit `--target-date` nachholen. Tritt es bei einer Kamera
-dauerhaft auf, mit dem [Speicherfilter](werkzeuge.md) prüfen, ob ihr Ordner ungewöhnlich voll ist.
+**Ursache:** Die Storage Box antwortet für diesen Ordner nicht rechtzeitig: Netzwerk, überlastete
+Box oder sehr viele Dateien. Damit der Lauf nicht ewig hängt, bricht er die Suche ab, wenn
+`image_scan_stall_timeout_seconds` lang nichts vorangeht. Einen fehlgeschlagenen rsync beim
+Holen der Bilder wiederholt das Programm nach 30 und nach 120 Sekunden.
+
+**Lösung:** Verbindung prüfen und die Kamera mit `--target-date` nachholen. Passiert es bei einer
+Kamera immer wieder, mit dem [Speicherfilter](werkzeuge.md) nachsehen, ob ihr Ordner ungewöhnlich
+voll ist.
 
 ### Eine Kamera hat keine Bilder
 
@@ -384,15 +393,48 @@ WARNING | Available image range: 2026-09-14 - 2026-10-02
 **Prüfen:**
 
 ```bash
-ssh <ssh-alias> ls -t <Kamera> | head -5     # neueste Dateien auf der Storage Box
+ssh <ssh-alias> ls -t <Kamera> | head -5     # die neuesten Dateien auf der Storage Box
 ```
 
-**Ursache:** Die Kamera lädt nichts hoch (offline, Strom, Netz, Speicherkarte) oder liefert ein
-unbekanntes Dateinamenformat. `Available image range` zeigt, bis wann zuletzt Bilder kamen.
+**Ursache:** Die Kamera lädt nichts hoch (offline, Strom, Netz, Speicherkarte), oder ihre Dateien
+haben ein unbekanntes Namensformat. `Available image range` zeigt, bis wann zuletzt Bilder kamen.
 
-**Lösung:** Kein Programmfehler. Kamera bzw. Upload prüfen lassen. Ist die Kamera dauerhaft außer
-Betrieb, sie in `ignored_cameras` eintragen. Ein neues Dateinamenformat muss in `src/images.py`
-ergänzt werden; Dateien mit unbekanntem Namen werden nie geraten, sondern übersprungen.
+**Lösung:** Das ist kein Programmfehler; die Kamera oder ihren Upload prüfen. Ist die Kamera
+dauerhaft außer Betrieb, sie in `ignored_cameras` eintragen. Ein neues Namensformat muss in
+`src/images.py` ergänzt werden. Dateien mit unbekanntem Namen errät das Programm nie, es lässt sie
+weg.
+
+### Kamera nicht gefunden oder ungültiger Name
+
+**Symptom:** Einer dieser Fälle:
+
+- `ERROR | Requested cameras not found: <Name>`: Der Befehl bricht ab, bevor ein Video entsteht.
+- Eine neue Kamera taucht weder im Nachtlauf noch in der Weboberfläche auf.
+- `WARNING | Skipping unsafe name on the storage box (camera listing): '<Name>'` oder
+  `(camera <Kamera>): '<Datei>'`.
+
+**Prüfen:**
+
+```bash
+TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list   # welche Namen kennt das Programm?
+ssh <ssh-alias> ls                                                         # welche Ordner liegen auf der Box?
+```
+
+**Ursache:**
+
+- `Requested cameras not found`: Der Name in `--cameras` passt nicht genau zu einem Ordner auf der
+  Storage Box. Groß- und Kleinschreibung zählt (`SLSV`, nicht `slsv`), oder die Kamera steht in
+  `ignored_cameras`.
+- Ein Kameraordner darf nur Buchstaben, Ziffern, `.`, `_` und `-` enthalten und muss mit einem
+  Buchstaben oder einer Ziffer beginnen. Ein Ordner mit Leerzeichen oder Umlaut (`Café Ufer`)
+  wird übersprungen; das Programm nimmt solche Namen aus Sicherheitsgründen nie in ssh- oder
+  rsync-Befehle.
+- Eine einzelne Datei mit seltsamem Namen (Steuerzeichen, `/`, beginnt mit `-`) wird ebenfalls
+  übersprungen. Der Rest der Kamera läuft normal weiter.
+
+**Lösung:** Den Namen genau so schreiben, wie `src.camera_list` ihn zeigt. Einen Kameraordner mit
+ungültigem Namen auf der Storage Box umbenennen lassen (und den Upload der Kamera mit). Einzelne
+übersprungene Dateien sind harmlos; häufen sie sich, den Upload der Kamera prüfen.
 
 ### Monats- oder Jahresvideo übersprungen
 
@@ -401,14 +443,25 @@ ergänzt werden; Dateien mit unbekanntem Namen werden nie geraten, sondern über
 ```text
 WARNING | Monthly coverage too low: 18 of 30 days available (minimum 25) - skipping camera: Strandallee
 WARNING | Yearly coverage partial: 331 of 365 days available (minimum 300) | missing: 2026-02-03 to 2026-02-12
+WARNING | No valid Monthly images available - skipping camera: <Kamera>
 ```
 
-**Ursache:** Für ein Monatsvideo braucht es Bilder an mindestens 25 von 30 Tagen, für ein
-Jahresvideo an 300 Tagen (`min_coverage_days`), jeweils im Mittagsfenster. „partial“ heißt: Video
-entsteht, die genannten Tage fehlen darin. „too low“ heißt: kein Video.
+**Ursache:** Ein Monatsvideo braucht Bilder an mindestens 25 von 30 Tagen, ein Jahresvideo an
+300 Tagen (`min_coverage_days`), jeweils im Mittagsfenster.
 
-**Lösung:** Meist nichts tun; das Video entsteht wieder, sobald genug Tage da sind. Für ein
-Jahresvideo trotz Lücken gibt es den [Yearly-Backfill](werkzeuge.md).
+- „partial“: Das Video entsteht, die genannten Tage fehlen darin.
+- „too low“: Es entsteht kein Video, das alte bleibt stehen.
+- „No valid Monthly images“: Im ganzen Monat gab es im Mittagsfenster kein einziges brauchbares
+  Bild (Kamera aus, nur leere Dateien oder eine falsche Uhrzeit im Dateinamen). Es entsteht kein
+  Video.
+
+Beim [Yearly-Backfill](werkzeuge.md) heißen die Meldungen `No valid Yearly images for <Jahr>` bzw.
+`No Yearly images selected for <Jahr>`; sie bedeuten dasselbe für ein ganzes Kalenderjahr.
+
+**Lösung:** Meist nichts tun: Das Video entsteht wieder, sobald genug Tage da sind. Ein
+Jahresvideo trotz Lücken baut der [Yearly-Backfill](werkzeuge.md). Kommt „No valid Monthly images“
+öfter, die Bilder der Kamera um die Mittagszeit ansehen (Uhrzeit im Dateinamen falsch? nur leere
+Dateien?).
 
 ### Wochenvideo mit fehlenden Tagen
 
@@ -420,12 +473,25 @@ WARNING | Weekly will be created with 5 of 7 Daily videos.
 WARNING | No Daily videos available - skipping Weekly for camera: Bootshaus
 ```
 
-**Ursache:** Das Wochenvideo besteht aus den Tagesvideos der letzten 7 Tage. Fehlt ein Tagesvideo
-(Kamera ohne Bilder, Lauf ausgefallen), fehlt der Tag auch in der Woche.
+Bei einem von Hand gestarteten Weekly (`--target-date`):
 
-**Lösung:** Die nächtliche Woche nutzt nur `videos/<Kamera>/daily/`; nachträglich erstellte
-Tagesvideos landen unter `manual-runs/` und zählen dort nicht. Für eine vollständige Woche ein
-historisches Weekly erstellen (`--jobs weekly --target-date <letzter Tag> --cameras <Kamera>`).
+```text
+WARNING | Missing Weekly image date: 2026-10-18
+WARNING | Weekly image coverage incomplete: 6 of 7 days available - skipping camera: <Kamera>
+```
+
+**Ursache:**
+
+- Das **nächtliche** Wochenvideo setzt die Tagesvideos der letzten 7 Tage zusammen. Fehlt ein
+  Tagesvideo (Kamera ohne Bilder, Lauf ausgefallen), fehlt der Tag auch in der Woche.
+- Ein **von Hand gestartetes** Weekly baut aus den Bildern selbst und braucht alle 7 Tage. Fehlt
+  einer, entsteht kein Video.
+
+**Lösung:** Das nächtliche Weekly nimmt nur Videos aus `videos/<Kamera>/daily/`. Nachträglich
+gebaute Tagesvideos landen in `manual-runs/` und zählen dort nicht mit. Für eine vollständige
+Woche ein Weekly von Hand bauen:
+`--jobs weekly --target-date <letzter Tag> --cameras <Kamera>`. Meldet das „incomplete“, fehlen
+an dem genannten Tag wirklich Bilder; dann eine Woche wählen, in der alle Tage da sind.
 
 ### Leere oder abgeschnittene Bilder
 
@@ -436,11 +502,11 @@ WARNING | Camera SKM-Mardorf: excluded 6 empty image files
 WARNING | Skipping truncated image (no JPEG end marker): temp/frame-cache/<Lauf>/Uferstrasse/uferstrasse_….jpg
 ```
 
-**Ursache:** Ein Upload der Kamera brach ab (0 Byte oder ohne JPEG-Ende). Das Programm lässt solche
-Bilder weg; ohne diesen Filter würde ein halbes Bild mit dem Rest des Vortags im Video landen.
+**Ursache:** Der Upload der Kamera brach ab: Die Datei hat 0 Byte oder kein JPEG-Ende. Das Programm
+lässt solche Bilder weg. Sonst landete ein halbes Bild mit dem grauen Rest im Video.
 
-**Lösung:** Nichts, solange es vereinzelt bleibt. Häuft es sich bei einer Kamera, deren Upload prüfen
-lassen; der [Speicherfilter](werkzeuge.md) listet alle betroffenen Dateien.
+**Lösung:** Nichts tun, solange es vereinzelt bleibt. Häuft es sich bei einer Kamera, ihren Upload
+prüfen. Der [Speicherfilter](werkzeuge.md) listet alle betroffenen Dateien.
 
 ### FFmpeg: `Permission denied`
 
@@ -458,25 +524,24 @@ ERROR | Failed to process timelapse for camera: SKM-Mardorf
 ls -ld ~/timelapse/videos ~/timelapse/videos/<Kamera> ~/timelapse/videos/<Kamera>/*/
 ```
 
-**Ursache:** Ein Ordner unter `videos/` gehört nicht dem Projektbenutzer, z. B. weil Videos als
-`root` kopiert oder ein Befehl mit `sudo` gestartet wurde.
+**Ursache:** Ein Ordner unter `videos/` gehört nicht dem Projektbenutzer, etwa weil jemand Videos
+als `root` kopiert oder einen Befehl mit `sudo` gestartet hat.
 
 **Lösung:**
 
 ```bash
 sudo chown -R "$(id -un):$(id -gn)" ~/timelapse/videos   # Eigentümer zurück auf den Projektbenutzer
-~/timelapse/install.sh permissions verify                  # Leserechte für www-data, dann prüfen
+~/timelapse/install.sh permissions verify                  # Leserechte für www-data setzen, dann prüfen
 ```
 
-`permissions` allein reicht hier nicht: es ändert nur Rechte, nicht den Eigentümer.
-
-Dann die Kamera mit `--target-date` nachholen. Läufe nie mit `sudo` starten.
+`permissions` allein reicht nicht: Es ändert nur die Rechte, nicht den Eigentümer. Danach die
+Kamera mit `--target-date` nachholen. Und: Läufe nie mit `sudo` starten.
 
 ### Video wirkt gestaucht oder hat schwarze Balken
 
-**Symptom:** Ein Video ist schmaler oder breiter gestaucht als erwartet, oder die Bilder ab einem
-Datum haben schwarze Balken. Im Protokoll steht `Frames of 2 different sizes (640x480, 1920x1080):
-fitting every frame into 1920x1080`.
+**Symptom:** Ein Video ist gestaucht, oder die Bilder haben ab einem bestimmten Datum schwarze
+Balken. Im Protokoll steht `Frames of 2 different sizes (640x480, 1920x1080): fitting every frame
+into 1920x1080`.
 
 **Prüfen:**
 
@@ -484,39 +549,41 @@ fitting every frame into 1920x1080`.
 ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 <Video>.mp4
 ```
 
-**Ursache:** Eine Kamera wurde getauscht, die neuen Bilder haben eine andere Größe (Beispiel
-Uferstrasse: 640×480 bis August 2026, danach 1920×1080). FFmpeg nimmt die Größe des ersten Bildes
-und streckt alle anderen darauf; deshalb wirkte ein Jahresvideo über den Wechsel hinweg gestaucht.
-Seit dem 30.10.2026 passt das Programm bei Daily, Monthly und Yearly alle Bilder in die größte
-vorkommende Größe ein: Seitenverhältnis bleibt, schwarze Balken füllen den Rest (die alten
-4:3-Bilder bekommen Balken links und rechts und sind etwas weicher, weil sie vergrößert werden).
-Haben alle Bilder dieselbe Größe, ändert sich nichts.
+**Ursache:** Die Kamera wurde getauscht, und die neuen Bilder haben eine andere Größe (Uferstrasse:
+640×480 bis August 2026, danach 1920×1080). FFmpeg nimmt die Größe des ersten Bildes und streckt
+alle anderen darauf. So wirkte ein Jahresvideo über den Wechsel hinweg gestaucht.
 
-**Lösung:** Meist nichts: die Balken sind gewollt, und sie verschwinden von selbst, wenn die alten
-Bilder aus dem Zeitraum fallen (beim Yearly nach 365 Tagen). Ein Video, das vor der Korrektur
-entstanden ist, bleibt gestaucht, bis es neu erstellt wird (das nächtliche Yearly ersetzt sich
-selbst). **Bekannte Lücke:** Das Weekly setzt
-fertige Tagesvideos zusammen und passt nichts an; liegt ein Kamerawechsel in den 7 Tagen, kann es
-gestaucht sein.
+Seit dem 30.10.2026 passt das Programm bei Daily, Monthly und Yearly alle Bilder in die größte
+vorkommende Größe ein. Das Seitenverhältnis bleibt, schwarze Balken füllen den Rest. Die alten
+4:3-Bilder bekommen also Balken links und rechts und sind etwas weicher, weil sie vergrößert
+werden. Haben alle Bilder dieselbe Größe, ändert sich nichts.
+
+**Lösung:** Meist nichts tun. Die Balken sind gewollt und verschwinden von selbst, sobald die alten
+Bilder aus dem Zeitraum fallen (beim Yearly nach 365 Tagen). Ein Video, das vor dem 30.10.2026
+entstanden ist, bleibt gestaucht, bis es neu gebaut wird; das nächtliche Yearly ersetzt sich
+selbst.
+
+**Bekannte Lücke:** Das Weekly setzt fertige Tagesvideos zusammen und passt nichts an. Liegt ein
+Kamerawechsel in den 7 Tagen, kann es gestaucht sein.
 
 ### Videodateien zu groß oder Qualität nicht gut genug
 
-**Hintergrund:** Die Qualität steuert x264 über den CRF-Wert: niedriger ist besser und größer,
-höher ist kleiner. Der Standard ist seit dem 30.10.2026 **28** (`timelapse.crf` in
+**Hintergrund:** Die Qualität steuert der CRF-Wert von x264: niedriger heißt besser und größer,
+höher heißt kleiner. Seit dem 30.10.2026 ist der Standard **28** (`timelapse.crf` in
 `config/config.json`). An einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 %
-kleiner als bei CRF 23 (9,9 statt 21,2 MiB), bei der Durchsicht ohne sichtbaren Mangel.
+kleiner als mit CRF 23 (9,9 statt 21,2 MiB), ohne sichtbaren Mangel.
 
-**Lösung:** Dauerhaft `timelapse.crf` ändern (ganze Zahl 0 bis 51). Für einen einzelnen Lauf den
-Wert vor den Befehl setzen:
+**Lösung:** Für dauerhaft `timelapse.crf` ändern (ganze Zahl von 0 bis 51). Für einen einzelnen
+Lauf den Wert vor den Befehl setzen:
 
 ```bash
 TIMELAPSE_X264_CRF=23 .venv/bin/python3 -m src.main --jobs yearly --target-date <Datum> --cameras <Kamera>
 ```
 
-Ein ungültiger Wert bricht das Encodieren mit `TIMELAPSE_X264_CRF must be a whole number from 0 to
-51` (bzw. `timelapse.crf must be ...`) ab, es entsteht kein Video. Die Änderung gilt nur für neu
-erstellte Videos. `TIMELAPSE_X264_PRESET` ändert dagegen Laufzeit, Speicherbedarf und Größe, nicht
-den CRF-Wert ([Konfiguration](konfiguration.md#umgebungsvariablen)).
+Ein ungültiger Wert bricht das Encodieren ab, und es entsteht kein Video. Die Meldung lautet
+`TIMELAPSE_X264_CRF must be a whole number from 0 to 51` (bzw. `timelapse.crf must be ...`). Die
+Änderung gilt nur für neue Videos. `TIMELAPSE_X264_PRESET` ändert dagegen Laufzeit,
+Speicherbedarf und Größe, nicht den CRF-Wert ([Konfiguration](konfiguration.md#umgebungsvariablen)).
 
 ### Festplatte voll
 
@@ -529,36 +596,36 @@ df -h ~/timelapse
 du -sh ~/timelapse/videos/*/manual-runs ~/timelapse/temp ~/timelapse/logs | sort -h | tail
 ```
 
-**Ursache:** Meist viele Videos unter `manual-runs/` (werden nie automatisch gelöscht) oder Reste in
-`temp/` nach einem abgebrochenen Lauf.
+**Ursache:** Meist liegen viele Videos in `manual-runs/` (sie werden nie automatisch gelöscht),
+oder ein abgebrochener Lauf hat Reste in `temp/` hinterlassen.
 
-**Lösung:** Nicht mehr benötigte Videos über die Weboberfläche löschen. Ordner in `temp/` dürfen
-gelöscht werden, wenn kein Lauf aktiv ist. Nach dem Aufräumen die betroffenen Kameras nachholen.
+**Lösung:** Alte Videos über die Weboberfläche löschen. Ordner in `temp/` darf man löschen, wenn
+kein Lauf aktiv ist. Danach die betroffenen Kameras nachholen.
 
 ### Lauf meldet Erfolg, aber Kameras fehlen
 
 **Symptom:** Der Lauf endet ohne Fehler, trotzdem fehlen Videos.
 
-**Prüfen:** die Zusammenfassungen (`grep -h "job finished" logs/*/<Datum>.log`); bei `failed=` > 0
-die Zeilen mit `ERROR` und den Traceback davor lesen.
+**Prüfen:** die Zusammenfassungen lesen (`grep -h "job finished" logs/*/<Datum>.log`). Steht bei
+`failed=` mehr als 0, die Zeilen mit `ERROR` und den Traceback davor lesen.
 
-**Ursache:** Fehler einzelner Kameras (Zugriff auf die Storage Box, FFmpeg, Dateirechte) werden abgefangen, damit die
-übrigen Kameras weiterlaufen; der Exit-Code von `src.main` bleibt 0 (der
-Nachtlauf-Wrapper meldet es trotzdem: Exit-Code 1 und der Bericht).
+**Ursache:** Fehler einer einzelnen Kamera (Zugriff auf die Storage Box, FFmpeg, Dateirechte)
+fängt das Programm ab, damit die anderen Kameras weiterlaufen. Der Exit-Code von `src.main` bleibt
+deshalb 0. Der Nachtlauf-Wrapper meldet es trotzdem: mit Exit-Code 1 und im Bericht.
 
-**Lösung:** Ursache aus dem Traceback beheben (siehe die Fälle oben), Kamera nachholen.
+**Lösung:** Die Ursache aus dem Traceback beheben (siehe die Fälle oben) und die Kamera nachholen.
 
 ### Lauf wurde nach einem Neustart nicht wiederholt
 
-**Symptom:** Der Server wurde mitten im Lauf neu gestartet; die Videos dieser Nacht fehlen und es
-beginnt kein zweiter Lauf.
+**Symptom:** Der Server ist mitten im Lauf neu gestartet. Die Videos dieser Nacht fehlen, und es
+startet kein zweiter Lauf.
 
-**Ursache:** So eingerichtet: `install.sh` legt keine `@reboot`-Zeile an. Der Marker
-`state/run-in-progress` bleibt bestehen und zeigt, dass ein Lauf unterbrochen wurde.
+**Ursache:** Das ist so gewollt: `install.sh` legt keine `@reboot`-Zeile an. Der Marker
+`state/run-in-progress` bleibt liegen und zeigt, dass ein Lauf unterbrochen wurde.
 
-**Lösung:** Den Lauf von Hand wiederholen ([Nächtlicher Lauf](#nächtlicher-lauf)); vorher mit
-`pgrep -af src.main` prüfen, dass keiner läuft. Startet der Rechner immer wieder neu, den
-Arbeitsspeicher prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
+**Lösung:** Mit `pgrep -af src.main` prüfen, dass nichts läuft, dann den Lauf von Hand wiederholen
+([Nächtlicher Lauf](#nächtlicher-lauf)). Startet der Rechner immer wieder neu, den Arbeitsspeicher
+prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
 
 ---
 
