@@ -99,6 +99,10 @@ flock -n state/zeitraffer-run.lock -c true && echo "Sperre frei" || echo "Sperre
 pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
 ```
 
+`blur_box --all-blur-cameras` (ohne `--catch-up`) und `blur_watch` erscheinen alle 5 Minuten für
+höchstens ein paar Minuten: das ist die laufende Verpixelung mit ihrem Wächter. Sie nehmen die
+Laufsperre nicht und blockieren keinen Zeitraffer-Lauf.
+
 ### Zusammenfassung eines Laufs lesen
 
 Jeder Job endet mit einer Zeile wie:
@@ -132,7 +136,7 @@ zurück (Schritt 3); den Zugang zur Storage Box (Schritt 5) und Cron (Schritt 6)
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` grün |
 | 5 | Zugriff auf die Storage Box einrichten ([Installation](installation.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt die eine 02:00-Zeile mit Verpixelung, Nachtlauf, Upload und Flagger (`./install.sh cron_hint` druckt sie, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
+| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: 02:00 mit Verpixelung nachholen, Nachtlauf, Upload und Flagger, dazu alle 5 Minuten die laufende Verpixelung und ihren Wächter (`./install.sh cron_hint` druckt alle drei, siehe [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
 | 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`; `./install.sh verify` (prüft, repariert nichts) zeigt kein `WARNING` |
 | 8 | Tests | `.venv/bin/python3 -m pytest` grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | in `logs/daily/<Datum>.log` steht eine Zusammenfassung mit `created` > 0 |

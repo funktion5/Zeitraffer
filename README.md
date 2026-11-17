@@ -32,7 +32,7 @@ Jede Nacht um 2 Uhr startet der Server von selbst vier Schritte nacheinander. Ni
 ```
  02:00 Uhr
    │
-   ├─ 1. Menschen unkenntlich machen   (nur bei Kameras, auf denen Menschen zu sehen sind)
+   ├─ 1. Menschen unkenntlich machen   (nachholen, was tagsüber liegen geblieben ist)
    │
    ├─ 2. Videos bauen                  (Tag, Woche, Monat, Jahr – für jede Kamera)
    │
@@ -43,6 +43,10 @@ Jede Nacht um 2 Uhr startet der Server von selbst vier Schritte nacheinander. Ni
 
 Geht bei einem Schritt etwas schief, laufen die nächsten trotzdem weiter. Jeder Lauf schreibt einen
 Bericht, in dem sich Fehler nachlesen lassen.
+
+Außerdem arbeitet der Server rund um die Uhr: Alle 5 Minuten prüft er die neuen Bilder der Kameras,
+auf denen Menschen zu sehen sind, und macht sie unkenntlich (siehe „Menschen und Kennzeichen“). Ein
+Wächter meldet im Protokoll, wenn ein Bild länger als 10 Minuten ungeprüft liegen bleibt.
 
 ## Die vier Videos
 
@@ -145,6 +149,12 @@ Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
    hochladen“ öffnen, die fehlenden Videos neu erstellen, ansehen und danach auf die Website
    übertragen ([so geht es](docs/weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)).
 
+7. **Das Webcam-Bild auf der Website ist bei Scheunenviertel oder SLSV alt, oder es zeigt einen
+   Menschen unverpixelt:** Die Website holt die Bilder dieser Kameras nur, wenn sie geprüft sind, und
+   dafür führt sie eine eigene Liste der Kameras. Diese Liste und die Liste auf der Seite
+   „Einstellungen → Verpixelung“ müssen genau gleich sein:
+   [Handbuch – Blur-Kamera hinzufügen oder entfernen](docs/handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
+
 Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.md](docs/handbuch.md).
 
 ## Kleines Wörterbuch
@@ -173,6 +183,7 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | das WordPress-Plugin verstehen | [docs/wordpress.md](docs/wordpress.md) |
 | einen Lauf von Hand starten | [docs/cli.md](docs/cli.md) |
 | Hilfsprogramme nutzen (Speicherfilter, Jahresvideos nachholen, NAS-Archiv) | [docs/werkzeuge.md](docs/werkzeuge.md) und [docs/nas.md](docs/nas.md) |
+| Zusatzmodule ansehen, die vorhanden, aber nicht eingeschaltet sind | [extras/README.md](extras/README.md) |
 | nachlesen, was früher war (Raspberry Pi, Docker-Test) | [archive/README.md](archive/README.md) |
 | YouTube-Beschreibungen schreiben | [youtube/description-prompt](docs/youtube/youtube-description-prompt.md) und [youtube/texts](docs/youtube/youtube-texts.md) |
 | Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
