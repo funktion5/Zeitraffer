@@ -1,12 +1,12 @@
 # Handbuch
 
-Für Entwicklerinnen und Entwickler, die Zeitraffer betreuen: wie es installiert wird, wie man jeden
-Job startet und was bei Fehlern zu tun ist. Einen Überblick gibt das [README](../README.md), die
-ausführlichen Beschreibungen stehen in den anderen Dateien in diesem Ordner; dieses Handbuch
-verweist dorthin, statt sie zu wiederholen.
+Dieses Handbuch ist für alle, die Zeitraffer betreuen. Es zeigt, wie man das System installiert,
+wie man jeden Job startet und was man bei Fehlern tut. Den Überblick gibt das
+[README](../README.md). Die Details stehen in den anderen Dateien in diesem Ordner; das Handbuch
+verlinkt dorthin, statt alles zu wiederholen.
 
-In den Befehlen steht `~/timelapse` für den Projektordner und `<Kamera>`, `<Datum>` (JJJJ-MM-TT)
-für die jeweiligen Werte.
+In den Befehlen steht `~/timelapse` für den Projektordner. `<Kamera>` und `<Datum>` (JJJJ-MM-TT)
+ersetzt man durch die echten Werte.
 
 ## Inhalt
 
@@ -24,72 +24,71 @@ für die jeweiligen Werte.
 
 ## Überblick
 
-Stand: Der Betrieb läuft seit dem 30.10.2026 auf einem VPS (Debian 13); der frühere Raspberry Pi
-ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
+Seit dem 30.10.2026 läuft alles auf einem VPS (Debian 13). Der frühere Raspberry Pi ist
+stillgelegt; was von ihm übrig ist, liegt im [Archiv](../archive/README.md).
 
 ### Was wann läuft
 
-| Was | Wann | Gestartet von |
+| Was | Wann | Wer startet es |
 |---|---|---|
-| Nächtlicher Lauf (Daily, Weekly, Monthly, Yearly für alle Kameras) | 02:00 Uhr | Cron |
+| Verpixelung neuer Bilder (prüft und markiert jedes Bild) | alle 5 Minuten, rund um die Uhr | Cron |
+| Wächter der Verpixelung (meldet liegen gebliebene Bilder, ändert nichts) | alle 5 Minuten | Cron |
+| Verpixelung nachholen (was in den letzten 48 Stunden liegen blieb) | 02:00 Uhr | Cron |
+| Nächtlicher Lauf: Daily, Weekly, Monthly und Yearly für alle Kameras | direkt danach | Cron |
+| Upload der Videos auf die Website ([betrieb.md](betrieb.md#upload-auf-die-website)) | direkt nach dem Nachtlauf | Cron |
+| Highlights-Flagger | direkt nach dem Upload, also ohne feste Uhrzeit | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
-| Upload der Videos auf die Website | direkt nach dem Nachtlauf, vor dem Flagger, in derselben Cron-Zeile ([betrieb.md](betrieb.md#upload-auf-die-website)) | Cron |
-| Highlights-Flagger | direkt nach dem Upload, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
-| Verpixelung auf der Storage Box (laufende Runde, markiert jedes geprüfte Bild) | alle 5 Minuten, rund um die Uhr (seit 16.11.2026) | Cron |
-| Wächter der Verpixelung (meldet liegen gebliebene Bilder, nur lesend) | alle 5 Minuten | Cron |
-| Nachholen der Verpixelung (offene Bilder der letzten 48 h) | 02:00 Uhr, vor dem Zeitraffer-Lauf | Cron |
-| Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
+| Verpixelung für ein von Hand gestartetes Video einer Blur-Kamera | automatisch bei jedem solchen Video; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
+
+Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinander.
 
 ### Wo was liegt
 
 | Was | Wo |
 |---|---|
-| Kamerabilder (Original, **nur lesen**) | Storage Box; die Jobs holen die nötigen Bilder per rsync nach `temp/frame-cache/` |
-| Einstellungen | `config/config.json` (Standardwerte, in git); darüber die Änderungen aus der Weboberfläche: `config/settings.json` (Reiter „Allgemein“) und `config/settings-privacy.json` (Reiter „Verpixelung“), beide nicht in git und je Host |
-| Liste der Blur-Kameras des Abholjobs der Website (**zweite Konfiguration**) | `webcam_list.config` auf dem Server, auf dem das Abholskript der Website läuft (der genaue Pfad ist im Skript eingetragen); nicht in diesem Repository. Muss dieselben Kameras enthalten wie unsere Liste, siehe [Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen) |
+| Kamerabilder (Originale, **nur lesen**) | Storage Box. Die Jobs kopieren die Bilder, die sie brauchen, per rsync nach `temp/frame-cache/` |
+| Einstellungen | `config/config.json` enthält die Standardwerte (in git). Was in der Weboberfläche geändert wird, steht darüber in `config/settings.json` (Reiter „Allgemein“) und `config/settings-privacy.json` (Reiter „Verpixelung“). Beide Dateien sind nicht in git und gelten nur für diesen Host |
+| Liste der Blur-Kameras des Abholjobs der Website (**zweite Konfiguration**) | `webcam_list.config` auf dem Server, auf dem das Abholskript der Website läuft (der genaue Pfad steht im Skript). Nicht in diesem Repository. Muss dieselben Kameras enthalten wie unsere Liste, siehe [Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen) |
 | Nächtliche Videos | `videos/<Kamera>/{daily,weekly,monthly,yearly}/` |
 | Videos aus Weboberfläche und Befehl | `videos/<Kamera>/manual-runs/<job>/` |
 | Highlights | `videos/<Kamera>/highlights/<Datum>/` |
-| Protokolle | `logs/<job>/<Datum des Laufs>.log`, z. B. `logs/daily/`, `logs/flagger/`; Verpixelung und Wächter: `logs/privacy/<Datum>.log` |
+| Protokolle | `logs/<job>/<Datum>.log`, z. B. `logs/daily/` oder `logs/flagger/`. Verpixelung und Wächter: `logs/privacy/<Datum>.log` |
+| Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
 | Laufsperre | `state/zeitraffer-run.lock` |
 | Sperre der Box-Verpixelung | `state/privacy-blur.lock` |
 | Status der Box-Verpixelung | `state/privacy/box/<Kamera>/<JJJJ-MM>.jsonl` |
 | Marker „nächtlicher Lauf unterbrochen“ | `state/run-in-progress` |
 | Status der Web-Aufträge | `state/web-jobs/` |
-| Zwischendateien | `temp/` |
-| Bericht des Nachtlaufs | `logs/nightly/<Lauf>/report.txt` |
 | Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
-| Installierte Web-Wrapper | `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen), `timelapse-web-settings` (Einstellungen speichern), `timelapse-web-preview` (Vorschaubild einer Verpixelungs-Kamera holen); `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
+| Zwischendateien | `temp/` |
+| Installierte Web-Wrapper | In `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen), `timelapse-web-settings` (Einstellungen speichern), `timelapse-web-preview` (Vorschaubild einer Blur-Kamera holen). In `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
 
-- **Immer nur ein Lauf auf einmal.** Nächtlicher Lauf, Web-Aufträge, Flagger, Speicherfilter und
-  Backfill teilen sich die Sperre `state/zeitraffer-run.lock`; das nächtliche Nachholen der
-  Verpixelung läuft unter derselben Sperre. Die Verpixelung auf der Storage Box hat zusätzlich
-  eine eigene Sperre (`state/privacy-blur.lock`), damit sich zwei Runden nie überschneiden; ohne
-  `flock` gestartet läuft sie auch parallel zum Zeitraffer-Lauf. Wer eine Sperre nicht bekommt,
-  bricht ab oder überspringt.
-- **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln zuerst ihre Bilder auf
-  der Storage Box (gemessen: ein Monatsvideo mit 360 Bildern 55 Minuten) und halten die Laufsperre
-  die ganze Zeit. Ein Auftrag, der über 02:00 hinausläuft, lässt den Nachtlauf ausfallen.
-- **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
-  Storage Box ist die einzige Ausnahme und sichert vorher das Original (auch bei von Hand
-  gestarteten Videos von Blur-Kameras). Dazu gehört die Markierung `blur:checked=true` (21 Bytes,
-  kein Pixel), die die laufende Runde und das Nachholen in jedes geprüfte Bild schreiben; Bilder
-  ohne Person bekommen sie ohne Sicherung
+- **Immer nur ein Lauf auf einmal.** Nachtlauf, Web-Aufträge, Flagger, Speicherfilter, Backfill und
+  das nächtliche Nachholen der Verpixelung teilen sich eine Sperre: `state/zeitraffer-run.lock`.
+  Wer sie nicht bekommt, bricht ab oder überspringt. Die Verpixelung alle 5 Minuten hat ihre eigene
+  Sperre (`state/privacy-blur.lock`) und läuft deshalb auch neben einem Zeitraffer-Lauf.
+- **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln vorher ihre Bilder
+  auf der Storage Box und halten so lange die Laufsperre (gemessen: ein Monatsvideo mit 360 Bildern
+  brauchte 55 Minuten). Läuft so ein Auftrag über 02:00 hinaus, fällt der Nachtlauf aus.
+- **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur. Die einzige Ausnahme ist
+  die Verpixelung: Sie sichert das Original und ersetzt es dann durch die verpixelte Fassung. Außerdem
+  schreibt sie in jedes geprüfte Bild die Markierung `blur:checked=true` (21 Bytes, kein Pixel
+  ändert sich). Bilder ohne Person bekommen die Markierung ohne Sicherung
   ([verpixelung-box.md](verpixelung-box.md#markierung-für-die-webseite)).
 - **Die Blur-Kameras stehen in zwei Listen, und beide müssen gleich sein:** unsere (Reiter
   „Verpixelung“) und `webcam_list.config` beim Abholjob der Website. Wer die eine ändert, ändert die
   andere sofort mit ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)).
-- **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Bei `src.main` ist der Exit-Code
-  dann trotzdem 0; der Nachtlauf-Wrapper prüft das Ergebnis und endet in diesem Fall mit 1.
-  Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
-- **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst nach
-  `sudo install` (siehe [Installation](installation.md#wrapper-installieren)).
-- **Ein Neustart von Apache beendet einen laufenden Web-Auftrag.** Vorher `ls state/web-jobs/*.pid`
-  prüfen.
+- **„Erfolgreich“ heißt nicht „alle Kameras“.** `src.main` endet auch dann mit Exit-Code 0, wenn
+  Kameras gefehlt haben. Der Nachtlauf-Wrapper prüft das und endet dann mit 1. Verlässlich ist nur
+  die Zusammenfassung am Ende jedes Jobs (siehe unten).
+- **Die Web-Wrapper laufen aus installierten Kopien.** Eine Änderung unter `scripts/` wirkt erst,
+  wenn sie neu installiert ist ([Installation](installation.md#wrapper-installieren)).
+- **Ein Neustart von Apache bricht einen laufenden Web-Auftrag ab.** Vorher mit
+  `ls state/web-jobs/*.pid` nachsehen, ob einer läuft.
 
 ### Läuft gerade etwas?
 
@@ -99,20 +98,22 @@ flock -n state/zeitraffer-run.lock -c true && echo "Sperre frei" || echo "Sperre
 pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
 ```
 
-`blur_box --all-blur-cameras` (ohne `--catch-up`) und `blur_watch` erscheinen alle 5 Minuten für
-höchstens ein paar Minuten: das ist die laufende Verpixelung mit ihrem Wächter. Sie nehmen die
-Laufsperre nicht und blockieren keinen Zeitraffer-Lauf.
+`blur_box --all-blur-cameras` (ohne `--catch-up`) und `blur_watch` tauchen alle 5 Minuten kurz
+auf. Das ist die Verpixelung mit ihrem Wächter; sie blockieren keinen Zeitraffer-Lauf.
 
 ### Zusammenfassung eines Laufs lesen
 
-Jeder Job endet mit einer Zeile wie:
+Jeder Job endet mit einer Zeile wie dieser:
 
 ```text
 2026-10-22 02:05:21,134 | INFO | Daily timelapse job finished for 2026-10-21 | created=10 | skipped=4 | failed=0 | run_id=20261022T020002-1278463
 ```
 
-`created` = neue Videos, `skipped` = Kameras ohne genug Bilder (meist harmlos, siehe unten),
-`failed` = Kameras mit einem echten Fehler. Alle Zusammenfassungen eines Tages:
+- `created`: neue Videos.
+- `skipped`: Kameras ohne genug Bilder. Meist harmlos (siehe unten).
+- `failed`: Kameras mit einem echten Fehler. Hier lohnt sich ein Blick ins Protokoll.
+
+Alle Zusammenfassungen von heute auf einmal:
 
 ```bash
 grep -h "job finished" ~/timelapse/logs/*/$(date +%F).log
