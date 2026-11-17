@@ -60,12 +60,15 @@ Bericht, in dem sich Fehler nachlesen lassen.
   Nacht ausgelassen. Das alte Video bleibt dann stehen.
 - **Die Originalbilder verändert das Zeitraffer-Programm nie.** Die einzige Ausnahme ist das
   Unkenntlichmachen von Menschen (siehe unten): Dort ersetzt eine verpixelte Fassung das Bild auf
-  dem Online-Speicher, und das Original wird vorher gesichert.
+  dem Online-Speicher, und das Original wird vorher gesichert. Außerdem bekommt jedes geprüfte Bild
+  einen unsichtbaren Vermerk „geprüft“; am Bild selbst ändert der nichts.
 
 ## Menschen und Kennzeichen – der Datenschutz
 
 Auf manchen Kameras sind Menschen oder Autokennzeichen zu erkennen. Bei diesen Kameras (derzeit
-Scheunenviertel und SLSV) macht das Programm sie jede Nacht unkenntlich, **bevor** Videos gebaut werden.
+Scheunenviertel und SLSV) prüft das Programm jedes neue Bild innerhalb weniger Minuten und macht
+Menschen und Kennzeichen unkenntlich, **bevor** das Bild auf der Website erscheint oder in ein Video
+kommt. Die Website zeigt von diesen Kameras nur Bilder, die als „geprüft“ vermerkt sind.
 
 ```
  Bild vom Online-Speicher
@@ -80,7 +83,8 @@ Scheunenviertel und SLSV) macht das Programm sie jede Nacht unkenntlich, **bevor
  die Stelle wird verpixelt             │
           │                            │
           ▼                            ▼
- Erst jetzt darf das Bild in ein Video
+ Vermerk „geprüft“: erst jetzt darf das Bild
+ auf die Website und in ein Video
 ```
 
 Der Grundsatz heißt: **Im Zweifel lieber kein Video als ein ungeprüftes Bild.**
@@ -179,9 +183,8 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 
 ## Was noch fehlt
 
-Nachtlauf, Upload und Highlights laufen jede Nacht von selbst. Offen ist noch eine Sache: Neue
-Bilder werden bisher nur einmal pro Nacht verpixelt, nicht laufend am Tag. Dafür gibt es nur einen
-Entwurf, entschieden ist nichts.
+Nachtlauf, Upload und Highlights laufen jede Nacht von selbst, die Verpixelung neuer Bilder seit dem
+16.11.2026 alle 5 Minuten rund um die Uhr. Offen ist derzeit nichts Größeres.
 
 ## Für Entwickler
 

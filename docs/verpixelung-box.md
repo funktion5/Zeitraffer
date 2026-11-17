@@ -8,8 +8,10 @@ die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md
 verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
 jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
 erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
-Die laufende Runde ist noch nicht eingerichtet. Seit dem 16.11.2026 bekommt jedes geprüfte Bild die
-[Markierung für die Webseite](#markierung-für-die-webseite), und es gibt keine Nachtregel mehr.
+Seit dem 16.11.2026 (12:45) laufen die laufende Runde und der [Wächter](#wächter) per Cron alle
+5 Minuten, jedes geprüfte Bild bekommt die [Markierung für die Webseite](#markierung-für-die-webseite),
+und es gibt keine Nachtregel mehr. Der Abholjob der Website veröffentlicht von Blur-Kameras nur
+markierte Bilder; seine Kameraliste muss zu unserer passen (siehe [Konfiguration](#konfiguration)).
 
 Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
 Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
@@ -81,14 +83,14 @@ wieder mit dem neuesten Bild an. Neue Uploads warten also nie hinter einem lange
 
 ## Aufruf
 
-Testlauf von Hand, nur für die genannte Kamera:
+Lauf von Hand, nur für die genannte Kamera:
 
 ```bash
-.venv/bin/python3 -m src.privacy.blur_box --cameras BlurTest
+.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>
 ```
 
-Cron für die laufende Runde und den [Wächter](#wächter) (entschieden am 16.11.2026, **noch nicht
-eingerichtet**): beide alle 5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
+Cron für die laufende Runde und den [Wächter](#wächter) (eingerichtet am 16.11.2026): beide alle
+5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
 ihre Bilder ebenfalls alle 5 Minuten abholt und ihr Bild nur alle 15 Minuten erneuert. Die Grenze
 von 4 Minuten (`timeout -k 10 240`) beendet eine hängende Runde, bevor die nächste startet; sonst
 fände die nächste den Lock noch belegt und fiele aus.
@@ -100,9 +102,9 @@ fände die nächste den Lock noch belegt und fiele aus.
 
 `./install.sh cron_hint` druckt beide Zeilen mit dem echten Projektpfad und Alias.
 
-Bis dahin verpixelt nur das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
-[betrieb.md](betrieb.md#nächtlicher-produktionslauf)): in der ersten Nacht zwei Tage, danach jede
-Nacht den Vortag. Bis zum Lauf um 02:00 holt die Website unverpixelte Bilder ab.
+Dazu kommt das nächtliche Nachholen (`--catch-up`, Cron-Zeile in
+[betrieb.md](betrieb.md#nächtlicher-produktionslauf)): Es prüft um 02:00 die Bilder der letzten
+48 Stunden, die die Runden nicht geschafft haben, z. B. nach einem Ausfall.
 
 | Option | Bedeutung |
 |---|---|
@@ -191,9 +193,9 @@ In `config/config.json` (die Weboberfläche legt ihre Änderungen daran in `conf
 darüber, siehe unten):
 
 ```json
-"ignored_cameras": ["…", "BlurTest"],
+"ignored_cameras": ["…"],
 "privacy": {
-  "blur_cameras": ["BlurTest", "Scheunenviertel"],
+  "blur_cameras": ["Scheunenviertel", "SLSV"],
   "ignore_boxes": {"Scheunenviertel": [[703, 557, 742, 643]]},
   "ignore_top_share": 0.333,
   "detector_command": ["…"],
@@ -203,9 +205,10 @@ darüber, siehe unten):
 
 - `blur_cameras`: die Kameraordner, in die die Verpixelung schreiben darf. Der
   Konfigurationstest prüft die Namen mit denselben Regeln wie der Schreibcode.
-- `BlurTest` ist der Testordner. Er steht auch in `ignored_cameras`, sonst würden der nächtliche
-  Lauf und die Weboberfläche ihn als Kamera behandeln. Nach dem Test wird er aus beiden Listen
-  entfernt.
+- **Der Abholjob der Website hat eine eigene Liste** (`webcam_list.config`, auf dem Server des
+  Abholskripts, nicht in diesem Repository). Sie muss dieselben Kameras enthalten wie
+  `blur_cameras`; wer die eine ändert, ändert die andere mit. Reihenfolge und Folgen:
+  [Handbuch](handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
 - `ignore_boxes`: bekannte Fehlerkennungen pro Kamera, siehe unten.
 - `ignore_top_share`: Boxen überwiegend im oberen Bilddrittel werden verworfen und unter
   `ignored_boxes` festgehalten, wie in
@@ -223,11 +226,14 @@ lassen sich `blur_cameras`, die drei `blur`-Werte, `min_person_score`, `ignore_b
 `load_config()` legt sie über `config.json`. Der nächste Lauf liest sie, der Nachtlauf ebenso wie ein von Hand gestartetes Video.
 Für die Box-Verpixelung heißt das:
 
-- Eine **neu angehakte** Kamera wird ab der nächsten Nacht verpixelt, einschließlich der Bilder von
-  heute und den zwei Tagen davor. Ihre ersten automatischen Videos nutzen nur bestätigte Bilder
+- Eine **neu angehakte** Kamera wird ab der nächsten Runde (alle 5 Minuten) verpixelt, einschließlich
+  der Bilder von heute und den zwei Tagen davor (die Runden arbeiten den Rückstand nach und nach ab,
+  den Rest holt das Nachholen um 02:00). Ihre ersten automatischen Videos nutzen nur bestätigte Bilder
   ([Sperre](#sperre-in-automatischen-videos)) und können deshalb übersprungen oder kurz sein. Sie
   nutzt die Schwellen des Detektors für alle Kameras; ihre Qualität ist erst nach einem Blick auf
   die ersten Ergebnisse geprüft.
+- **Beide Fälle gehören auch in `webcam_list.config` des Abholjobs**, in der Reihenfolge aus dem
+  [Handbuch](handbuch.md#blur-kamera-hinzufügen-oder-entfernen).
 - Eine **abgewählte** Kamera wird nicht mehr verpixelt. Bei einer Kamera, die schon läuft, zeigt der
   Reiter „Wichtig!“ und einen eigenen Block im Bestätigungsdialog: Ihre neuen Bilder blieben
   unverpixelt, und die Videos zeigen Menschen wieder erkennbar.

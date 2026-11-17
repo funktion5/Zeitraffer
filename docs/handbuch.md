@@ -35,7 +35,9 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
 | Upload der Videos auf die Website | direkt nach dem Nachtlauf, vor dem Flagger, in derselben Cron-Zeile ([betrieb.md](betrieb.md#upload-auf-die-website)) | Cron |
 | Highlights-Flagger | direkt nach dem Upload, am Ende derselben Cron-Zeile (keine feste Uhrzeit) | Cron |
-| Verpixelung auf der Storage Box | nachts vor dem Zeitraffer-Lauf (Nachholen der letzten 48 h); die laufende Runde noch nicht in Cron | Cron |
+| Verpixelung auf der Storage Box (laufende Runde, markiert jedes geprüfte Bild) | alle 5 Minuten, rund um die Uhr (seit 16.11.2026) | Cron |
+| Wächter der Verpixelung (meldet liegen gebliebene Bilder, nur lesend) | alle 5 Minuten | Cron |
+| Nachholen der Verpixelung (offene Bilder der letzten 48 h) | 02:00 Uhr, vor dem Zeitraffer-Lauf | Cron |
 | Verpixelung der Bilder eines von Hand gestarteten Videos (Blur-Kameras) | bei jedem historischen Daily, Weekly, Monthly und Yearly dieser Kameras; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
@@ -44,11 +46,12 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 | Was | Wo |
 |---|---|
 | Kamerabilder (Original, **nur lesen**) | Storage Box; die Jobs holen die nötigen Bilder per rsync nach `temp/frame-cache/` |
-| Einstellungen | `config/config.json` |
+| Einstellungen | `config/config.json` (Standardwerte, in git); darüber die Änderungen aus der Weboberfläche: `config/settings.json` (Reiter „Allgemein“) und `config/settings-privacy.json` (Reiter „Verpixelung“), beide nicht in git und je Host |
+| Liste der Blur-Kameras des Abholjobs der Website (**zweite Konfiguration**) | `webcam_list.config` auf dem Server, auf dem das Abholskript der Website läuft (der genaue Pfad ist im Skript eingetragen); nicht in diesem Repository. Muss dieselben Kameras enthalten wie unsere Liste, siehe [Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen) |
 | Nächtliche Videos | `videos/<Kamera>/{daily,weekly,monthly,yearly}/` |
 | Videos aus Weboberfläche und Befehl | `videos/<Kamera>/manual-runs/<job>/` |
 | Highlights | `videos/<Kamera>/highlights/<Datum>/` |
-| Protokolle | `logs/<job>/<Datum des Laufs>.log`, z. B. `logs/daily/`, `logs/flagger/` |
+| Protokolle | `logs/<job>/<Datum des Laufs>.log`, z. B. `logs/daily/`, `logs/flagger/`; Verpixelung und Wächter: `logs/privacy/<Datum>.log` |
 | Laufsperre | `state/zeitraffer-run.lock` |
 | Sperre der Box-Verpixelung | `state/privacy-blur.lock` |
 | Status der Box-Verpixelung | `state/privacy/box/<Kamera>/<JJJJ-MM>.jsonl` |
@@ -73,7 +76,13 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
   die ganze Zeit. Ein Auftrag, der über 02:00 hinausläuft, lässt den Nachtlauf ausfallen.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur; die Verpixelung auf der
   Storage Box ist die einzige Ausnahme und sichert vorher das Original (auch bei von Hand
-  gestarteten Videos von Blur-Kameras).
+  gestarteten Videos von Blur-Kameras). Dazu gehört die Markierung `blur:checked=true` (21 Bytes,
+  kein Pixel), die die laufende Runde und das Nachholen in jedes geprüfte Bild schreiben; Bilder
+  ohne Person bekommen sie ohne Sicherung
+  ([verpixelung-box.md](verpixelung-box.md#markierung-für-die-webseite)).
+- **Die Blur-Kameras stehen in zwei Listen, und beide müssen gleich sein:** unsere (Reiter
+  „Verpixelung“) und `webcam_list.config` beim Abholjob der Website. Wer die eine ändert, ändert die
+  andere sofort mit ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)).
 - **Ein Lauf kann „erfolgreich“ enden, obwohl Kameras fehlten.** Bei `src.main` ist der Exit-Code
   dann trotzdem 0; der Nachtlauf-Wrapper prüft das Ergebnis und endet in diesem Fall mit 1.
   Maßgeblich ist die Zusammenfassung am Ende jedes Jobs (siehe unten).
@@ -87,7 +96,7 @@ ist stillgelegt (Ablage: [archive/README.md](../archive/README.md)).
 ```bash
 cd ~/timelapse
 flock -n state/zeitraffer-run.lock -c true && echo "Sperre frei" || echo "Sperre belegt"
-pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box"
+pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
 ```
 
 ### Zusammenfassung eines Laufs lesen
@@ -205,10 +214,46 @@ Details: [flagger.md](flagger.md).
   [verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Fortschritt:
   `tail -f logs/<job>/$(date +%F).log` (die Zeile `Blur:` nennt die Zahl der Bilder, jede
   `Replaced`-Zeile ist ein fertiges Bild).
+- Im Betrieb läuft alles per Cron: die laufende Runde und der Wächter alle 5 Minuten, das Nachholen
+  um 02:00 (`./install.sh cron_hint` druckt alle Zeilen). Läuft die Runde? Im Protokoll muss alle
+  5 Minuten eine Zeile `[<Kamera>] blurred=… clean=… …` und eine Wächter-Zeile
+  `Stale check: … nothing stale` stehen: `tail -n 20 logs/privacy/$(date +%F).log`.
 - Direkt auf der Storage Box: `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`
   ([verpixelung-box.md](verpixelung-box.md)). Schreibt auf die Box; vorher die dortige Anleitung
   lesen. Mit `--catch-up` (45 Minuten pro Kamera) holt es die offenen Bilder der letzten 48 Stunden
   in einem Lauf nach; so läuft es nachts per Cron.
+- Markierung eines Bildes prüfen (auch das Bild auf der Website, öffentlich):
+  `head -c 32 <bild>.jpg | grep -a 'blur:checked=true'`.
+
+#### Blur-Kamera hinzufügen oder entfernen
+
+Welche Kameras verpixelt werden, steht an **zwei** Stellen. Beide Listen müssen immer dieselben
+Kameras enthalten, mit denselben Ordnernamen wie auf der Storage Box (Groß- und Kleinschreibung
+zählt):
+
+1. **Unsere Liste:** Reiter „Verpixelung“ der Weboberfläche (`privacy.blur_cameras`, gespeichert in
+   `config/settings-privacy.json`; Standard in `config/config.json`). Sie sagt, wo die Runde
+   verpixelt und markiert.
+2. **Die Liste des Abholjobs:** `webcam_list.config` auf dem Server, auf dem das Abholskript der
+   Website läuft (der genaue Pfad ist im Skript eingetragen). Eine Zeile pro Kamera, `#` für
+   Kommentare. Sie sagt, bei welchen Kameras die Website **nur markierte** Bilder veröffentlicht.
+   Sie liegt nicht in diesem Repository: per ssh auf diesem Server anmelden, die Datei mit einem
+   Editor öffnen, die Zeile ergänzen oder löschen, speichern. Der nächste Lauf des Abholskripts
+   liest sie neu.
+
+Eine Änderung an der einen Liste ist erst fertig, wenn die andere genauso geändert ist. Was sonst
+passiert:
+
+| Kamera steht nur … | Folge |
+|---|---|
+| in unserer Liste | Die Website prüft die Markierung nicht und kann ein Bild **unverpixelt** veröffentlichen, bevor die Runde es getauscht hat (Datenschutz) |
+| in `webcam_list.config` | Kein Bild der Kamera wird mehr markiert; die Website zeigt dauerhaft das letzte markierte Bild und bekommt kein neues |
+
+Reihenfolge, damit kein unverpixeltes Bild durchrutscht: Beim **Hinzufügen** zuerst unsere Liste
+speichern und warten, bis im Protokoll die erste Zeile `[<Kamera>] blurred=… clean=…` steht, dann
+`webcam_list.config` ergänzen (dazwischen zeigt die Website schlimmstenfalls ein paar Minuten lang
+ungeprüfte Bilder wie bisher). Beim **Entfernen** zuerst `webcam_list.config` ändern, dann unsere
+Liste.
 
 ### Werkzeuge
 
@@ -250,7 +295,7 @@ von gestern.
 crontab -l                                   # 02:00-Zeile vorhanden?
 uptime                                       # lief der Rechner um 02:00?
 flock -n ~/timelapse/state/zeitraffer-run.lock -c true && echo frei || echo belegt
-pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box"
+pgrep -af "src.main|src.flagger|storage_filter|yearly-backfill|blur_box|blur_watch"
 ```
 
 **Ursache:** Cron startet den Lauf mit `flock -n`. Ist die Sperre um 02:00 belegt (Web-Auftrag,
@@ -844,6 +889,13 @@ Das erste heißt: N Bilder hat der Box-Job nicht bestätigt, das Video entsteht 
 zweite: gar kein Bild war bestätigt, die Kamera wird übersprungen und ihr bisheriges Video bleibt.
 Ursachen, Prüfung und Lösung:
 [verpixelung-box.md](verpixelung-box.md#fehlersuche).
+
+| Meldung oder Beobachtung | Ursache | Lösung |
+|---|---|---|
+| `[<Kamera>] N images unblurred for more than 10 minutes: …` (Wächter) | Die Runde hat diese Bilder nicht geprüft: Runde hängt oder läuft nicht, Detektor fällt aus, Box nicht erreichbar | Rundenzeilen im selben Protokoll lesen (`logs/privacy/<Datum>.log`), dann [verpixelung-box.md](verpixelung-box.md#fehlersuche) |
+| Keine Zeile `Stale check: …` im Protokoll | Der Wächter selbst läuft nicht | Cron-Zeile mit `crontab -l` prüfen |
+| Die Website zeigt bei einer Kamera seit langem dasselbe Bild | Die Kamera steht in `webcam_list.config`, aber nicht (mehr) in unserer Liste, also wird nichts markiert; oder die Runde läuft nicht (siehe Wächter) | beide Listen vergleichen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)); Markierung des neuesten Bildes prüfen |
+| Die Website zeigt bei einer Blur-Kamera ein unverpixeltes Bild | Die Kamera fehlt in `webcam_list.config`, der Abholjob prüft die Markierung dort nicht | die Kamera sofort in `webcam_list.config` eintragen ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) |
 
 ### Upload auf die Website
 
