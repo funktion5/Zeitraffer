@@ -635,61 +635,73 @@ prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
 
 **Symptom:** Der Browser fragt immer wieder nach Benutzername und Passwort.
 
-**Lösung:** Passwort neu setzen: `sudo htpasswd -B /etc/apache2/.htpasswd <login>` (`-B` für
-bcrypt, ohne `-c`, sonst wird die Datei mit allen anderen Logins überschrieben)
-([Installation](installation.md#basisauthentifizierung-einrichten)).
+**Lösung:** Das Passwort neu setzen:
+
+```bash
+sudo htpasswd -B /etc/apache2/.htpasswd <login>
+```
+
+`-B` speichert es mit bcrypt. **Kein `-c`:** Das legt die Datei neu an und löscht alle anderen
+Logins ([Installation](installation.md#basisauthentifizierung-einrichten)).
 
 ### `403 Forbidden`
 
-**Prüfen:** `tail /var/log/apache2/zeitraffer-error.log`; typisch ist
+**Prüfen:** `tail /var/log/apache2/zeitraffer-error.log`. Typisch ist
 `AH00035: ... search permissions are missing on a component of the path`.
 
-**Ursache:** `www-data` kommt nicht mehr ins Projekt, z. B. nach einer Neuinstallation oder nachdem
-Dateien von Hand kopiert wurden.
+**Ursache:** `www-data` kommt nicht mehr in den Projektordner, etwa nach einer Neuinstallation oder
+nachdem jemand Dateien von Hand kopiert hat.
 
-**Lösung:** `~/timelapse/install.sh permissions verify`. `permissions` setzt die Leserechte für
-`www-data` neu (nur Rechte, nicht den Eigentümer); `verify` repariert nichts, sondern prüft danach
-alles und meldet jedes Problem als `WARNING` (führt dabei die Tests aus und fragt nach dem
-`sudo`-Passwort).
+**Lösung:** `~/timelapse/install.sh permissions verify`.
+
+- `permissions` setzt die Leserechte für `www-data` neu (nur die Rechte, nicht den Eigentümer).
+- `verify` repariert nichts. Es prüft danach alles, meldet jedes Problem als `WARNING`, führt dabei
+  die Tests aus und fragt nach dem `sudo`-Passwort.
 
 ### Kameraliste leer
 
-**Prüfen:** `cat state/web-jobs/cameras.json` als Projektbenutzer. Fehlt die Datei oder steht `[]`
-darin, kennt die Weboberfläche keine Kamera.
+**Prüfen:** `cat state/web-jobs/cameras.json` als Projektbenutzer. Fehlt die Datei oder steht nur
+`[]` darin, kennt die Weboberfläche keine Kamera.
 
-**Ursache:** Die Liste schreibt der Nachtlauf und `python3 -m src.camera_list`; sie war noch nie
-geschrieben, die Storage Box war beim letzten Versuch nicht erreichbar (die alte Liste bleibt dann
-bestehen), oder alle Kameras stehen in `ignored_cameras`.
+**Ursache:** Die Liste schreiben der Nachtlauf und `python3 -m src.camera_list`. Sie ist leer, wenn
+einer dieser Fälle eintritt:
 
-**Lösung:** Die Storage Box prüfen (siehe [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar))
+- Sie wurde noch nie geschrieben.
+- Die Storage Box war beim letzten Versuch nicht erreichbar. Dann bleibt die alte Liste stehen.
+- Alle Kameras stehen in `ignored_cameras`.
+
+**Lösung:** Die Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar))
 und die Liste einmal von Hand schreiben:
 
 ```bash
 TIMELAPSE_STORAGE_BOX=<ssh-alias> .venv/bin/python3 -m src.camera_list
 ```
 
+Fehlt nur eine bestimmte Kamera, siehe
+[Kamera nicht gefunden oder ungültiger Name](#kamera-nicht-gefunden-oder-ungültiger-name).
+
 ### „Es läuft bereits ein anderer Zeitraffer-Auftrag.“
 
-**Ursache:** Die gemeinsame Sperre ist belegt: nächtlicher Lauf, Flagger, Speicherfilter, Backfill
-oder ein anderer Web-Auftrag.
+**Ursache:** Die gemeinsame Sperre ist belegt: vom Nachtlauf, vom Flagger, vom Speicherfilter, vom
+Backfill oder von einem anderen Web-Auftrag.
 
-**Lösung:** [Prüfen, was läuft](#läuft-gerade-etwas), abwarten, erneut starten.
+**Lösung:** [Nachsehen, was läuft](#läuft-gerade-etwas), abwarten und dann erneut starten.
 
 ### „Video erstellen“ ist grau
 
 **Ursache:** In diesem Browser-Tab läuft noch ein Auftrag; die Statuszeile über dem Formular nennt
-ihn. Der Button wird frei, sobald das Ergebnisfenster erscheint.
+ihn. Der Button wird wieder frei, sobald das Ergebnisfenster erscheint.
 
-**Lösung:** Abwarten. Hängt es, siehe [Auftrag scheint zu hängen](#auftrag-scheint-zu-hängen); ein
+**Lösung:** Abwarten. Hängt es, siehe [Auftrag scheint zu hängen](#auftrag-scheint-zu-hängen). Ein
 Auftrag, dessen Worker nie gestartet ist, gilt nach einer Minute als fehlgeschlagen.
 
 ### „Das Löschen hat nicht geklappt. Bitte die Seite neu laden.“
 
-**Ursache:** Die Löschanfrage im Hintergrund kam nicht an oder die Antwort war unbrauchbar
-(Netz weg, Sitzung abgelaufen, Fehler auf dem Server). Andere Gründe (z. B. „Die Anfrage ist ungültig
-(Sicherheitstoken).“) stehen ebenfalls im Bestätigungsdialog.
+**Ursache:** Die Löschanfrage kam nicht an, oder die Antwort war unbrauchbar: Netz weg, Sitzung
+abgelaufen oder ein Fehler auf dem Server. Andere Gründe, etwa „Die Anfrage ist ungültig
+(Sicherheitstoken).“, stehen direkt im Bestätigungsdialog.
 
-**Lösung:** Seite neu laden und erneut löschen; wenn es wieder scheitert,
+**Lösung:** Seite neu laden und noch einmal löschen. Scheitert es wieder:
 `tail /var/log/apache2/zeitraffer-error.log`.
 
 ### „Der Videoauftrag konnte nicht gestartet werden.“
@@ -702,79 +714,95 @@ cmp scripts/web/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
 tail /var/log/apache2/zeitraffer-error.log
 ```
 
-**Ursache:** sudoers-Regel fehlt, installierter Wrapper fehlt oder veraltet, oder der Projektordner
-gehört `root` (dann verweigert die Seite den Start bewusst).
+**Ursache:** Eins von diesen:
 
-**Lösung:** Wrapper und sudoers nach [Installation](installation.md#wrapper-installieren) neu einrichten.
+- Die sudoers-Regel fehlt.
+- Der installierte Wrapper fehlt oder ist veraltet.
+- Der Projektordner gehört `root`. Dann verweigert die Seite den Start absichtlich.
+
+**Lösung:** Wrapper und sudoers neu einrichten, wie in der
+[Installation](installation.md#wrapper-installieren) beschrieben.
 
 ### „Der Videoauftrag wurde abgelehnt oder konnte nicht gestartet werden.“
 
-**Prüfen:** `grep -E "(Video|Rebuild|Publish) wrapper failed with exit code" /var/log/apache2/zeitraffer-error.log | tail -3` (die drei Namen stehen für das historische Video, das Neuerstellen und den Upload)
+**Prüfen:**
 
-**Ursache:** Der Wrapper lief, hat den Auftrag aber abgelehnt. Der Exit-Code im Protokoll sagt warum:
+```bash
+grep -E "(Video|Rebuild|Publish) wrapper failed with exit code" /var/log/apache2/zeitraffer-error.log | tail -3
+```
 
-| Code | Bedeutung |
-|---|---|
-| 66 | Die Kamera steht nicht in der Kameraliste `state/web-jobs/cameras.json` |
-| 64 | Ungültige Eingabe (Datum, Job, Zeitfenster oder Zahl der Argumente) |
-| 69 | Worker oder Status-Hilfsskript unter `/usr/local/libexec/` fehlt |
+`Video` steht für das historische Video, `Rebuild` für das Neuerstellen, `Publish` für den Upload.
 
-**Lösung:** Bei 66 [Kameraliste leer](#kameraliste-leer); bei 69
-die Wrapper neu installieren; bei 64 prüfen, ob installierter Wrapper und Weboberfläche zueinander
-passen (`cmp` wie oben).
+**Ursache:** Der Wrapper lief, hat den Auftrag aber abgelehnt. Der Exit-Code sagt warum:
+
+| Code | Bedeutung | Lösung |
+|---|---|---|
+| 66 | Die Kamera steht nicht in der Kameraliste `state/web-jobs/cameras.json` | [Kameraliste leer](#kameraliste-leer) |
+| 64 | Ungültige Eingabe (Datum, Job, Zeitfenster oder Zahl der Argumente) | prüfen, ob installierter Wrapper und Weboberfläche zusammenpassen (`cmp` wie oben) |
+| 69 | Worker oder Status-Hilfsskript unter `/usr/local/libexec/` fehlt | die Wrapper neu installieren |
 
 ### „Videoerstellung fehlgeschlagen“
 
-**Symptom:** Das Abschlussfenster meldet „… konnte nicht erstellt werden.“ Bekannte Gründe nennt
-es selbst (z. B. „Zu wenige Tage mit Bildern im Zeitfenster: 21 von 30 (mindestens 25).“), sonst
+**Symptom:** Das Abschlussfenster meldet „… konnte nicht erstellt werden.“ Bekannte Gründe nennt es
+selbst, zum Beispiel „Zu wenige Tage mit Bildern im Zeitfenster: 21 von 30 (mindestens 25).“ Sonst
 steht dort „Bitte das Anwendungsprotokoll prüfen.“
 
-**Prüfen:** `state/web-jobs/<id>.reason` (die Warnung, aus der der Grund stammt) und
-`logs/<job>/<heute>.log` (das Protokoll trägt das Datum des Auftrags, nicht das
-Zieldatum), dort die Zeilen zur gewählten Kamera.
+**Prüfen:**
 
-**Ursache:** Fast immer zu wenige Bilder: Kamera ohne Bilder an dem Tag, Monat/Jahr unter der
-Mindestabdeckung, oder ein historisches Weekly ohne Bilder an allen 7 Tagen (das ist Pflicht).
-Der Auftrag gilt als fehlgeschlagen, sobald kein neues Video entsteht.
+- `state/web-jobs/<id>.reason`: die Warnung, aus der der Grund stammt.
+- `logs/<job>/<heute>.log`, dort die Zeilen zur gewählten Kamera. Das Protokoll trägt das Datum des
+  Auftrags, nicht das Zieldatum.
 
-**Lösung:** Anderes Datum, Fenster oder anderen Videotyp wählen; sonst den Fehler wie beim
-[nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen.
+**Ursache:** Fast immer zu wenige Bilder. Die Kamera hatte an dem Tag keine Bilder, Monat oder Jahr
+liegen unter der Mindestabdeckung, oder einem historischen Weekly fehlt einer der 7 Tage (alle 7
+sind Pflicht). Der Auftrag gilt als fehlgeschlagen, sobald kein neues Video entsteht.
+
+**Lösung:** Ein anderes Datum, Fenster oder einen anderen Videotyp wählen. Sonst den Fehler wie
+beim [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen.
 
 ### „Neu erstellen“: Ergebniszeile mit „übersprungen“ oder „fehlgeschlagen“
 
-**Symptom:** Der Abschlussdialog („Neu erstellen abgeschlossen“) zeigt zum Beispiel
-`Monatlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen`. Der Status ist trotzdem „abgeschlossen“:
-Er sagt nur, dass `src.main` ohne Fehler endete.
+**Symptom:** Der Abschlussdialog „Neu erstellen abgeschlossen“ zeigt zum Beispiel
+`Monatlich: 0 erstellt, 1 übersprungen, 0 fehlgeschlagen`. Der Status ist trotzdem
+„abgeschlossen“; er sagt nur, dass `src.main` ohne Fehler endete.
 
 **Prüfen:** `state/web-jobs/<id>.result` (dieselben Zeilen) und `logs/<job>/<heute>.log`, dort die
 Zeilen zur Kamera. Das Protokoll trägt das Datum des Auftrags.
 
-**Ursache:** *Übersprungen:* zu wenige Tage mit Bildern (Monthly mindestens 25 von 30, Yearly 300),
-bei einer Blur-Kamera kein bestätigt verpixeltes Bild ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos))
-oder keine Bilder am Tag. *Fehlgeschlagen:* ein Fehler bei dieser Kamera (Bildabruf, FFmpeg,
-Zeitüberschreitung); die Stelle steht im Protokoll.
+**Ursache:**
 
-**Lösung:** Bei Blur-Kameras das nächtliche Nachholen der Verpixelung abwarten und neu erstellen;
-sonst den Fehler wie beim [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen. Ein übersprungenes
-Video lässt das vorhandene stehen.
+- **Übersprungen:** zu wenige Tage mit Bildern (Monthly mindestens 25 von 30, Yearly 300), keine
+  Bilder an dem Tag, oder bei einer Blur-Kamera kein bestätigt verpixeltes Bild
+  ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
+- **Fehlgeschlagen:** ein Fehler bei dieser Kamera (Bildabruf, FFmpeg, Zeitüberschreitung). Die
+  Stelle steht im Protokoll.
+
+**Lösung:** Bei einer Blur-Kamera warten, bis die Verpixelung die Bilder geprüft hat (neue Bilder
+nach wenigen Minuten, Älteres spätestens beim Nachholen um 02:00), dann neu erstellen. Sonst den
+Fehler wie beim [nächtlichen Lauf](#fehler-nächtlicher-lauf) suchen. Ein übersprungenes Video lässt
+das vorhandene stehen.
 
 ### Hochladen schlägt fehl
 
-**Symptom:** Der Dialog meldet „Hochladen fehlgeschlagen“ („Bitte das Anwendungsprotokoll prüfen.“),
-oder die Ergebniszeile zeigt `fehlgeschlagen` über 0, zum Beispiel
+**Symptom:** Der Dialog meldet „Hochladen fehlgeschlagen“ („Bitte das Anwendungsprotokoll
+prüfen.“), oder die Ergebniszeile zeigt bei `fehlgeschlagen` mehr als 0, zum Beispiel
 `Hochgeladen: 2, übersprungen: 0, fehlgeschlagen: 1, gelöscht: 0`.
 
-**Prüfen:** `tail -n 60 ~/timelapse/logs/siteground-delivery.log` (die ausführliche Ausgabe enthält den
-FTP-Zugang: nichts davon weitergeben). `./install.sh verify` zeigt, ob die drei `SITEGROUND_*`-Werte
-gesetzt sind.
+**Prüfen:**
 
-**Ursache:** Ohne Ergebniszeile: Die Zugangsdaten fehlen (Exit 2), die Liste der Videos ist leer, oder
-für diese Kamera läuft schon ein Upload, zum Beispiel der nächtliche (Exit 3). Mit Ergebniszeile: Eine
-Datei fehlte oder ließ sich nicht hochladen oder umbenennen (FTP-Fehler); dort wird dann auch nicht
-aufgeräumt.
+- `tail -n 60 ~/timelapse/logs/siteground-delivery.log`. **Achtung:** Die ausführliche Ausgabe
+  enthält den FTP-Zugang; nichts davon weitergeben.
+- `./install.sh verify` zeigt, ob die drei `SITEGROUND_*`-Werte gesetzt sind.
 
-**Lösung:** Zugangsdaten in `config/siteground.env` ergänzen, nach einem laufenden Upload erneut
-starten, bei FTP-Fehlern später noch einmal. Mehr zum Skript:
+**Ursache:**
+
+- **Ohne Ergebniszeile:** Die Zugangsdaten fehlen (Exit 2), die Liste der Videos ist leer, oder für
+  diese Kamera läuft schon ein Upload, zum Beispiel der nächtliche (Exit 3).
+- **Mit Ergebniszeile:** Eine Datei fehlte oder ließ sich nicht hochladen oder umbenennen
+  (FTP-Fehler). In diesem Ordner wird dann auch nicht aufgeräumt.
+
+**Lösung:** Fehlende Zugangsdaten in `config/siteground.env` eintragen. Lief schon ein Upload,
+danach erneut starten. Bei FTP-Fehlern später noch einmal versuchen. Mehr zum Skript:
 [Upload auf die Website](betrieb.md#upload-auf-die-website).
 
 ### Auftrag scheint zu hängen
@@ -786,22 +814,23 @@ ls -l ~/timelapse/state/web-jobs/                       # <id>.pid, <id>.status,
 pgrep -af "src.main"
 ```
 
-**Ursache:** Entweder rendert er noch, oder der Prozess ist gestorben. Ein toter Prozess wird beim
-nächsten Abfragen als fehlgeschlagen gemeldet, ebenso ein Auftrag, der nach einer Minute noch keine
-`.pid` hat.
+**Ursache:** Entweder rendert er noch, oder der Prozess ist gestorben. Einen toten Prozess meldet
+die Seite bei der nächsten Abfrage als fehlgeschlagen, ebenso einen Auftrag, der nach einer Minute
+noch keine `.pid` hat.
 
-**Lösung:** Läuft `src.main` noch, abwarten. Wurde Apache in der Zwischenzeit neu gestartet, ist der
-Auftrag beendet worden; neu starten.
+**Lösung:** Läuft `src.main` noch, abwarten. Wurde Apache zwischendurch neu gestartet, ist der
+Auftrag abgebrochen; dann neu starten.
 
 ### Löschen schlägt fehl
 
-**Symptom:** „Das Video konnte nicht gelöscht werden.“ bzw. „Das Bild konnte nicht gelöscht werden.“
+**Symptom:** „Das Video konnte nicht gelöscht werden.“ bzw. „Das Bild konnte nicht gelöscht
+werden.“
 
 **Prüfen:** `sudo -l -U www-data` muss `timelapse-web-delete` bzw. `timelapse-web-delete-highlight`
-zeigen; Details im Apache-Fehlerprotokoll.
+zeigen. Details stehen im Apache-Fehlerprotokoll.
 
-**Lösung:** Fehlenden Wrapper und sudoers-Zeile nach
-[Installation](installation.md#wrapper-installieren) ergänzen.
+**Lösung:** Den fehlenden Wrapper und die sudoers-Zeile ergänzen
+([Installation](installation.md#wrapper-installieren)).
 
 ### „Die Anfrage ist ungültig (Sicherheitstoken).“
 
@@ -811,53 +840,66 @@ zeigen; Details im Apache-Fehlerprotokoll.
 
 ### Einstellungen lassen sich nicht speichern
 
-**Symptom:** Auf der Seite „Einstellungen“ bleibt die Speicherung aus, mit einer Meldung oben.
+**Symptom:** Auf der Seite „Einstellungen“ wird nichts gespeichert, und oben steht eine Meldung.
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| „Die Einstellungen wurden inzwischen geändert, bitte Seite neu laden.“ | Jemand anderes hat im selben Reiter gespeichert, seit die Seite geladen wurde | Seite neu laden, die eigene Änderung erneut eintragen |
-| Meldung mit dem Namen eines Feldes (Wert „muss …“) | Wert außerhalb der Grenzen; nichts wurde gespeichert | Wert korrigieren; die Grenzen stehen in der Meldung und in [konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche) |
-| „Mindestens eine Kamera muss angehakt bleiben.“ | Alle Kameras abgewählt | mindestens eine ankreuzen |
-| „Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: …“ | Eine Kamera ist nicht mehr zur Verarbeitung angehakt, aber noch für die Highlights; der Flagger würde für alle Kameras nicht mehr starten | die Kamera unter „Highlights“ ebenfalls abwählen |
-| „Die Einstellungen konnten nicht gespeichert werden.“ | der Wrapper lief nicht oder scheiterte | siehe unten |
-| „Bitte die Änderungen bestätigen.“ (Verpixelung) | der Bestätigungsdialog wurde umgangen oder das Kästchen ohne JavaScript fehlt | erneut speichern und im Dialog „Ja, speichern“ wählen |
+| „Die Einstellungen wurden inzwischen geändert, bitte Seite neu laden.“ | Jemand anderes hat im selben Reiter gespeichert, seit die Seite geladen wurde | Seite neu laden und die eigene Änderung erneut eintragen |
+| Meldung mit dem Namen eines Feldes (Wert „muss …“) | Der Wert liegt außerhalb der Grenzen; gespeichert wurde nichts | Wert korrigieren. Die Grenzen stehen in der Meldung und in [konfiguration.md](konfiguration.md#einstellungen-der-weboberfläche) |
+| „Mindestens eine Kamera muss angehakt bleiben.“ | Alle Kameras sind abgewählt | mindestens eine ankreuzen |
+| „Unter „Kameras“ abgewählt, unter „Highlights“ aber noch angehakt: …“ | Die Kamera wird nicht mehr verarbeitet, steht aber noch bei den Highlights. Dann würde der Flagger für keine Kamera mehr starten | die Kamera unter „Highlights“ ebenfalls abwählen |
+| „Die Einstellungen konnten nicht gespeichert werden.“ | Der Wrapper lief nicht oder ist gescheitert | siehe unten |
+| „Bitte die Änderungen bestätigen.“ (Verpixelung) | Der Bestätigungsdialog wurde umgangen, oder ohne JavaScript fehlt das Kästchen | erneut speichern und im Dialog „Ja, speichern“ wählen |
 
-**Prüfen (letzte Meldung):** `sudo -l -U www-data` muss `timelapse-web-settings` zeigen; im
-Apache-Fehlerprotokoll steht `Settings wrapper failed with exit code <N>`. Exit 64: falsche Eingabe oder
-zu großer Text, 69: die Python-Umgebung unter `~/timelapse/.venv` fehlt, 65 und 73 sind die beiden
-Fälle oben. Schlägt auch das Schreiben fehl, prüfen, ob der Projektbenutzer in `config/` schreiben darf.
+**Prüfen (bei „konnten nicht gespeichert werden“):** `sudo -l -U www-data` muss
+`timelapse-web-settings` zeigen. Im Apache-Fehlerprotokoll steht
+`Settings wrapper failed with exit code <N>`:
 
-**Lösung:** Wrapper und sudoers-Zeile nach [Installation](installation.md#wrapper-installieren) ergänzen
-bzw. mit `./install.sh web_bridge` neu installieren (nur wenn kein Auftrag läuft).
+- 64: falsche Eingabe oder zu langer Text.
+- 69: Die Python-Umgebung unter `~/timelapse/.venv` fehlt.
+- 65 und 73: die beiden Fälle aus der Tabelle (Wert ungültig, inzwischen geändert).
 
-**Gespeichert, aber ohne Wirkung:** Die Werte gelten ab dem **nächsten** Auftrag; ein laufender hat seine
-Config schon gelesen. Für eine Verpixelungs-Kamera greifen Streifen, Schwellen und Rahmen nur auf Bilder,
-die danach verpixelt werden. Ein Wert, den jemand in `config.json` geändert hat, wirkt nicht, solange
-derselbe Schlüssel in `config/settings.json` oder `config/settings-privacy.json` steht: dort gewinnt die
-Einstellungsdatei. Auf der Seite zurücksetzen oder den Schlüssel aus der Datei löschen. Was gespeichert
-wurde, zeigt `logs/settings.log` (eine Zeile je Speicherung, mit altem und neuem Wert).
+Scheitert das Schreiben selbst, prüfen, ob der Projektbenutzer in `config/` schreiben darf.
+
+**Lösung:** Wrapper und sudoers-Zeile ergänzen ([Installation](installation.md#wrapper-installieren))
+oder mit `./install.sh web_bridge` neu installieren (nur, wenn kein Auftrag läuft).
+
+**Gespeichert, aber ohne Wirkung?**
+
+- Die Werte gelten ab dem **nächsten** Auftrag. Ein laufender Auftrag hat seine Einstellungen
+  schon gelesen.
+- Bei einer Blur-Kamera wirken Streifen, Schwellen und Rahmen nur auf Bilder, die danach verpixelt
+  werden.
+- Ein Wert in `config.json` wirkt nicht, solange derselbe Schlüssel in `config/settings.json` oder
+  `config/settings-privacy.json` steht: Die Einstellungsdatei gewinnt. Den Wert auf der Seite
+  zurücksetzen oder den Schlüssel aus der Datei löschen.
+- Was wann gespeichert wurde, zeigt `logs/settings.log`: eine Zeile je Speicherung, mit altem und
+  neuem Wert.
 
 ### Das Vorschaubild fehlt oder lässt sich nicht aktualisieren
 
-**Symptom:** Im Reiter „Verpixelung“ steht bei einer Kamera kein Bild, oder „Vorschau aktualisieren“ meldet einen Fehler.
+**Symptom:** Im Reiter „Verpixelung“ fehlt bei einer Kamera das Bild, oder „Vorschau
+aktualisieren“ meldet einen Fehler.
 
 | Meldung | Ursache | Lösung |
 |---|---|---|
-| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera geprüft (Nachtbilder zählen nicht, die notiert sie ohne Erkennung), etwa bei einer neu angehakten Kamera | nach der nächsten Nacht erneut versuchen; die Zahlenzeilen für Rahmen gehen auch ohne Bild |
-| „Diese Kamera wird nicht verpixelt.“ | Die Kamera steht nicht in der gespeicherten Liste der Verpixelungs-Kameras | erst speichern, dann aktualisieren |
-| „Die Speicherbox hat nicht rechtzeitig geantwortet.“ | Der Wrapper hat nach 90 Sekunden abgebrochen | später erneut; Verbindung zur Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)) |
-| „Das Bild konnte nicht geholt werden.“ | Wrapper fehlt oder scheiterte, die Box antwortet nicht, oder das Bild ist beschädigt | Apache-Fehlerprotokoll: `Preview wrapper failed with exit code <N>`; `sudo -l -U www-data` muss `timelapse-web-preview` zeigen; im Anwendungsprotokoll `Preview failed` oder `not fit to show` |
+| „Für diese Kamera gibt es noch kein geprüftes Bild.“ | Die Verpixelung hat in den letzten drei Tagen noch kein Bild dieser Kamera geprüft, etwa weil sie gerade erst angehakt wurde. Nachtbilder zählen nicht; die notiert sie ohne Erkennung | in ein paar Minuten erneut versuchen, nach der nächsten Runde bei Tageslicht. Die Zahlenfelder für Rahmen gehen auch ohne Bild |
+| „Diese Kamera wird nicht verpixelt.“ | Die Kamera steht nicht in der gespeicherten Liste der Blur-Kameras | erst speichern, dann aktualisieren |
+| „Die Speicherbox hat nicht rechtzeitig geantwortet.“ | Der Wrapper hat nach 90 Sekunden abgebrochen | später erneut versuchen; die Verbindung zur Storage Box prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)) |
+| „Das Bild konnte nicht geholt werden.“ | Der Wrapper fehlt oder ist gescheitert, die Box antwortet nicht, oder das Bild ist beschädigt | Apache-Fehlerprotokoll: `Preview wrapper failed with exit code <N>`. `sudo -l -U www-data` muss `timelapse-web-preview` zeigen. Im Anwendungsprotokoll nach `Preview failed` oder `not fit to show` suchen |
 
-Ein Bild, das PHP nicht als JPEG mit sinnvoller Größe lesen kann, wird nie angezeigt; dann steht dort der
-Hinweis „noch kein Bild“, bis ein Bild geholt werden kann. Das Bild ist immer eins, das die Verpixelung schon
-geprüft hat, nie ein Rohbild.
+Ein Bild, das PHP nicht als JPEG in sinnvoller Größe lesen kann, wird nie angezeigt. Dann steht dort
+„noch kein Bild“, bis ein brauchbares Bild kommt. Das Vorschaubild ist immer eins, das die
+Verpixelung schon geprüft hat, nie ein Rohbild.
 
 ### Änderungen an einem Wrapper wirken nicht
 
-**Ursache:** Apache ruft die installierten Kopien unter `/usr/local/` auf, nicht `scripts/`.
+**Ursache:** Apache ruft die installierten Kopien unter `/usr/local/` auf, nicht die Dateien in
+`scripts/`.
 
 **Lösung:** Den geänderten Wrapper mit `sudo install` neu installieren
-([Installation](installation.md#wrapper-installieren)).
+([Installation](installation.md#wrapper-installieren)), oder alle auf einmal mit
+`./install.sh web_bridge` (nur, wenn kein Auftrag läuft).
 
 ---
 
