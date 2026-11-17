@@ -88,8 +88,9 @@ Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinan
   brauchte 55 Minuten). Läuft so ein Auftrag über 02:00 hinaus, fällt der Nachtlauf aus.
 - **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur. Die einzige Ausnahme ist
   die Verpixelung: Sie sichert das Original und ersetzt es dann durch die verpixelte Fassung. Außerdem
-  schreibt die Runde (alle 5 Minuten und beim Nachholen) in jedes geprüfte Bild die Markierung `blur:checked=true` (21 Bytes, kein Pixel
-  ändert sich). Bilder ohne Person bekommen die Markierung ohne Sicherung
+  schreibt sie die Markierung `blur:checked=true` (21 Bytes, kein Pixel ändert sich): die Runde in
+  jedes geprüfte Bild, ein von Hand gestartetes Video nur in Bilder von heute und den zwei Tagen
+  davor. Bilder ohne Person bekommen die Markierung ohne Sicherung
   ([verpixelung-box.md](verpixelung-box.md#markierung-für-die-webseite)).
 - **Die Blur-Kameras stehen in zwei Listen, und beide müssen gleich sein:** unsere (Reiter
   „Verpixelung“) und `webcam_list.config` beim Abholjob der Website. Wer die eine ändert, ändert die
