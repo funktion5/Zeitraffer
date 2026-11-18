@@ -105,7 +105,8 @@ def report_messages(report: str, interrupted: bool) -> list[dict]:
 			messages.append(message(camera, text, HINT_CAMERA_FAILED))
 
 		elif (match := UNREADABLE.fullmatch(stripped)) and camera is not None:
-			messages.append(message(camera, f"{match[1]} Bildnamen nicht lesbar", HINT_UNREADABLE))
+			names = "Bildname" if match[1] == "1" else "Bildnamen"
+			messages.append(message(camera, f"{match[1]} {names} nicht lesbar", HINT_UNREADABLE))
 
 	if interrupted:
 		# One line for the whole cut-short night; its "FAILED (run)" says the same.
@@ -187,7 +188,8 @@ def upload_messages(path: Path, now: datetime) -> list[dict]:
 	)
 
 	if failed_cameras:
-		text = f"Upload auf die Website fehlgeschlagen ({failed_cameras} Kameras)"
+		cameras = "Kamera" if failed_cameras == 1 else "Kameras"
+		text = f"Upload auf die Website fehlgeschlagen ({failed_cameras} {cameras})"
 
 	elif any(failure in line for line in block for failure in UPLOAD_FAILURE_LINES):
 		text = "Upload auf die Website fehlgeschlagen"

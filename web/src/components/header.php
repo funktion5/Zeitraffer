@@ -131,5 +131,9 @@ declare(strict_types=1);
 	</nav>
 </header>
 
+<?php // Below the header bar on every page: the night's and the live warnings. ?>
+<?php require_once __DIR__ . "/../warnings.php"; ?>
+<?php require __DIR__ . "/warning-banner.php"; ?>
+
 <!-- A running job, announced at the very top of every page; job-watcher.php fills and hides it. -->
 <p id="job-live-status" role="status" aria-live="polite" hidden></p>

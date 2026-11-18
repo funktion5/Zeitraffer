@@ -240,6 +240,18 @@ def test_upload_failure_counts_cameras(project: Project) -> None:
 	assert texts(project) == [(None, "Upload auf die Website fehlgeschlagen (2 Kameras)")]
 
 
+def test_counts_of_one_are_singular(project: Project) -> None:
+	project.run(report="== Alpha\n   WARNING: 1 image names cannot be read\n")
+	project.upload_log(
+		NIGHT_MARKER + "[INFO] Ergebnis: hochgeladen=0 übersprungen=0 fehlgeschlagen=1 gelöscht=0\n"
+	)
+
+	assert texts(project) == [
+		("Alpha", "1 Bildname nicht lesbar"),
+		(None, "Upload auf die Website fehlgeschlagen (1 Kamera)"),
+	]
+
+
 def test_upload_missing_login_is_a_failure(project: Project) -> None:
 	project.run(report=CLEAN_REPORT)
 	project.upload_log(
