@@ -191,7 +191,11 @@ def upload_messages(path: Path, now: datetime) -> list[dict]:
 		cameras = "Kamera" if failed_cameras == 1 else "Kameras"
 		text = f"Upload auf die Website fehlgeschlagen ({failed_cameras} {cameras})"
 
-	elif any(failure in line for line in block for failure in UPLOAD_FAILURE_LINES):
+	# The script's own stop (no list, empty list, no curl) comes before any camera: "[ERROR] ...".
+	elif any(
+		line.startswith("[ERROR]") or any(failure in line for failure in UPLOAD_FAILURE_LINES)
+		for line in block
+	):
 		text = "Upload auf die Website fehlgeschlagen"
 
 	else:

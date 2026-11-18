@@ -262,6 +262,16 @@ def test_upload_missing_login_is_a_failure(project: Project) -> None:
 	assert texts(project) == [(None, "Upload auf die Website fehlgeschlagen")]
 
 
+# The script stops before any camera (no list, empty list, no curl): nothing was sent.
+def test_upload_error_before_any_camera_is_a_failure(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		NIGHT_MARKER + "[ERROR] Die Liste der freigegebenen Videos konnte nicht erstellt werden.\n"
+	)
+
+	assert texts(project) == [(None, "Upload auf die Website fehlgeschlagen")]
+
+
 def test_upload_without_marker_did_not_run(project: Project) -> None:
 	project.run(report=CLEAN_REPORT)
 	project.upload_log(

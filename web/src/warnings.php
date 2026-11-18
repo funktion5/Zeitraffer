@@ -106,11 +106,13 @@ function bannerMessages(DateTimeImmutable $now, ?array $storage): array
 		$messages[] = bannerMessage(null, "Nachtlauf fehlt", $nightMissing);
 	} else {
 		$lastRun = lastRunText($night["night"]);
-		// Before 06:00 tonight's run may still be going, so the night before still counts.
-		$due = $now->setTime(BANNER_NIGHT_DUE_HOUR, 0);
-		$isToday = ($night["night"]["date"] ?? null) === $now->format("Y-m-d");
+		// Before 06:00 tonight's run may still be going, so last night's file still counts; no older one.
+		$date = $night["night"]["date"] ?? null;
+		$isToday = $date === $now->format("Y-m-d");
+		$isYesterday = $date === $now->modify("-1 day")->format("Y-m-d");
+		$beforeDue = $now < $now->setTime(BANNER_NIGHT_DUE_HOUR, 0);
 
-		if ($now >= $due && !$isToday) {
+		if (!$isToday && !($beforeDue && $isYesterday)) {
 			$messages[] = bannerMessage(null, "Nachtlauf fehlt", $nightMissing);
 		} else {
 			$messages = nightMessages($night);

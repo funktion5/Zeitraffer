@@ -13,7 +13,7 @@ into a list of German messages; a header component prints it.
 **Tech Stack:** Python 3.13 (runnable on 3.11), bash (`install.sh`), PHP 8.4, pytest (PHP through the
 `php` CLI driver pattern of `tests/web/`).
 
-**Spec:** `docs/plans/2026-11-18-warning-banner-design.md`
+**Spec:** `docs/plans/done/2026-11-18-warning-banner-design.md`
 
 ## Global Constraints
 

@@ -1,6 +1,6 @@
 # Design: warnings banner in the web UI
 
-Status: approved by Julius 2026-11-18. Branch `feature/warning-banner`.
+Status: built 2026-11-18 (branch `feature/warning-banner`), final review fixed.
 
 ## Why
 

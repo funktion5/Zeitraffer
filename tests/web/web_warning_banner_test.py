@@ -139,6 +139,13 @@ def test_before_six_yesterday_still_counts(tmp_path):
 	assert banner(tmp_path, "2026-11-19T05:30:00+01:00")["messages"] == []
 
 
+# Before 06:00 only last night's file stands in; an older one means the collector is not running.
+def test_before_six_an_older_file_is_missing(tmp_path):
+	write_state(tmp_path / "web-jobs", watch=dict(FRESH_WATCH, checked="2026-11-21T05:28:00+01:00"))
+
+	assert texts(banner(tmp_path, "2026-11-21T05:30:00+01:00")) == [(None, "Nachtlauf fehlt")]
+
+
 def test_after_six_yesterday_is_missing(tmp_path):
 	write_state(tmp_path / "web-jobs", watch=dict(FRESH_WATCH, checked="2026-11-19T05:58:00+01:00"))
 
