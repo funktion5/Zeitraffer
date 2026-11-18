@@ -299,8 +299,12 @@ Die Reihenfolge verhindert, dass ein unverpixeltes Bild durchrutscht:
 
 ```bash
 .venv/bin/python3 -m src.storage.storage_filter --cameras <Kamera>          # listet leere und doppelte Bilder, löscht nichts
-.venv/bin/python3 scripts/yearly-backfill.py --years 2026 --cameras <Kamera>
 ```
+
+Ein Jahresvideo für ein Kalenderjahr einer Kamera auf der Storage Box: in den Einstellungen
+„Jahresvideo: mindestens so viele Tage mit Bildern“ auf 1 setzen, einen manuellen Yearly mit
+Zieldatum 31.12. starten und den Wert danach mit „Standard“ zurücksetzen (er gilt auch für den
+Nachtlauf). Für das NAS-Archiv gibt es `nas/yearly-backfill.py`.
 
 Details: [werkzeuge.md](werkzeuge.md); NAS-Archiv: [nas.md](nas.md).
 

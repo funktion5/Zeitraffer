@@ -4,7 +4,7 @@ One-off backfill: it scans and selects images like the Yearly job, but a camera 
 whatever its coverage, so the result can be judged afterwards. Missing days go into a summary CSV
 instead of skipping the camera. See docs/werkzeuge.md.
 
-	.venv/bin/python3 scripts/yearly-backfill.py [--years 2023 2024] [--cameras A B] [--force]
+	.venv/bin/python3 nas/yearly-backfill.py [--years 2023 2024] [--cameras A B] [--force]
 """
 
 import argparse
@@ -34,10 +34,10 @@ from src.images import (  # noqa: E402
 	release_camera_frames,
 )
 from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
+from src.jobs.yearly_selection import select_yearly_images_isolated  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
 from src.storage.storage_filter import acquire_run_lock  # noqa: E402
 from src.video import create_timelapse, get_video_path  # noqa: E402
-from src.jobs.yearly_selection import select_yearly_images_isolated  # noqa: E402
 
 DEFAULT_YEARS = [2026]
 REPORT_DIRECTORY = PROJECT_ROOT / "reports" / "yearly-coverage"

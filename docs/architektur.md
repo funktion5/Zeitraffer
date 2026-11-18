@@ -287,7 +287,8 @@ timelapse/
 ├── nas/
 │   ├── helpers/   (Zähl- und Prüfwerkzeuge)
 │   ├── nas-extract.py
-│   └── README.md
+│   ├── README.md
+│   └── yearly-backfill.py   (Kalenderjahr-Videos ohne Mindestabdeckung)
 ├── scripts/
 │   ├── web/   (Wrapper der Weboberfläche, installiert unter /usr/local/)
 │   │   ├── timelapse-web-delete
@@ -304,8 +305,7 @@ timelapse/
 │   ├── copy_zeitraffer_videos_vps2siteground.sh   (Upload der Videos auf die Website)
 │   ├── list-deliverable-videos.py   (Liste der Videos, die hochgeladen werden dürfen)
 │   ├── storage-filter-all
-│   ├── timelapse-nightly-staged
-│   └── yearly-backfill.py
+│   └── timelapse-nightly-staged
 ├── src/
 │   ├── flagger/
 │   │   ├── __init__.py

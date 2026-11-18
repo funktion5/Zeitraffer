@@ -13,13 +13,13 @@ das Home-Verzeichnis des Benutzers, unter dem das Projekt läuft.
 flowchart LR
     N[(NAS<br/>Tar- und Zip-Archive)] -->|nas/nas-extract.py<br/>nas/helpers/*_extract.py| L[~/nas-cameras/&lt;Kamera&gt;/]
     S[(Storage Box)] -->|nas/helpers/storagebox_fill.py| L
-    L -->|TIMELAPSE_CAMERA_ROOT| B[scripts/yearly-backfill.py]
+    L -->|TIMELAPSE_CAMERA_ROOT| B[nas/yearly-backfill.py]
     B --> V[videos/&lt;Kamera&gt;/manual-runs/yearly/]
 ```
 
 1. Bilder aus dem Archiv in einen lokalen Ordner pro Kamera holen (`~/nas-cameras/<Kamera>/`).
 2. Bei Bedarf Lücken mit Bildern von der Storage Box füllen oder falsche Nachtbilder entfernen.
-3. Mit `scripts/yearly-backfill.py` aus diesem Ordner Kalenderjahr-Videos erstellen.
+3. Mit `nas/yearly-backfill.py` aus diesem Ordner Kalenderjahr-Videos erstellen.
 
 Auf das NAS wird nie geschrieben.
 
@@ -122,7 +122,7 @@ und übersprungen.
 
 ```bash
 TIMELAPSE_CAMERA_ROOT=~/nas-cameras \
-	.venv/bin/python3 scripts/yearly-backfill.py --years 2020 2021 --cameras BSV-Steinhude
+	.venv/bin/python3 nas/yearly-backfill.py --years 2020 2021 --cameras BSV-Steinhude
 ```
 
 - Gleiches Zeitfenster wie im Yearly (12:00 ± 90 Min., 5 Bilder pro Tag), aber **ohne**

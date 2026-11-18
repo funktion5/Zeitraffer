@@ -21,7 +21,7 @@ FIT_FILTER = (
 )
 
 spec = importlib.util.spec_from_file_location(
-	"yearly_backfill", PROJECT_ROOT / "scripts" / "yearly-backfill.py"
+	"yearly_backfill", PROJECT_ROOT / "nas" / "yearly-backfill.py"
 )
 backfill = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(backfill)
