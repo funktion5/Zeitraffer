@@ -160,6 +160,70 @@ def test_extract_date_rejects_invalid_filenames():
 		assert extract_date(filename) is None
 
 
+def test_strandterrassen_names_are_read():
+	assert extract_date("Strandterrassen_20261117073004.jpg") == date(2026, 11, 17)
+	assert extract_time("Strandterrassen_20261117073004.jpg") == (7, 30, 4)
+
+
+# Widening is intended: any name shaped like date + separator + time.
+@pytest.mark.parametrize(
+	("name", "expected_date", "expected_time"),
+	[
+		("IMG20260615-120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_20260615_120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_2026-06-15_12-00-00.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("x_260615-120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_202606151200.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("a_20260101T1000.jpg", date(2026, 1, 1), (10, 0, 0)),
+		("cam_26-06-15_12-00-00.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("camera_260101_130000.JPG", date(2026, 1, 1), (13, 0, 0)),
+	],
+)
+def test_widened_shapes_are_read(name, expected_date, expected_time):
+	assert extract_date(name) == expected_date
+	assert extract_time(name) == expected_time
+
+
+# Only full readings compete: the invalid-date reading of the same digits must not spoil the time.
+@pytest.mark.parametrize(
+	("name", "expected_time"),
+	[
+		("sam-Reolink_00_20261117073004.jpg", (7, 30, 4)),
+		("T26061512000011.jpg", (12, 0, 0)),
+	],
+)
+def test_a_reading_with_an_invalid_date_does_not_compete(name, expected_time):
+	assert extract_time(name) == expected_time
+
+
+def test_two_different_full_readings_are_unreadable():
+	# 2001-2012 digit runs read both as YYYYMMDDHHMMSS and YYMMDDHHMMSScc.
+	assert extract_date("P20120512000001.jpg") is None
+	assert extract_time("P20120512000001.jpg") is None
+	assert extract_date("cam_20261117073004_20261118120000.jpg") is None
+	assert extract_time("cam_20261117073004_20261118120000.jpg") is None
+
+
+def test_fallback_keeps_the_valid_part():
+	assert extract_date("20250107T250110.jpg") == date(2025, 1, 7)
+	assert extract_time("20250107T250110.jpg") is None
+	assert extract_date("20251340T101010.jpg") is None
+	assert extract_time("20251340T101010.jpg") == (10, 10, 10)
+
+
+def test_a_part_without_its_partner_is_not_read():
+	assert extract_date("cam_260615_x.jpg") is None
+	assert extract_time("fooT101010.jpg") is None
+
+
+def test_leap_days_and_year_bounds():
+	assert extract_date("20240229T120000.jpg") == date(2024, 2, 29)
+	assert extract_date("20250229T120000.jpg") is None
+	assert extract_date("20000101T000000.jpg") == date(2000, 1, 1)
+	assert extract_date("21000101T000000.jpg") is None
+	assert extract_date("00-01-01_00-00-00.jpg") == date(2000, 1, 1)
+
+
 @requires_camera_storage
 def test_complete_image_selection():
 	# Use known camera/date combinations to test the complete selection
