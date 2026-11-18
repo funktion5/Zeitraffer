@@ -1,7 +1,7 @@
 import logging
 from datetime import date
 
-import src.diagnostics as diagnostics_module
+import src.jobs.diagnostics as diagnostics_module
 from src.images import ImageRange
 
 

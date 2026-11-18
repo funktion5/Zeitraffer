@@ -2,8 +2,8 @@ from collections import defaultdict
 from datetime import date
 from pathlib import Path
 
-import src.yearly_selection as yearly_selection_module
-from src.yearly_selection import (
+import src.jobs.yearly_selection as yearly_selection_module
+from src.jobs.yearly_selection import (
 	select_unique_yearly_images,
 	select_yearly_images_isolated,
 )

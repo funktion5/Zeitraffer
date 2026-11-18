@@ -134,7 +134,7 @@ Der Supervisor übernimmt:
 
 Der Timeout misst **Inaktivität**, nicht die Gesamtlaufzeit. Lange Scans dürfen weiterlaufen, solange Fortschritt gemeldet wird.
 
-Eine Worker-Funktion ist eine normale Funktion mit `progress_callback`-Parameter, die ihr Ergebnis zurückgibt. `run_isolated_worker(camera, target, kwargs, ...)` startet sie im eigenen Prozess. Auch die Bildbereich-Diagnose (`src/diagnostics.py`) läuft darüber, mit 10 Sekunden Stall-Timeout.
+Eine Worker-Funktion ist eine normale Funktion mit `progress_callback`-Parameter, die ihr Ergebnis zurückgibt. `run_isolated_worker(camera, target, kwargs, ...)` startet sie im eigenen Prozess. Auch die Bildbereich-Diagnose (`src/jobs/diagnostics.py`) läuft darüber, mit 10 Sekunden Stall-Timeout.
 
 ### `src/date_coverage.py`
 
@@ -147,7 +147,7 @@ Gemeinsame Datumslogik für exakte rollierende Fenster:
 - Lesen und Prüfen der Mindestabdeckung (`get_min_coverage_days`)
 - kompakte Darstellung aufeinanderfolgender fehlender Tage für Logs
 
-### `src/yearly_selection.py`
+### `src/jobs/yearly_selection.py`
 
 Yearly-spezifische Frame-Auswahl.
 

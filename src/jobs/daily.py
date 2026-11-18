@@ -3,7 +3,7 @@ from datetime import date, timedelta
 
 from src.config import automatic_daylight_buffer_for
 from src.date_coverage import get_latest_completed_date
-from src.diagnostics import log_missing_images_diagnostic
+from src.jobs.diagnostics import log_missing_images_diagnostic
 from src.image_worker import WorkerExitedError
 from src.images import find_daily_images_isolated, release_camera_frames
 from src.logger import RUN_ID, format_run_context, logger
