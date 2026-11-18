@@ -677,7 +677,7 @@ die Übersicht:
 | `Storage Box nicht erreichbar` | [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar) |
 | `<Kamera>: <n> Bildnamen nicht lesbar` | [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder), Absatz „Unlesbare Dateinamen“ |
 | `Flagger: …` | [Flagger startet nicht oder überspringt](#flagger-startet-nicht-oder-überspringt) |
-| `<Kamera>: Kein bestätigtes Bild, Tagesvideo ausgelassen` / `<Kamera>: <n> Bilder seit über 10 Minuten unverpixelt` / `Verpixelungs-Wächter …` | [Verpixelung](#verpixelung) |
+| `<Kamera>: Kein bestätigtes Bild, Tagesvideo ausgelassen` / `<Kamera>: <n> Bilder seit über 10 Minuten unverpixelt` / `Verpixelungs-Wächter …` | [Verpixelung](#verpixelung-1) |
 | `Erkennungsmodell fehlt: …` | [Modelldatei fehlt](#modelldatei-fehlt) |
 | `Upload auf die Website fehlgeschlagen` / `… lief nicht` | [Upload auf die Website](#upload-auf-die-website); „lief nicht“: die 02:00-Zeile mit `crontab -l` prüfen |
 | `Speicher wird knapp` / `Speicher fast voll` | [Festplatte voll](#festplatte-voll) |

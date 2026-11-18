@@ -140,7 +140,8 @@ def flagger_messages(path: Path, since: datetime, now: datetime) -> list[dict]:
 
 	# The flagger logs ERROR only for real failures: not started, a camera failed, nothing readable.
 	for level, text in log_lines(path, since, now):
-		if level != "ERROR":
+		# A missing model is the model rule's message (one line, no host path).
+		if level != "ERROR" or text.startswith("Flagger not started: model file missing"):
 			continue
 
 		camera_line = CAMERA_PREFIX.fullmatch(text)
