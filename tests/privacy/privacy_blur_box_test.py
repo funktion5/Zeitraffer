@@ -460,7 +460,7 @@ def test_blur_that_changes_nothing_is_retried_not_fatal(setup: Setup, monkeypatc
 
 # A dated name without a readable time cannot be placed by the writer's age limits.
 def test_image_without_readable_time_is_refused(setup: Setup) -> None:
-	name = "cam_260615_x.jpg"
+	name = "cam_20260615T250000.jpg"
 	setup.upload(name)
 
 	summary = setup.run()
@@ -574,7 +574,7 @@ def test_unlimited_budget_processes_every_open_image(setup: Setup, monkeypatch) 
 
 # Matches the day's listing pattern, but no known format reads its date: refuse and log it.
 def test_unreadable_name_is_refused_and_logged_not_dropped(setup: Setup, caplog) -> None:
-	name = "IMG20260615-120000.jpg"
+	name = "IMG20260615.jpg"
 	setup.upload(name)
 
 	assert setup.run().refused == 1

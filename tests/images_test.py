@@ -160,6 +160,70 @@ def test_extract_date_rejects_invalid_filenames():
 		assert extract_date(filename) is None
 
 
+def test_strandterrassen_names_are_read():
+	assert extract_date("Strandterrassen_20261117073004.jpg") == date(2026, 11, 17)
+	assert extract_time("Strandterrassen_20261117073004.jpg") == (7, 30, 4)
+
+
+# Widening is intended: any name shaped like date + separator + time.
+@pytest.mark.parametrize(
+	("name", "expected_date", "expected_time"),
+	[
+		("IMG20260615-120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_20260615_120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_2026-06-15_12-00-00.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("x_260615-120000.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("cam_202606151200.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("a_20260101T1000.jpg", date(2026, 1, 1), (10, 0, 0)),
+		("cam_26-06-15_12-00-00.jpg", date(2026, 6, 15), (12, 0, 0)),
+		("camera_260101_130000.JPG", date(2026, 1, 1), (13, 0, 0)),
+	],
+)
+def test_widened_shapes_are_read(name, expected_date, expected_time):
+	assert extract_date(name) == expected_date
+	assert extract_time(name) == expected_time
+
+
+# Only full readings compete: the invalid-date reading of the same digits must not spoil the time.
+@pytest.mark.parametrize(
+	("name", "expected_time"),
+	[
+		("sam-Reolink_00_20261117073004.jpg", (7, 30, 4)),
+		("T26061512000011.jpg", (12, 0, 0)),
+	],
+)
+def test_a_reading_with_an_invalid_date_does_not_compete(name, expected_time):
+	assert extract_time(name) == expected_time
+
+
+def test_two_different_full_readings_are_unreadable():
+	# 2001-2012 digit runs read both as YYYYMMDDHHMMSS and YYMMDDHHMMSScc.
+	assert extract_date("P20120512000001.jpg") is None
+	assert extract_time("P20120512000001.jpg") is None
+	assert extract_date("cam_20261117073004_20261118120000.jpg") is None
+	assert extract_time("cam_20261117073004_20261118120000.jpg") is None
+
+
+def test_fallback_keeps_the_valid_part():
+	assert extract_date("20250107T250110.jpg") == date(2025, 1, 7)
+	assert extract_time("20250107T250110.jpg") is None
+	assert extract_date("20251340T101010.jpg") is None
+	assert extract_time("20251340T101010.jpg") == (10, 10, 10)
+
+
+def test_a_part_without_its_partner_is_not_read():
+	assert extract_date("cam_260615_x.jpg") is None
+	assert extract_time("fooT101010.jpg") is None
+
+
+def test_leap_days_and_year_bounds():
+	assert extract_date("20240229T120000.jpg") == date(2024, 2, 29)
+	assert extract_date("20250229T120000.jpg") is None
+	assert extract_date("20000101T000000.jpg") == date(2000, 1, 1)
+	assert extract_date("21000101T000000.jpg") is None
+	assert extract_date("00-01-01_00-00-00.jpg") == date(2000, 1, 1)
+
+
 @requires_camera_storage
 def test_complete_image_selection():
 	# Use known camera/date combinations to test the complete selection
@@ -480,6 +544,62 @@ def test_find_images_for_dates_gives_a_false_match_to_its_real_day(monkeypatch):
 		date(2026, 10, 30): [],
 		date(2024, 3, 26): [Path("/cache/BSV-Steinhude/bsv_steinhude_202403261030.jpg")],
 	}
+
+
+UNREADABLE_LISTING = ["Cam_20261117073004.jpg", "IMG20261117.jpg", "photo.jpg", "notes.txt"]
+
+
+def _unreadable_warnings(caplog) -> list[str]:
+	return [
+		record.getMessage()
+		for record in caplog.records
+		if record.levelname == "WARNING" and "cannot be read" in record.getMessage()
+	]
+
+
+# The Daily's listing names a camera whose names cannot be read, once, with an example. A name the
+# day pre-filter keeps although its date is unreadable is still counted.
+def test_daily_listing_warns_about_unreadable_names(monkeypatch, caplog):
+	monkeypatch.setattr(
+		images_module, "get_frame_source", lambda: FakeFrameSource(UNREADABLE_LISTING)
+	)
+
+	result = find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[date(2026, 11, 17)],
+		report_unreadable=True,
+	)
+
+	assert _unreadable_warnings(caplog) == [
+		"[Test-Camera] 2 of 3 image names cannot be read, e.g. IMG20261117.jpg"
+	]
+	assert result[date(2026, 11, 17)] == [
+		Path("/cache/Test-Camera/Cam_20261117073004.jpg"),
+		Path("/cache/Test-Camera/IMG20261117.jpg"),
+	]
+
+
+def test_listing_without_the_flag_logs_no_unreadable_warning(monkeypatch, caplog):
+	monkeypatch.setattr(
+		images_module, "get_frame_source", lambda: FakeFrameSource(UNREADABLE_LISTING)
+	)
+
+	find_images_for_dates(camera="Test-Camera", target_dates=[date(2026, 11, 17)])
+
+	assert _unreadable_warnings(caplog) == []
+
+
+def test_a_fully_readable_listing_logs_no_warning(monkeypatch, caplog):
+	names = ["Cam_20261117073004.jpg", "20261116T120000.jpg"]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+
+	find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[date(2026, 11, 17)],
+		report_unreadable=True,
+	)
+
+	assert _unreadable_warnings(caplog) == []
 
 
 # Frames must exist locally before a filter reads their bytes: all of the previous day (the

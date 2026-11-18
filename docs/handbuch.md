@@ -424,9 +424,16 @@ ssh <ssh-alias> ls -t <Kamera> | head -5     # die neuesten Dateien auf der Stor
 haben ein unbekanntes Namensformat. `Available image range` zeigt, bis wann zuletzt Bilder kamen.
 
 **Lösung:** Das ist kein Programmfehler; die Kamera oder ihren Upload prüfen. Ist die Kamera
-dauerhaft außer Betrieb, sie in `ignored_cameras` eintragen. Ein neues Namensformat muss in
-`src/images.py` ergänzt werden. Dateien mit unbekanntem Namen errät das Programm nie, es lässt sie
-weg.
+dauerhaft außer Betrieb, sie in `ignored_cameras` eintragen. Dateien mit unbekanntem Namen errät
+das Programm nie, es lässt sie weg.
+
+**Unlesbare Dateinamen:** Kann der Daily bei einer Kamera Datum oder Uhrzeit aus Dateinamen nicht
+lesen, steht im Log `[<Kamera>] <n> of <gesamt> image names cannot be read, e.g. <Datei>` und im
+Bericht des Nachtlaufs (`report.txt`) unter der Kamera `WARNING: <n> image names cannot be read`. Die
+Nacht gilt trotzdem als erfolgreich, denn Daily und Weekly können noch entstehen; Monthly, Yearly und
+der Flagger lassen diese Bilder aber weg. Das Beispiel im Log ansehen: Ist es eine neue Schreibweise
+für Datum oder Uhrzeit, braucht sie einen neuen Baustein in `src/images.py`
+([architektur.md](architektur.md#srcimagespy)).
 
 ### Kamera nicht gefunden oder ungültiger Name
 

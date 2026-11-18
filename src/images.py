@@ -1,3 +1,4 @@
+import functools
 import hashlib
 import os
 import re
@@ -93,12 +94,15 @@ def find_images_for_dates(
 	camera: str,
 	target_dates: list[date],
 	progress_callback: Callable[[], None] | None = None,
+	report_unreadable: bool = False,
 ) -> dict[date, list[Path]]:
 	source = get_frame_source()
 	unique_dates = list(dict.fromkeys(target_dates))
 
 	patterns_by_date = {target_date: date_patterns(target_date) for target_date in unique_dates}
 	images_by_date = {target_date: [] for target_date in unique_dates}
+	image_count = 0
+	unreadable = []
 
 	# List the camera once and match known date formats by filename.
 	for name in source.list_names(camera):
@@ -107,6 +111,14 @@ def find_images_for_dates(
 
 		if not name.lower().endswith(".jpg"):
 			continue
+
+		# The Daily reads the whole listing anyway; a name without date and time is lost to the
+		# Monthly, Yearly and flagger, so the night should say so.
+		if report_unreadable:
+			image_count += 1
+
+			if extract_date(name) is None or extract_time(name) is None:
+				unreadable.append(name)
 
 		for target_date, target_patterns in patterns_by_date.items():
 			if not any(date_pattern in name for date_pattern in target_patterns):
@@ -123,56 +135,117 @@ def find_images_for_dates(
 			images_by_date[target_date].append(source.path_for(camera, name))
 			break
 
+	if unreadable:
+		logger.warning(
+			f"[{camera}] {len(unreadable)} of {image_count} image names cannot be read, "
+			f"e.g. {unreadable[0]}"
+		)
+
 	return {target_date: sorted(images) for target_date, images in images_by_date.items()}
 
 
-# Extracts the capture date from the different camera filename formats.
-def extract_date(filename: str):
-	date_patterns = (
-		# YYYYMMDDT... format.
-		r"(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})T",
-		# Reolink: ..._00_YYYYMMDDHHMMSS.jpg
-		r"_00_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{6}\.jpg$",
-		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg
-		r"^bsv_steinhude_(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
-		# Cafe-am-Meer legacy format: promenade_YYYY_MMDD_HHMMSS_01.jpg. Anchored and listed before
-		# the generic _YYMMDD_ pattern, which would misread a time like _100512_ as 2010-05-12.
-		r"^promenade_(?P<year>\d{4})_(?P<month>\d{2})(?P<day>\d{2})_\d{6}_\d{2}\.jpg$",
-		# YY-MM-DD format.
-		r"(?P<year>\d{2})-(?P<month>\d{2})-(?P<day>\d{2})",
-		# Prefix_YYMMDD_... format.
-		r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})_",
-		# Prefix_YYMMDDHHMM... format.
-		r"_(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{4}\.jpg$",
-		# P/T + YYMMDDHHMMSSxx format.
-		r"^[A-Za-z](?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})\d{8}\.jpg$",
+# Notation blocks for date and time in an image name. Every date block is combined with every
+# separator and time block, so a new camera works as long as it writes one of these notations.
+_DATE_BLOCKS = (
+	r"(?P<year>\d{4})(?P<month>\d{2})(?P<day>\d{2})",
+	r"(?P<year>\d{2})(?P<month>\d{2})(?P<day>\d{2})",
+	r"(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})",
+	r"(?P<year>\d{2})-(?P<month>\d{2})-(?P<day>\d{2})",
+	# Cafe-am-Meer legacy: promenade_YYYY_MMDD_HHMMSS_01.jpg.
+	r"(?P<year>\d{4})_(?P<month>\d{2})(?P<day>\d{2})",
+)
+_SEPARATORS = ("", "T", "_", "-")
+_TIME_BLOCKS = (
+	r"(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
+	r"(?P<hour>\d{2})(?P<minute>\d{2})",
+	r"(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})",
+	# P/T legacy: two digits of hundredths glued to the seconds.
+	r"(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}",
+)
+# The lookahead finds overlapping matches at every position; a combination only counts as a
+# whole, with no digit directly before or after it.
+_NAME_PATTERNS = tuple(
+	re.compile(rf"(?<!\d)(?=(?:{date_block}){re.escape(separator)}(?:{time_block})(?!\d))")
+	for date_block in _DATE_BLOCKS
+	for separator in _SEPARATORS
+	for time_block in _TIME_BLOCKS
+)
+_DIGIT = re.compile(r"\d")
+
+
+# Where the combinations match depends only on a name's shape (digits as 9), and a camera has few
+# shapes; caching per shape keeps 80 patterns as fast as the old list over 200,000 names.
+@functools.lru_cache(maxsize=1024)
+def _matches_for_shape(shape: str) -> tuple[tuple[re.Pattern, int], ...]:
+	return tuple(
+		(pattern, match.start()) for pattern in _NAME_PATTERNS for match in pattern.finditer(shape)
 	)
 
-	for pattern in date_patterns:
-		match = re.search(
-			pattern,
-			filename,
-		)
 
-		if match:
-			year = int(match.group("year"))
-			month = int(match.group("month"))
-			day = int(match.group("day"))
+def _valid_date(match: re.Match) -> date | None:
+	year = int(match.group("year"))
 
-			if year < 100:
-				year += 2000
+	if year < 100:
+		year += 2000
 
-			# Ignore matches that do not represent a valid calendar date.
-			try:
-				return date(
-					year,
-					month,
-					day,
-				)
-			except ValueError:
-				continue
+	if not 2000 <= year <= 2099:
+		return None
 
-	return None
+	try:
+		return date(year, int(match.group("month")), int(match.group("day")))
+	except ValueError:
+		return None
+
+
+def _valid_time(match: re.Match) -> tuple[int, int, int] | None:
+	hour = int(match.group("hour"))
+	minute = int(match.group("minute"))
+	second = int(match.groupdict().get("second") or 0)
+
+	if hour > 23 or minute > 59 or second > 59:
+		return None
+
+	return (hour, minute, second)
+
+
+# Date and time of one name. Readings with a valid date AND time compete first; when they
+# disagree the name is ambiguous and stays unreadable instead of being guessed.
+@functools.lru_cache(maxsize=8192)
+def _read_name(filename: str) -> tuple[date | None, tuple[int, int, int] | None]:
+	dates = set()
+	times = set()
+	full_readings = set()
+
+	for pattern, position in _matches_for_shape(_DIGIT.sub("9", filename)):
+		match = pattern.match(filename, position)
+		image_date = _valid_date(match)
+		image_time = _valid_time(match)
+
+		if image_date is not None:
+			dates.add(image_date)
+
+		if image_time is not None:
+			times.add(image_time)
+
+		if image_date is not None and image_time is not None:
+			full_readings.add((image_date, image_time))
+
+	if len(full_readings) == 1:
+		return next(iter(full_readings))
+
+	if full_readings:
+		return (None, None)
+
+	# Without a full reading, each part stands alone, and only if every match agrees on it.
+	return (
+		next(iter(dates)) if len(dates) == 1 else None,
+		next(iter(times)) if len(times) == 1 else None,
+	)
+
+
+# The capture date from an image name, or None when no notation reads it unambiguously.
+def extract_date(filename: str) -> date | None:
+	return _read_name(filename)[0]
 
 
 # Inspect filenames without triggering additional file metadata lookups.
@@ -211,49 +284,12 @@ def get_image_range(
 	)
 
 
-# Extracts the capture time from the different camera filename formats.
-def extract_time(filename: str):
-	time_patterns = (
-		# BSV legacy format: bsv_steinhude_YYYYMMDDHHMM.jpg (see extract_date).
-		r"^bsv_steinhude_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
-		# Cafe-am-Meer legacy format: promenade_YYYY_MMDD_HHMMSS_01.jpg (see extract_date).
-		r"^promenade_\d{4}_\d{4}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})_\d{2}\.jpg$",
-		r"^[A-Za-z]\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
-		r"_\d{8}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
-		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\d{2}\.jpg$",
-		r"_\d{6}(?P<hour>\d{2})(?P<minute>\d{2})\.jpg$",
-		r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}\.jpg$",
-		# BSV since 2026-10-10: BSV-Steinhude-YY-MM-DD_HH-MM-SS-cc_NNNNN.jpg
-		r"_(?P<hour>\d{2})-(?P<minute>\d{2})-(?P<second>\d{2})-\d{2}_\d{5}\.jpg$",
-		r"_\d{6}_(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})\.jpg$",
-		r"T(?P<hour>\d{2})(?P<minute>\d{2})(?P<second>\d{2})",
-	)
-
-	for pattern in time_patterns:
-		match = re.search(
-			pattern,
-			filename,
-		)
-
-		if match:
-			hour = int(match.group("hour"))
-			minute = int(match.group("minute"))
-			second = int(match.groupdict().get("second") or 0)
-
-			# Ignore invalid matches that do not represent a real time.
-			if hour > 23 or minute > 59 or second > 59:
-				continue
-
-			return (
-				hour,
-				minute,
-				second,
-			)
-
-	return None
+# The capture time (hour, minute, second) from an image name, or None, as extract_date.
+def extract_time(filename: str) -> tuple[int, int, int] | None:
+	return _read_name(filename)[1]
 
 
-# Filename date and time are local camera time; unknown formats are never guessed.
+# Filename date and time are local camera time; unknown or ambiguous names are never guessed.
 def image_moment(name: str, timezone: str) -> datetime | None:
 	image_date = extract_date(name)
 	image_time = extract_time(name)
@@ -651,6 +687,7 @@ def _find_daily_images_worker(
 		camera=camera,
 		target_dates=[previous_date, target_date],
 		progress_callback=progress_callback,
+		report_unreadable=True,
 	)
 	previous_images = images_by_date[previous_date]
 	current_images = select_daylight_images(
