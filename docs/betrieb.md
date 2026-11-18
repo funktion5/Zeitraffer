@@ -12,11 +12,13 @@ Die Zeitplanung erfolgt über Linux-Cron. Es gibt keinen internen Python-Schedul
 Die installierte Crontab verpixelt täglich um 02:00 Uhr zuerst die noch offenen Bilder der
 letzten 48 Stunden ([Verpixelung auf der Storage Box](verpixelung-box.md)) und startet dann den
 Nachtlauf. Danach lädt ein Skript die neuen Videos auf die Website hoch
-([Upload auf die Website](#upload-auf-die-website)), und zuletzt folgt in derselben Zeile der
-[Highlights-Flagger](#highlights-flagger):
+([Upload auf die Website](#upload-auf-die-website)), dann folgt in derselben Zeile der
+[Highlights-Flagger](#highlights-flagger), und zuletzt sammelt `src.night_warnings` die Meldungen der Nacht
+für den Hinweisbalken der Weboberfläche. Die Zeile `=== Nachtlauf <Datum> ===` vor dem Upload markiert
+dessen Block im Upload-Protokoll (das `\%` braucht Cron):
 
 ```cron
-0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
+0 2 * * * cd <projektpfad> && export TIMELAPSE_STORAGE_BOX=<ssh-alias> && flock -n <projektpfad>/state/zeitraffer-run.lock -c '<projektpfad>/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium <projektpfad>/scripts/timelapse-nightly-staged; echo "=== Nachtlauf $(date +\%F) ===" >> <projektpfad>/logs/siteground-delivery.log; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run; <projektpfad>/.venv/bin/python3 -m src.night_warnings
 ```
 
 `./install.sh cron_hint` druckt diese Zeile, dazu die beiden Zeilen der laufenden Verpixelung und

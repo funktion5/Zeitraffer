@@ -214,6 +214,28 @@ Die Ausgabe des Skripts bleibt in einer privaten temporären Datei und im Protok
 
 Der Trigger nimmt dieselbe Laufsperre wie alle anderen Aufträge: Während eines Uploads läuft kein Video-Auftrag und umgekehrt. Beide Wrapper-Paare (Neuerstellen und Upload) installiert `./install.sh` im Schritt `web_bridge` samt sudoers-Regeln; von Hand: [Installation – Wrapper installieren](installation.md#wrapper-installieren).
 
+## Meldungsbalken
+
+Direkt unter der Kopfleiste steht auf jeder Seite ein Balken, der immer sichtbar ist. Ist nichts zu tun,
+steht dort grün mit Haken „Nichts zu melden.“, sonst orange mit Warnzeichen die Zahl der Meldungen und
+je Meldung eine Zeile: Kamera (falls eine betroffen ist), was los ist und darunter, was zu tun ist.
+Darunter steht immer „Letzter Nachtlauf: <Datum>, <Start>–<Ende> Uhr“. Es gibt keinen Knopf zum
+Ausblenden: Eine Meldung verschwindet, sobald die nächste Prüfung sie nicht mehr findet.
+
+Gemeldet wird nur, was jemand erledigen muss, keine Routinewarnungen. Die Quellen
+(`web/src/warnings.php`, `web/src/components/warning-banner.php`):
+
+- `state/web-jobs/warnings.json`: schreibt der letzte Schritt der 02:00-Cron-Zeile
+  (`src/night_warnings.py`) mit den Meldungen der Nacht (Lauf, Kameras, Flagger, Verpixelung, Modell,
+  Upload). Fehlt die Datei, ist sie kaputt oder ist sie ab 06:00 nicht von heute, meldet der Balken
+  „Nachtlauf fehlt“.
+- `state/web-jobs/blur-watch.json`: schreibt der Wächter der Verpixelung alle 5 Minuten. Bilder, die
+  seit über 10 Minuten unverpixelt sind, ein Fehler des Wächters oder eine Datei älter als 15 Minuten
+  („Verpixelungs-Wächter läuft nicht“) erscheinen sofort.
+- Der Speicher: „Speicher wird knapp“ oder „Speicher fast voll“ nach denselben Grenzen wie der Ring.
+
+Was bei jeder Meldung zu tun ist: [handbuch.md](handbuch.md#meldungen-im-meldungsbalken).
+
 ## Speicheranzeige
 
 Der Speicher wird an drei Stellen gezeigt. Gemessen werden nur Dateigrößen; alle Zahlen kommen aus

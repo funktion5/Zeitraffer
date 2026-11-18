@@ -451,8 +451,10 @@ older separate 04:00 flagger line is still there, delete it: the flagger would r
 # takes, so it needs no time of its own; it takes the run lock itself too, so it stays outside
 # flock. The steps are joined with ';', so a failing step never stops the next one.
 # TIMELAPSE_X264_PRESET=medium is FFmpeg's default, i.e. what the old Pi produced; the wrapper
-# would otherwise fall back to ultrafast.
-0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; /bin/bash ${PROJECT_ROOT}/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> ${PROJECT_ROOT}/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run
+# would otherwise fall back to ultrafast. The marker line before the upload tells this night's
+# block of the upload log from the web UI's uploads, and the last step collects the night's
+# warnings for the web UI's banner (cron needs the % of the date escaped).
+0 2 * * * cd ${PROJECT_ROOT} && export TIMELAPSE_STORAGE_BOX=${BOX_ALIAS} && flock -n ${PROJECT_ROOT}/state/zeitraffer-run.lock -c '${PROJECT_ROOT}/.venv/bin/python3 -m src.privacy.blur_box --all-blur-cameras --catch-up'; TIMELAPSE_X264_PRESET=medium ${PROJECT_ROOT}/scripts/timelapse-nightly-staged; echo "=== Nachtlauf \$(date +\\%F) ===" >> ${PROJECT_ROOT}/logs/siteground-delivery.log; /bin/bash ${PROJECT_ROOT}/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> ${PROJECT_ROOT}/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh ${PROJECT_ROOT}/.venv/bin/python3 -m src.flagger.run; ${PROJECT_ROOT}/.venv/bin/python3 -m src.night_warnings
 
 # The live blur round and its watchdog, every 5 minutes around the clock (docs/verpixelung-box.md).
 # The round marks every checked image for the website; the 4-minute cap ends a stuck round before

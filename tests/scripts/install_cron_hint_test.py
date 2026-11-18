@@ -36,3 +36,19 @@ def test_the_hint_prints_the_live_blur_round_and_the_watchdog() -> None:
 
 def test_the_nightly_line_stays_first() -> None:
 	assert cron_lines()[0].startswith("0 2 * * * cd /srv/timelapse && ")
+
+
+# The banner reads this night's upload block after the marker; the collector runs last. The date is
+# taken when cron runs (printed as $(date ...), not install.sh's day); cron needs the \%.
+def test_cron_hint_marks_the_upload_and_ends_with_the_collector() -> None:
+	nightly = [line for line in cron_lines() if line.startswith("0 2 ")]
+
+	assert len(nightly) == 1
+
+	line = nightly[0]
+	marker = (
+		'echo "=== Nachtlauf $(date +\\%F) ===" >> /srv/timelapse/logs/siteground-delivery.log;'
+	)
+	assert marker in line
+	assert line.index(marker) < line.index("copy_zeitraffer_videos_vps2siteground.sh")
+	assert line.endswith("; /srv/timelapse/.venv/bin/python3 -m src.night_warnings")

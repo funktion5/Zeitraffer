@@ -133,7 +133,7 @@ Cron scheitert. Es gibt keine feste Uhrzeit, er startet erst, wenn die Videos fe
 und die ganze Zeile: [Betrieb](betrieb.md#highlights-flagger)). Das Ende der Zeile:
 
 ```cron
-… timelapse-nightly-staged; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run
+… timelapse-nightly-staged; echo "=== Nachtlauf $(date +\%F) ===" >> <projektpfad>/logs/siteground-delivery.log; /bin/bash <projektpfad>/scripts/copy_zeitraffer_videos_vps2siteground.sh --run >> <projektpfad>/logs/siteground-delivery.log 2>&1; TIMELAPSE_FRAME_SOURCE=ssh <projektpfad>/.venv/bin/python3 -m src.flagger.run; <projektpfad>/.venv/bin/python3 -m src.night_warnings
 ```
 
 ## Ausgabe

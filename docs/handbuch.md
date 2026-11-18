@@ -37,11 +37,12 @@ stillgelegt; was von ihm übrig ist, liegt im [Archiv](../archive/README.md).
 | Nächtlicher Lauf: Daily, Weekly, Monthly und Yearly für alle Kameras | direkt danach | Cron |
 | Upload der Videos auf die Website ([betrieb.md](betrieb.md#upload-auf-die-website)) | direkt nach dem Nachtlauf | Cron |
 | Highlights-Flagger | direkt nach dem Upload, also ohne feste Uhrzeit | Cron |
+| Meldungen der Nacht für den Hinweisbalken der Weboberfläche sammeln | direkt nach dem Flagger | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
 | Verpixelung für ein von Hand gestartetes Video einer Blur-Kamera | automatisch bei jedem solchen Video; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
-Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinander.
+Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinander.
 
 ### Wo was liegt
 
@@ -661,6 +662,25 @@ prüfen ([Arbeitsspeicher](#arbeitsspeicher)).
 ---
 
 ## Fehler: Weboberfläche
+
+### Meldungen im Meldungsbalken
+
+Der Balken unter der Kopfleiste zeigt nur, was erledigt werden muss
+([weboberflaeche.md](weboberflaeche.md#meldungsbalken)). Jede Meldung nennt den nächsten Schritt; hier
+die Übersicht:
+
+| Meldung | Was tun |
+|---|---|
+| `Nachtlauf fehlt` / `Nachtlauf nicht gestartet` | [Heute Nacht lief nichts](#heute-nacht-lief-nichts-es-gibt-kein-protokoll) |
+| `Nachtlauf unterbrochen` | [Lauf wurde nach einem Neustart nicht wiederholt](#lauf-wurde-nach-einem-neustart-nicht-wiederholt) |
+| `Nachtlauf fehlgeschlagen: …` / `<Kamera>: Fehlgeschlagen: …` | Bericht des Nachtlaufs lesen ([Lauf meldet Erfolg, aber Kameras fehlen](#lauf-meldet-erfolg-aber-kameras-fehlen)), Kamera nachholen |
+| `Storage Box nicht erreichbar` | [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar) |
+| `<Kamera>: <n> Bildnamen nicht lesbar` | [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder), Absatz „Unlesbare Dateinamen“ |
+| `Flagger: …` | [Flagger startet nicht oder überspringt](#flagger-startet-nicht-oder-überspringt) |
+| `<Kamera>: Kein bestätigtes Bild, Tagesvideo ausgelassen` / `<Kamera>: <n> Bilder seit über 10 Minuten unverpixelt` / `Verpixelungs-Wächter …` | [Verpixelung](#verpixelung) |
+| `Erkennungsmodell fehlt: …` | [Modelldatei fehlt](#modelldatei-fehlt) |
+| `Upload auf die Website fehlgeschlagen` / `… lief nicht` | [Upload auf die Website](#upload-auf-die-website); „lief nicht“: die 02:00-Zeile mit `crontab -l` prüfen |
+| `Speicher wird knapp` / `Speicher fast voll` | [Festplatte voll](#festplatte-voll) |
 
 ### Anmeldung klappt nicht
 
