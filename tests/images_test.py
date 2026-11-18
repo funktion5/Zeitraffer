@@ -546,6 +546,62 @@ def test_find_images_for_dates_gives_a_false_match_to_its_real_day(monkeypatch):
 	}
 
 
+UNREADABLE_LISTING = ["Cam_20261117073004.jpg", "IMG20261117.jpg", "photo.jpg", "notes.txt"]
+
+
+def _unreadable_warnings(caplog) -> list[str]:
+	return [
+		record.getMessage()
+		for record in caplog.records
+		if record.levelname == "WARNING" and "cannot be read" in record.getMessage()
+	]
+
+
+# The Daily's listing names a camera whose names cannot be read, once, with an example. A name the
+# day pre-filter keeps although its date is unreadable is still counted.
+def test_daily_listing_warns_about_unreadable_names(monkeypatch, caplog):
+	monkeypatch.setattr(
+		images_module, "get_frame_source", lambda: FakeFrameSource(UNREADABLE_LISTING)
+	)
+
+	result = find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[date(2026, 11, 17)],
+		report_unreadable=True,
+	)
+
+	assert _unreadable_warnings(caplog) == [
+		"[Test-Camera] 2 of 3 image names cannot be read, e.g. IMG20261117.jpg"
+	]
+	assert result[date(2026, 11, 17)] == [
+		Path("/cache/Test-Camera/Cam_20261117073004.jpg"),
+		Path("/cache/Test-Camera/IMG20261117.jpg"),
+	]
+
+
+def test_listing_without_the_flag_logs_no_unreadable_warning(monkeypatch, caplog):
+	monkeypatch.setattr(
+		images_module, "get_frame_source", lambda: FakeFrameSource(UNREADABLE_LISTING)
+	)
+
+	find_images_for_dates(camera="Test-Camera", target_dates=[date(2026, 11, 17)])
+
+	assert _unreadable_warnings(caplog) == []
+
+
+def test_a_fully_readable_listing_logs_no_warning(monkeypatch, caplog):
+	names = ["Cam_20261117073004.jpg", "20261116T120000.jpg"]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+
+	find_images_for_dates(
+		camera="Test-Camera",
+		target_dates=[date(2026, 11, 17)],
+		report_unreadable=True,
+	)
+
+	assert _unreadable_warnings(caplog) == []
+
+
 # Frames must exist locally before a filter reads their bytes: all of the previous day (the
 # duplicate reference) and only the daylight frames of the target day.
 def test_daily_worker_localizes_previous_day_and_selected_frames_before_filtering(monkeypatch):

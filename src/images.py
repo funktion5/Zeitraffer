@@ -94,12 +94,15 @@ def find_images_for_dates(
 	camera: str,
 	target_dates: list[date],
 	progress_callback: Callable[[], None] | None = None,
+	report_unreadable: bool = False,
 ) -> dict[date, list[Path]]:
 	source = get_frame_source()
 	unique_dates = list(dict.fromkeys(target_dates))
 
 	patterns_by_date = {target_date: date_patterns(target_date) for target_date in unique_dates}
 	images_by_date = {target_date: [] for target_date in unique_dates}
+	image_count = 0
+	unreadable = []
 
 	# List the camera once and match known date formats by filename.
 	for name in source.list_names(camera):
@@ -108,6 +111,14 @@ def find_images_for_dates(
 
 		if not name.lower().endswith(".jpg"):
 			continue
+
+		# The Daily reads the whole listing anyway; a name without date and time is lost to the
+		# Monthly, Yearly and flagger, so the night should say so.
+		if report_unreadable:
+			image_count += 1
+
+			if extract_date(name) is None or extract_time(name) is None:
+				unreadable.append(name)
 
 		for target_date, target_patterns in patterns_by_date.items():
 			if not any(date_pattern in name for date_pattern in target_patterns):
@@ -123,6 +134,12 @@ def find_images_for_dates(
 
 			images_by_date[target_date].append(source.path_for(camera, name))
 			break
+
+	if unreadable:
+		logger.warning(
+			f"[{camera}] {len(unreadable)} of {image_count} image names cannot be read, "
+			f"e.g. {unreadable[0]}"
+		)
 
 	return {target_date: sorted(images) for target_date, images in images_by_date.items()}
 
@@ -670,6 +687,7 @@ def _find_daily_images_worker(
 		camera=camera,
 		target_dates=[previous_date, target_date],
 		progress_callback=progress_callback,
+		report_unreadable=True,
 	)
 	previous_images = images_by_date[previous_date]
 	current_images = select_daylight_images(
