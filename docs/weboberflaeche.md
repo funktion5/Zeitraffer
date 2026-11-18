@@ -219,7 +219,8 @@ Der Trigger nimmt dieselbe Laufsperre wie alle anderen Aufträge: Während eines
 Direkt unter der Kopfleiste steht auf jeder Seite ein Balken, der immer sichtbar ist. Ist nichts zu tun,
 steht dort grün mit Haken „Nichts zu melden.“, sonst orange mit Warnzeichen die Zahl der Meldungen und
 je Meldung eine Zeile: Kamera (falls eine betroffen ist), was los ist und darunter, was zu tun ist.
-Darunter steht immer „Letzter Nachtlauf: <Datum>, <Start>–<Ende> Uhr“. Es gibt keinen Knopf zum
+Darunter steht „Letzter Nachtlauf: <Datum>, <Start>–<Ende> Uhr“, sobald die Datei der Nacht lesbar
+ist (fehlt sie, steht dort nur „Nachtlauf fehlt“). Es gibt keinen Knopf zum
 Ausblenden: Eine Meldung verschwindet, sobald die nächste Prüfung sie nicht mehr findet.
 
 Gemeldet wird nur, was jemand erledigen muss, keine Routinewarnungen. Die Quellen

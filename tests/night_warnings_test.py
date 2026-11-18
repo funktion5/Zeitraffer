@@ -181,13 +181,14 @@ def test_flagger_errors_are_reported(project: Project) -> None:
 		"flagger",
 		"2026-11-18 03:13:05,085 | ERROR | [Strandterrassen] none of 38 images could be read"
 		" - nothing written\n"
-		"2026-11-18 03:14:00,000 | ERROR | Flagger not started: model file missing: /m.onnx\n"
+		"2026-11-18 03:14:00,000 | ERROR | Flagger not started:"
+		" flagger.retention_days must be at least 7\n"
 		"2026-11-18 03:14:01,000 | WARNING | Camera SKM-Mardorf: excluded 3 empty image files\n",
 	)
 
 	assert texts(project) == [
 		("Strandterrassen", "Flagger: none of 38 images could be read - nothing written"),
-		(None, "Flagger: not started: model file missing: /m.onnx"),
+		(None, "Flagger: not started: flagger.retention_days must be at least 7"),
 	]
 
 
@@ -225,6 +226,22 @@ def test_missing_model_is_reported_once_per_path(project: Project) -> None:
 
 	assert [(m["camera"], m["text"]) for m in result["messages"]] == [
 		(None, "Erkennungsmodell fehlt: models/missing.onnx")
+	]
+
+
+# The flagger also stops on a missing model; one line for one problem, without the host path.
+def test_a_missing_model_is_reported_once_not_also_by_the_flagger(project: Project) -> None:
+	fine_night(project)
+	model = project.root / "models" / "m.onnx"
+	project.log(
+		"flagger",
+		f"2026-11-18 03:14:00,000 | ERROR | Flagger not started: model file missing: {model}\n",
+	)
+
+	result = collect(NOW, project.root, model_paths=[model])
+
+	assert [(m["camera"], m["text"]) for m in result["messages"]] == [
+		(None, "Erkennungsmodell fehlt: models/m.onnx")
 	]
 
 
