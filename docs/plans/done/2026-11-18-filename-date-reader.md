@@ -14,7 +14,7 @@ one WARNING per camera; the nightly wrapper copies that line into `report.txt`.
 **Tech Stack:** Python 3.13 (runnable on 3.11), `re`, `functools.lru_cache`, bash (nightly wrapper),
 pytest.
 
-**Spec:** `docs/plans/2026-11-18-filename-date-reader-design.md`
+**Spec:** `docs/plans/done/2026-11-18-filename-date-reader-design.md`
 
 ## Global Constraints
 

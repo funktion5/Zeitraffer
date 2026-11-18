@@ -1,6 +1,6 @@
 # Design: one general reader for date and time in image names
 
-Status: approved by Julius 2026-11-18. Branch `feature/filename-date-reader`.
+Status: built 2026-11-18 (branch `feature/filename-date-reader`), final review clean.
 
 ## Why
 
