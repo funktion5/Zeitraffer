@@ -37,11 +37,12 @@ stillgelegt; was von ihm übrig ist, liegt im [Archiv](../archive/README.md).
 | Nächtlicher Lauf: Daily, Weekly, Monthly und Yearly für alle Kameras | direkt danach | Cron |
 | Upload der Videos auf die Website ([betrieb.md](betrieb.md#upload-auf-die-website)) | direkt nach dem Nachtlauf | Cron |
 | Highlights-Flagger | direkt nach dem Upload, also ohne feste Uhrzeit | Cron |
+| Meldungen der Nacht für den Hinweisbalken der Weboberfläche sammeln | direkt nach dem Flagger | Cron |
 | Videos für vergangene Zeiträume | bei Bedarf | Weboberfläche oder Befehl |
 | Verpixelung für ein von Hand gestartetes Video einer Blur-Kamera | automatisch bei jedem solchen Video; dauert deutlich länger | Weboberfläche oder Befehl |
 | Speicherfilter, Yearly-Backfill, NAS-Werkzeuge, Sicherung | bei Bedarf | Befehl |
 
-Die vier 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinander.
+Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheinander.
 
 ### Wo was liegt
 
