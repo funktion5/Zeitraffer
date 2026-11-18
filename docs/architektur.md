@@ -75,14 +75,28 @@ Allgemeine Bildlogik:
 
 - Kameraerkennung
 - `os.scandir()`-basierte Bildsuche für einzelne oder mehrere angeforderte Tage
-- Datums- und Uhrzeitextraktion aus bekannten Dateinamensformaten
+- Datum und Uhrzeit aus dem Dateinamen (siehe unten)
 - daylight-basierte Auswahl
 - Interval-Suche
 - 0-Byte-Filterung
 - SHA-256-Hashing
 - job-spezifische Duplicate-Filterung
 
-Unbekannte Dateinamensformate werden nicht geraten.
+**Datum und Uhrzeit aus dem Dateinamen** (`extract_date`, `extract_time`): Der Leser kennt keine
+Kameranamen, nur Schreibweisen. Jede Datums-Schreibweise wird mit jedem Trenner und jeder
+Uhrzeit-Schreibweise kombiniert; was davor oder dahinter steht (Präfix, Hundertstel, Zähler), ist egal.
+
+| Datum | Trenner | Uhrzeit |
+|---|---|---|
+| `YYYYMMDD`, `YYMMDD` | keiner, `T`, `_`, `-` | `HHMMSS`, `HHMM` |
+| `YYYY-MM-DD`, `YY-MM-DD` | | `HH-MM-SS` |
+| `YYYY_MMDD` (Cafe am Meer, alt) | | `HHMMSScc` (P/T-Kameras, alt) |
+
+Eine Kombination zählt nur als Ganzes (keine Ziffer direkt davor oder dahinter), Jahre 2000 bis 2099.
+Ergeben zwei Kombinationen verschiedene gültige Lesarten, gilt der Name als unlesbar: Er wird nie
+geraten. Eine wirklich neue Schreibweise (etwa `2026.11.17`) braucht einen neuen Baustein in der
+Tabelle in `src/images.py`; bis dahin meldet der Nachtlauf die Kamera (siehe
+[handbuch.md](handbuch.md#eine-kamera-hat-keine-bilder)).
 
 ### `src/storage/frame_source.py`
 
@@ -425,7 +439,7 @@ Grundregeln des Projekts:
 - Originalbilder auf der Storage Box niemals verändern (Ausnahme: Die Verpixelung auf der Box sichert
   vorher das Original).
 - Frames nur lokal unter `temp/` vorbereiten.
-- Unbekannte Dateinamensformate niemals erraten.
+- Unbekannte oder mehrdeutige Dateinamen niemals erraten.
 - Verpixelung schlägt im Zweifel fehl: lieber kein Video als ein ungeprüftes Bild. Automatische
   Videos von Blur-Kameras entstehen nur aus Bildern, die der Box-Job bestätigt hat.
 - Bestehende Videos erst nach erfolgreicher Neuerstellung ersetzen.

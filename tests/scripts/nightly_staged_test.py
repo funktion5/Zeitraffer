@@ -312,6 +312,27 @@ def test_a_job_failure_without_a_named_camera_fails_the_run(project):
 	assert "FAILED (run)" in project.report()
 
 
+# Unreadable image names are reported under their camera, but the videos may be fine: no failure.
+def test_unreadable_names_are_reported_without_failing_the_camera(project):
+	project.main_lines(
+		summary("Daily"),
+		"2026-11-18 02:00:10,000 | WARNING | [Bravo Cam] 7 of 900 image names cannot be read, "
+		"e.g. x.jpg",
+		summary("Weekly"),
+		summary("Monthly"),
+		summary("Yearly"),
+	)
+
+	result = project.run()
+	report = project.report()
+	bravo_block = report.split("== Bravo Cam")[1].split("==")[0]
+
+	assert result.returncode == 0
+	assert "   WARNING: 7 image names cannot be read" in bravo_block
+	assert "WARNING" not in report.split("== Alpha")[1].split("==")[0]
+	assert "Cameras: 2, failed: 0" in report
+
+
 def test_missing_summary_lines_fail_the_run(project):
 	project.main_lines(summary("Daily"), summary("Weekly"), summary("Monthly"))
 

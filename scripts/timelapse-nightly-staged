@@ -224,6 +224,16 @@ while IFS= read -r camera <&3; do
 	else
 		note "   ok: ${VERIFIED_VIDEOS} videos verified"
 	fi
+
+	# Names the Daily could not read are lost to the Monthly, Yearly and flagger; the videos of
+	# the night may still be fine, so this warns without failing the camera.
+	unreadable="$(grep -F -- "| WARNING | [${camera}] " "$main_out" \
+		| grep -m1 -F "image names cannot be read" \
+		| sed -E 's/^.*\] ([0-9]+) of .*$/\1/')"
+
+	if [[ -n "$unreadable" ]]; then
+		note "   WARNING: ${unreadable} image names cannot be read"
+	fi
 done 3<"${RUN_DIR}/cameras.txt"
 
 # The pipeline lists the cameras again on its own: one that appeared or vanished since the list above
