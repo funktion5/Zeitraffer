@@ -18,8 +18,12 @@ from src.logger import configure_file_logging, logger
 from src.privacy import blur_box
 from src.storage.storage_box import StorageBox, get_storage_box
 from src.storage.storage_filter import list_images_for_dates
+from src.web_state import WEB_STATE_ROOT, write_web_json
 
 STATE_ROOT = blur_box.DEFAULT_STATE_ROOT
+# Read by the web UI's banner: the check time shows the watchdog is alive, the counts and the error
+# what it found.
+STATUS_PATH = WEB_STATE_ROOT / "blur-watch.json"
 
 # The round runs every 5 minutes and checks an image in 5-9 s, so a normal one is done within
 # about 6 minutes; 10 leave a margin and still fit the website's 15-minute renewal.
@@ -43,6 +47,18 @@ def find_stale(storage_box: StorageBox, camera: str, state_root: Path, now: date
 	]
 
 
+def write_status(now: datetime, stale_counts: dict[str, int], errors: list[str]) -> None:
+	status = {"checked": now.isoformat(), "stale": stale_counts, "error": "; ".join(errors) or None}
+
+	# The banner treats a missing or old file as "watchdog not running", so a failed write is logged
+	# and never stops the check itself.
+	try:
+		write_web_json(STATUS_PATH, status)
+
+	except OSError as error:
+		logger.error(f"Could not write the watchdog status for the web UI: {error}")
+
+
 def main(now: datetime | None = None) -> int:
 	configure_file_logging("privacy")
 
@@ -55,10 +71,13 @@ def main(now: datetime | None = None) -> int:
 
 	except OSError as error:
 		logger.error(f"No storage box: {error}")
+		write_status(now, {}, [f"No storage box: {error}"])
 		return 1
 
 	exit_code = 0
 	stale_total = 0
+	stale_counts: dict[str, int] = {}
+	errors: list[str] = []
 
 	for camera in cameras:
 		try:
@@ -67,8 +86,11 @@ def main(now: datetime | None = None) -> int:
 		# TimeoutError is an OSError too.
 		except OSError as error:
 			logger.error(f"[{camera}] Stale check failed: {error}")
+			errors.append(f"[{camera}] {error}")
 			exit_code = 1
 			continue
+
+		stale_counts[camera] = len(stale)
 
 		if stale:
 			stale_total += len(stale)
@@ -82,6 +104,7 @@ def main(now: datetime | None = None) -> int:
 	# Written on every run, so a quiet log still shows the watchdog is alive.
 	found = f"{stale_total} stale images" if stale_total else "nothing stale"
 	logger.info(f"Stale check: {len(cameras)} cameras, {found}")
+	write_status(now, stale_counts, errors)
 
 	return exit_code
 

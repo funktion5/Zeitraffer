@@ -1,4 +1,5 @@
 import inspect
+import json
 import os
 from datetime import datetime
 from pathlib import Path
@@ -121,6 +122,10 @@ def config(box: Box, monkeypatch) -> dict:
 	monkeypatch.setattr(blur_watch, "load_config", lambda: config)
 	monkeypatch.setattr(blur_watch, "get_storage_box", lambda: StorageBox(REMOTE, ""))
 	monkeypatch.setattr(blur_watch, "STATE_ROOT", box.state_root)
+	# Every main() run writes the status file; never into the real state folder.
+	monkeypatch.setattr(
+		blur_watch, "STATUS_PATH", box.state_root.parent / "web-jobs" / "blur-watch.json"
+	)
 
 	return config
 
@@ -177,3 +182,58 @@ def test_main_without_a_storage_box_is_an_error(config, caplog, monkeypatch) -> 
 
 	assert blur_watch.main(now=NOW) == 1
 	assert "No storage box: TIMELAPSE_STORAGE_BOX is not set" in caplog.text
+
+
+# The web UI's banner reads this file: the check time shows the watchdog is alive.
+@pytest.fixture
+def status_path(tmp_path: Path, monkeypatch) -> Path:
+	path = tmp_path / "web-jobs" / "blur-watch.json"
+	monkeypatch.setattr(blur_watch, "STATUS_PATH", path)
+
+	return path
+
+
+def read_status(path: Path) -> dict:
+	return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_status_file_lists_stale_counts(box: Box, config, status_path: Path) -> None:
+	box.upload("20260615T120000.jpg", age_seconds=7200)
+	box.upload("20260615T121500.jpg", age_seconds=7200)
+
+	assert blur_watch.main(now=NOW) == 0
+
+	assert read_status(status_path) == {
+		"checked": NOW.isoformat(),
+		"stale": {CAMERA: 2, OTHER: 0},
+		"error": None,
+	}
+
+
+def test_status_file_records_an_unreachable_box(config, status_path: Path, monkeypatch) -> None:
+	def no_box():
+		raise OSError("no box")
+
+	monkeypatch.setattr(blur_watch, "get_storage_box", no_box)
+
+	assert blur_watch.main(now=NOW) == 1
+
+	status = read_status(status_path)
+	assert status["checked"] == NOW.isoformat()
+	assert status["stale"] == {}
+	assert "no box" in status["error"]
+
+
+def test_status_file_records_a_failed_camera_check(
+	box: Box, config, status_path: Path, monkeypatch
+) -> None:
+	def listing(storage_box, camera, days):
+		raise OSError("Storage box listing failed")
+
+	monkeypatch.setattr(blur_watch, "list_images_for_dates", listing)
+
+	assert blur_watch.main(now=NOW) == 1
+
+	status = read_status(status_path)
+	assert status["stale"] == {}
+	assert f"[{CAMERA}] Storage box listing failed" in status["error"]
