@@ -25,11 +25,24 @@ class Project:
 		(folder / "report.txt").write_text(report, encoding="utf-8")
 		(folder / "main.out").write_text(main_out, encoding="utf-8")
 
+		# A fine upload of tonight unless a test sets its own, so only the tested rule speaks.
+		if not (self.root / "logs" / "siteground-delivery.log").exists():
+			self.upload_log(CLEAN_UPLOAD)
+
 		return folder
 
 	def marker(self) -> None:
 		(self.root / "state").mkdir(exist_ok=True)
 		(self.root / "state" / "run-in-progress").write_text("")
+
+	def log(self, job: str, text: str, date: str = "2026-11-18") -> None:
+		folder = self.root / "logs" / job
+		folder.mkdir(parents=True, exist_ok=True)
+		(folder / f"{date}.log").write_text(text, encoding="utf-8")
+
+	def upload_log(self, text: str) -> None:
+		(self.root / "logs").mkdir(exist_ok=True)
+		(self.root / "logs" / "siteground-delivery.log").write_text(text, encoding="utf-8")
 
 
 @pytest.fixture
@@ -82,6 +95,8 @@ def test_a_missing_run_folder_gives_night_not_started(project: Project) -> None:
 
 
 def test_no_nightly_folder_at_all_gives_night_not_started(project: Project) -> None:
+	project.upload_log(CLEAN_UPLOAD)
+
 	assert texts(project) == [(None, "Nachtlauf nicht gestartet")]
 
 
@@ -146,14 +161,144 @@ def test_unreadable_names_from_the_report(project: Project) -> None:
 	assert messages(project)[0]["hint"] == "Neue Schreibweise? Handbuch „Unlesbare Dateinamen“"
 
 
-def test_main_writes_the_file_also_without_messages(project: Project, monkeypatch) -> None:
+NIGHT_MARKER = "=== Nachtlauf 2026-11-18 ===\n"
+CLEAN_UPLOAD = (
+	NIGHT_MARKER + "[INFO]   Kamera:          Alpha\n"
+	"[INFO] Ergebnis: hochgeladen=4 übersprungen=0 fehlgeschlagen=0 gelöscht=4\n"
+	"[INFO] Alle Kameras erfolgreich abgeschlossen.\n"
+)
+
+
+# A night whose run and upload went fine; each test below breaks one thing.
+def fine_night(project: Project) -> None:
 	project.run(report=CLEAN_REPORT)
+	project.upload_log(CLEAN_UPLOAD)
+
+
+def test_flagger_errors_are_reported(project: Project) -> None:
+	fine_night(project)
+	project.log(
+		"flagger",
+		"2026-11-18 03:13:05,085 | ERROR | [Strandterrassen] none of 38 images could be read"
+		" - nothing written\n"
+		"2026-11-18 03:14:00,000 | ERROR | Flagger not started: model file missing: /m.onnx\n"
+		"2026-11-18 03:14:01,000 | WARNING | Camera SKM-Mardorf: excluded 3 empty image files\n",
+	)
+
+	assert texts(project) == [
+		("Strandterrassen", "Flagger: none of 38 images could be read - nothing written"),
+		(None, "Flagger: not started: model file missing: /m.onnx"),
+	]
+
+
+# Lines of an earlier run on the same day (a manual flagger run at 01:00) are not this night's.
+def test_flagger_lines_before_the_run_are_ignored(project: Project) -> None:
+	fine_night(project)
+	project.log("flagger", "2026-11-18 01:00:00,000 | ERROR | [Alpha] failed: old\n")
+
+	assert texts(project) == []
+
+
+def test_blur_gate_from_the_daily_log_only(project: Project) -> None:
+	fine_night(project)
+	gate = (
+		"2026-11-18 02:05:00,000 | WARNING | [SLSV] Blur gate: no confirmed image"
+		" - skipping camera.\n"
+	)
+	project.log("monthly", gate)
+
+	assert texts(project) == []
+
+	project.log("daily", gate)
+
+	assert texts(project) == [("SLSV", "Kein bestätigtes Bild, Tagesvideo ausgelassen")]
+
+
+def test_missing_model_is_reported_once_per_path(project: Project) -> None:
+	fine_night(project)
+	present = project.root / "models" / "present.onnx"
+	present.parent.mkdir()
+	present.write_bytes(b"x")
+	missing = project.root / "models" / "missing.onnx"
+
+	result = collect(NOW, project.root, model_paths=[present, missing, missing])
+
+	assert [(m["camera"], m["text"]) for m in result["messages"]] == [
+		(None, "Erkennungsmodell fehlt: models/missing.onnx")
+	]
+
+
+def test_upload_failure_counts_cameras(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		NIGHT_MARKER + "[INFO] Ergebnis: hochgeladen=1 übersprungen=0 fehlgeschlagen=2 gelöscht=0\n"
+		"[INFO] Ergebnis: hochgeladen=3 übersprungen=0 fehlgeschlagen=0 gelöscht=0\n"
+		"[INFO] Ergebnis: hochgeladen=0 übersprungen=0 fehlgeschlagen=1 gelöscht=0\n"
+		"[WARN] Mindestens eine Kamera ist fehlgeschlagen.\n"
+	)
+
+	assert texts(project) == [(None, "Upload auf die Website fehlgeschlagen (2 Kameras)")]
+
+
+def test_upload_missing_login_is_a_failure(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		NIGHT_MARKER + "[WARN] SITEGROUND_HOST, SITEGROUND_USER und SITEGROUND_PASS müssen"
+		" ausgefüllt sein.\n"
+	)
+
+	assert texts(project) == [(None, "Upload auf die Website fehlgeschlagen")]
+
+
+def test_upload_without_marker_did_not_run(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		"[INFO] Ergebnis: hochgeladen=4 übersprungen=0 fehlgeschlagen=0 gelöscht=4\n"
+	)
+
+	assert texts(project) == [(None, "Upload auf die Website lief nicht")]
+
+
+def test_upload_all_skipped_is_not_a_failure(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		NIGHT_MARKER + "[INFO] Ergebnis: hochgeladen=0 übersprungen=4 fehlgeschlagen=0 gelöscht=0\n"
+	)
+
+	assert texts(project) == []
+
+
+# Yesterday's failed upload stays yesterday's: only the block after tonight's marker counts.
+def test_only_this_nights_upload_block_counts(project: Project) -> None:
+	project.run(report=CLEAN_REPORT)
+	project.upload_log(
+		"=== Nachtlauf 2026-11-17 ===\n"
+		"[INFO] Ergebnis: hochgeladen=0 übersprungen=0 fehlgeschlagen=3 gelöscht=0\n" + CLEAN_UPLOAD
+	)
+
+	assert texts(project) == []
+
+
+# Without a run folder the other checks still run, counted from 02:00 of this night.
+def test_a_night_that_did_not_start_still_reports_the_upload(project: Project) -> None:
+	project.upload_log("")
+
+	assert texts(project) == [
+		(None, "Nachtlauf nicht gestartet"),
+		(None, "Upload auf die Website lief nicht"),
+	]
+
+
+def test_main_writes_the_file_also_without_messages(project: Project, monkeypatch) -> None:
+	fine_night(project)
 	path = project.root / "state" / "web-jobs" / "warnings.json"
 	monkeypatch.setattr(night_warnings, "PROJECT_ROOT", project.root)
 	monkeypatch.setattr(night_warnings, "WARNINGS_PATH", path)
 	monkeypatch.setattr(
 		night_warnings, "load_config", lambda: {"location": {"timezone": "Europe/Berlin"}}
 	)
+	# The real model paths depend on the host (Docker has no models/); that rule has its own test.
+	monkeypatch.setattr(night_warnings, "configured_model_paths", lambda config, root: [])
 
 	assert night_warnings.main(now=NOW) == 0
 
