@@ -84,7 +84,7 @@ Allgemeine Bildlogik:
 
 Unbekannte Dateinamensformate werden nicht geraten.
 
-### `src/frame_source.py`
+### `src/storage/frame_source.py`
 
 Die Bildquelle (`FrameSource`): Alle Jobs, die Kommandozeile, die Weboberfläche und die Werkzeuge
 listen und holen Kamerabilder über dieselbe Schnittstelle. `LocalFrameSource` liest einen Ordner
@@ -134,7 +134,7 @@ Der Supervisor übernimmt:
 
 Der Timeout misst **Inaktivität**, nicht die Gesamtlaufzeit. Lange Scans dürfen weiterlaufen, solange Fortschritt gemeldet wird.
 
-Eine Worker-Funktion ist eine normale Funktion mit `progress_callback`-Parameter, die ihr Ergebnis zurückgibt. `run_isolated_worker(camera, target, kwargs, ...)` startet sie im eigenen Prozess. Auch die Bildbereich-Diagnose (`src/diagnostics.py`) läuft darüber, mit 10 Sekunden Stall-Timeout.
+Eine Worker-Funktion ist eine normale Funktion mit `progress_callback`-Parameter, die ihr Ergebnis zurückgibt. `run_isolated_worker(camera, target, kwargs, ...)` startet sie im eigenen Prozess. Auch die Bildbereich-Diagnose (`src/jobs/diagnostics.py`) läuft darüber, mit 10 Sekunden Stall-Timeout.
 
 ### `src/date_coverage.py`
 
@@ -147,7 +147,7 @@ Gemeinsame Datumslogik für exakte rollierende Fenster:
 - Lesen und Prüfen der Mindestabdeckung (`get_min_coverage_days`)
 - kompakte Darstellung aufeinanderfolgender fehlender Tage für Logs
 
-### `src/yearly_selection.py`
+### `src/jobs/yearly_selection.py`
 
 Yearly-spezifische Frame-Auswahl.
 
@@ -230,17 +230,17 @@ Verwaltet den persistenten Marker `state/run-in-progress` für den vollständige
 Tägliches Bildfenster für Monthly und Yearly: Mitte als Uhrzeit oder Sonnenuntergang (über
 `astral`), plus/minus Toleranz, ohne Mitternachtsüberschreitung.
 
-### `src/storage_box.py`
+### `src/storage/storage_box.py`
 
 Die Storage Box: ihr Name aus der Umgebung (`TIMELAPSE_STORAGE_BOX`), ein lesender Befehl über ssh
 (`StorageBox.run`) und das Lesen einer `ls -l`-Ausgabe. Das Modul importiert nichts aus dem Projekt,
 damit Bildquelle, Speicherfilter, Bilder und Verpixelung es ohne Importschleife nutzen können.
 
-### `src/storage_filter.py`
+### `src/storage/storage_filter.py`
 
 Speicherfilter ([werkzeuge.md](werkzeuge.md)): listet leere und doppelte Bilder per `ls` und
 `sha256sum` direkt auf der Storage Box, ohne Bilder über das Netz zu lesen. Die Box-Anbindung
-(`StorageBox`, siehe oben) nutzen auch die Bildquelle (`src/frame_source.py`) und die Verpixelung.
+(`StorageBox`, siehe oben) nutzen auch die Bildquelle (`src/storage/frame_source.py`) und die Verpixelung.
 
 ### `web/`
 
@@ -287,7 +287,8 @@ timelapse/
 ├── nas/
 │   ├── helpers/   (Zähl- und Prüfwerkzeuge)
 │   ├── nas-extract.py
-│   └── README.md
+│   ├── README.md
+│   └── yearly-backfill.py   (Kalenderjahr-Videos ohne Mindestabdeckung)
 ├── scripts/
 │   ├── web/   (Wrapper der Weboberfläche, installiert unter /usr/local/)
 │   │   ├── timelapse-web-delete
@@ -304,8 +305,7 @@ timelapse/
 │   ├── copy_zeitraffer_videos_vps2siteground.sh   (Upload der Videos auf die Website)
 │   ├── list-deliverable-videos.py   (Liste der Videos, die hochgeladen werden dürfen)
 │   ├── storage-filter-all
-│   ├── timelapse-nightly-staged
-│   └── yearly-backfill.py
+│   └── timelapse-nightly-staged
 ├── src/
 │   ├── flagger/
 │   │   ├── __init__.py

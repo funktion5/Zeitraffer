@@ -15,7 +15,7 @@ from src.image_worker import WorkerExitedError
 
 # The script's file name has a hyphen, so it cannot be imported by name.
 _spec = importlib.util.spec_from_file_location(
-	"yearly_backfill", PROJECT_ROOT / "scripts" / "yearly-backfill.py"
+	"yearly_backfill", PROJECT_ROOT / "nas" / "yearly-backfill.py"
 )
 backfill = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(backfill)

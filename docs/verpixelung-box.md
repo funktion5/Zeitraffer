@@ -473,7 +473,7 @@ Bilder keine Person zeigen (313 offene Bilder in 28 Minuten). Das Weekly (alle T
 
 - automatische Läufe (verpixeln nie),
 - Videos, die es schon gibt: sie werden nicht nachträglich verpixelt,
-- `scripts/yearly-backfill.py`: verpixelt nicht ([werkzeuge.md](werkzeuge.md)).
+- `nas/yearly-backfill.py`: verpixelt nicht ([werkzeuge.md](werkzeuge.md)).
 
 In der Weboberfläche steht bei Blur-Kameras ein Hinweis unter dem Formular, dass die Erstellung
 wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).

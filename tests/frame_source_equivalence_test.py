@@ -5,7 +5,7 @@ import pytest
 from frame_source_fakes import LS_DIRECTORY, LS_FILE, FakeListingBox
 
 import src.images as images_module
-from src.frame_source import LocalFrameSource, SshFrameSource
+from src.storage.frame_source import LocalFrameSource, SshFrameSource
 from src.images import ImageRange
 
 DAY = date(2026, 9, 16)

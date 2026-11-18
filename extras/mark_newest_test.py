@@ -12,7 +12,7 @@ import extras.mark_newest as mark_newest
 from extras.mark_newest import mark_camera, newest_image
 from src.privacy.box_writer import BoxWriter
 from src.privacy.checked_mark import add_mark
-from src.storage_box import StorageBox
+from src.storage.storage_box import StorageBox
 
 TIMEZONE = "Europe/Berlin"
 

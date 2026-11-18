@@ -13,7 +13,7 @@ from pathlib import Path
 from src.config import PROJECT_ROOT, load_config
 from src.images import date_patterns, extract_date, get_cameras, require_cameras
 from src.logger import LOG_TIMEZONE, cleanup_old_logs, configure_file_logging, logger
-from src.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
+from src.storage.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
 
 REPORT_ROOT = PROJECT_ROOT / "reports" / "storage-filter"
 RUN_LOCK_PATH = PROJECT_ROOT / "state" / "zeitraffer-run.lock"

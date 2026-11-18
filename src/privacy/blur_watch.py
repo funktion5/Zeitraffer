@@ -16,8 +16,8 @@ from zoneinfo import ZoneInfo
 from src.config import load_config
 from src.logger import configure_file_logging, logger
 from src.privacy import blur_box
-from src.storage_box import StorageBox, get_storage_box
-from src.storage_filter import list_images_for_dates
+from src.storage.storage_box import StorageBox, get_storage_box
+from src.storage.storage_filter import list_images_for_dates
 
 STATE_ROOT = blur_box.DEFAULT_STATE_ROOT
 

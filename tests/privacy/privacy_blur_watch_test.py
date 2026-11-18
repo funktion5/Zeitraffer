@@ -9,7 +9,7 @@ from privacy_fakes import run_in
 
 import src.privacy.blur_watch as blur_watch
 from src.privacy.blur_box import record_processed
-from src.storage_box import StorageBox
+from src.storage.storage_box import StorageBox
 
 REMOTE = "user@box.example"
 CAMERA = "Test-Camera"

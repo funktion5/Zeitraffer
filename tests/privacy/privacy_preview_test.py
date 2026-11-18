@@ -7,9 +7,9 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-import src.frame_source as frame_source
+import src.storage.frame_source as frame_source
 import src.privacy.preview as preview
-from src.frame_source import LocalFrameSource
+from src.storage.frame_source import LocalFrameSource
 from src.privacy.checked_mark import add_mark
 from src.privacy.preview import (
 	EXIT_FAILED,

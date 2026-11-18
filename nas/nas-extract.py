@@ -35,7 +35,7 @@ from src.interval_window import (  # noqa: E402
 	parse_window_time,
 	resolve_target_seconds,
 )
-from src.storage_filter import acquire_run_lock  # noqa: E402
+from src.storage.storage_filter import acquire_run_lock  # noqa: E402
 
 DEFAULT_SOURCE = "nas:Webcams/storagebox-mirror/tar"
 DEFAULT_OUTPUT = Path.home() / "nas-cameras"

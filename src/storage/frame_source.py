@@ -13,7 +13,7 @@ from typing import Protocol
 
 from src.config import PROJECT_ROOT
 from src.logger import logger
-from src.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
+from src.storage.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
 
 # One ssh listing sends no progress ticks, and the isolated worker running it is killed after
 # image_scan_stall_timeout_seconds (60 in config.json) without one. This timeout has to fire first,
@@ -209,8 +209,8 @@ def _sleep_with_progress(seconds: float, progress_callback: Callable[[], None] |
 
 # Where camera frames come from. The frame-reading code asks a source for names and paths and
 # calls localize() before it reads bytes, so it does not care whether the files are already local
-# or have to be fetched first. This module must not import src.images or src.storage_filter at
-# module level (circular imports).
+# or have to be fetched first. This module must not import src.images or
+# src.storage.storage_filter at module level (circular imports).
 class FrameSource(Protocol):
 	def list_cameras(self) -> list[str]: ...
 

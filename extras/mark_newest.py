@@ -21,7 +21,7 @@ from src.images import date_patterns, get_cameras, image_moment
 from src.logger import configure_file_logging, logger
 from src.privacy.box_writer import BoxWriter, BoxWriteRefused
 from src.privacy.checked_mark import add_mark, has_mark
-from src.storage_box import StorageBox, get_storage_box
+from src.storage.storage_box import StorageBox, get_storage_box
 
 # The last marked image per camera, so an unchanged camera costs no download.
 STATE_FILE = PROJECT_ROOT / "state" / "privacy" / "newest-marked.json"

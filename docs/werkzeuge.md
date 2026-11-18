@@ -13,9 +13,9 @@ Der Speicherfilter **löscht nichts**: Er fragt die Storage Box nur mit `ls` und
 ### Aufruf
 
 ```bash
-.venv/bin/python3 -m src.storage_filter --cameras Uferstrasse
-.venv/bin/python3 -m src.storage_filter --cameras Uferstrasse Nordufer_wide
-.venv/bin/python3 -m src.storage_filter --all-cameras
+.venv/bin/python3 -m src.storage.storage_filter --cameras Uferstrasse
+.venv/bin/python3 -m src.storage.storage_filter --cameras Uferstrasse Nordufer_wide
+.venv/bin/python3 -m src.storage.storage_filter --all-cameras
 ```
 
 - `--cameras` prüft genau die genannten Kameras, auch solche aus `ignored_cameras`.
@@ -109,16 +109,20 @@ Die Anzahl gefundener Dateien pro Kamera steht in `logs/filter/YYYY-MM-DD.log`.
 
 ## Yearly-Backfill für Kalenderjahre
 
-`scripts/yearly-backfill.py` erstellt Yearly-Videos für ganze Kalenderjahre (1. Januar bis
+`nas/yearly-backfill.py` erstellt Yearly-Videos für ganze Kalenderjahre (1. Januar bis
 31. Dezember, im laufenden Jahr bis gestern). Bildsuche, 0-Byte-Filter, Zeitfenster
 (`interval_window`) und die Auswahl von bis zu fünf Bildern pro Tag sind dieselben wie beim
 Yearly-Job, aber **ohne** Mindestabdeckung: Jede Kamera wird gerendert, fehlende Tage werden nur
 protokolliert.
 
+Gedacht ist es für das NAS-Archiv ([nas.md](nas.md)). Für eine Kamera auf der Storage Box geht
+es auch über die Weboberfläche: Mindestabdeckung des Jahresvideos in den Einstellungen auf 1, manueller
+Yearly mit Zieldatum 31.12., danach den Wert zurücksetzen ([handbuch.md](handbuch.md#werkzeuge)).
+
 ```bash
-.venv/bin/python3 scripts/yearly-backfill.py
-.venv/bin/python3 scripts/yearly-backfill.py --years 2024 2025 --cameras BSV-Steinhude
-.venv/bin/python3 scripts/yearly-backfill.py --years 2025 --force
+.venv/bin/python3 nas/yearly-backfill.py
+.venv/bin/python3 nas/yearly-backfill.py --years 2024 2025 --cameras BSV-Steinhude
+.venv/bin/python3 nas/yearly-backfill.py --years 2025 --force
 ```
 
 - `--years`: Kalenderjahre (Standard: 2026)

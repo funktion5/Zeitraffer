@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 import src.images as images_module
-import src.storage_box as storage_box_module
+import src.storage.storage_box as storage_box_module
 from src.config import PROJECT_ROOT
-from src.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
+from src.storage.storage_box import STORAGE_BOX_ENV, StorageBox, get_storage_box, parse_ls_output
 
 # The storage box as the rest of the program meets it: its name from the environment, one read-only
 # command over ssh, and the parsing of an `ls -l` listing.
@@ -109,7 +109,9 @@ def test_the_module_imports_nothing_from_this_project():
 # frame_source used to reach the box through imports inside functions, to get round the cycle
 # images -> frame_source -> storage_filter -> images. There is none left.
 def test_the_frame_source_has_no_imports_inside_functions():
-	tree = ast.parse(Path(PROJECT_ROOT / "src" / "frame_source.py").read_text(encoding="utf-8"))
+	tree = ast.parse(
+		Path(PROJECT_ROOT / "src" / "storage" / "frame_source.py").read_text(encoding="utf-8")
+	)
 	inside = [
 		(function.name, node.lineno)
 		for function in ast.walk(tree)
@@ -124,8 +126,8 @@ def test_the_frame_source_has_no_imports_inside_functions():
 # A fresh interpreter: loading the frame source must not pull in the modules that import it.
 def test_loading_the_frame_source_does_not_load_images_or_the_storage_filter():
 	code = (
-		"import sys, src.frame_source; "
-		"print(sorted(m for m in ('src.images', 'src.storage_filter') if m in sys.modules))"
+		"import sys, src.storage.frame_source; "
+		"print(sorted(m for m in ('src.images', 'src.storage.storage_filter') if m in sys.modules))"
 	)
 
 	result = subprocess.run(

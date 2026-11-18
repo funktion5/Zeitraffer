@@ -21,7 +21,7 @@ from src.logger import RUN_ID, format_run_context, logger
 from src.privacy.blur_gate import apply_blur_gate
 from src.privacy.blur_job import blur_job_frames
 from src.video import cleanup_automatic_video_retention, create_timelapse
-from src.yearly_selection import select_yearly_images_isolated
+from src.jobs.yearly_selection import select_yearly_images_isolated
 
 
 # Run the Yearly timelapse job: automatic by default, a manual run when manual_run is set.
