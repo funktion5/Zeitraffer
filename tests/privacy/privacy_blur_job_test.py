@@ -17,7 +17,7 @@ import src.privacy.blur_box as blur_box
 import src.privacy.blur_job as blur_job
 from src.privacy.anonymize import PrivacyCheckError
 from src.privacy.box_writer import BoxWriter
-from src.storage_filter import acquire_run_lock
+from src.storage.storage_filter import acquire_run_lock
 
 # Step 2b of docs/plans/done/2026-11-05-blur-backfill-for-long-videos.md: what a manual Monthly or
 # Yearly with --blur-box does between choosing its frames and building the video:

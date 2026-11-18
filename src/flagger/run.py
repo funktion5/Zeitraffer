@@ -34,7 +34,7 @@ from src.images import (
 )
 from src.logger import configure_file_logging, logger
 from src.solar import get_sun_times
-from src.storage_filter import RUN_LOCK_PATH, acquire_run_lock
+from src.storage.storage_filter import RUN_LOCK_PATH, acquire_run_lock
 
 # The shared run lock of cron, web jobs and the storage filter: never alongside an encode.
 LOCK_PATH = RUN_LOCK_PATH

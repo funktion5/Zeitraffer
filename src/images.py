@@ -8,13 +8,13 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from src.config import PROJECT_ROOT
-from src.frame_source import FrameSource, build_frame_source
+from src.storage.frame_source import FrameSource, build_frame_source
 from src.image_worker import run_isolated_worker
 from src.logger import logger
 
 # Read from the environment so isolated worker processes inherit an alternative source
 # (e.g. the NAS archive) without any argument plumbing. None when unset: there is no default
-# folder, the source is then chosen from the storage box (see src/frame_source.py).
+# folder, the source is then chosen from the storage box (see src/storage/frame_source.py).
 _camera_root_setting = os.environ.get("TIMELAPSE_CAMERA_ROOT")
 CAMERA_ROOT = Path(_camera_root_setting) if _camera_root_setting else None
 
@@ -30,7 +30,7 @@ class ImageRange:
 
 
 # Built on every call, not once at import, so a patched CAMERA_ROOT keeps working in tests. Which
-# source it is, is decided in src/frame_source.py by TIMELAPSE_FRAME_SOURCE.
+# source it is, is decided in src/storage/frame_source.py by TIMELAPSE_FRAME_SOURCE.
 def get_frame_source() -> FrameSource:
 	return build_frame_source(CAMERA_ROOT, PROJECT_ROOT)
 

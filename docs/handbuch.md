@@ -298,7 +298,7 @@ Die Reihenfolge verhindert, dass ein unverpixeltes Bild durchrutscht:
 ### Werkzeuge
 
 ```bash
-.venv/bin/python3 -m src.storage_filter --cameras <Kamera>          # listet leere und doppelte Bilder, löscht nichts
+.venv/bin/python3 -m src.storage.storage_filter --cameras <Kamera>          # listet leere und doppelte Bilder, löscht nichts
 .venv/bin/python3 scripts/yearly-backfill.py --years 2026 --cameras <Kamera>
 ```
 

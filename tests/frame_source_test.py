@@ -14,9 +14,9 @@ from types import SimpleNamespace
 import pytest
 from frame_source_fakes import LS_DIRECTORY, LS_FILE, LS_SYMLINK, FakeListingBox
 
-import src.frame_source as frame_source_module
+import src.storage.frame_source as frame_source_module
 import src.images as images_module
-from src.frame_source import (
+from src.storage.frame_source import (
 	FETCH_RETRY_WAIT_SECONDS,
 	FRAME_CACHE_ENV,
 	FRAME_CACHE_MARKER,
@@ -29,7 +29,7 @@ from src.frame_source import (
 	create_frame_cache,
 	release_leftovers,
 )
-from src.storage_box import StorageBox
+from src.storage.storage_box import StorageBox
 
 
 def test_frame_fetch_error_is_an_oserror():

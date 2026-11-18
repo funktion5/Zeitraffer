@@ -6,7 +6,7 @@
 # carried over. Nothing from the old host's backup is needed: the web UI login is created here.
 # The repo must live in ~/timelapse: the installed web wrappers look there.
 #
-# The jobs read the frames over ssh from the Storage Box (a FrameSource in src/frame_source.py),
+# The jobs read the frames over ssh from the Storage Box (a FrameSource in src/storage/frame_source.py),
 # so there is no SSHFS mount, no /mnt/cameras and no @reboot recovery here.
 #
 # Usage:

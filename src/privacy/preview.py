@@ -17,9 +17,9 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-import src.frame_source as frame_source
+import src.storage.frame_source as frame_source
 from src.config import PROJECT_ROOT, load_config
-from src.frame_source import FrameFetchError
+from src.storage.frame_source import FrameFetchError
 from src.images import get_frame_source, image_moment
 from src.logger import logger
 from src.privacy import blur_box

@@ -13,9 +13,9 @@ Der Speicherfilter **löscht nichts**: Er fragt die Storage Box nur mit `ls` und
 ### Aufruf
 
 ```bash
-.venv/bin/python3 -m src.storage_filter --cameras Uferstrasse
-.venv/bin/python3 -m src.storage_filter --cameras Uferstrasse Nordufer_wide
-.venv/bin/python3 -m src.storage_filter --all-cameras
+.venv/bin/python3 -m src.storage.storage_filter --cameras Uferstrasse
+.venv/bin/python3 -m src.storage.storage_filter --cameras Uferstrasse Nordufer_wide
+.venv/bin/python3 -m src.storage.storage_filter --all-cameras
 ```
 
 - `--cameras` prüft genau die genannten Kameras, auch solche aus `ignored_cameras`.

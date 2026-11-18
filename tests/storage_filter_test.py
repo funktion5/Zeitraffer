@@ -11,9 +11,9 @@ import pytest
 from privacy_fakes import run_in
 
 import src.images as images_module
-import src.storage_filter as storage_filter_module
-from src.storage_box import STORAGE_BOX_ENV, StorageBox
-from src.storage_filter import (
+import src.storage.storage_filter as storage_filter_module
+from src.storage.storage_box import STORAGE_BOX_ENV, StorageBox
+from src.storage.storage_filter import (
 	acquire_run_lock,
 	find_deletion_candidates,
 	hash_camera_files,

@@ -35,7 +35,7 @@ from src.images import (  # noqa: E402
 )
 from src.interval_window import interval_window_from_config, resolve_target_seconds  # noqa: E402
 from src.logger import RUN_ID, configure_file_logging, logger  # noqa: E402
-from src.storage_filter import acquire_run_lock  # noqa: E402
+from src.storage.storage_filter import acquire_run_lock  # noqa: E402
 from src.video import create_timelapse, get_video_path  # noqa: E402
 from src.yearly_selection import select_yearly_images_isolated  # noqa: E402
 
