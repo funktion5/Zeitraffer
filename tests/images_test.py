@@ -517,6 +517,19 @@ def test_find_images_for_dates_uses_names_and_paths_from_the_source(monkeypatch)
 	assert len(progress_calls) == 4
 
 
+# The Cafe-am-Meer notation YYYY_MMDD is readable since the notation blocks; the Daily's pre-filter
+# has to find it too, or such a camera gets a Monthly but silently no Daily.
+def test_find_images_for_dates_finds_the_yyyy_mmdd_notation(monkeypatch):
+	names = ["promenade_2026_1120_121500_01.jpg", "promenade_2026_1119_121500_01.jpg"]
+	monkeypatch.setattr(images_module, "get_frame_source", lambda: FakeFrameSource(names))
+
+	result = find_images_for_dates(camera="Promenade", target_dates=[date(2026, 11, 20)])
+
+	assert result == {
+		date(2026, 11, 20): [Path("/cache/Promenade/promenade_2026_1120_121500_01.jpg")]
+	}
+
+
 # A date pattern can match inside a time: the BSV legacy name bsv_steinhude_202403261030.jpg
 # (2024-03-26 10:30) contains 261030, the %y%m%d string of 2026-10-30. The date the filename
 # really carries decides, so the old frames never join the Daily or the flagger of that day.
