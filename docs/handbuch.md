@@ -75,7 +75,7 @@ Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheina
 | Sperre der Box-Verpixelung | `state/privacy-blur.lock` |
 | Status der Box-Verpixelung | `state/privacy/box/<Kamera>/<JJJJ-MM>.jsonl` |
 | Marker „nächtlicher Lauf unterbrochen“ | `state/run-in-progress` |
-| Status der Web-Aufträge | `state/web-jobs/` |
+| Status der Web-Aufträge | `state/web-jobs/`; die Dateien eines Auftrags löscht der Nachtlauf nach 7 Tagen |
 | Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
 | Zwischendateien | `temp/` |
 | Installierte Web-Wrapper | In `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen), `timelapse-web-settings` (Einstellungen speichern), `timelapse-web-preview` (Vorschaubild einer Blur-Kamera holen). In `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
