@@ -5,14 +5,11 @@ die Webseite sie abholt. Bei einem Fund wird das Original vorher auf der Box ges
 ohne Fund bekommen nur die Markierung. Installation, Detektor,
 die `blur`-Werte und die Regeln für verworfene Boxen beschreibt [verpixelung.md](verpixelung.md).
 
-**Stand:** Erster Testlauf auf der Box am 15.10.2026 im Testordner `BlurTest` (am 17.11.2026 gelöscht; 47 Bilder: 20
-verpixelt, 2 ohne Person, 25 Nacht, 0 Fehler, in 8 Runden). Seit dem 23.10.2026 verpixelt Cron
-jede Nacht vor dem Zeitraffer-Lauf die offenen Bilder der letzten 48 Stunden (`--catch-up`,
-erster Lauf von Hand: Scheunenviertel 83 verpixelt / 19 ohne Person, SLSV 2 / 149, 0 Fehler).
-Seit dem 16.11.2026 (12:45) startet Cron die Runde und den [Wächter](#wächter) alle 5 Minuten,
-jedes geprüfte Bild bekommt die [Markierung für die Webseite](#markierung-für-die-webseite),
-und es gibt keine Nachtregel mehr. Der Abholjob der Website veröffentlicht von Blur-Kameras nur
-markierte Bilder; seine Kameraliste muss zu unserer passen (siehe [Konfiguration](#konfiguration)).
+**So läuft es:** Cron startet die Runde und den [Wächter](#wächter) alle 5 Minuten, rund um die
+Uhr, und um 02:00 das Nachholen der letzten 48 Stunden (`--catch-up`). Jedes geprüfte Bild bekommt
+die [Markierung für die Webseite](#markierung-für-die-webseite). Der Abholjob der Website
+veröffentlicht von Blur-Kameras nur markierte Bilder; seine Kameraliste muss zu unserer passen
+(siehe [Konfiguration](#konfiguration)).
 
 Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
 Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
@@ -128,9 +125,8 @@ Runden arbeiten den Rest ab.
 - Der Lauf nimmt einen eigenen Lock (`state/privacy-blur.lock`), nicht den Lock des nächtlichen
   Laufs. Denselben Lock halten die Runde, das Nachholen und die Verpixelung eines von Hand
   gestarteten Videos. Ist er belegt, wird der neue Lauf übersprungen (`Skipped`, Exit-Code 0).
-- Die Verpixelung läuft auch parallel zum nächtlichen Lauf. Gemessen: Die Encodes des
-  nächtlichen Laufs belegen höchstens 52–69 % des Arbeitsspeichers, der Detektor braucht ca.
-  220 MB (12 %) zusätzlich; das passt (Messung auf dem früheren Pi mit 2 GB, der VPS hat 3,8 GB).
+- Die Verpixelung läuft auch parallel zum nächtlichen Lauf. Der Detektor braucht ca. 220 MB
+  zusätzlich zu den Encodes des Nachtlaufs; mit den 3,8 GB des VPS ist dafür genug Platz.
   Startet der Rechner trotzdem neu, geht nichts verloren
   (Statusdatei vor dem Tausch, geprüfte Sicherung), und die Runde nach dem Neustart holt nach.
   Entschieden am 2026-10-16: keine Pause und keine Speichergrenze.
@@ -499,15 +495,8 @@ wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).
 
 ## Leistung
 
-Gemessen auf dem Raspberry Pi 4 (2 GB):
-
-| Schritt | Dauer |
-|---|---|
-| Liste per SSH (SLSV, 2 Tage, ca. 200 Bilder) | ca. 1,9 Sekunden (über den Mount: 6,1 Sekunden) |
-| Liste per SSH (Scheunenviertel) | ca. 0,6 Sekunden |
-| Download per SSH | ca. 0,5–1 Sekunde pro Bild (geschätzt, eine eigene SSH-Verbindung) |
-| Erkennung | ca. 7,5–10 Sekunden pro Bild, plus ca. 1 Sekunde Detektorstart |
-| Verpixeln | ca. 1 Sekunde pro Bild mit Personen |
+Die Liste per SSH dauert ca. 0,6 bis 2 Sekunden pro Kamera, unabhängig davon, wie groß der
+Kameraordner ist.
 
 Auf dem VPS gemessen (nächtliches Nachholen am 16.11.2026, ohne andere Last): ca. 5 Sekunden pro
 Bild ohne Person (SLSV, 70 Bilder), ca. 9 Sekunden pro verpixeltem Bild (Scheunenviertel, 47

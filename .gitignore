@@ -17,7 +17,7 @@ reports/
 *.key
 *.pem
 
-# Values saved on the web UI settings page: per host, never in git (settings.example.json shows the shape)
+# Values saved on the web UI settings page: per host, never in git
 config/settings.json
 config/settings-privacy.json
 

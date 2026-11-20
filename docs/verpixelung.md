@@ -262,15 +262,9 @@ Protokoll einhält:
 
 ## Leistung
 
-Gemessen auf dem Raspberry Pi 4 (2 GB):
-
-| Schritt | Dauer |
-|---|---|
-| Erkennung | ca. 7,5–10 Sekunden pro Bild, unabhängig davon, ob Personen darauf sind |
-| Verpixeln | ca. 1 Sekunde pro Bild mit Personen; Bilder ohne Personen kosten nichts |
-
-Arbeitsspeicher: Der Detektor braucht ca. 210–220 MB. Messungen der Box-Verpixelung auf dem VPS
-stehen in [verpixelung-box.md](verpixelung-box.md).
+Auf dem VPS braucht die Erkennung ca. 5 Sekunden pro Bild, ein Bild mit Personen samt Verpixeln
+ca. 9 Sekunden ([Messung](verpixelung-box.md#leistung)). Der Detektor braucht ca. 210–220 MB
+Arbeitsspeicher.
 
 ## Grenzen
 

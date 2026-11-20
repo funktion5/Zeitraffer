@@ -237,7 +237,7 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
   Büronetz erreichbar (Hetzner-Firewall) und mit Basic Auth geschützt; HTTPS steht aus (siehe
   „TLS und Port“). Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
 - **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard, wie auf
-  dem Pi); der Nachtlauf dauerte damit rund 41 Minuten (Lauf vom 29.10., noch mit dem früheren CRF).
+  dem Pi); der Nachtlauf (nur die Videos) dauert damit rund eine Stunde.
   Die Qualität steht seit dem 30.10.2026 auf CRF 28 (`timelapse.crf` in `config/config.json`); an
   einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB)
   ([Plan](plans/done/2026-10-30-video-crf.md)).

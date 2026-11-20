@@ -199,9 +199,9 @@ Zusammenfassung:
 
 Fortschritt live verfolgen: `tail -f logs/flagger/$(date +%F).log`
 
-Messwert Pi (21.10.2026): Modell laden 1,1 s, 7,4 s pro Bild (ganzes Bild plus vier
-Ausschnitte, 4 Threads), Spitzenspeicher etwa 210 MB. Bei rund 140 Daily-Bildern sind das etwa
-17 Minuten pro Kamera.
+Messwert VPS (20.11.2026): rund 4 Sekunden pro Bild (ganzes Bild plus vier Ausschnitte),
+Spitzenspeicher etwa 210 MB. Im November mit 38 bis 57 Daily-Bildern sind das 2,5 bis 4 Minuten
+pro Kamera; im Sommer, mit gut doppelt so vielen Tageslichtbildern, entsprechend länger.
 
 ## Tests
 
