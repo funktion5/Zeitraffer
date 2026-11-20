@@ -341,7 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 				report_path = REPORT_ROOT / f"{camera}_{run_started:%Y-%m-%d_%H%M%S}.csv"
 				write_report(camera=camera, candidates=candidates, report_path=report_path)
 
-			except (OSError, TimeoutError):
+			except OSError:
 				logger.exception(f"Storage filter failed for camera: {camera}")
 				failed_cameras.append(camera)
 				continue

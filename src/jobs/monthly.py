@@ -160,7 +160,6 @@ def run_monthly_job(
 
 		except (
 			OSError,
-			TimeoutError,
 			subprocess.CalledProcessError,
 			WorkerExitedError,
 		):
