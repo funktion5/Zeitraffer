@@ -376,8 +376,8 @@ def test_listing_for_dates_is_one_command(monkeypatch):
 	list_images_for_dates(BOX, "Cam", [TODAY - timedelta(days=1), TODAY])
 
 	assert commands == [
-		"ls -l --time-style=+%s -d Cam/*20250109* Cam/*250109* Cam/*25-01-09*"
-		" Cam/*20250110* Cam/*250110* Cam/*25-01-10*"
+		"ls -l --time-style=+%s -d Cam/*20250109* Cam/*250109* Cam/*25-01-09* Cam/*2025_0109*"
+		" Cam/*20250110* Cam/*250110* Cam/*25-01-10* Cam/*2025_0110*"
 	]
 
 
