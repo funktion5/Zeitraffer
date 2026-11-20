@@ -179,7 +179,7 @@ def run_cameras(
 			)
 			write_report(video_root, camera, target_date, manifest, scan.flagged)
 
-		except (OSError, TimeoutError, WorkerExitedError) as error:
+		except (OSError, WorkerExitedError) as error:
 			logger.error(f"[{camera}] failed: {error}")
 			any_failed = True
 			continue

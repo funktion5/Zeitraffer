@@ -335,6 +335,7 @@ def test_listing_for_dates_covers_every_camera_format_and_only_those_days(local_
 		"scheunenviertel-25-01-10_12-14-56-20.jpg",
 		"Cam_00_20250110120000.jpg",
 		"P25011012000000.jpg",
+		"promenade_2025_0110_120000_01.jpg",
 		# Matches the pattern but no format reads its date: kept, so the caller can refuse it.
 		"IMG20250110.jpg",
 	]

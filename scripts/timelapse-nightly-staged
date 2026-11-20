@@ -43,6 +43,11 @@ if ! flock -n 9; then
 	exit 75
 fi
 
+# Files of finished web jobs are only read while the starting tab waits; a week later nobody asks.
+# -mtime +6 is "7 full days or older" (find rounds the age down to whole days).
+find state/web-jobs -maxdepth 1 -type f -regextype posix-extended \
+	-regex '.*/[0-9a-f]{32}\.(status|pid|reason|result)' -mtime +6 -delete 2>/dev/null
+
 RUN_ID="$(date +%Y%m%d-%H%M%S)"
 RUN_DIR="logs/nightly/${RUN_ID}"
 REPORT="${RUN_DIR}/report.txt"

@@ -81,11 +81,14 @@ def require_cameras(
 
 
 # The date formats used by the camera systems; a filename containing one belongs to that day.
-def date_patterns(target_date: date) -> tuple[str, str, str]:
+# Must cover every date block in _DATE_BLOCKS ("%y-%m-%d" also matches inside "%Y-%m-%d"), or the
+# Daily and the blur round never see a name the reader would accept.
+def date_patterns(target_date: date) -> tuple[str, ...]:
 	return (
 		target_date.strftime("%Y%m%d"),
 		target_date.strftime("%y%m%d"),
 		target_date.strftime("%y-%m-%d"),
+		target_date.strftime("%Y_%m%d"),
 	)
 
 

@@ -168,7 +168,6 @@ def run_daily_job(
 
 		except (
 			OSError,
-			TimeoutError,
 			subprocess.CalledProcessError,
 			WorkerExitedError,
 		):

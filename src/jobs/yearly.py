@@ -180,7 +180,6 @@ def run_yearly_job(
 
 		except (
 			OSError,
-			TimeoutError,
 			subprocess.CalledProcessError,
 			WorkerExitedError,
 		):
