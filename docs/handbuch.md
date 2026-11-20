@@ -70,20 +70,22 @@ Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheina
 
 ### Grundregeln
 
-- **Immer nur ein Lauf auf einmal.** Nachtlauf, Web-Aufträge (auch der Upload über die
-  Weboberfläche), Flagger, Speicherfilter, Backfill und das nächtliche Nachholen der Verpixelung
-  teilen sich eine Sperre: `state/zeitraffer-run.lock`. Wer sie nicht bekommt, bricht ab oder
-  überspringt. Die Verpixelung alle 5 Minuten hat ihre eigene Sperre (`state/privacy-blur.lock`)
-  und läuft deshalb auch neben einem Zeitraffer-Lauf.
-- **Auch die Verpixelungs-Sperre teilen sich drei:** die Runde alle 5 Minuten, das Nachholen um
-  02:00 und die Verpixelung eines von Hand gestarteten Videos. Daraus folgt:
+- **Immer nur ein Lauf auf einmal.** Zwei Sperren sorgen dafür. Wer eine Sperre nicht bekommt,
+  bricht ab oder überspringt (`Skipped` im Protokoll):
+
+  | Sperre | Wer sie teilt | Was passiert, wenn sie belegt ist |
+  |---|---|---|
+  | `state/zeitraffer-run.lock` (Laufsperre) | Nachtlauf, Web-Aufträge (auch der Upload über die Weboberfläche), Flagger, Speicherfilter, Backfill, das Nachholen der Verpixelung um 02:00 | Der zweite Lauf startet nicht. Die Weboberfläche meldet „Es läuft bereits ein anderer Zeitraffer-Auftrag.“ |
+  | `state/privacy-blur.lock` (Verpixelungs-Sperre) | die Runde alle 5 Minuten, das Nachholen um 02:00, die Verpixelung eines von Hand gestarteten Videos | siehe die drei Fälle unten |
+
+  Die Runde alle 5 Minuten braucht nur die Verpixelungs-Sperre und läuft deshalb auch neben einem
+  Zeitraffer-Lauf. Bei der Verpixelungs-Sperre gibt es drei typische Fälle:
   - Läuft gerade eine Runde, scheitert ein von Hand gestartetes Video einer Blur-Kamera mit „Gerade
     läuft eine andere Verpixelung. Bitte später noch einmal versuchen.“ Einfach kurz warten.
-  - Solange ein von Hand gestartetes Video verpixelt (bis zu einer Stunde), fallen die Runden aus
-    (`Skipped` im Protokoll). Der Wächter warnt dann, und die Website bekommt so lange keine neuen
-    Bilder der Blur-Kameras.
+  - Solange ein von Hand gestartetes Video verpixelt (bis zu einer Stunde), fallen die Runden aus.
+    Der Wächter warnt dann, und die Website bekommt so lange keine neuen Bilder der Blur-Kameras.
   - Um 02:00 starten Runde und Nachholen gleichzeitig. Gewinnt die Runde, fällt das Nachholen in
-    dieser Nacht aus (`Skipped`); die Runden arbeiten den Rest danach ab.
+    dieser Nacht aus; die Runden arbeiten den Rest danach ab.
 - **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln vorher ihre Bilder
   auf der Storage Box und halten so lange die Laufsperre (gemessen: ein Monatsvideo mit rund 350 Bildern
   brauchte 55 Minuten). Läuft so ein Auftrag über 02:00 hinaus, fällt der Nachtlauf aus.
@@ -151,7 +153,7 @@ Storage Box (Schritt 5) und Cron (Schritt 6), beschrieben in [vps.md](vps.md).
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` ist grün |
 | 5 | Zugriff auf die Storage Box einrichten ([Installation](installation.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: die 02:00-Zeile (Verpixelung nachholen, Nachtlauf, Upload, Flagger) und die beiden 5-Minuten-Zeilen (Verpixelung und Wächter). `./install.sh cron_hint` druckt alle drei ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
+| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: die 02:00-Zeile (Verpixelung nachholen, Nachtlauf, Upload, Flagger, Meldungen sammeln) und die beiden 5-Minuten-Zeilen (Verpixelung und Wächter). `./install.sh cron_hint` druckt alle drei ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
 | 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`, und `./install.sh verify` zeigt kein `WARNING` (es prüft nur, repariert nichts) |
 | 8 | Tests | `.venv/bin/python3 -m pytest` ist grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | `logs/daily/<Datum>.log` endet mit einer Zusammenfassung mit `created` > 0 |
@@ -388,7 +390,9 @@ Lauf von Hand starten.
 ### Bildsuche bricht ab („stalled“)
 
 **Symptom:** Im Protokoll steht `TimeoutError: ... stalled for camera: <Kamera>`. Diese Kamera
-fehlt, die anderen laufen weiter.
+fehlt, die anderen laufen weiter. Vorher steht oft schon
+`Fetching camera <Kamera> failed, retrying in 30 s: …` (bzw. `120 s`): Das Holen der Bilder ist
+gescheitert und wird wiederholt.
 
 **Prüfen:** wie bei [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar), dazu:
 
@@ -413,6 +417,7 @@ voll ist.
 WARNING | Found 0 images - skipping camera.
 WARNING | No recognized image files available.
 WARNING | Available image range: 2026-09-14 - 2026-10-02
+WARNING | 12 files use an unsupported filename format.
 ```
 
 **Prüfen:**
@@ -422,7 +427,9 @@ ssh <ssh-alias> ls -t <Kamera> | head -5     # die neuesten Dateien auf der Stor
 ```
 
 **Ursache:** Die Kamera lädt nichts hoch (offline, Strom, Netz, Speicherkarte), oder ihre Dateien
-haben ein unbekanntes Namensformat. `Available image range` zeigt, bis wann zuletzt Bilder kamen.
+haben ein unbekanntes Namensformat. `Available image range` zeigt, bis wann zuletzt Bilder kamen;
+`files use an unsupported filename format` zählt die Dateien, deren Namen das Programm nicht lesen
+kann.
 
 **Lösung:** Das ist kein Programmfehler; die Kamera oder ihren Upload prüfen. Ist die Kamera
 dauerhaft außer Betrieb, sie in `ignored_cameras` eintragen. Dateien mit unbekanntem Namen errät
@@ -476,16 +483,21 @@ ungültigem Namen auf der Storage Box umbenennen lassen (und den Upload der Kame
 WARNING | Monthly coverage too low: 18 of 30 days available (minimum 25) - skipping camera: Strandallee
 WARNING | Yearly coverage partial: 331 of 365 days available (minimum 300) | missing: 2026-02-03 to 2026-02-12
 WARNING | No valid Monthly images available - skipping camera: <Kamera>
+WARNING | No valid Yearly images available - skipping camera: <Kamera>
 ```
 
-**Ursache:** Ein Monatsvideo braucht Bilder an mindestens 25 von 30 Tagen, ein Jahresvideo an
-300 Tagen (`min_coverage_days`), jeweils im Mittagsfenster.
+**Ursache:** Ein Monatsvideo braucht Bilder an einer Mindestzahl von Tagen im Mittagsfenster,
+ebenso ein Jahresvideo (`min_coverage_days`). Standard sind 25 von 30 Tagen beim Monat und 300 Tage
+beim Jahr. Beide Werte lassen sich auf der Seite „Einstellungen“ ändern („Monatsvideo: mindestens so
+viele Tage mit Bildern“ bzw. „Jahresvideo: …“). Welcher Wert gerade gilt, steht in der Meldung
+selbst (`minimum …`).
 
 - „partial“: Das Video entsteht, die genannten Tage fehlen darin.
 - „too low“: Es entsteht kein Video, das alte bleibt stehen.
-- „No valid Monthly images“: Im ganzen Monat gab es im Mittagsfenster kein einziges brauchbares
-  Bild (Kamera aus, nur leere Dateien oder eine falsche Uhrzeit im Dateinamen). Es entsteht kein
-  Video.
+- „No valid Monthly/Yearly images“: Im ganzen Zeitraum gab es im Mittagsfenster kein einziges
+  brauchbares Bild (Kamera aus, nur leere Dateien oder eine falsche Uhrzeit im Dateinamen). Es
+  entsteht kein Video. Bei einer Kamera, die gerade keine Bilder liefert, ist das jede Nacht so und
+  harmlos.
 
 Beim [Yearly-Backfill](werkzeuge.md) heißen die Meldungen `No valid Yearly images for <Jahr>` bzw.
 `No Yearly images selected for <Jahr>`; sie bedeuten dasselbe für ein ganzes Kalenderjahr.
@@ -525,20 +537,28 @@ Woche ein Weekly von Hand bauen:
 `--jobs weekly --target-date <letzter Tag> --cameras <Kamera>`. Meldet das „incomplete“, fehlen
 an dem genannten Tag wirklich Bilder; dann eine Woche wählen, in der alle Tage da sind.
 
-### Leere oder abgeschnittene Bilder
+### Leere, abgeschnittene oder doppelte Bilder
 
 **Symptom:**
 
 ```text
 WARNING | Camera SKM-Mardorf: excluded 6 empty image files
 WARNING | Skipping truncated image (no JPEG end marker): temp/frame-cache/<Lauf>/Uferstrasse/uferstrasse_….jpg
+WARNING | Camera SLSV: filtered 14 duplicate images
 ```
 
-**Ursache:** Der Upload der Kamera brach ab: Die Datei hat 0 Byte oder kein JPEG-Ende. Das Programm
-lässt solche Bilder weg. Sonst landete ein halbes Bild mit dem grauen Rest im Video.
+**Ursache:**
+
+- **Leer oder abgeschnitten:** Der Upload der Kamera brach ab. Die Datei hat 0 Byte oder kein
+  JPEG-Ende. Das Programm lässt solche Bilder weg. Sonst landete ein halbes Bild mit dem grauen Rest
+  im Video.
+- **Doppelt:** Die Kamera hat mehrmals genau dasselbe Bild geschickt, meist weil sie hing oder
+  eingefroren war. Das Programm erkennt das am Inhalt (gleiche Größe, gleicher Fingerabdruck) und
+  nimmt jedes Bild nur einmal. Sonst stünde das Video an dieser Stelle still.
 
 **Lösung:** Nichts tun, solange es vereinzelt bleibt. Häuft es sich bei einer Kamera, ihren Upload
-prüfen. Der [Speicherfilter](werkzeuge.md) listet alle betroffenen Dateien.
+prüfen. Viele doppelte Bilder heißen meist, dass die Kamera neu gestartet werden muss. Der
+[Speicherfilter](werkzeuge.md) listet alle betroffenen Dateien.
 
 ### FFmpeg: `Permission denied`
 
@@ -636,7 +656,9 @@ kein Lauf aktiv ist. Danach die betroffenen Kameras nachholen.
 
 ### Lauf meldet Erfolg, aber Kameras fehlen
 
-**Symptom:** Der Lauf endet ohne Fehler, trotzdem fehlen Videos.
+**Symptom:** Der Lauf endet ohne Fehler, trotzdem fehlen Videos. Im Protokoll steht zum Beispiel
+`Failed to process timelapse for camera: <Kamera>` (Daily) oder
+`Failed to process Weekly|Monthly|Yearly for camera: <Kamera>`.
 
 **Prüfen:** die Zusammenfassungen lesen (`grep -h "job finished" logs/*/<Datum>.log`). Steht bei
 `failed=` mehr als 0, die Zeilen mit `ERROR` und den Traceback davor lesen.
@@ -646,6 +668,28 @@ fängt das Programm ab, damit die anderen Kameras weiterlaufen. Der Exit-Code vo
 deshalb 0. Der Nachtlauf-Wrapper meldet es trotzdem: mit Exit-Code 1 und im Bericht.
 
 **Lösung:** Die Ursache aus dem Traceback beheben (siehe die Fälle oben) und die Kamera nachholen.
+
+### Geholte Bilder ließen sich nicht löschen
+
+**Symptom:** Im Protokoll steht `Could not remove fetched frames for camera: <Kamera>`. Die Kamera
+zählt als `failed`, auch wenn ihr Video entstanden ist.
+
+**Prüfen:**
+
+```bash
+ls -la ~/timelapse/temp/frame-cache/
+df -h ~/timelapse
+```
+
+**Ursache:** Die Bilder, die ein Lauf von der Storage Box holt, liegen kurz in `temp/frame-cache/`
+und werden nach jeder Kamera gelöscht. Das ist wichtig, denn es sind **unverpixelte** Kopien. Das
+Löschen scheiterte, meist an den Dateirechten (jemand hat einen Lauf mit `sudo` gestartet) oder an
+einer vollen Festplatte.
+
+**Lösung:** Dateirechte bzw. Platz richten ([FFmpeg: `Permission denied`](#ffmpeg-permission-denied),
+[Festplatte voll](#festplatte-voll)). Die Reste räumt der nächste Lauf von selbst weg; er meldet das
+mit `Removing frame cache left behind by an earlier run: …`. Wer nicht warten will, löscht den
+Ordner von Hand, wenn kein Lauf aktiv ist ([Läuft gerade etwas?](#läuft-gerade-etwas)).
 
 ### Lauf wurde nach einem Neustart nicht wiederholt
 
@@ -681,6 +725,30 @@ die Übersicht:
 | `Erkennungsmodell fehlt: …` | [Modelldatei fehlt](#modelldatei-fehlt) |
 | `Upload auf die Website fehlgeschlagen` / `… lief nicht` | [Upload auf die Website](#upload-auf-die-website); „lief nicht“: die 02:00-Zeile mit `crontab -l` prüfen |
 | `Speicher wird knapp` / `Speicher fast voll` | [Festplatte voll](#festplatte-voll) |
+
+### Der Meldungsbalken passt nicht zum Nachtlauf
+
+**Symptom:** Der Balken meldet „Nachtlauf fehlt“ oder „Verpixelungs-Wächter läuft nicht“, obwohl
+der Bericht in `logs/nightly/` vollständig ist und das Protokoll der Verpixelung normale
+Wächterzeilen zeigt.
+
+**Prüfen:**
+
+```bash
+ls -l ~/timelapse/state/web-jobs/warnings.json ~/timelapse/state/web-jobs/blur-watch.json   # Uhrzeit alt?
+cd ~/timelapse && .venv/bin/python3 -m src.night_warnings                                # Meldung lesen
+grep "Could not write the watchdog status" logs/privacy/$(date +%F).log
+```
+
+**Ursache:** Der Balken liest zwei Dateien: `warnings.json` (schreibt der letzte Schritt der
+02:00-Zeile) und `blur-watch.json` (schreibt der Wächter alle 5 Minuten). Ließ sich eine nicht
+schreiben, meldet das Programm `Could not write the warnings for the web UI: …` bzw.
+`Could not write the watchdog status for the web UI: …`, und der Balken zeigt einen veralteten
+Stand. Die Meldung des Nachtlauf-Schritts landet in keinem Protokoll; man sieht sie nur, wenn man
+ihn wie oben von Hand startet. Meist stimmen die Dateirechte in `state/web-jobs/` nicht.
+
+**Lösung:** `~/timelapse/install.sh permissions verify`. Danach den Schritt einmal von Hand starten
+(siehe oben); der Balken zeigt dann wieder den richtigen Stand.
 
 ### Anmeldung klappt nicht
 
@@ -764,7 +832,7 @@ abgelaufen oder ein Fehler auf dem Server. Andere Gründe, etwa „Die Anfrage i
 **Prüfen:**
 
 ```bash
-sudo -l -U www-data                                    # Regeln für trigger, rebuild, publish, delete und delete-highlight?
+sudo -l -U www-data                                    # Regeln für alle sieben timelapse-web-* Wrapper?
 cmp scripts/web/timelapse-web-trigger /usr/local/sbin/timelapse-web-trigger
 tail /var/log/apache2/zeitraffer-error.log
 ```
@@ -833,7 +901,8 @@ Zeilen zur Kamera. Das Protokoll trägt das Datum des Auftrags.
 
 **Ursache:**
 
-- **Übersprungen:** zu wenige Tage mit Bildern (Monthly mindestens 25 von 30, Yearly 300), keine
+- **Übersprungen:** zu wenige Tage mit Bildern (Mindestzahl siehe
+  [Monats- oder Jahresvideo übersprungen](#monats--oder-jahresvideo-übersprungen)), keine
   Bilder an dem Tag, oder bei einer Blur-Kamera kein bestätigt verpixeltes Bild
   ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
 - **Fehlgeschlagen:** ein Fehler bei dieser Kamera (Bildabruf, FFmpeg, Zeitüberschreitung). Die
@@ -1063,7 +1132,7 @@ echte Personen neben der Kette.
 - Die Rahmen sind feste Pixel. Verschiebt sich die Kamera um mehr als etwa ein Drittel der
   Boxbreite (bei der Kette ca. 15 Pixel), wird das Objekt wieder verpixelt. Dann die Rahmen neu
   bestimmen, wie oben.
-- Steht eine Person genau vor dem Objekt, bleibt sie unverpixelt (wie beim Wegweiser).
+- Steht eine Person genau vor dem Objekt, bleibt sie unverpixelt.
 
 ### Einstellungsdatei wird ignoriert
 
@@ -1111,6 +1180,8 @@ oben).
 | `Flagger not started: ...` mit einer unbekannten oder ignorierten Kamera | Eine Kamera in `flagger.cameras` existiert nicht oder steht in `ignored_cameras`. Dann startet der Flagger für **keine** Kamera. Die Seite „Einstellungen“ speichert so etwas nicht; es entsteht nur durch Handarbeit in einer Datei | die Kamera aus `flagger.cameras` oder aus `ignored_cameras` nehmen (in `config.json`, `config/settings.json` oder auf der Seite) |
 | `Flagger not started: flagger.retention_days must be at least 7` | Von Hand ein Wert unter einer Woche eingetragen; die Seite lässt das nicht zu | Wert auf mindestens 7 setzen |
 | `[<Kamera>] no images for <Datum> - nothing written` | Es gibt keine Bilder von diesem Tag | wie [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
+| `[<Kamera>] none of <n> images could be read - nothing written` | Bilder waren da, aber keins ließ sich lesen, meist weil das Holen von der Storage Box scheiterte. Der Bericht eines früheren Laufs bleibt stehen | Verbindung prüfen ([Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar)), dann den Tag mit `--cameras <Kamera> --target-date <Datum>` neu prüfen |
+| `Could not remove old highlights <Ordner>: …` | Ein Highlight-Ordner, der älter als die Aufbewahrungszeit ist, ließ sich nicht löschen, meist wegen der Dateirechte | Eigentümer prüfen wie bei [FFmpeg: `Permission denied`](#ffmpeg-permission-denied); der nächste Lauf versucht es erneut |
 | `Skipping unreadable or truncated image: <Datei>` | Das Bild ist abgeschnitten oder kaputt (abgebrochener Upload) | nichts; das Bild wird nur nicht geprüft. Häuft es sich, den Upload der Kamera prüfen |
 | `Skipping image without a parseable time: <Datei>` | Aus dem Dateinamen lässt sich keine Uhrzeit lesen | nichts, solange es Einzelfälle sind. Bei allen Bildern einer Kamera: neues Namensformat, siehe [Eine Kamera hat keine Bilder](#eine-kamera-hat-keine-bilder) |
 | Ein gelöschtes Highlight ist wieder da | Der Tag wurde neu geprüft, und der Ordner wurde ersetzt | erneut löschen |
@@ -1151,10 +1222,11 @@ Das Protokoll steht in `logs/siteground-delivery.log`. Für jede Kamera endet es
 
 ### Speicherfilter
 
-- `TIMELAPSE_STORAGE_BOX is not set`: Die Storage Box ist nicht angegeben. Die Variable setzen
-  ([Konfiguration](konfiguration.md#umgebungsvariablen)).
-- `Storage box listing failed`, obwohl die Variable gesetzt ist: siehe
-  [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar).
+| Meldung | Ursache | Lösung |
+|---|---|---|
+| `Storage filter has no storage box: set TIMELAPSE_STORAGE_BOX=…` (darunter `TIMELAPSE_STORAGE_BOX is not set`) | Die Storage Box ist nicht angegeben | die Variable setzen ([Konfiguration](konfiguration.md#umgebungsvariablen)) |
+| `Storage box listing failed`, obwohl die Variable gesetzt ist | Die Box antwortet nicht | [Kamera-Speicher nicht erreichbar](#kamera-speicher-nicht-erreichbar) |
+| `Storage filter failed for camera: <Kamera>` | Bei dieser Kamera ging etwas schief; die anderen laufen weiter | den Traceback darunter lesen, meist wieder die Verbindung zur Box. Die Kamera danach einzeln prüfen: `--cameras <Kamera>` |
 
 ### WordPress
 
@@ -1210,16 +1282,16 @@ den Test entsprechend anpassen.
 **Ursache:** Das passiert nur, wenn lokal ein Pre-Push-Hook eingerichtet ist
 (`.git/hooks/pre-push`, nicht in git). Er führt `ruff check`, `ruff format --check` und `pytest` aus
 und bricht bei einem Fehler ab ([architektur.md](architektur.md#github-actions-und-pre-push-hook)).
-Im Klon auf dem Mac gibt es keinen (Stand 30.10.2026); dort prüft erst CI.
+Ohne diesen Hook prüft erst CI.
 
 **Lösung:** `ruff format .` ausführen und den Fehler beheben. `git push --no-verify` nur im Notfall;
 CI prüft ohnehin dasselbe.
 
 ### Tests laufen auf dem Mac nicht vollständig durch
 
-**Ursache:** Auf macOS schlagen rund 67 Tests aus Plattformgründen fehl: BSD-`ls` und BSD-`date`
-statt der GNU-Versionen, `spawn` statt `fork`. Stand 29.10.2026, ohne `onnxruntime`: 897 bestanden,
-67 fehlgeschlagen. Das ist kein Fehler im Code.
+**Ursache:** Auf macOS schlagen einige Dutzend Tests aus Plattformgründen fehl: BSD-`ls` und
+BSD-`date` statt der GNU-Versionen, `spawn` statt `fork`, dazu fehlt dort meist `onnxruntime`. Das
+ist kein Fehler im Code.
 
 **Lösung:** Maßgeblich sind der VPS und CI, beide unter Linux. Änderungen pushen, auf dem VPS mit
 `git pull` holen ([vps.md](vps.md#code-auf-den-vps-bringen)) und dort ausführen:
