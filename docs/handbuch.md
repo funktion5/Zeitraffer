@@ -10,7 +10,7 @@ ersetzt man durch die echten Werte.
 
 ## Inhalt
 
-- [Überblick](#überblick)
+- [Überblick](#überblick) (mit [Begriffen](#begriffe))
 - [Installation](#installation)
 - [Jobs starten](#jobs-starten)
 - [Fehler: nächtlicher Lauf](#fehler-nächtlicher-lauf)
@@ -24,8 +24,21 @@ ersetzt man durch die echten Werte.
 
 ## Überblick
 
-Seit dem 30.10.2026 läuft alles auf einem VPS (Debian 13). Der frühere Raspberry Pi ist
-stillgelegt; was von ihm übrig ist, liegt im [Archiv](../archive/README.md).
+Alles läuft auf einem VPS (Debian 13). Der frühere Raspberry Pi ist stillgelegt; was von ihm
+übrig ist, liegt im [Archiv](../archive/README.md).
+
+### Begriffe
+
+| Begriff | Bedeutung |
+|---|---|
+| Nachtlauf | Der Lauf um 02:00, der für jede Kamera bis zu vier Videos baut (Tag, Woche, Monat, Jahr) |
+| Blur-Kamera | Eine Kamera, deren Bilder verpixelt werden (Reiter „Verpixelung“ der Weboberfläche) |
+| Runde | Ein Durchgang der Verpixelung; Cron startet alle 5 Minuten einen |
+| Nachholen | Die längere Runde um 02:00 für Bilder der letzten 48 Stunden, die liegen geblieben sind |
+| Markierung | Ein kleiner Kommentar `blur:checked=true` im Bild: „wurde geprüft“. Die Pixel ändert er nicht |
+| Sperre | Eine Datei unter `state/`, die nur ein Programm zur Zeit halten kann. So laufen nie zwei Jobs gleichzeitig |
+| Wrapper | Ein kleines Startskript, über das die Weboberfläche einen Job mit den richtigen Rechten startet |
+| Wächter | Ein Prüfprogramm, das alle 5 Minuten meldet, ob Bilder unverpixelt liegen bleiben. Es ändert nichts |
 
 ### Was wann läuft
 
