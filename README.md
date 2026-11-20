@@ -102,7 +102,7 @@ Der Grundsatz heißt: **Im Zweifel lieber kein Video als ein ungeprüftes Bild.*
 ## Was man selbst tun kann – die Weboberfläche
 
 Zusätzlich gibt es eine kleine Webseite für das Team. Sie ist mit Benutzername und Passwort
-geschützt und nicht für das offene Internet gedacht. Dort kann man:
+geschützt und nur aus dem Büronetz erreichbar, nicht aus dem offenen Internet. Dort kann man:
 
 - für eine Kamera ein **Video für einen beliebigen vergangenen Zeitraum** bestellen: einen Tag,
   eine Woche, einen Monat oder ein Jahr, jeweils bis zu einem gewählten Datum. Monats- und
@@ -200,12 +200,6 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | Einstellungen ändern (die Seite „Einstellungen“, `config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) und [docs/weboberflaeche.md](docs/weboberflaeche.md#einstellungen) |
 | einen Server von Grund auf installieren | [docs/installation.md](docs/installation.md) und [docs/vps.md](docs/vps.md) |
 | die Weboberfläche auf dem eigenen Rechner ausprobieren, ohne den Server anzufassen | [docs/docker-web.md](docs/docker-web.md) |
-
-## Was noch fehlt
-
-Nachtlauf, Upload und Highlights laufen jede Nacht von selbst, die Verpixelung neuer Bilder seit dem
-16.11.2026 alle 5 Minuten rund um die Uhr. Offen ist noch: Die Weboberfläche läuft ohne HTTPS und
-ist deshalb nur aus dem Büronetz erreichbar.
 
 ## Für Entwickler
 

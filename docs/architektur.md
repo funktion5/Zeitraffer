@@ -269,7 +269,7 @@ timelapse/
 ├── archive/   (stillgelegt: Raspberry Pi, Container-Test, Staging; siehe archive/README.md)
 ├── config/
 │   ├── config.json
-│   ├── settings.example.json   (Form der Einstellungsdateien; settings.json und settings-privacy.json entstehen auf dem Host)
+│   ├── settings.json, settings-privacy.json   (entstehen auf dem Host, nicht in git)
 │   └── siteground.env.example   (Vorlage für die Zugangsdaten des Uploads)
 ├── docker/
 │   ├── docker-compose.yml

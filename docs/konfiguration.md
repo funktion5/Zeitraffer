@@ -138,8 +138,17 @@ Kolleginnen und Kollegen auf der Seite **Einstellungen** der Weboberfläche änd
 | `config/settings.json` | Allgemein | `general` |
 | `config/settings-privacy.json` | Verpixelung | `privacy` |
 
-Beide sind in Git ignoriert und gibt es je Host einmal; die Datei auf dem VPS ist maßgeblich.
-`config/settings.example.json` und `config/settings-privacy.example.json` zeigen die Form. Fehlt eine Datei, gelten ihre Werte nicht.
+Beide sind in Git ignoriert und gibt es je Host einmal; die Datei auf dem VPS ist maßgeblich. Die
+Seite „Einstellungen“ legt sie beim ersten Speichern selbst an. Fehlt eine Datei, gelten ihre Werte
+nicht. Sie enthalten nur die Abweichungen von `config.json`, in derselben Form, zum Beispiel:
+
+```json
+{
+  "min_coverage_days": {
+    "monthly": 20
+  }
+}
+```
 
 - **Rangfolge:** `config.json`, darüber `settings.json`, darüber `settings-privacy.json`
   (`load_config()` in `src/config.py`). Objekte werden Schlüssel für Schlüssel gemischt (ein Monat des
