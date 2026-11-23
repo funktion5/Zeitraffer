@@ -273,7 +273,7 @@ Der Player ersetzt die Bedienleiste des Browsers durch eine eigene, ohne eigenen
 .timelapse { --timelapse-accent: <Farbe>; --timelapse-on-accent: <Textfarbe darauf>; }
 ```
 
-**Bildrate.** Das Springen um ein Bild muss die Bildrate des Videos kennen. Sie steht je Tab (`data-fps`) und kommt aus einer Konstante: Tag 10, Woche 10, Monat 20, Jahr 20 Bilder pro Sekunde. Die Konstante heißt `Timelapse::FRAME_RATES` im Plugin f5-webcams. **Die Werte müssen zur Pipeline passen:** `timelapse.daily_framerate`, `monthly_framerate` und `yearly_framerate` in `config/config.json`; das Wochenvideo wird mit der Tagesrate gebaut (`src/jobs/weekly.py`). Ändert sich dort ein Wert, muss er auch in der Konstante geändert werden. Videos, die vor der aktuellen Einstellung gebaut wurden, können eine andere Rate haben; dann springt die Taste entsprechend ungenau. Fehlt die Rate, werden die Bild-Tasten ausgeblendet.
+**Bildrate.** Das Springen um ein Bild muss die Bildrate des Videos kennen. Der Player liest sie aus dem Video selbst: Er holt mit einer Teilanfrage (HTTP `Range`) nur die letzten 64 KB der MP4-Datei, in denen bei der Pipeline der Kopf (`moov`, höchstens rund 25 KB) steht, und teilt die Ticks pro Sekunde (`mdhd`) durch die Ticks pro Bild (`stts`) (heute 10 Bilder pro Sekunde bei Tag und Woche, 20 bei Monat und Jahr). Eine Liste der Bildraten gibt es deshalb nicht mehr; ändert sich `timelapse.*_framerate` in `config/config.json` (auch über die Seite „Einstellungen“), springt der Player trotzdem genau ein Bild, auch bei älteren Videos mit einer anderen Rate. Lässt sich der Kopf nicht lesen (Server ohne `Range`, Datei fehlt, oder der Kopf steht am Dateianfang, etwa nach `-movflags +faststart` in der Pipeline), bleiben die Bild-Tasten ausgeblendet; das Video spielt normal.
 
 **Ein Player für beide Wege.** Skript und Stile gibt es nur einmal, im Plugin f5-webcams: das Skript in `assets/js/timelapse.js`, die Stile als letzter Abschnitt von `assets/css/f5-webcams.css` (der Abschnitt steht absichtlich am Ende, weil er CSS-Verschachtelung benutzt: ein Browser ohne sie kann dann nur diesen Teil verlieren). Das Stylesheet ist auf jeder Seite geladen, das Skript auf Webcam-Seiten und überall, wo der Shortcode einen Player druckt. Es gibt nur diesen einen Player.
 
@@ -288,7 +288,7 @@ Der Player ersetzt die Bedienleiste des Browsers durch eine eigene, ohne eigenen
 - [ ] Im Vollbild (Handy und Desktop): Video starten, 3 Sekunden nichts tun: Leiste blendet aus. Mausbewegung oder ein Tippen blendet sie wieder ein, das Video läuft weiter; ein zweites Tippen pausiert. Nach dem Verlassen des Vollbilds bleibt die Leiste sichtbar.
 - [ ] Stehen versehentlich zwei Player auf einer Seite, stören sie sich nicht; nur der erste ändert die Adresse.
 - [ ] Springen um ein Bild bewegt das Video bei einem Tages- und bei einem Monats- oder Jahresvideo um genau ein Bild.
-- [ ] Die Bildrate-Konstante (`Timelapse::FRAME_RATES`) trägt den Kommentar und passt zur Pipeline-Konfiguration.
+- [ ] Nach dem letzten Bild springt „Bild zurück“ wieder ein Bild zurück.
 
 ## Täglicher Betrieb
 
