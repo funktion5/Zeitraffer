@@ -1,5 +1,5 @@
 #!/bin/bash
-# Prepares the container the way install.sh prepares the VPS (web_login, apache, web_bridge), then
+# Prepares the container the way install.sh prepares the VPS (web_login, apache, web_hardening, web_bridge), then
 # starts Apache. Safe to run on every start. It runs as root on purpose: it installs root-owned
 # wrappers and sudoers rules, and Apache drops to www-data by itself; the Python work runs as the
 # run account. Keep the vhost, the wrapper list and the sudoers rules in step with install.sh.
@@ -117,6 +117,10 @@ a2enconf zeitraffer-port >/dev/null
 # Silences the "could not determine the server's name" warning; the vhost has its own ServerName.
 echo "ServerName localhost" >/etc/apache2/conf-available/zeitraffer-servername.conf
 a2enconf zeitraffer-servername >/dev/null
+# web_hardening: the same file install.sh installs (version hidden, security headers, icons closed).
+cp "${PROJECT}/config/apache-hardening.conf" /etc/apache2/conf-available/zeitraffer-hardening.conf
+a2enmod headers >/dev/null
+a2enconf zeitraffer-hardening >/dev/null
 a2ensite zeitraffer.conf >/dev/null
 a2dissite 000-default.conf >/dev/null 2>&1 || true
 # Dropped from ports.conf: the VPS listens on its one port only.

@@ -53,6 +53,7 @@ ALL_STEPS=(
 	restore
 	known_hosts
 	apache
+	web_hardening
 	web_fail2ban
 	web_bridge
 	permissions
@@ -284,6 +285,22 @@ EOF
 	sudo systemctl reload apache2 || sudo systemctl restart apache2
 }
 
+step_web_hardening() {
+	log "Hiding the Apache version and adding security headers"
+	# Its own file, not the vhost: a re-run keeps an existing vhost (REWRITE_VHOST).
+	sudo install -o root -g root -m 644 "$PROJECT_ROOT/config/apache-hardening.conf" \
+		/etc/apache2/conf-available/zeitraffer-hardening.conf
+	sudo a2enmod headers
+	sudo a2enconf zeitraffer-hardening
+
+	# A broken file would keep Apache from starting again: switch it off before any reload.
+	if ! sudo apache2ctl configtest; then
+		sudo a2disconf zeitraffer-hardening
+		fail "Apache config test failed: the hardening file was switched off again."
+	fi
+	sudo systemctl reload apache2
+}
+
 step_web_fail2ban() {
 	log "Blocking repeated failed logins to the web UI (fail2ban)"
 	command -v fail2ban-client >/dev/null || fail "fail2ban is not installed: run './install.sh packages' first."
@@ -431,6 +448,15 @@ step_verify() {
 		echo "Dashboard: 401 (auth prompt, as expected)"
 	else
 		warn "Dashboard returned HTTP $http_code, expected 401: check /var/log/apache2/zeitraffer-error.log."
+	fi
+
+	local headers
+	headers="$(curl -sI "http://localhost:${WEB_PORT}/" || true)"
+	if grep -qi '^x-frame-options: DENY' <<<"$headers" \
+		&& grep -qiE '^server: Apache[[:space:]]*$' <<<"$headers"; then
+		echo "Apache: version hidden, security headers set"
+	else
+		warn "Apache shows its version or lacks the security headers (./install.sh web_hardening)."
 	fi
 
 	local path

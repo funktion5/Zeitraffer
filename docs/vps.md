@@ -128,8 +128,9 @@ Der Installer prüft zuerst, ob der `Host`-Eintrag und sein Schlüssel existiere
 dem sudo-Passwort und führt der Reihe nach aus: Pakete installieren, virtuelle Umgebung anlegen,
 Anmeldung der Weboberfläche anlegen (`web_login`), Login-Datei des Uploads anlegen (`upload_login`),
 eine Sicherung zurückspielen (`restore`), den Host-Fingerabdruck der Box bestätigen
-(`known_hosts`), Apache (HTTP mit Basisauthentifizierung), die Sperre gegen Passwort-Raten
-(`web_fail2ban`), Wrapper und sudoers einrichten und die
+(`known_hosts`), Apache (HTTP mit Basisauthentifizierung), Server-Version verbergen und
+Sicherheits-Header setzen (`web_hardening`), die Sperre gegen Passwort-Raten (`web_fail2ban`),
+Wrapper und sudoers einrichten und die
 Dateirechte setzen. Zum Schluss prüft `verify` das Ergebnis, und die Cron-Zeile steht in der
 Ausgabe; installiert wird sie nicht. Der Installer ist wiederholbar, einzelne Schritte laufen mit
 `./install.sh <schritt> [<schritt> ...]`.
