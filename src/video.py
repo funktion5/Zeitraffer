@@ -409,6 +409,8 @@ def encode_video(
 
 	logger.info(f"Creating {description}: {output_path}")
 
+	# No "-movflags +faststart": the website player reads the frame rate from the header (moov)
+	# at the end of the file and hides its frame buttons without it (docs/wordpress.md, Bildrate).
 	command = ["ffmpeg", "-y", *ffmpeg_arguments, str(temporary_output)]
 
 	logger.debug(f"FFmpeg command: {' '.join(command)}")
