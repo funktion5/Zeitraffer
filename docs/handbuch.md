@@ -44,9 +44,9 @@ Alles läuft auf einem VPS (Debian 13). Der frühere Raspberry Pi ist stillgeleg
 
 | Was | Wann | Wer startet es |
 |---|---|---|
-| Verpixelung neuer Bilder (prüft und markiert jedes Bild) | alle 5 Minuten, rund um die Uhr | Cron |
-| Wächter der Verpixelung (meldet liegen gebliebene Bilder, ändert nichts) | alle 5 Minuten | Cron |
-| Verpixelung nachholen (was in den letzten 48 Stunden liegen blieb) | 02:00 Uhr | Cron |
+| Runde der Verpixelung | alle 5 Minuten, rund um die Uhr | Cron |
+| Wächter der Verpixelung | alle 5 Minuten | Cron |
+| Nachholen der Verpixelung | 02:00 Uhr | Cron |
 | Nächtlicher Lauf: Daily, Weekly, Monthly und Yearly für alle Kameras | direkt danach | Cron |
 | Upload der Videos auf die Website ([betrieb.md](betrieb.md#upload-auf-die-website)) | direkt nach dem Nachtlauf | Cron |
 | Highlights-Flagger | direkt nach dem Upload, also ohne feste Uhrzeit | Cron |
@@ -63,7 +63,7 @@ Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheina
 |---|---|
 | Kamerabilder (Originale, **nur lesen**) | Storage Box. Die Jobs kopieren die Bilder, die sie brauchen, per rsync nach `temp/frame-cache/` |
 | Einstellungen | `config/config.json` enthält die Standardwerte (in git). Was in der Weboberfläche geändert wird, steht darüber in `config/settings.json` (Reiter „Allgemein“) und `config/settings-privacy.json` (Reiter „Verpixelung“). Beide Dateien sind nicht in git und gelten nur für diesen Host |
-| Liste der Blur-Kameras des Abholjobs der Website (**zweite Konfiguration**) | `webcam_list.config` auf dem Server, auf dem das Abholskript der Website läuft (der genaue Pfad steht im Skript). Nicht in diesem Repository. Muss dieselben Kameras enthalten wie unsere Liste, siehe [Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen) |
+| Liste der Blur-Kameras des Abholjobs der Website (**zweite Konfiguration**) | `webcam_list.config` auf dem Server des Abholskripts der Website (Pfad im Skript), nicht in diesem Repository ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)) |
 | Nächtliche Videos | `videos/<Kamera>/{daily,weekly,monthly,yearly}/` |
 | Videos aus Weboberfläche und Befehl | `videos/<Kamera>/manual-runs/<job>/` |
 | Highlights | `videos/<Kamera>/highlights/<Datum>/` |
@@ -78,7 +78,7 @@ Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheina
 | Status der Web-Aufträge | `state/web-jobs/`; die Dateien eines Auftrags löscht der Nachtlauf nach 7 Tagen |
 | Kameraliste der Weboberfläche | `state/web-jobs/cameras.json` |
 | Zwischendateien | `temp/` |
-| Installierte Web-Wrapper | In `/usr/local/sbin/`: `timelapse-web-trigger` (Video-Auftrag starten), `timelapse-web-rebuild` (automatische Videos einer Kamera neu erstellen), `timelapse-web-publish` (Videos einer Kamera hochladen), `timelapse-web-delete` (Video löschen), `timelapse-web-delete-highlight` (Highlight-Bild löschen), `timelapse-web-settings` (Einstellungen speichern), `timelapse-web-preview` (Vorschaubild einer Blur-Kamera holen). In `/usr/local/libexec/`: `timelapse-web-worker`, `timelapse-web-worker-rebuild`, `timelapse-web-worker-publish`, `timelapse-web-status.sh` |
+| Installierte Web-Wrapper | `/usr/local/sbin/timelapse-web-*` (die sieben Wrapper) und `/usr/local/libexec/timelapse-web-*` (Worker und Status-Hilfsskript); die Liste steht in der [Installation](installation.md#wrapper-installieren) |
 | Apache-Fehlerprotokoll | `/var/log/apache2/zeitraffer-error.log` |
 
 ### Grundregeln
@@ -102,12 +102,10 @@ Die fünf 02:00-Schritte stehen in einer einzigen Cron-Zeile und laufen nacheina
 - **Von Hand gestartete Videos von Blur-Kameras dauern lange.** Sie verpixeln vorher ihre Bilder
   auf der Storage Box und halten so lange die Laufsperre (gemessen: ein Monatsvideo mit rund 350 Bildern
   brauchte 55 Minuten). Läuft so ein Auftrag über 02:00 hinaus, fällt der Nachtlauf aus.
-- **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur. Die einzige Ausnahme ist
-  die Verpixelung: Sie sichert das Original und ersetzt es dann durch die verpixelte Fassung. Außerdem
-  schreibt sie die Markierung `blur:checked=true` (21 Bytes, kein Pixel ändert sich): die Runde in
-  jedes geprüfte Bild, ein von Hand gestartetes Video nur in Bilder von heute und den zwei Tagen
-  davor. Bilder ohne Person bekommen die Markierung ohne Sicherung
-  ([verpixelung-box.md](verpixelung-box.md#markierung-für-die-webseite)).
+- **Die Originalbilder nie ändern.** Die Zeitraffer-Jobs lesen sie nur. Einzige Ausnahme: Die
+  Verpixelung sichert das Original und ersetzt es durch die verpixelte Fassung. Die Markierung
+  schreibt die Runde in jedes geprüfte Bild, ein von Hand gestartetes Video nur in Bilder von heute
+  und den zwei Tagen davor ([Details](verpixelung-box.md#markierung-für-die-webseite)).
 - **Die Blur-Kameras stehen in zwei Listen, und beide müssen gleich sein:** unsere (Reiter
   „Verpixelung“) und `webcam_list.config` beim Abholjob der Website. Wer die eine ändert, ändert die
   andere sofort mit ([Blur-Kamera hinzufügen oder entfernen](#blur-kamera-hinzufügen-oder-entfernen)).
@@ -166,7 +164,7 @@ Storage Box (Schritt 5) und Cron (Schritt 6), beschrieben in [vps.md](vps.md).
 | 3 | Erkennungsmodelle nach `models/` ([verpixelung.md](verpixelung.md#installation)) | `ls models/` zeigt `object_detection_yolox_2022nov.onnx` |
 | 4 | `config/config.json` anpassen ([Konfiguration](konfiguration.md)) | `.venv/bin/python3 -m pytest tests/config_test.py` ist grün |
 | 5 | Zugriff auf die Storage Box einrichten ([Installation](installation.md#zugriff-auf-die-storage-box)) | `TIMELAPSE_STORAGE_BOX=storagebox .venv/bin/python3 -m src.camera_list` listet die Kameras |
-| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: die 02:00-Zeile (Verpixelung nachholen, Nachtlauf, Upload, Flagger, Meldungen sammeln) und die beiden 5-Minuten-Zeilen (Verpixelung und Wächter). `./install.sh cron_hint` druckt alle drei ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
+| 6 | Cron eintragen ([Installation](installation.md#cron-installieren-oder-prüfen)) | `crontab -l` zeigt drei Zeilen: die 02:00-Zeile und die 5-Minuten-Zeilen für Runde und Wächter. `./install.sh cron_hint` druckt alle drei ([betrieb.md](betrieb.md#nächtlicher-produktionslauf)) |
 | 7 | Apache, Anmeldung, Wrapper, Dateirechte ([Installation](installation.md#weboberfläche-einrichten)) | `curl -s -o /dev/null -w '%{http_code}' http://localhost:<Port>/` ergibt `401`, und `./install.sh verify` zeigt kein `WARNING` (es prüft nur, repariert nichts) |
 | 8 | Tests | `.venv/bin/python3 -m pytest` ist grün |
 | 9 | Ersten Lauf von Hand starten (siehe unten) | `logs/daily/<Datum>.log` endet mit einer Zusammenfassung mit `created` > 0 |
@@ -191,13 +189,8 @@ Jeder Befehl liest die Bilder per ssh von der Storage Box. Dafür muss `TIMELAPS
 gesetzt sein. Die Cron-Zeilen tun das selbst; in der Shell einmal
 `export TIMELAPSE_STORAGE_BOX=<ssh-alias>` eingeben.
 
-Andere Bildquellen:
-
-- `TIMELAPSE_CAMERA_ROOT` liest die Bilder aus einem lokalen Ordner, zum Beispiel aus dem
-  NAS-Archiv ([nas.md](nas.md)).
-- `TIMELAPSE_FRAME_SOURCE` (`local` oder `ssh`) erzwingt eine der beiden Quellen.
-- Ist weder `TIMELAPSE_STORAGE_BOX` noch `TIMELAPSE_CAMERA_ROOT` gesetzt, bricht jeder Befehl mit
-  einer Fehlermeldung ab.
+Andere Bildquellen (`TIMELAPSE_CAMERA_ROOT` für einen lokalen Ordner wie das NAS-Archiv,
+`TIMELAPSE_FRAME_SOURCE`): [Konfiguration](konfiguration.md#umgebungsvariablen).
 
 Cron startet den Lauf um 02:00 Uhr (die Zeile steht in
 [betrieb.md](betrieb.md#nächtlicher-produktionslauf)). Von Hand startet man ihn über denselben
@@ -229,19 +222,8 @@ gelöscht. Alle Optionen und welche Kombinationen nicht erlaubt sind: [cli.md](c
 
 ### Über die Weboberfläche
 
-- **Video bestellen:** Kamera wählen, Videotyp und Zieldatum eintragen (vorbelegt ist gestern),
-  dann „Video erstellen“. Der Button bleibt gesperrt, bis der Auftrag fertig ist. Ein Fenster meldet
-  das Ergebnis, bei einem Fehlschlag mit dem Grund, wenn er bekannt ist. Der Auftrag schreibt in
-  dasselbe Protokoll wie der passende Befehl.
-- **Nächtliche Videos:** Sie stehen auf der Kameraseite in der Liste „Automatische Videos“ zum
-  Ansehen und Herunterladen. Löschen lassen sie sich dort nicht.
-- **Automatische Videos neu erstellen und hochladen:** Die aufklappbare Leiste auf der Kameraseite
-  baut die Nachtjobs einer Kamera neu und überträgt sie danach auf die Website, etwa nach einem
-  Kameraausfall ([weboberflaeche.md](weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)).
-- **Einstellungen:** Die Seite „Einstellungen“ ändert einen Teil der Werte aus `config.json`, ohne
-  dass man eine Datei anfassen muss (Reiter „Allgemein“ und „Verpixelung“).
-
-Mehr dazu: [weboberflaeche.md](weboberflaeche.md).
+Ein Auftrag aus der Weboberfläche schreibt in dasselbe Protokoll wie der passende Befehl. Wie man
+Videos bestellt, neu erstellt, hochlädt und Einstellungen ändert: [weboberflaeche.md](weboberflaeche.md).
 
 ### Highlights-Flagger
 
@@ -270,7 +252,7 @@ da. Details: [flagger.md](flagger.md).
   ([verpixelung-box.md](verpixelung-box.md#verpixelung-bei-von-hand-gestarteten-videos)). Den
   Fortschritt zeigt `tail -f logs/<job>/$(date +%F).log`: Die Zeile `Blur:` nennt die Zahl der
   Bilder, jede Zeile `Replaced` ist ein verpixeltes Bild. Bilder ohne Person erscheinen nicht
-  einzeln. Von Hand gestartete Videos markieren nur Bilder von heute und den zwei Tagen davor.
+  einzeln.
 - **Direkt auf der Storage Box** verpixelt
   `.venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>`. Das schreibt auf die Box, also
   vorher [verpixelung-box.md](verpixelung-box.md) lesen. Mit `--catch-up` (45 Minuten pro Kamera)
@@ -334,12 +316,9 @@ BACKUP_HOST=<ssh-alias> ./backup.sh              # models/, state/, Einstellungs
 BACKUP_HOST=<ssh-alias> VIDEOS=1 ./backup.sh     # zusätzlich videos/
 ```
 
-Die Sicherung landet in `~/timelapse-backup`. Drin sind das Erkennungsmodell, der Status (auch der
-der Verpixelung), die beiden Einstellungsdateien `config/settings.json` und
-`config/settings-privacy.json`, die Crontab (nur zum Nachlesen) und mit `VIDEOS=1` die Videos. Geheimnisse sind
-nicht drin: Die Anmeldung der Weboberfläche legt `install.sh` neu an, das Passwort für den Upload
-trägt man von Hand ein. Wie man die Sicherung auf einem neuen Host einspielt
-(`./install.sh restore`): [vps.md](vps.md).
+Die Sicherung landet in `~/timelapse-backup`. Geheimnisse sind nicht drin: Die Anmeldung der
+Weboberfläche legt `install.sh` neu an, das Passwort für den Upload trägt man von Hand ein. Wie man
+die Sicherung auf einem neuen Host einspielt (`./install.sh restore`): [vps.md](vps.md).
 
 ---
 
@@ -615,18 +594,15 @@ ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p
 ```
 
 **Ursache:** Die Kamera wurde getauscht, und die neuen Bilder haben eine andere Größe (Uferstrasse:
-640×480 bis August 2026, danach 1920×1080). FFmpeg nimmt die Größe des ersten Bildes und streckt
-alle anderen darauf. So wirkte ein Jahresvideo über den Wechsel hinweg gestaucht.
-
-Seit dem 30.10.2026 passt das Programm bei Daily, Monthly und Yearly alle Bilder in die größte
-vorkommende Größe ein. Das Seitenverhältnis bleibt, schwarze Balken füllen den Rest. Die alten
-4:3-Bilder bekommen also Balken links und rechts und sind etwas weicher, weil sie vergrößert
-werden. Haben alle Bilder dieselbe Größe, ändert sich nichts.
+640×480 bis August 2026, danach 1920×1080). Daily, Monthly und Yearly passen deshalb alle Bilder
+in die größte vorkommende Größe ein. Das Seitenverhältnis bleibt, schwarze Balken füllen den Rest.
+Die alten 4:3-Bilder bekommen also Balken links und rechts und sind etwas weicher, weil sie
+vergrößert werden.
 
 **Lösung:** Meist nichts tun. Die Balken sind gewollt und verschwinden von selbst, sobald die alten
-Bilder aus dem Zeitraum fallen (beim Yearly nach 365 Tagen). Ein Video, das vor dem 30.10.2026
-entstanden ist, bleibt gestaucht, bis es neu gebaut wird; das nächtliche Yearly ersetzt sich
-selbst.
+Bilder aus dem Zeitraum fallen (beim Yearly nach 365 Tagen). Gestaucht ist nur ein Video aus
+`manual-runs/`, das vor dem 30.10.2026 entstanden ist: Damals streckte FFmpeg alle Bilder auf die
+Größe des ersten. Neu bauen behebt das.
 
 **Bekannte Lücke:** Das Weekly setzt fertige Tagesvideos zusammen und passt nichts an. Liegt ein
 Kamerawechsel in den 7 Tagen, kann es gestaucht sein.
@@ -1133,10 +1109,8 @@ verpixelt.
 > das Objekt ist und keine Person, und schlage `ignore_boxes` vor. Zeig, wie viele der bisherigen
 > Treffer sie verwerfen und welche echten Personen bleiben.
 
-Claude wertet die Statusdatei aus, sieht sich einen Bildausschnitt an, prüft die Rahmen gegen alle
-bisherigen Boxen und trägt sie nach Freigabe ein. Bei der Ankerkette dauerte das rund 10 Minuten
-(geschätzt 15.000 bis 20.000 Tokens). Ergebnis: 28 von 35 Treffern verworfen; die übrigen 7 waren
-echte Personen neben der Kette.
+Claude trägt die Rahmen erst nach Freigabe ein. Bei der Ankerkette wurden so 28 von 35 Treffern
+verworfen; die übrigen 7 waren echte Personen neben der Kette.
 
 **Grenzen:**
 
@@ -1320,8 +1294,6 @@ Schlägt dort mehr fehl als die bekannten macOS-Fälle, ist der Fehler echt.
 ---
 
 ## Arbeitsspeicher
-
-### Arbeitsspeicher knapp
 
 **Prüfen:**
 
