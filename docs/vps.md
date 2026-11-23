@@ -128,7 +128,8 @@ Der Installer prüft zuerst, ob der `Host`-Eintrag und sein Schlüssel existiere
 dem sudo-Passwort und führt der Reihe nach aus: Pakete installieren, virtuelle Umgebung anlegen,
 Anmeldung der Weboberfläche anlegen (`web_login`), Login-Datei des Uploads anlegen (`upload_login`),
 eine Sicherung zurückspielen (`restore`), den Host-Fingerabdruck der Box bestätigen
-(`known_hosts`), Apache (HTTP mit Basisauthentifizierung), Wrapper und sudoers einrichten und die
+(`known_hosts`), Apache (HTTP mit Basisauthentifizierung), die Sperre gegen Passwort-Raten
+(`web_fail2ban`), Wrapper und sudoers einrichten und die
 Dateirechte setzen. Zum Schluss prüft `verify` das Ergebnis, und die Cron-Zeile steht in der
 Ausgabe; installiert wird sie nicht. Der Installer ist wiederholbar, einzelne Schritte laufen mit
 `./install.sh <schritt> [<schritt> ...]`.
@@ -225,6 +226,9 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
 - **Weboberfläche für das Team:** Die Oberfläche des VPS ist über HTTP auf `WEB_PORT` nur aus dem
   Büronetz erreichbar (Hetzner-Firewall) und mit Basic Auth geschützt; HTTPS steht aus (siehe
   „TLS und Port“). Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
+  Fünf falsche Anmeldungen in 10 Minuten sperren die Adresse für eine Stunde auf `WEB_PORT`
+  (fail2ban, Schritt `web_fail2ban`). Weil das Büro eine gemeinsame Adresse hat, trifft die Sperre
+  alle dort ([Handbuch](handbuch.md#seite-lädt-nach-falschen-passwörtern-nicht-mehr)).
 - **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard); der
   Nachtlauf (nur die Videos) dauert damit rund eine Stunde. Qualität und Dateigröße:
   [Handbuch](handbuch.md#videodateien-zu-groß-oder-qualität-nicht-gut-genug).

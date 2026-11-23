@@ -53,6 +53,7 @@ ALL_STEPS=(
 	restore
 	known_hosts
 	apache
+	web_fail2ban
 	web_bridge
 	permissions
 	verify
@@ -97,7 +98,7 @@ step_packages() {
 	sudo apt-get update
 	sudo apt-get install -y \
 		git python3 python3-venv python3-pip \
-		ffmpeg rsync curl cron \
+		ffmpeg rsync curl cron fail2ban \
 		apache2 apache2-utils libapache2-mod-php php-cli php-common php-opcache
 	sudo systemctl enable --now cron
 }
@@ -283,6 +284,43 @@ EOF
 	sudo systemctl reload apache2 || sudo systemctl restart apache2
 }
 
+step_web_fail2ban() {
+	log "Blocking repeated failed logins to the web UI (fail2ban)"
+	command -v fail2ban-client >/dev/null || fail "fail2ban is not installed: run './install.sh packages' first."
+
+	# Basic Auth itself allows unlimited guesses. One hour, not the ssh jail's day: the office shares
+	# one address, so a ban locks out everyone there. Apache logs a failed login to the vhost's log
+	# or to its main error.log depending on the setup, so the jail reads both. backend = auto reads
+	# files; the journal (Debian's choice for sshd) never sees Apache's failures.
+	local jail
+	jail="$(mktemp)"
+	# shellcheck disable=SC2064
+	trap "rm -f '$jail'" EXIT
+	cat >"$jail" <<EOF
+[zeitraffer-web]
+enabled = true
+filter = apache-auth
+backend = auto
+logpath = /var/log/apache2/*error.log
+port = ${WEB_PORT}
+banaction = nftables-multiport
+maxretry = 5
+findtime = 10m
+bantime = 1h
+EOF
+	sudo install -o root -g root -m 644 "$jail" /etc/fail2ban/jail.d/zeitraffer-web.local
+	rm -f "$jail"
+	trap - EXIT
+
+	# A broken jail file would keep fail2ban from starting, the ssh jail included.
+	if ! sudo fail2ban-client -t >/dev/null; then
+		sudo rm -f /etc/fail2ban/jail.d/zeitraffer-web.local
+		fail "The fail2ban configuration test failed: the web jail was removed again."
+	fi
+	sudo systemctl enable --now fail2ban
+	sudo fail2ban-client reload
+}
+
 step_web_bridge() {
 	log "Installing the web-to-Python bridge wrappers and the sudoers rules"
 	sudo install -m 755 -o root -g root "$PROJECT_ROOT/scripts/web/timelapse-web-trigger" /usr/local/sbin/timelapse-web-trigger
@@ -426,6 +464,10 @@ step_verify() {
 		&& echo "sudoers: settings rule active" || warn "sudoers: settings rule missing for www-data."
 	grep -q "timelapse-web-preview" <<<"$sudo_rules" \
 		&& echo "sudoers: preview rule active" || warn "sudoers: preview rule missing for www-data."
+
+	sudo fail2ban-client status zeitraffer-web >/dev/null 2>&1 \
+		&& echo "fail2ban: web login jail active" \
+		|| warn "fail2ban: jail zeitraffer-web is not running (./install.sh web_fail2ban)."
 
 	# The nightly upload to the website reads its FTP login from here. Only the names are tested,
 	# the values are never printed.

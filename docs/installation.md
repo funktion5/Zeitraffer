@@ -185,6 +185,16 @@ sudo htpasswd -cB /etc/apache2/.htpasswd <login>
 
 `-B` erzwingt bcrypt-Hashing (laut `htpasswd --help` „very secure“) anstelle des schwächeren MD5-Standards. `-c` legt die Datei neu an und darf nur beim ersten Benutzer verwendet werden; weitere Benutzer werden ohne `-c` ergänzt.
 
+### Sperre gegen Passwort-Raten
+
+Basisauthentifizierung allein erlaubt beliebig viele Versuche. Der Schritt `web_fail2ban` legt deshalb `/etc/fail2ban/jail.d/zeitraffer-web.local` an: fünf falsche Anmeldungen in 10 Minuten sperren die Adresse für eine Stunde, und zwar nur auf `WEB_PORT`, ssh bleibt erreichbar. Die Jail liest alle `/var/log/apache2/*error.log`, weil Apache einen Fehlversuch je nach Einrichtung ins Protokoll des vhosts oder ins allgemeine `error.log` schreibt. Vor dem Neuladen prüft der Schritt die ganze fail2ban-Konfiguration; fällt die Prüfung durch, entfernt er die Datei wieder, damit die ssh-Jail weiterläuft. `./install.sh verify` meldet, ob die Jail läuft.
+
+```bash
+sudo fail2ban-client status zeitraffer-web
+```
+
+zeigt die Fehlversuche und die gesperrten Adressen. Eine Sperre vorzeitig aufheben: [Handbuch](handbuch.md#seite-lädt-nach-falschen-passwörtern-nicht-mehr).
+
 Nach jeder Änderung an der Apache-Konfiguration:
 
 ```bash

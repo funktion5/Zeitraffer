@@ -752,6 +752,26 @@ sudo htpasswd -B /etc/apache2/.htpasswd <login>
 `-B` speichert es mit bcrypt. **Kein `-c`:** Das legt die Datei neu an und löscht alle anderen
 Logins ([Installation](installation.md#basisauthentifizierung-einrichten)).
 
+### Seite lädt nach falschen Passwörtern nicht mehr
+
+**Symptom:** Nach mehreren falschen Passwörtern lädt die Weboberfläche gar nicht mehr, auch auf
+anderen Rechnern im Büro. ssh auf den VPS geht weiter.
+
+**Ursache:** Fünf falsche Anmeldungen in 10 Minuten sperren die Adresse für eine Stunde
+([Sperre gegen Passwort-Raten](installation.md#sperre-gegen-passwort-raten)). Das Büro hat eine
+gemeinsame Adresse, deshalb trifft die Sperre alle dort.
+
+**Prüfen** (auf dem VPS): `sudo fail2ban-client status zeitraffer-web`. Unter `Banned IP list` steht
+die gesperrte Adresse.
+
+**Lösung:** Eine Stunde warten, oder die Sperre sofort aufheben:
+
+```bash
+sudo fail2ban-client set zeitraffer-web unbanip <Adresse>
+```
+
+Danach das richtige Passwort verwenden; ist es vergessen, siehe „Anmeldung klappt nicht“.
+
 ### `403 Forbidden`
 
 **Prüfen:** `tail /var/log/apache2/zeitraffer-error.log`. Typisch ist
