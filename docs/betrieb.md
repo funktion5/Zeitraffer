@@ -35,34 +35,17 @@ Jobs, fehlgeschlagene Kameras aus dem Protokoll und jedes neue Video. Der Berich
 Cron-Zeile setzt `medium` (FFmpeg-Standard).
 
 Schlägt das Nachholen der Verpixelung fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`);
-die Fehler stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
-`privacy.blur_cameras` damit aus verpixelten Bildern. Außerdem baut der Lauf die automatischen
-Videos dieser Kameras nur aus Bildern, die der Box-Job bestätigt hat
-([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); im Code gilt das für das Daily seit
-dem 05.11.2026, für Monthly und Yearly seit dem 09.11.2026.
+die Fehler stehen in `logs/privacy/`. Damit entstehen die Dailys der Kameras aus
+`privacy.blur_cameras` aus verpixelten Bildern, und der Lauf baut ihre automatischen Videos nur aus
+Bildern, die der Box-Job bestätigt hat ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
 
 `flock -n` wartet nicht: Hält ein anderer Job die Sperre, fällt das Nachholen der Verpixelung in
 dieser Nacht ohne Eintrag in `logs/privacy/` aus. Der Wrapper nimmt die Sperre selbst; ist sie
 belegt, startet er keinen zweiten Lauf, meldet das und endet mit Status 75.
 
-### Wiederanlauf nach Neustart
-
-Auf dem Server gibt es keine automatische Wiederholung nach einem Neustart: `install.sh` richtet
-keine `@reboot`-Zeile ein. Der Marker `state/run-in-progress` (siehe
-[Run-State und Wiederanlauf](#run-state-und-wiederanlauf)) bleibt bei einem Abbruch bestehen und
-zeigt, dass ein Lauf unterbrochen wurde. Den Lauf startet man dann von Hand wie in der Cron-Zeile,
-nachdem man mit `pgrep -af src.main` geprüft hat, dass nicht schon einer läuft.
-
-Nachtlauf, Flagger, Weboberfläche und Speicherfilter verwenden dieselbe Sperre:
-
-```text
-<projektpfad>/state/zeitraffer-run.lock
-```
-
-Dadurch können sie nicht überlappen. Die Verpixelungs-Runde alle 5 Minuten und ihr Wächter nehmen
-diese Sperre nicht (die Runde hat `state/privacy-blur.lock`); sie laufen also auch während des
-Nachtlaufs. Es ist keine zusätzliche Cron-Logdatei konfiguriert; die Anwendung schreibt ihre eigenen
-Job-Logs.
+Dieselbe Sperre (`state/zeitraffer-run.lock`) nehmen Nachtlauf, Flagger, Weboberfläche und
+Speicherfilter; sie überlappen also nie. Die Verpixelungs-Runde alle 5 Minuten und ihr Wächter nehmen
+sie nicht (die Runde hat `state/privacy-blur.lock`) und laufen auch während des Nachtlaufs.
 
 ### Upload auf die Website
 
@@ -123,12 +106,6 @@ prüft den Vortag. Die Dauer je Kamera steht in `logs/flagger/` (`seconds=`); Me
   `logs/flagger/` auf.
 - Fehlende Tage lassen sich mit `--target-date` nachholen.
 
-Installierte Einträge prüfen:
-
-```bash
-crontab -l
-```
-
 ## Timelapse-Typen
 
 ### Daily
@@ -136,17 +113,13 @@ crontab -l
 - Zieldatum: standardmäßig gestern
 - optional: explizites Zieldatum über `--target-date`
 - Quelle: Originalbilder
-- Auswahl: Sunrise-/Sunset-Fenster inklusive Buffer für den Zieltag (automatisch nach Monat aus `automatic_daylight_buffer_minutes`, historisch fest aus `daylight_buffer_minutes`); der vollständige Vortag dient als Duplicate-Referenz
-- Zieltag und Vortag werden in einem gemeinsamen Verzeichnis-Scan gefunden
-- der Vortag dient ausschließlich als Duplicate-Referenz und wird nicht ins Daily übernommen
-- Zieltag-Frames mit byte-identischem Inhalt vom Vortag werden ausgeschlossen
-- spätere byte-identische Bilder innerhalb des Zieltags werden ebenfalls ausgeschlossen
+- Auswahl: Sunrise-/Sunset-Fenster inklusive Buffer für den Zieltag (automatisch nach Monat aus `automatic_daylight_buffer_minutes`, historisch fest aus `daylight_buffer_minutes`)
+- Duplikate: siehe [Bildvalidierung und Duplikate](#bildvalidierung-und-duplikate)
 - bleibt danach kein Zieltag-Frame übrig, wird die Kamera übersprungen und ein vorhandenes Video bleibt erhalten
 - Kameras aus `privacy.blur_cameras` (automatischer Lauf): nur Bilder, die der Box-Job bestätigt hat
   ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); ist keines bestätigt, wird die
   Kamera übersprungen
 - Framerate: `daily_framerate`
-- Retention: exaktes rollierendes 7-Tage-Fenster relativ zum Zieldatum
 
 ### Weekly
 
@@ -156,9 +129,7 @@ crontab -l
 - der automatische Lauf benötigt mindestens ein Daily und verwendet kein älteres Backfill
 - historischer Lauf: Originalbilder für genau eine Kamera und explizites `--target-date`
 - historische Auswahl: Sunrise bis Sunset inklusive Buffer für jeden einzelnen Tag
-- byte-identische Bilder werden aus der historischen Frame-Sequenz gefiltert
 - ein historisches Weekly erfordert vollständige Bildabdeckung an allen 7 Tagen
-- keine automatische Retention für historische Weeklys
 
 ### Monthly
 
@@ -168,7 +139,6 @@ crontab -l
 - täglich 10:30 bis 13:30 Uhr (`interval_window`, historisch per `--window-time` /
   `--window-tolerance-minutes` verschiebbar)
 - verwendet alle ausgewählten Intervallbilder
-- filtert byte-identische Bilder innerhalb jedes einzelnen Tages
 - Kameras aus `privacy.blur_cameras` (automatischer Lauf): nur bestätigte Bilder
   ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)), und zwar vor der Mindestabdeckung:
   ein unbestätigtes Bild zählt nicht als Tag
@@ -232,8 +202,6 @@ Damit lassen sich Kalenderjahr-Videos aus dem alten Webcam-Archiv auf dem NAS er
 Werkzeuge dafür liegen im Ordner `nas/` und gehören nicht zum Produktionslauf. Anleitung:
 [docs/nas.md](nas.md).
 
-Der frühere Container-Test mit Docker liegt im Archiv ([archive/README.md](../archive/README.md)).
-
 ## Bildvalidierung und Duplikate
 
 0-Byte-Dateien werden vor der weiteren Verarbeitung ausgeschlossen und geloggt. Die Quelldateien bleiben unverändert.
@@ -245,7 +213,6 @@ Die Duplicate-Behandlung hängt vom Job ab:
 - Daily scannt Zieltag und Vortag gemeinsam. Byte-identische Zieltag-Frames, deren Inhalt an irgendeinem Zeitpunkt des Vortags vorhanden war, werden entfernt. Danach werden spätere Duplikate innerhalb des Zieltags entfernt.
 - Historische Weeklys filtern byte-identische Frames einmal über die vollständige Sieben-Tage-Sequenz.
 - Monthly filtert byte-identische Frames unabhängig innerhalb jedes Kalendertages. Gleicher Inhalt an unterschiedlichen Tagen bleibt erhalten.
-- Yearly wählt pro Tag bis zu fünf inhaltlich eindeutige Frames aus.
 
 Yearly behandelt Duplikate anders:
 
@@ -301,8 +268,6 @@ Historische Daily- und Weekly-Videos tragen immer den Zeitpuffer als Suffix `_<N
 (`daylight_buffer_minutes` aus den Einstellungen, 0–240; per CLI 30, 60 oder 90), damit Läufe mit verschiedenem Puffer sich nicht überschreiben. Monthly und
 Yearly haben kein Suffix, außer bei einem abweichenden Zeitfenster (`--window-time` /
 `--window-tolerance-minutes`): dann `_<HHMM|sunset>-<toleranz>min`.
-
-Historische Ausgaben werden von automatischer Retention nicht verändert.
 
 ### Temporäre Frames
 
@@ -374,9 +339,12 @@ Explizite `--jobs`-, `--target-date`- und `--date`-Aufrufe erzeugen keinen Marke
 
 Der Status ist absichtlich einfach: Es gibt keinen Resume-Punkt pro Kamera oder Job. Wird der Lauf von Hand wiederholt, startet der komplette automatische Workflow erneut. Bereits vorhandene Videos werden durch atomaren Austausch geschützt, und Retention erfolgt erst nach erfolgreicher Neuerstellung.
 
-Der Marker liegt unter `state/` und nicht unter `/tmp`, damit er einen Neustart überlebt.
+Der Marker liegt unter `state/` und nicht unter `/tmp`, damit er einen Neustart überlebt. Wiederholt
+wird nach einem Neustart nichts von selbst (`install.sh` richtet keine `@reboot`-Zeile ein): mit
+`pgrep -af src.main` prüfen, dass nichts läuft, und den Lauf von Hand starten
+([Handbuch](handbuch.md#nächtlicher-lauf)).
 
-Kameralokale operative Fehler werden innerhalb des jeweiligen Jobs behandelt und lassen spätere Kameras weiterlaufen. Ein nicht behandelter Prozessabbruch oder globaler Fehler nach dem Anlegen des Markers lässt ihn bestehen, ein unterbrochener Lauf bleibt so erkennbar.
+Operative Fehler einer Kamera (z. B. `OSError`, `subprocess.CalledProcessError`) werden im jeweiligen Job behandelt und lassen spätere Kameras weiterlaufen; Programmierfehler wie `TypeError` oder `AttributeError` werden nicht verschluckt. Ein nicht behandelter Prozessabbruch oder globaler Fehler nach dem Anlegen des Markers lässt ihn bestehen, ein unterbrochener Lauf bleibt so erkennbar.
 
 ## Logging
 
@@ -423,15 +391,3 @@ Die Aufbewahrungsdauer wird über `log_retention_days` konfiguriert. Sie gilt nu
 (`<Ordner>/JJJJ-MM-TT.log`). `logs/nightly/`, `logs/settings.log` und `logs/siteground-delivery.log`
 löscht das Programm nie; sie müssen von Hand gekürzt werden. Das Upload-Protokoll enthält den
 FTP-Zugang.
-
-Operative Fehler wie
-
-```text
-OSError
-TimeoutError
-subprocess.CalledProcessError
-```
-
-werden pro Kamera behandelt.
-
-Programmierfehler wie `TypeError` oder `AttributeError` werden nicht pauschal verschluckt.

@@ -27,47 +27,19 @@ Verantwortlich für:
 
 ### `src/jobs/`
 
-Enthält ausschließlich die Businesslogik der einzelnen Timelapse-Typen.
+Die Businesslogik der vier Videoarten, je eine Datei: `daily.py`, `weekly.py`, `monthly.py`,
+`yearly.py`. Was jede Art auswählt, welche Fenster gelten und was aufbewahrt wird, steht in
+[betrieb.md](betrieb.md#timelapse-typen). Für den Code wichtig:
 
-`daily.py`
-- verarbeitet standardmäßig gestern
-- kann optional ein explizites `target_date` verarbeiten
-- nutzt Sunrise/Sunset inklusive konfigurierbarem Buffer
-- liest Zieltag und Vortag gemeinsam in einem isolierten Scan
-- entfernt Zieltag-Frames, deren Inhalt bereits am Vortag vorhanden war
-- erstellt Daily-Videos
-- hält ein exaktes rollierendes 7-Tage-Fenster relativ zum verarbeiteten Zieldatum
-- Blur-Kameras: ein manueller Lauf verpixelt seine Bilder zuerst auf der Box
-  (`privacy/blur_job.py`), ein automatischer baut nur aus bestätigten Bildern (`privacy/blur_gate.py`)
-
-`weekly.py`
-- erstellt automatische Weeklys aus vorhandenen Daily-Videos
-- erstellt historische Weeklys direkt aus Originalbildern für genau eine Kamera
-- verarbeitet ein exaktes rollierendes 7-Tage-Fenster
-- füllt fehlende automatische Dailys nicht mit älteren Videos auf
-- verlangt für historische Weeklys vollständige Bildabdeckung
-- verwendet für automatische Weeklys FFmpeg-Concat ohne Re-Encoding
-- hat keine eigene Sperre für Blur-Kameras: ein automatisches Weekly erbt sie von den Dailys, ein
-  manuelles verpixelt seine Bilder zuerst auf der Box
-
-`monthly.py`
-- verarbeitet ein rollierendes 30-Tage-Fenster
-- Fenster endet standardmäßig gestern oder am expliziten `target_date`
-- verwendet Originalbilder
-- berücksichtigt alle ausgewählten Bilder im täglichen Zielzeitfenster aus `interval_window`
-  (Standard 12:00 Uhr ±90 Minuten; historisch per CLI überschreibbar, auch `sunset`)
-- Blur-Kameras: manuell zuerst verpixeln (vor der Abdeckungsprüfung), automatisch nur bestätigte
-  Bilder (`privacy/blur_gate.py`, ebenfalls vor der Abdeckungsprüfung)
-
-`yearly.py`
-- verarbeitet ein Kalenderjahr bis zum Enddatum (365 oder 366 Tage, je nachdem ob ein
-  29. Februar im Zeitraum liegt)
-- Fenster endet standardmäßig gestern oder am expliziten `target_date`
-- verwendet Originalbilder
-- delegiert die Yearly-spezifische Frame-Auswahl an `yearly_selection.py` (bis zu fünf eindeutige,
-  vollständige Bilder pro Tag, am nächsten an der Zielzeit)
-- Blur-Kameras: automatisch nur bestätigte Bilder (`privacy/blur_gate.py`), vor Abdeckungsprüfung und
-  Auswahl; manuell werden die Bilder verpixelt, die die Auswahl liefert
+- `weekly.py` setzt das automatische Weekly per FFmpeg-Concat ohne neues Encodieren aus den
+  Daily-Videos zusammen; ein historisches Weekly baut es aus den Bildern einer Kamera.
+- `yearly.py` gibt die Bildauswahl an `yearly_selection.py` ab (siehe unten).
+- `diagnostics.py` liest bei einer Kamera ohne passende Bilder den vorhandenen Bildbereich für das
+  Log, über den Worker-Supervisor.
+- Blur-Kameras: Ein manueller Lauf verpixelt seine Bilder zuerst auf der Box
+  (`privacy/blur_job.py`), ein automatischer nimmt nur bestätigte Bilder (`privacy/blur_gate.py`),
+  bei Monthly und Yearly vor der Abdeckungsprüfung, bei Yearly auch vor der Auswahl. Das
+  automatische Weekly erbt die Sperre von den Dailys.
 
 ### `src/images.py`
 
@@ -113,6 +85,14 @@ einem `ls -l` über ssh und holt die nötigen Bilder per rsync in einen Zwischen
 Schreibt die Kameraliste der Weboberfläche nach `state/web-jobs/cameras.json`, weil der
 Webserver-Benutzer weder einen ssh-Schlüssel hat noch die Box selbst abfragt. Der Nachtlauf und
 `python3 -m src.camera_list` aktualisieren sie.
+
+### `src/night_warnings.py` und `src/web_state.py`
+
+`night_warnings.py` sammelt als letzter Schritt der 02:00-Zeile, was jemand erledigen muss, und
+schreibt es nach `state/web-jobs/warnings.json` für den
+[Meldungsbalken](weboberflaeche.md#meldungsbalken). `web_state.py` (`write_web_json`) ersetzt die
+Dateien unter `state/web-jobs/`, die die Seiten lesen, in einem Schritt, sodass eine Seite nie eine
+halbe Datei liest.
 
 ### `src/config.py`, `src/settings.py` und `src/settings_save.py`
 
@@ -193,17 +173,20 @@ Ausgewählte Originalbilder werden zuerst nach `temp/` kopiert und dort als `fra
 
 ### `src/privacy/`
 
-Verpixelung von Personen und Kennzeichen, in Videos (derzeit nur historische Dailys, siehe
-[verpixelung.md](verpixelung.md)) und direkt auf der Storage Box ([verpixelung-box.md](verpixelung-box.md)):
+Verpixelung von Personen und Kennzeichen direkt auf der Storage Box
+([verpixelung-box.md](verpixelung-box.md)); Detektor und `blur`-Werte:
+[verpixelung.md](verpixelung.md):
 
-- `anonymize.py`: ruft die Erkennung paketweise auf, prüft jedes Ergebnis, verwaltet den Cache,
-  verwirft bekannte Fehlerkennungen und verpixelt die Kopien unter `temp/` mit FFmpeg; jeder
-  Zweifel bricht den Lauf ab
+- `anonymize.py`: die Bausteine: ruft den Detektor auf und prüft seine Antwort, verwirft bekannte
+  Fehlerkennungen (`ignore_boxes`, oberer Rand, `skip_labels`, `min_person_score`), liest die
+  `blur`-Werte und verpixelt ein Bild mit FFmpeg; jeder Zweifel bricht ab (`PrivacyCheckError`)
 - `detect.py`: Erkennung von Personen und Fahrzeugen (YOLOX), läuft als eigener Prozess
-- `blur_box.py`: Runde über neue Bilder auf der Storage Box; liest und schreibt nur per SSH (einen
-  Mount gibt es nicht mehr)
+- `blur_box.py`: Runde über neue Bilder auf der Storage Box; liest und schreibt nur per SSH
 - `box_writer.py`: einzige Stelle, die auf die Box schreibt (Sicherung des Originals, Upload,
   geprüfter Tausch)
+- `checked_mark.py`: die Markierung `blur:checked=true` (lesen, setzen); sie ändert kein Pixel
+- `blur_watch.py`: der Wächter; meldet Bilder, die länger als 10 Minuten ungeprüft auf der Box
+  liegen, nur lesend, ohne Sperre und ohne Detektor
 - `blur_job.py`: Verpixelung der Bilder eines von Hand gestarteten Videos vor dem Videobau
   (`blur_job_frames`); nutzt `blur_box` und `box_writer` und passt deren Altersgrenze und Anzahl der
   Sicherungen an die Bilder des Videos an
@@ -272,14 +255,17 @@ timelapse/
 │   ├── settings.json, settings-privacy.json   (entstehen auf dem Host, nicht in git)
 │   └── siteground.env.example   (Vorlage für die Zugangsdaten des Uploads)
 ├── docker/
-│   ├── docker-compose.yml
+│   ├── zeitraffer-web/   (Webteil des VPS zum Testen auf dem eigenen Rechner, siehe docs/docker-web.md)
+│   ├── docker-compose.yml   (WordPress zum Entwickeln)
 │   ├── .env.example
 │   └── pull-videos.sh
 ├── docs/
 │   ├── plans/   (offene und zurückgestellte Pläne; fertige Pläne und Entwürfe in plans/done/)
+│   ├── youtube/   (Regeln und Texte für YouTube-Beschreibungen)
 │   ├── architektur.md
 │   ├── betrieb.md
 │   ├── cli.md
+│   ├── docker-web.md
 │   ├── flagger.md
 │   ├── handbuch.md
 │   ├── highlights-seite.md
@@ -291,8 +277,11 @@ timelapse/
 │   ├── vps.md
 │   ├── weboberflaeche.md
 │   ├── werkzeuge.md
-│   ├── wordpress.md
-│   └── youtube/   (Regeln und Texte für YouTube-Beschreibungen)
+│   └── wordpress.md
+├── extras/   (vorhanden, nicht eingeschaltet)
+│   ├── README.md
+│   ├── mark_newest.py   (markiert bei Kameras ohne Verpixelung das neueste Bild)
+│   └── mark_newest_test.py
 ├── frontend/
 │   └── f5-webcams/   (WordPress-Plugin: Player, Shortcode, Kameraeinträge; eigenes Repository)
 ├── .github/
@@ -319,7 +308,7 @@ timelapse/
 │   ├── copy_zeitraffer_videos_vps2siteground.sh   (Upload der Videos auf die Website)
 │   ├── list-deliverable-videos.py   (Liste der Videos, die hochgeladen werden dürfen)
 │   ├── storage-filter-all
-│   └── timelapse-nightly-staged
+│   └── timelapse-nightly-staged   (Nachtlauf-Wrapper)
 ├── src/
 │   ├── flagger/
 │   │   ├── __init__.py
@@ -331,40 +320,47 @@ timelapse/
 │   ├── jobs/
 │   │   ├── __init__.py
 │   │   ├── daily.py
+│   │   ├── diagnostics.py
 │   │   ├── monthly.py
 │   │   ├── weekly.py
-│   │   └── yearly.py
+│   │   ├── yearly.py
+│   │   └── yearly_selection.py
 │   ├── privacy/
 │   │   ├── __init__.py
 │   │   ├── anonymize.py
 │   │   ├── blur_box.py
 │   │   ├── blur_gate.py
 │   │   ├── blur_job.py
+│   │   ├── blur_watch.py
 │   │   ├── box_writer.py
+│   │   ├── checked_mark.py
 │   │   ├── detect.py
 │   │   └── preview.py
+│   ├── storage/
+│   │   ├── __init__.py
+│   │   ├── frame_source.py
+│   │   ├── storage_box.py
+│   │   └── storage_filter.py
 │   ├── camera_list.py
 │   ├── config.py
 │   ├── date_coverage.py
-│   ├── diagnostics.py
-│   ├── frame_source.py
 │   ├── image_worker.py
 │   ├── images.py
 │   ├── interval_window.py
 │   ├── logger.py
 │   ├── main.py
+│   ├── night_warnings.py
 │   ├── run_state.py
 │   ├── settings.py
 │   ├── settings_save.py
 │   ├── solar.py
-│   ├── storage_box.py
-│   ├── storage_filter.py
 │   ├── video.py
-│   └── yearly_selection.py
+│   └── web_state.py
 ├── tests/   (pytest, eine *_test.py-Datei pro Modul)
 │   ├── flagger/   (Tests des Highlights-Flaggers und seine Fakes)
 │   ├── jobs/   (Tests von Daily, Weekly, Monthly, Yearly)
 │   ├── privacy/   (Tests der Verpixelung)
+│   ├── scripts/   (Tests von install.sh, backup.sh, scripts/ und den NAS-Werkzeugen)
 │   ├── web/   (Tests der Weboberfläche und ihrer Wrapper)
 │   └── conftest.py, frame_source_fakes.py, privacy_fakes.py, *_test.py   (übrige Module)
 ├── web/
@@ -378,6 +374,7 @@ timelapse/
 │   │   ├── running-job.php
 │   │   ├── settings-common.js   (Skript, das beide Einstellungs-Reiter teilen)
 │   │   ├── settings.php
+│   │   ├── storage-ring.js   (Textfeld über den Bögen der Speicherringe)
 │   │   ├── style.css
 │   │   ├── verpixelung.js   (Skript des Reiters „Verpixelung“, mit dem Zeichen-Editor)
 │   │   └── verpixelung.php
@@ -386,7 +383,9 @@ timelapse/
 │       │   ├── confirm-delete.php
 │       │   ├── header.php
 │       │   ├── job-watcher.php
-│       │   └── settings-tabs.php
+│       │   ├── settings-tabs.php
+│       │   ├── storage-panel.php
+│       │   └── warning-banner.php
 │       ├── highlight-delete.php
 │       ├── highlights-library.php
 │       ├── job-runner.php
@@ -401,7 +400,8 @@ timelapse/
 │       ├── settings-form.php
 │       ├── settings-runner.php
 │       ├── video-delete.php
-│       └── video-library.php
+│       ├── video-library.php
+│       └── warnings.php
 ├── logs/         (Laufzeitdaten, nicht im Repository)
 ├── models/       (Erkennungsmodelle, nicht im Repository)
 ├── reports/      (Laufzeitdaten, nicht im Repository)
@@ -451,37 +451,10 @@ Grundregeln des Projekts:
 
 ## Tests
 
-Komplette Testsuite:
-
 ```bash
-python3 -m pytest
+python3 -m pytest                          # alle Tests
+python3 -m pytest tests/main_test.py -v    # eine Datei, ausführlich
 ```
-
-Ausführlich:
-
-```bash
-python3 -m pytest -v
-```
-
-Einzelne Datei:
-
-```bash
-python3 -m pytest tests/main_test.py -v
-```
-
-Die `main.py`-Tests decken unter anderem ab:
-
-- vollständigen Default-Workflow
-- einzelne und kombinierte Job-Auswahl
-- feste Workflow-Reihenfolge
-- doppelte Job-Angaben
-- Weitergabe von `target_date`
-- `--date` als Alias für historische Daily-Läufe
-- ungültige CLI-Kombinationen
-- Kamera-Filterung
-- Logging
-- Storage-Fehler
-- Log-Retention
 
 Tests deaktivieren das produktive File-Logging über `tests/conftest.py`.
 
@@ -507,8 +480,7 @@ Schlägt ein Schritt fehl, laufen die folgenden nicht mehr; ein roter Lauf heiß
 zwingend, dass Tests fehlgeschlagen sind. Ein neuerer Push auf denselben Branch bricht einen noch
 laufenden älteren Lauf ab.
 
-Ein lokaler Hook `.git/hooks/pre-push` (nicht versioniert; im Klon auf dem Mac steht Stand
-30.10.2026 keiner) kann dieselben drei Prüfungen ausführen und den Push bei einem Fehler
+Ein lokaler Hook `.git/hooks/pre-push` (nicht versioniert) kann dieselben drei Prüfungen ausführen und den Push bei einem Fehler
 blockieren. Er prüft den Arbeitsstand, also auch nicht committete Änderungen.
 Notfalls umgehen mit:
 
@@ -518,48 +490,14 @@ git push --no-verify
 
 ## Linting und Formatierung
 
-Das Projekt verwendet Ruff, gepinnt in `requirements.txt`, damit lokal und in GitHub Actions
-dieselbe Version prüft.
-
-Die Konfiguration liegt in:
-
-```text
-pyproject.toml
-```
-
-Python-Code wird mit Tabs eingerückt:
-
-```toml
-[tool.ruff.format]
-indent-style = "tab"
-```
-
-Gemischte Tabs und Spaces werden über die Ruff-Regeln erkannt. `W191` ist bewusst deaktiviert, da Tabs im Projekt der gewünschte Einrückungsstil sind.
-
-Code automatisch formatieren:
+Ruff, gepinnt in `requirements.txt`, damit lokal und in GitHub Actions dieselbe Version prüft. Die
+Einstellungen stehen in `pyproject.toml`: Einrückung mit Tabs (`indent-style = "tab"`), deshalb ist
+`W191` bewusst aus.
 
 ```bash
-ruff format .
+ruff format .            # formatieren
+ruff check .             # Linting
+ruff format --check .    # nur prüfen, nichts ändern (so prüft CI)
 ```
 
-Linting ausführen:
-
-```bash
-ruff check .
-```
-
-Nur prüfen, ohne Dateien zu verändern:
-
-```bash
-ruff format --check .
-ruff check .
-```
-
-Empfohlener Entwicklungsablauf:
-
-```text
-Code ändern
-→ ruff format .
-→ ruff check .
-→ python3 -m pytest
-```
+Vor jedem Push: `ruff format .`, `ruff check .`, `python3 -m pytest`.
