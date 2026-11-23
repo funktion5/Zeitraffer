@@ -4,10 +4,8 @@ Erkennt Personen und Fahrzeuge in Kamerabildern und macht Personen und Kennzeich
 Der Code liegt in `src/privacy/`.
 
 Diese Seite beschreibt das, was jede Verpixelung gemeinsam nutzt: Detektor, Installation,
-Einstellungen und die Regeln, welche Boxen verworfen werden. Wann und wo verpixelt wird (die
-Runde alle 5 Minuten und das Nachholen um 02:00 auf der Storage Box sowie die von Hand gestarteten
-Videos von Blur-Kameras),
-beschreibt [verpixelung-box.md](verpixelung-box.md).
+Einstellungen und die Regeln, welche Boxen verworfen werden. Wann und wo verpixelt wird (Runde,
+Nachholen, von Hand gestartete Videos), beschreibt [verpixelung-box.md](verpixelung-box.md).
 
 Alle Pfade sind relativ zum Projektordner.
 
@@ -106,9 +104,9 @@ nichts: Die Box-Verpixelung bricht mit `privacy.detector_command is not set.` ab
 ### `ignore_boxes`, `ignore_top_share`, `skip_labels` und `min_person_score`
 
 `ignore_boxes`: bekannte Fehlerkennungen pro Kamera als `[x0, y0, x1, y1]` in Pixeln. Eine Box,
-die eine davon zu mindestens 50 % überlappt (Schnitt durch Vereinigung), wird verworfen.
-Verschiebt sich die Kamera, sinkt die Überlappung und das Objekt wird wieder verpixelt. Beispiele
-bei Scheunenviertel: der Wegweiser am Café-Eingang und die Ankerkette rechts. Wie man die
+die eine davon zu mindestens 50 % überlappt (Schnitt durch Vereinigung), wird verworfen; was bei
+einer bewegten Kamera passiert: [verpixelung-box.md](verpixelung-box.md#bekannte-fehlerkennungen-ignore_boxes).
+Beispiele bei Scheunenviertel: der Wegweiser am Café-Eingang und die Ankerkette rechts. Wie man die
 Koordinaten findet (von Hand oder mit Claude):
 [Handbuch](handbuch.md#ein-feststehendes-objekt-wird-immer-wieder-verpixelt).
 
@@ -121,8 +119,6 @@ Vereinigung mit ihm mindestens 0,5 ist (also fast deckungsgleiche), der Streifen
 Kamerahalterung, keine Person, die man erkennen könnte. Anlass: Bei Scheunenviertel hielt der
 Detektor zweimal die Halterung oben rechts für eine Person, einmal mit einer 373 × 460 px großen
 Box in der Dämmerung. Am 2026-08-16 betraf die Regel nur diese 2 von 1965 Boxen.
-
-Die Regel greift beim Verpixeln, nicht im Detektor. `0` schaltet die Regel ab.
 
 `skip_labels`: pro Kamera die Erkennungsarten, die dort nie verpixelt werden. Erlaubt sind nur
 `vehicle` und `plate`, **nie `person`**. Anlass: Bei SLSV stehen Boote auf Trailern mit Rädern,
@@ -285,12 +281,10 @@ Arbeitsspeicher.
 | `Detector failed with exit code …` | Modell fehlt, Paket fehlt oder Bild nicht lesbar | Installation prüfen (siehe oben), Meldung des Detektors im Log lesen |
 | `Detector timed out after 120 s …` | Rechner überlastet | andere Läufe abwarten, Arbeitsspeicher prüfen |
 | `privacy.blur.<Wert> must be …` | ungültiger Wert in `blur` | Wert laut Tabelle korrigieren |
-| `No blurrable region left for …` | Detektor meldet eine Box außerhalb des Bildes | Detektor bzw. Modell prüfen |
 | `Detector box for … has an invalid 'block'` bzw. `'label'` | Detektor liefert eine Blockgröße unter 1 oder ein Label, das kein Text ist | Detektor prüfen; mit dem mitgelieferten `detect.py` tritt das nicht auf |
 | `privacy.ignore_top_share must be …`, `privacy.ignore_top_share_per_camera for … must be …` bzw. `privacy.ignore_boxes … invalid box` | Tippfehler in der Regel; sie hätte zu viel verworfen | Wert korrigieren (0 bis unter 0,5; Boxen `[x0, y0, x1, y1]` als ganze Zahlen). Der Reiter „Verpixelung“ lässt solche Werte nicht speichern; ein Fehler kommt hier nur aus einer von Hand bearbeiteten Datei |
 | `privacy.min_person_score for … must be a number from 0 to 0.5` | Tippfehler; ein höherer Wert würde deutlich sichtbare Personen verwerfen | Wert korrigieren |
 | `privacy.skip_labels for … may only list vehicle, plate` | leere Liste, Tippfehler oder `person` eingetragen | nur `vehicle` und/oder `plate` eintragen; Personen werden immer verpixelt |
-| `Cannot read the size of …` | FFprobe liefert keine oder eine unerwartete Bildgröße (Bild beschädigt) | Bild prüfen; im Box-Job betrifft das nur dieses Bild, es wird jede Runde erneut versucht |
 
 Ohne Logmeldung, beim Ansehen des Videos:
 
