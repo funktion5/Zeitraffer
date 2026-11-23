@@ -1,7 +1,8 @@
 <?php
 
 declare(strict_types=1);
-session_start();
+require_once __DIR__ . "/../src/session.php";
+startSession();
 
 require_once __DIR__ . "/../src/highlights-library.php";
 require_once __DIR__ . "/../src/highlight-delete.php";

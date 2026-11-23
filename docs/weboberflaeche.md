@@ -77,7 +77,7 @@ web/src/json-response.php          gemeinsame JSON-Antwort (Status-Endpunkt und 
 
 ## Job-Ausführung und Status
 
-Ein gültiger Formular-POST wird durch einen Session-basierten CSRF-Token geschützt. PHP prüft Kamera, Job-Typ und ISO-Datum und ruft anschließend ohne Shell-Auswertung diesen festen Befehl auf:
+Ein gültiger Formular-POST wird durch einen Session-basierten CSRF-Token geschützt. Jede Seite mit Sitzung startet sie über `startSession()` (`web/src/session.php`): Das Sitzungs-Cookie ist für Skripte der Seite unsichtbar (`HttpOnly`), geht nicht mit Formularen fremder Seiten mit (`SameSite=Lax`), wird nur über HTTPS gesendet, sobald die Seite darüber läuft (`Secure`), und eine Sitzungs-ID, die der Server nicht selbst vergeben hat, ersetzt er durch eine neue (`use_strict_mode`). PHP prüft Kamera, Job-Typ und ISO-Datum und ruft anschließend ohne Shell-Auswertung diesen festen Befehl auf:
 
 ```text
 sudo -n -u <benutzer> /usr/local/sbin/timelapse-web-trigger \
