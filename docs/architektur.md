@@ -249,7 +249,6 @@ festen Wrapper. Aufbau und Dateien: [weboberflaeche.md](weboberflaeche.md).
 
 ```text
 timelapse/
-├── archive/   (stillgelegt: Raspberry Pi, Container-Test, Staging; siehe archive/README.md)
 ├── config/
 │   ├── config.json
 │   ├── settings.json, settings-privacy.json   (entstehen auf dem Host, nicht in git)
@@ -257,8 +256,7 @@ timelapse/
 ├── docker/
 │   ├── zeitraffer-web/   (Webteil des VPS zum Testen auf dem eigenen Rechner, siehe docs/docker-web.md)
 │   ├── docker-compose.yml   (WordPress zum Entwickeln)
-│   ├── .env.example
-│   └── pull-videos.sh
+│   └── .env.example
 ├── docs/
 │   ├── plans/   (offene und zurückgestellte Pläne; fertige Pläne und Entwürfe in plans/done/)
 │   ├── youtube/   (Regeln und Texte für YouTube-Beschreibungen)
@@ -430,7 +428,8 @@ Status, die Einstellungsdateien der Weboberfläche, auf Wunsch Videos, keine Geh
 [vps.md](vps.md).
 `scripts/timelapse-nightly-staged` ist der Nachtlauf-Wrapper ([werkzeuge.md](werkzeuge.md#nachtlauf-wrapper)).
 Der Upload der fertigen Videos auf die Website steht in [betrieb.md](betrieb.md#upload-auf-die-website).
-Stillgelegtes (Raspberry Pi, Container-Test, Staging) liegt in [`archive/`](../archive/README.md).
+Stillgelegtes (Raspberry Pi, Container-Test, Staging) ist nicht mehr im Repository; es steht in der
+Git-Historie bis Commit `55c7219`.
 
 ## Sicherheit und Datenintegrität
 

@@ -8,7 +8,7 @@ entwickelt und getestet wird. Der Player selbst ist **nur lesend**: Er startet k
 
 ```text
 VPS: videos/<Kamera>/<Zeitraum>/*.mp4
-  → docker/pull-videos.sh (rsync, nur Lesen auf dem VPS)
+  → von Hand kopiert (rsync, nur Lesen auf dem VPS)
   → Mac: videos/
   → Docker-Container "wordpress": wp-content/uploads/zeitraffer/ (schreibgeschützt)
   → Plugin frontend/f5-webcams (Player, Shortcode [zeitraffer], Kameraeinträge, Sichtbarkeit)
@@ -18,7 +18,7 @@ VPS: videos/<Kamera>/<Zeitraum>/*.mp4
 ## Voraussetzungen für das Frontend
 
 - Docker Desktop (mit `docker compose`) auf dem Mac
-- SSH-Zugang zum VPS per Schlüssel; der ssh-Alias steht in `docker/.env` (Variable `PI`, siehe Schritt 1; der Name stammt aus der Zeit des Raspberry Pi)
+- SSH-Zugang zum VPS per Schlüssel (ein Eintrag in `~/.ssh/config`), um die Videos zu kopieren
 - `rsync` auf dem Mac (bei macOS vorhanden)
 - Port `8080` auf dem Mac ist frei
 
@@ -29,7 +29,7 @@ cd docker
 cp .env.example .env         # danach die Werte eintragen, siehe unten
 docker compose up -d
 cd ..
-docker/pull-videos.sh        # Videos vom VPS holen
+rsync -av --exclude 'manual-runs/' --exclude '.*' <ssh-alias>:timelapse/videos/<Kamera> videos/   # Videos vom VPS holen
 ```
 
 Danach WordPress einmalig installieren, das Plugin aktivieren und den Shortcode in eine Seite einbauen (Details unten).
@@ -51,7 +51,6 @@ Alle Werte in `docker/.env` ausfüllen. Die Datenbankwerte sind frei wählbar, e
 | `DB_USER` | Datenbankbenutzer für WordPress |
 | `DB_PASSWORD` | Passwort dieses Benutzers |
 | `DB_ROOT_PASSWORD` | Root-Passwort der MariaDB |
-| `PI` | ssh-Login des VPS für `pull-videos.sh`: ein Alias aus `~/.ssh/config` oder `benutzer@adresse` (der Name stammt aus der Zeit des Raspberry Pi) |
 
 Bleibt ein Wert leer, startet die Datenbank nicht oder WordPress kann sich nicht verbinden. Compose liest die `.env` aus dem Ordner `docker/` und löst alle Pfade relativ zu diesem Ordner auf.
 
@@ -63,37 +62,22 @@ docker compose config
 
 ## Schritt 2: Videos vom VPS holen
 
-Hinweis: Das Skript stammt aus der Zeit des Raspberry Pi; mit dem VPS ist es noch nicht ausprobiert
-(der Pfad `timelapse/videos/` gilt dort ebenfalls).
-
 Der Container erwartet die Videos unter `videos/` im Projektordner, in derselben Struktur wie auf dem VPS:
 
 ```text
 videos/<Kamera>/<daily|weekly|monthly|yearly>/<Kamera>_<Datum>.mp4
 ```
 
-Ohne Videos zeigt das Plugin keine Kameras an.
+Ohne Videos zeigt das Plugin keine Kameras an. Kopiert wird von Hand, hier für eine Kamera:
 
 ```bash
 cd /pfad/zum/projekt
-docker/pull-videos.sh -n     # Probelauf: zeigt nur, was passieren würde
-docker/pull-videos.sh        # Probelauf anzeigen, nach Bestätigung (y) wirklich spiegeln
+rsync -av --exclude 'manual-runs/' --exclude '.*' <ssh-alias>:timelapse/videos/<Kamera> videos/
 ```
 
-Das Skript **spiegelt** den Ordner `~/timelapse/videos/` des VPS-Logins nach `videos/`:
-
-- Neue und geänderte Dateien werden kopiert.
-- Dateien, die auf dem VPS nicht mehr existieren, werden lokal **gelöscht**, damit keine veralteten Videos übrig bleiben. Deshalb zeigt das Skript immer zuerst einen Probelauf und fragt nach, bevor es etwas ändert.
-- `manual-runs/` und versteckte Dateien (z. B. unfertige Renderings) werden weder kopiert noch gelöscht.
-- Auf dem VPS wird nichts verändert.
-
-`PI` wird aus der Umgebung oder aus `docker/.env` gelesen; ein einmaliger anderer Wert lässt sich so übergeben:
-
-```bash
-PI=<ssh-alias> docker/pull-videos.sh
-```
-
-Achtung bei eigenen Testvideos in `videos/`: Sie stehen im Probelauf unter den Löschungen, sofern sie auf dem VPS nicht existieren.
+- `<ssh-alias>` ist der Eintrag für den VPS in `~/.ssh/config`. Ohne `/<Kamera>` kommen die Videos aller Kameras, das kann groß werden.
+- `manual-runs/` und versteckte Dateien (z. B. unfertige Renderings) werden nicht kopiert.
+- Auf dem VPS wird nichts verändert, und lokal wird nichts gelöscht: Videos, die es auf dem VPS nicht mehr gibt, bleiben in `videos/`, bis man sie selbst entfernt.
 
 ## Schritt 3: Container starten
 
@@ -114,7 +98,7 @@ Eingebunden werden:
 | Host (Mac) | Container | Zweck |
 |---|---|---|
 | `frontend/f5-webcams/` | `/var/www/html/wp-content/plugins/f5-webcams` | Das Plugin, schreibgeschützt (`:ro`). Änderungen am Code sind sofort sichtbar. |
-| `videos/` | `/var/www/html/wp-content/uploads/zeitraffer/` | Die Videos, schreibgeschützt. Nach jedem `pull-videos.sh` ohne Neustart sichtbar. |
+| `videos/` | `/var/www/html/wp-content/uploads/zeitraffer/` | Die Videos, schreibgeschützt. Neu kopierte Videos sind ohne Neustart sichtbar. |
 | Volume `wordpress` | `/var/www/html` | WordPress-Dateien und Uploads |
 | Volume `db` | `/var/lib/mysql` | Datenbank |
 
@@ -299,7 +283,7 @@ docker compose down        # stoppen, Daten bleiben erhalten
 docker compose down -v     # stoppen UND Volumes löschen: WordPress-Installation und Datenbank sind weg
 ```
 
-- Neue Videos: `docker/pull-videos.sh` ausführen und die Seite neu laden. Ein Neustart ist nicht nötig.
+- Neue Videos: wie in Schritt 2 kopieren und die Seite neu laden. Ein Neustart ist nicht nötig.
 - Code ändern: Datei in `frontend/f5-webcams/` speichern und neu laden. Die Versionsnummer von Stylesheet und Skript ist deren Änderungszeit, daher gibt es keine Cache-Probleme; bei Zweifeln Strg/Cmd+Shift+R.
 - Mac ausschalten: nichts zu tun. Die Container starten mit Docker Desktop wieder (`restart: always`) oder per `docker compose up -d`; Installation und Videos bleiben erhalten.
 - `down -v` entspricht einem Zurücksetzen auf eine frische WordPress-Installation (Schritt 4 beginnt wieder von vorn). Videos und Plugin-Code sind nicht betroffen, weil sie nur eingebunden sind.
@@ -319,14 +303,14 @@ Den Player (Zeitanzeige, Sprung um ein Bild, Aussehen und Bedienung) prüft man 
 | Symptom | Ursache und Lösung |
 |---|---|
 | Das Plugin „F5 Webcams“ fehlt in der Pluginliste | Der Mount fehlt. `docker compose exec wordpress ls /var/www/html/wp-content/plugins/f5-webcams` muss `f5-webcams.php` zeigen. Compose muss aus dem Ordner `docker/` gestartet werden, weil der Pfad `../frontend/f5-webcams` relativ dazu aufgelöst wird. |
-| Die Seite zeigt nichts | `videos/` ist leer, oder es gibt keine `.mp4` unter `videos/<Kamera>/<Zeitraum>/`. Mit `docker compose exec wordpress ls /var/www/html/wp-content/uploads/zeitraffer` prüfen und `docker/pull-videos.sh` ausführen. |
+| Die Seite zeigt nichts | `videos/` ist leer, oder es gibt keine `.mp4` unter `videos/<Kamera>/<Zeitraum>/`. Mit `docker compose exec wordpress ls /var/www/html/wp-content/uploads/zeitraffer` prüfen und Videos wie in Schritt 2 kopieren. |
 | Das Video lädt, lässt sich aber nicht abspielen (z. B. 403 „Forbidden“) | Dateirechte oder Mount prüfen: `docker compose exec wordpress ls -l /var/www/html/wp-content/uploads/zeitraffer/<Kamera>/<Zeitraum>`. Die Dateien müssen für den Webserver lesbar sein. |
 | Auf dem Player steht „Das Video konnte nicht geladen werden“ | Die Videodatei fehlt oder ist nicht lesbar. Die Videoadresse im Browser öffnen und Rechte und Mount wie in der Zeile davor prüfen. |
 | Eine Webcam-Seite zeigt Besuchern keinen Player, obwohl Videos da sind | Der Kameraeintrag fehlt oder ist nicht veröffentlicht (Zeitraffer → Alle Zeitraffers, Schritt 6), oder der Ordnername unter `uploads/zeitraffer/` weicht vom Feld „foldername“ ab. Als angemeldeter Redakteur erscheint ein Hinweis. |
 | Der Kasten „Videos“ oder der Player zeigt noch das vorherige Video | Der Scan läuft alle 10 Minuten; im Kameraeintrag **Jetzt prüfen** drücken. |
 | Port 8080 belegt | In `docker/docker-compose.yml` den linken Teil von `"8080:80"` ändern, z. B. `"8081:80"`, und neu starten. |
 | Datenbankfehler beim Start | `docker/.env` unvollständig. Alle `DB_*`-Werte setzen. Wurden Werte nach dem ersten Start geändert, bleibt die Datenbank mit den alten Zugangsdaten bestehen; dann `docker compose down -v` und neu installieren. |
-| `pull-videos.sh` bricht ab oder hängt | VPS nicht erreichbar oder kein SSH-Schlüssel eingerichtet. Verbindung mit `ssh <ssh-alias>` prüfen; fehlt `PI`, bricht das Skript mit einem Hinweis ab. |
+| Das Kopieren in Schritt 2 bricht ab oder hängt | VPS nicht erreichbar oder kein SSH-Schlüssel eingerichtet. Verbindung mit `ssh <ssh-alias>` prüfen. |
 
 ## Wichtig für den Live-Betrieb
 

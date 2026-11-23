@@ -182,7 +182,6 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | einen Lauf von Hand starten | [docs/cli.md](docs/cli.md) |
 | Hilfsprogramme nutzen (Speicherfilter, Jahresvideos nachholen, NAS-Archiv) | [docs/werkzeuge.md](docs/werkzeuge.md) und [docs/nas.md](docs/nas.md) |
 | Zusatzmodule ansehen, die vorhanden, aber nicht eingeschaltet sind | [extras/README.md](extras/README.md) |
-| nachlesen, was früher war (Raspberry Pi, Docker-Test) | [archive/README.md](archive/README.md) |
 | YouTube-Beschreibungen schreiben | [Regeln für die Texte](docs/youtube/youtube-description-prompt.md) und [fertige Texte](docs/youtube/youtube-texts.md) |
 | Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
 | den Code und die Ordner verstehen (Python, FFmpeg, PHP) | [docs/architektur.md](docs/architektur.md) |

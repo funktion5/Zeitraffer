@@ -80,7 +80,7 @@ Status: planned 2026-10-01, not started. Implement after the current interim tas
       "01.06.2025 – 14.06.2025"); unknown names still fall back to the raw filename.
 - [ ] Web tests (`tests/web_status*_test.py`) for the new wrapper arguments.
 - [ ] Re-install wrappers with `sudo install` (README "Wrapper installieren") — ask first.
-- [ ] `migrate.sh verify` afterwards (www-data must read `videos/*/manual-runs/custom/`).
+- [ ] `./install.sh verify` afterwards (www-data must read `videos/*/manual-runs/custom/`).
 
 ### Docs
 
