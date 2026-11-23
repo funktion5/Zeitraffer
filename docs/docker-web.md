@@ -63,6 +63,7 @@ Der Container zeigt **immer den Stand, der auf dem Rechner ausgecheckt ist**: Zw
 | PHP, CSS, JavaScript, Python in `web/` oder `src/` | nur die Seite neu laden |
 | ein Wrapper in `scripts/web/` | `docker compose restart web` (er wird beim Start neu installiert, wie `./install.sh web_bridge` auf dem VPS) |
 | `requirements.txt` | `docker compose restart web` (die Python-Pakete werden neu eingerichtet, wenn sich die Datei geändert hat) |
+| `config/apache-hardening.conf` | `docker compose restart web` (sie wird beim Start neu kopiert, wie `./install.sh web_hardening` auf dem VPS) |
 | das `Dockerfile` oder `entrypoint.sh` | `docker compose up --build -d` |
 
 Gespeicherte Einstellungen landen in `config/settings.json` und `config/settings-privacy.json` im eigenen

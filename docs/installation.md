@@ -195,6 +195,17 @@ sudo fail2ban-client status zeitraffer-web
 
 zeigt die Fehlversuche und die gesperrten Adressen. Eine Sperre vorzeitig aufheben: [Handbuch](handbuch.md#seite-lädt-nach-falschen-passwörtern-nicht-mehr).
 
+### Server-Version und Sicherheits-Header
+
+Der Schritt `web_hardening` kopiert `config/apache-hardening.conf` nach `/etc/apache2/conf-available/zeitraffer-hardening.conf`, schaltet das Apache-Modul `headers` und die Datei ein und lädt Apache erst neu, wenn `apache2ctl configtest` durchläuft; sonst schaltet er die Datei wieder ab. Die Datei gilt für den ganzen Server und ersetzt die Werte aus Debians `security.conf`:
+
+- Apache nennt nur noch `Server: Apache`, ohne Version und Betriebssystem, und Fehlerseiten haben keine Versionszeile mehr.
+- Keine fremde Seite darf die Oberfläche in einem Rahmen anzeigen (`X-Frame-Options: DENY`, `frame-ancestors 'none'`).
+- `X-Content-Type-Options: nosniff` und `Referrer-Policy: same-origin`.
+- Debians Symbol-Dateien unter `/icons/` sind gesperrt; sie waren ohne Anmeldung abrufbar.
+
+Die Content-Security-Policy beschränkt noch keine Skripte: `camera.php`, `highlights.php` und der Job-Watcher haben eingebettete Skripte, die eine solche Regel blockieren würde. Nach einer Änderung an der Datei `./install.sh web_hardening` erneut ausführen; `./install.sh verify` meldet, ob Version und Header stimmen.
+
 Nach jeder Änderung an der Apache-Konfiguration:
 
 ```bash
