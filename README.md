@@ -4,9 +4,8 @@ Zeitraffer macht aus den Bildern unserer Webcams jede Nacht automatisch Zeitraff
 Video pro Kamera für gestern, für die letzte Woche, für den letzten Monat und für das letzte Jahr.
 Die fertigen Videos erscheinen auf der Website unter dem Webcam-Bild.
 
-Diese Seite erklärt in einfachen Worten, **was** das Programm tut. Wie man es einrichtet und wie es
-im Inneren funktioniert, steht in den Dokumenten im Ordner [`docs/`](docs); am Ende dieser Seite
-steht, was wo zu finden ist.
+Diese Seite erklärt in einfachen Worten, **was** das Programm tut. Einrichtung und Technik stehen in
+[`docs/`](docs), siehe „Wo steht was?“ unten.
 
 ## Der Weg eines Bildes – auf einen Blick
 
@@ -62,10 +61,6 @@ Wächter meldet im Protokoll, wenn ein Bild länger als 10 Minuten ungeprüft li
 - War eine Kamera so lange ausgefallen, dass für ein Monats- oder Jahresvideo zu viele Tage fehlen
   (beim Monat müssen 25 von 30 Tagen Bilder haben, beim Jahr 300 Tage), wird dieses Video in der
   Nacht ausgelassen. Das alte Video bleibt dann stehen.
-- **Die Originalbilder verändert das Zeitraffer-Programm nie.** Ausnahmen gibt es nur bei den
-  Kameras mit Verpixelung (siehe unten): Dort ersetzt eine verpixelte Fassung das Bild auf dem
-  Online-Speicher, und das Original wird vorher gesichert. Und jedes geprüfte Bild bekommt einen
-  unsichtbaren Vermerk „geprüft“; am Bild selbst ändert der nichts.
 
 ## Menschen und Kennzeichen – der Datenschutz
 
@@ -114,21 +109,16 @@ geschützt und nur aus dem Büronetz erreichbar, nicht aus dem offenen Internet.
 - auf der Seite **Highlights** Bilder ansehen, groß anzeigen, herunterladen und löschen, auf denen
   das Programm Tiere oder Flugobjekte gefunden hat (Vögel, Flugzeuge, Drachen). Das Programm irrt
   sich manchmal, darum löscht oder veröffentlicht die Seite nichts von selbst; **ein Mensch
-  entscheidet**. Treffer bleiben 30 Tage erhalten (in den Einstellungen änderbar). Gedacht ist das für die Auswahl guter Motive, zum Beispiel für YouTube.
-
-- die **automatischen Videos einer Kamera neu erstellen lassen**, zum Beispiel wenn die Kamera in der
-  Nacht ausgefallen war, und sie danach **auf die Website übertragen**. Beides steckt auf der Seite
-  der Kamera in einer Leiste, die erst aufklappt, wenn man sie öffnet. Vor dem Übertragen muss man
-  ausdrücklich bestätigen; die Seite sagt vorher, welche Videos gesendet werden.
+  entscheidet**. Treffer bleiben 30 Tage erhalten (in den Einstellungen änderbar). Gedacht ist das
+  für die Auswahl guter Motive, zum Beispiel für YouTube.
+- die **automatischen Videos einer Kamera neu erstellen und auf die Website übertragen**, etwa nach
+  einem Kameraausfall (siehe Punkt 6 unter „Wenn ein Video fehlt oder zu alt ist“).
 - auf der Seite **Einstellungen** (Zahnrad oben rechts) Werte ändern, für die man sonst die IT
   braucht: zum Beispiel in welcher Qualität die Videos entstehen, welche Kameras verarbeitet werden
   oder wie die Verpixelung arbeitet. Bei der Verpixelung kann man auf einem echten Kamerabild
-  einzeichnen, wo etwas fälschlich verpixelt wird (ein Poller, ein Boot, die Kamerahalterung).
-  Das Bild ist immer ein Bild, das die Verpixelung schon geprüft hat, nie ein Rohbild. Weil
-  die Verpixelung eine Datenschutz-Einstellung ist, fragt die Seite vor dem Speichern noch einmal
-  nach. Eine Änderung gilt ab dem nächsten Auftrag, laufende Aufträge bleiben unberührt. Wer dort
-  eine Kamera zur Verpixelung hinzufügt oder entfernt, muss dieselbe Änderung auch in der Liste der
-  Website machen (siehe Punkt 7 unter „Wenn ein Video fehlt oder zu alt ist“).
+  einzeichnen, wo etwas fälschlich verpixelt wird (ein Poller, ein Boot, die Kamerahalterung). Wer
+  dort eine Kamera zur Verpixelung hinzufügt oder entfernt, muss dieselbe Änderung auch in der Liste
+  der Website machen (siehe Punkt 7 unter „Wenn ein Video fehlt oder zu alt ist“).
 
 Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
 
@@ -155,7 +145,6 @@ Wie diese Seite aufgebaut ist: [docs/weboberflaeche.md](docs/weboberflaeche.md).
    übertragen ([so geht es](docs/weboberflaeche.md#neu-erstellen-wie-der-nachtlauf)). Das geht nur
    für den Vortag. Ältere Tage lassen sich als eigenes Video bestellen; solche Videos kommen aber
    nicht auf die Website.
-
 7. **Das Webcam-Bild auf der Website ist bei Scheunenviertel oder SLSV alt, oder es zeigt einen
    Menschen unverpixelt:** Die Website holt die Bilder dieser Kameras nur, wenn sie geprüft sind, und
    dafür führt sie eine eigene Liste der Kameras. Diese Liste und die Liste auf der Seite
@@ -173,7 +162,6 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | **Storage Box** | Der Online-Speicher, auf dem alle Kamerabilder liegen |
 | **Server** | Der Rechner, auf dem das Programm läuft (auch „VPS“ genannt) |
 | **Nachtlauf** | Die Arbeit, die der Server jede Nacht um 2 Uhr erledigt |
-| **Cronjob** | Ein regelmäßig automatisch gestarteter Auftrag; der Nachtlauf ist einer |
 | **Verpixeln** | Menschen und Kennzeichen auf einem Bild unkenntlich machen |
 | **Highlights** | Bilder, auf denen das Programm Tiere oder Flugobjekte gefunden hat |
 | **Weboberfläche** | Die kleine Webseite für das Team, um Videos zu bestellen und anzusehen |
@@ -196,12 +184,7 @@ Das Handbuch beschreibt alle Fehlerfälle Schritt für Schritt: [docs/handbuch.m
 | nachlesen, was früher war (Raspberry Pi, Docker-Test) | [archive/README.md](archive/README.md) |
 | YouTube-Beschreibungen schreiben | [Regeln für die Texte](docs/youtube/youtube-description-prompt.md) und [fertige Texte](docs/youtube/youtube-texts.md) |
 | Pläne für neue Funktionen ansehen | `docs/plans/` (offen oder zurückgestellt) und `docs/plans/done/` (umgesetzt) |
-| den Code und die Ordner verstehen | [docs/architektur.md](docs/architektur.md) |
+| den Code und die Ordner verstehen (Python, FFmpeg, PHP) | [docs/architektur.md](docs/architektur.md) |
 | Einstellungen ändern (die Seite „Einstellungen“, `config/config.json`, Umgebungsvariablen) | [docs/konfiguration.md](docs/konfiguration.md) und [docs/weboberflaeche.md](docs/weboberflaeche.md#einstellungen) |
 | einen Server von Grund auf installieren | [docs/installation.md](docs/installation.md) und [docs/vps.md](docs/vps.md) |
 | die Weboberfläche auf dem eigenen Rechner ausprobieren, ohne den Server anzufassen | [docs/docker-web.md](docs/docker-web.md) |
-
-## Für Entwickler
-
-Das Programm ist in Python geschrieben, die Videos erzeugt FFmpeg, die Weboberfläche ist in PHP.
-Aufbau, Tests und Sicherheitsregeln: [docs/architektur.md](docs/architektur.md).
