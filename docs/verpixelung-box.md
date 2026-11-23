@@ -11,9 +11,8 @@ die [Markierung für die Webseite](#markierung-für-die-webseite). Der Abholjob 
 veröffentlicht von Blur-Kameras nur markierte Bilder; seine Kameraliste muss zu unserer passen
 (siehe [Konfiguration](#konfiguration)).
 
-Seit dem 05.11.2026 verpixelt außerdem jedes von Hand gestartete Daily-, Weekly-, Monthly- und
-Yearly-Video einer Blur-Kamera die Bilder, die es braucht, vorher auf der Box (Standard, kein
-Schalter): [Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos).
+Von Hand gestartete Videos einer Blur-Kamera verpixeln ihre Bilder vorher selbst auf der Box:
+[Verpixelung bei von Hand gestarteten Videos](#verpixelung-bei-von-hand-gestarteten-videos).
 
 Alle Pfade sind relativ zum Projektordner.
 
@@ -44,30 +43,28 @@ flowchart TD
    diese Kamera ab, statt ein Bild stillschweigend zu übergehen.
 2. **Bereits erledigt:** Bilder mit einem Eintrag in der Statusdatei werden übersprungen, außer
    ihr Eintrag steht noch auf `replacing` (siehe [Stromausfall](#stromausfall-und-nachholen)).
-3. **Tag und Nacht:** Seit dem 16.11.2026 gibt es keine Nachtregel mehr; der Detektor prüft jedes
-   Bild, auch nachts. Ältere Einträge mit `night` gelten weiter als erledigt.
-4. **Upload fertig:** Laut Liste muss das Bild seit 15 Sekunden unverändert sein. Sonst kommt es
+3. **Upload fertig:** Laut Liste muss das Bild seit 15 Sekunden unverändert sein. Sonst kommt es
    in der nächsten Runde dran.
-5. **Vorprüfung:** Name und Zeitfenster werden geprüft, bevor eine Erkennung dafür läuft. Ein
+4. **Vorprüfung:** Name und Zeitfenster werden geprüft, bevor eine Erkennung dafür läuft. Ein
    Bild, das nie geschrieben werden dürfte, wird gleich als `refused` vermerkt.
-6. **Erkennen:** Das Bild wird per SSH (`scp`, nur lesend, über `box_writer.fetch`) nach
-   `temp/blur-box/` geladen; einen Mount gibt es nicht mehr (er konnte hängen oder alte Daten liefern).
+5. **Erkennen:** Das Bild wird per SSH (`scp`, nur lesend, über `box_writer.fetch`) nach
+   `temp/blur-box/` geladen.
    Endet die Kopie nicht mit dem JPEG-Endmarker, läuft der Upload noch: nächste Runde. Ist sie
    nach 10 Minuten immer noch unvollständig, gilt der Upload als hängen geblieben und wird jede
    Runde als Fehler geloggt, bis es vollständig ist. Sonst geht sie an den Detektor (Zeitlimit
    120 Sekunden pro Bild, siehe [Zeitlimits](#zeitlimits)). Danach gelten `ignore_boxes`,
    `ignore_top_share` (auch je Kamera), `skip_labels` und `min_person_score` (siehe
    [verpixelung.md](verpixelung.md#ignore_boxes-ignore_top_share-skip_labels-und-min_person_score)).
-7. **Nichts gefunden:** Die Kopie bekommt die [Markierung](#markierung-für-die-webseite) und wird
+6. **Nichts gefunden:** Die Kopie bekommt die [Markierung](#markierung-für-die-webseite) und wird
    **ohne Sicherung** getauscht. Vorher prüft der Schreibcode, dass die Kopie ohne Markierung genau
    die geprüften Bytes sind und das Bild auf der Box noch das geprüfte ist (die Kamera kann es
    inzwischen neu geschrieben haben). Dann wird das Bild als `clean` vermerkt.
-8. **Person oder Kennzeichen gefunden:** Erst jetzt wird das Original auf der Box nach `original/` gesichert und
+7. **Person oder Kennzeichen gefunden:** Erst jetzt wird das Original auf der Box nach `original/` gesichert und
    per SHA-256 geprüft. Die Sicherung muss genau die geprüften Bytes enthalten. Dann wird die
    Kopie verpixelt, markiert, unter einem versteckten Namen hochgeladen, geprüft und in einem Schritt
    gegen das Bild getauscht (siehe [Was auf der Box passiert](#was-auf-der-box-passiert)).
 
-Weicht das Bild auf der Box in Schritt 7 oder 8 von der geprüften Kopie ab, bleibt es unverändert
+Weicht das Bild auf der Box in Schritt 6 oder 7 von der geprüften Kopie ab, bleibt es unverändert
 und kommt in der nächsten Runde erneut dran. `original/` enthält so nur Sicherungen verpixelter
 Bilder und wird erst angelegt, wenn die erste Person erkannt wird.
 
@@ -87,8 +84,8 @@ Lauf von Hand, nur für die genannte Kamera:
 .venv/bin/python3 -m src.privacy.blur_box --cameras <Kamera>
 ```
 
-Cron für die laufende Runde und den [Wächter](#wächter) (eingerichtet am 16.11.2026): beide alle
-5 Minuten, rund um die Uhr. Alle 5 Minuten reichen, weil die Website
+Cron für die laufende Runde und den [Wächter](#wächter): beide alle 5 Minuten, rund um die Uhr.
+Alle 5 Minuten reichen, weil die Website
 ihre Bilder ebenfalls alle 5 Minuten abholt und ihr Bild nur alle 15 Minuten erneuert. Die Grenze
 von 4 Minuten (`timeout -k 10 240`) beendet eine hängende Runde, bevor die nächste startet; sonst
 fände die nächste den Lock noch belegt und fiele aus.
@@ -115,13 +112,8 @@ Runden arbeiten den Rest ab.
 | `--settle-seconds N` | Wartezeit, bis ein Upload als fertig gilt (Standard 15) |
 | `--state-dir PFAD` | Ordner der Statusdateien (Standard `state/privacy/box/`) |
 
-- Ungültige `blur`-Werte, `ignore_boxes`, `ignore_top_share` (auch je Kamera), `skip_labels` oder `min_person_score` brechen den Lauf mit
-  `Invalid privacy settings, nothing written: …` ab, bevor die Box kontaktiert wird.
-
 - Eine der beiden Kamera-Optionen ist Pflicht. Ein Lauf darf nur in die Kameras schreiben, mit
   denen er gestartet wurde.
-- Steht eine Kamera nicht in `privacy.blur_cameras`, bricht der Lauf ab, bevor die Box
-  kontaktiert wird.
 - Der Lauf nimmt einen eigenen Lock (`state/privacy-blur.lock`), nicht den Lock des nächtlichen
   Laufs. Denselben Lock halten die Runde, das Nachholen und die Verpixelung eines von Hand
   gestarteten Videos. Ist er belegt, wird der neue Lauf übersprungen (`Skipped`, Exit-Code 0).
@@ -132,7 +124,8 @@ Runden arbeiten den Rest ab.
   Entschieden am 2026-10-16: keine Pause und keine Speichergrenze.
 - Exit-Code 1, wenn ein Bild fehlgeschlagen oder abgelehnt ist, und wenn der Lauf vor dem ersten
   Bild abbricht: `privacy.detector_command` fehlt, eine Kamera steht nicht in
-  `privacy.blur_cameras`, die Einstellungen sind ungültig, `TIMELAPSE_STORAGE_BOX` fehlt
+  `privacy.blur_cameras` oder die Einstellungen sind ungültig (diese drei, bevor die Box kontaktiert
+  wird), `TIMELAPSE_STORAGE_BOX` fehlt
   (`No storage box`), die Box ist nicht beschreibbar (`Cannot write to the storage box`), ein
   Kameraordner fehlt (`Camera folder not found`) oder die Runde bricht ab (`Round aborted`). Sonst 0, auch wenn die Runde
   übersprungen wurde, weil noch eine andere läuft.
@@ -142,7 +135,7 @@ Runden arbeiten den Rest ab.
 
 ## Markierung für die Webseite
 
-Jedes geprüfte Bild trägt seit dem 16.11.2026 eine Markierung: einen JPEG-Kommentar mit dem Text
+Jedes geprüfte Bild trägt eine Markierung: einen JPEG-Kommentar mit dem Text
 `blur:checked=true`, direkt hinter den ersten zwei Bytes der Datei (`FF D8`). Es sind immer genau
 diese 21 Bytes: `FF FE 00 13`, dann `blur:checked=true`. Der Abholjob der Webseite veröffentlicht
 von Blur-Kameras nur Bilder mit dieser Markierung. Ein Bild, das der Detektor noch nicht geprüft
@@ -173,8 +166,7 @@ Bild.
 Kamera aus `privacy.blur_cameras` die Bildliste der letzten drei Tage ab (ein `ls`, kein Bild wird
 geladen) und vergleicht sie mit der Statusdatei. Ein Bild ist **liegen geblieben**, wenn es seit
 mehr als **10 Minuten** auf der Box liegt und weder `blurred` noch `clean` noch `night` ist (also
-ohne Eintrag, `refused` oder `replacing`). Eine Nachtausnahme gibt es nicht: der Detektor läuft
-rund um die Uhr.
+ohne Eintrag, `refused` oder `replacing`).
 
 ```bash
 .venv/bin/python3 -m src.privacy.blur_watch
@@ -382,9 +374,8 @@ der nächsten Runde erneut versucht.
 Ein automatisches Tages-, Monats- oder Jahresvideo einer Blur-Kamera (`privacy.blur_cameras`) wird
 nur aus Bildern gebaut, die dieser Job bestätigt hat: letzte Zeile in der
 [Statusdatei](#statusdatei) mit `blurred`, `clean` oder `night`. Alles andere (`refused`,
-`replacing`, kein Eintrag) bleibt draußen, weil es noch eine Person zeigen kann. Im Code gilt das
-beim Tagesvideo seit dem 05.11.2026, beim Monats- und Jahresvideo seit dem 09.11.2026
-(`src/privacy/blur_gate.py`); auf dem VPS wirkt es ab dem jeweiligen `git pull`.
+`replacing`, kein Eintrag) bleibt draußen, weil es noch eine Person zeigen kann
+(`src/privacy/blur_gate.py`).
 
 - Das Video entsteht trotzdem, aus den bestätigten Bildern. Im Log steht je Kamera eine Warnung:
   `[<Kamera>] Blur gate: left out N of M unconfirmed images: ...` (höchstens 10 Namen).
@@ -492,9 +483,6 @@ wegen der Verpixelung länger dauert ([weboberflaeche.md](weboberflaeche.md)).
 
 ## Leistung
 
-Die Liste per SSH dauert ca. 0,6 bis 2 Sekunden pro Kamera, unabhängig davon, wie groß der
-Kameraordner ist.
-
 Auf dem VPS gemessen (nächtliches Nachholen am 16.11.2026, ohne andere Last): ca. 5 Sekunden pro
 Bild ohne Person (SLSV, 70 Bilder), ca. 9 Sekunden pro verpixeltem Bild (Scheunenviertel, 47
 Bilder in 413 Sekunden).
@@ -516,8 +504,6 @@ Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 R
   nicht vor.
 - Liegengebliebene `.tmp`-Dateien räumt der Job nicht weg (kein `rm`), siehe
   [Was auf der Box passiert](#was-auf-der-box-passiert).
-- Bilder, die älter als 48 Stunden sind, verpixelt die Runde nicht mehr; sie stehen als
-  `refused` im Log.
 - Keine Erkennung findet 100 % aller Personen (siehe [verpixelung.md](verpixelung.md#grenzen)).
 - Bilder, die der Box-Job nie bestätigen kann (abgeschnittene JPEGs auf der Box, `refused` nach
   einem Ausfall von mehr als 48 Stunden), fehlen dauerhaft in den automatischen Videos der
