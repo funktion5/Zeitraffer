@@ -1,23 +1,12 @@
 # Einen VPS einrichten
 
-Einrichtung eines Hosts (Debian 13) für den Zeitraffer. Der Betrieb lief zuerst auf einem
-Raspberry Pi und ist seit dem 30.10.2026 auf dem VPS; der Pi ist stillgelegt. `install.sh` im
-Projektordner richtet einen frischen Host ein; dieser Ablauf sagt, was davor und danach von Hand
-passiert. Platzhalter: `<vps>` ist der ssh-Alias des neuen Hosts in `~/.ssh/config` des Macs,
+Einrichtung eines Hosts (Debian 13) für den Zeitraffer. `install.sh` im Projektordner richtet
+einen frischen Host ein; dieser Ablauf sagt, was davor und danach von Hand passiert. Platzhalter: `<vps>` ist der ssh-Alias des neuen Hosts in `~/.ssh/config` des Macs,
 `<alter-host>` der ssh-Alias des bisherigen Hosts. Die Sicherung liegt standardmäßig in
 `~/timelapse-backup` (auf dem Mac wie auf dem neuen Host). Wird ein anderer Ordner gewählt, sollte
 er nicht unter `~/Documents` liegen: Ist dort die iCloud-Synchronisierung an, würden auch die
 unverschlüsselten Videos hochgeladen.
 
-**Stand 17.11.2026:** Der Umzug ist abgeschlossen, der VPS läuft seit dem 30.10.2026. Die Crontab
-des Pi ist leer, die Crontab des VPS enthält drei Zeilen, dieselben, die `./install.sh cron_hint`
-druckt: 02:00 (Verpixelung nachholen, Nachtlauf, Upload der Videos auf die Website, danach der
-Flagger, [betrieb.md](betrieb.md#nächtlicher-produktionslauf)) sowie seit dem 16.11.2026 alle
-5 Minuten die laufende Verpixelung und ihr Wächter ([verpixelung-box.md](verpixelung-box.md#aufruf)).
-
-Der Unterschied zum Pi: Es gibt keinen SSHFS-Mount. Die Jobs lesen die Bilder per ssh von der
-Storage Box und holen sie bei jedem Lauf per rsync (`scripts/timelapse-nightly-staged`; der frühere
-Plan liegt im [Archiv](../archive/staging/docs/plans/web-server-nightly-run.md)).
 Das Projekt muss in `~/timelapse` liegen, weil die installierten Web-Wrapper dort suchen.
 
 ## 1. Auf dem Mac: Sicherung vom bisherigen Host (optional)
@@ -236,8 +225,6 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
 - **Weboberfläche für das Team:** Die Oberfläche des VPS ist über HTTP auf `WEB_PORT` nur aus dem
   Büronetz erreichbar (Hetzner-Firewall) und mit Basic Auth geschützt; HTTPS steht aus (siehe
   „TLS und Port“). Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
-- **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard, wie auf
-  dem Pi); der Nachtlauf (nur die Videos) dauert damit rund eine Stunde.
-  Die Qualität steht seit dem 30.10.2026 auf CRF 28 (`timelapse.crf` in `config/config.json`); an
-  einem Jahresvideo (Uferstrasse) gemessen ist die Datei damit rund 53 % kleiner (9,9 statt 21,2 MiB)
-  ([Plan](plans/done/2026-10-30-video-crf.md)).
+- **x264-Qualität und Dateigröße:** Die Cron-Zeile setzt das Preset `medium` (FFmpeg-Standard); der
+  Nachtlauf (nur die Videos) dauert damit rund eine Stunde. Qualität und Dateigröße:
+  [Handbuch](handbuch.md#videodateien-zu-groß-oder-qualität-nicht-gut-genug).

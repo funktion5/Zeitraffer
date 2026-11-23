@@ -9,9 +9,6 @@ Runde alle 5 Minuten und das Nachholen um 02:00 auf der Storage Box sowie die vo
 Videos von Blur-Kameras),
 beschreibt [verpixelung-box.md](verpixelung-box.md).
 
-Die frühere Verpixelung beim Erstellen eines Videos (`--blur-people`, Videos mit der Endung
-`_blur`) wurde am 16.11.2026 entfernt; sie war seit der Box-Verpixelung ungenutzt.
-
 Alle Pfade sind relativ zum Projektordner.
 
 ## Installation
@@ -204,8 +201,7 @@ wird; der Konfigurationstest prüft die Werte zusätzlich.
   sichtbar bleibt.
 - Weich ausgeblendet wird nur der zusätzliche Rand. **Die erkannte Box selbst ist immer
   vollständig unkenntlich.**
-- Verpixelt wird immer ein Rechteck in Blöcken. Weichzeichnen (`blur`) und Ellipsen gab es
-  früher; sie wurden nie genutzt und am 2026-10-16 entfernt.
+- Verpixelt wird immer ein Rechteck in Blöcken.
 
 ## Sicherheitsregeln (fail closed)
 

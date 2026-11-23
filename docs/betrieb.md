@@ -35,11 +35,9 @@ Jobs, fehlgeschlagene Kameras aus dem Protokoll und jedes neue Video. Der Berich
 Cron-Zeile setzt `medium` (FFmpeg-Standard).
 
 Schlägt das Nachholen der Verpixelung fehl, startet der Zeitraffer-Lauf trotzdem (`;`, nicht `&&`);
-die Fehler stehen in `logs/privacy/`. Seit dem 23.10.2026 entstehen die Dailys der Kameras aus
-`privacy.blur_cameras` damit aus verpixelten Bildern. Außerdem baut der Lauf die automatischen
-Videos dieser Kameras nur aus Bildern, die der Box-Job bestätigt hat
-([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)); im Code gilt das für das Daily seit
-dem 05.11.2026, für Monthly und Yearly seit dem 09.11.2026.
+die Fehler stehen in `logs/privacy/`. Damit entstehen die Dailys der Kameras aus
+`privacy.blur_cameras` aus verpixelten Bildern, und der Lauf baut ihre automatischen Videos nur aus
+Bildern, die der Box-Job bestätigt hat ([Sperre](verpixelung-box.md#sperre-in-automatischen-videos)).
 
 `flock -n` wartet nicht: Hält ein anderer Job die Sperre, fällt das Nachholen der Verpixelung in
 dieser Nacht ohne Eintrag in `logs/privacy/` aus. Der Wrapper nimmt die Sperre selbst; ist sie

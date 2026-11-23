@@ -327,9 +327,6 @@ gilt als fehlgeschlagen und kommt in der nächsten Runde erneut dran.
 | Detektor, ein Bild | 120 Sekunden (`DETECTOR_TIMEOUT_SECONDS`) |
 | FFprobe/FFmpeg beim Verpixeln | 120 Sekunden |
 
-Früher las der Job über den Mount; hing der, hing die Runde mitsamt Lock, und jede weitere Runde
-meldete nur „Skipped". Das ist seit 2026-10-16 ausgeschlossen.
-
 ## Sicherheitsregeln
 
 Im Zweifel bleibt das Bild **unverändert**. Der Schreibcode erzwingt:
@@ -526,8 +523,6 @@ Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 R
   einem Ausfall von mehr als 48 Stunden), fehlen dauerhaft in den automatischen Videos der
   Blur-Kameras (siehe [Sperre in automatischen Videos](#sperre-in-automatischen-videos)). Ein von
   Hand gestartetes Daily des Tages holt `refused`-Bilder nach.
-- Automatische Monats- und Jahresvideos, die vor dem 09.11.2026 gebaut wurden, sind nicht
-  nachträglich geprüft worden; die nächtlichen Videos ersetzen sich selbst.
 - Einzelne Bilder (Scheunenviertel, erste von Hand gestartete Läufe am 05.11.2026, vor dem Schutz
   vor doppelten Sicherungen) haben zwei Sicherungen in `original/`. Das ist harmlos: das Mosaik ist
   nur etwas gröber, gelöscht wurde nichts.
@@ -570,9 +565,3 @@ Rückstand von 12 Bildern (2 Stunden Ausfall bei SLSV) braucht also etwa 2–3 R
 | `Storage box listing failed for camera …` | `ls` auf der Box fehlgeschlagen | Rechte und Ordner auf der Box prüfen |
 | `Unreadable storage box listing line for camera …` | unerwartete Ausgabe von `ls -l` | Meldung prüfen; die Runde dieser Kamera bricht ab, statt ein Bild zu übergehen |
 | `Round aborted, nothing replaced after this: …` | Fehler beim Auflisten der Kamera | Meldung dahinter lesen |
-
-## Entfernt am 2026-10-16
-
-Der frühere lokale Testmodus (`src/privacy/inplace.py`, `scripts/blur-test-camera.py`) ist
-entfernt; seine Hilfsfunktionen stecken jetzt in `blur_box.py`. Eine Sicherung liegt in
-`video-backup/removed-2026-10-16/` (nicht im Repository).
