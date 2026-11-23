@@ -211,8 +211,8 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
 
 ## Bekannte Lücken (nach dem Umzug klären)
 
-- **TLS und Port:** Der vhost ist HTTP. Zertifikat per DNS-Prüfung über Hetzner kommt später; bis dahin
-  die Seite nicht öffentlich erreichbar machen (Basic Auth ist ohne TLS unverschlüsselt).
+- **TLS und Port:** Der vhost ist HTTP; HTTPS ist in Arbeit. Bis dahin geht das Passwort unverschlüsselt
+  durchs Netz, obwohl die Seite öffentlich erreichbar ist (siehe „Weboberfläche für das Team“).
 - **Port 80:** Bei `WEB_PORT` ungleich 80 lauscht Apache weiter auf 80 (Debian-Standard in
   `ports.conf`) und zeigt dort die Debian-Standardseite. Auf dem VPS sperrt das die Hetzner-Firewall.
   Auf einem Host ohne Firewall `Listen 80` in `/etc/apache2/ports.conf` auskommentieren.
@@ -224,9 +224,11 @@ Danach auf dem VPS die Tests und die Stilprüfung laufen lassen:
   einer fehlt.
 - **Upload ohne Verschlüsselung:** Das Upload-Skript nutzt einfaches FTP (`ftp://`). Die Zugangsdaten
   stehen in `config/siteground.env`, nicht im Repository.
-- **Weboberfläche für das Team:** Die Oberfläche des VPS ist über HTTP auf `WEB_PORT` nur aus dem
-  Büronetz erreichbar (Hetzner-Firewall) und mit Basic Auth geschützt; HTTPS steht aus (siehe
-  „TLS und Port“). Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
+- **Weboberfläche für das Team:** Die Oberfläche des VPS ist über HTTP auf `WEB_PORT` aus dem
+  Internet erreichbar, mit Absicht: Das Büro hat keine feste IP, eine Freigabe nur für die Büroadresse
+  würde beim nächsten Adresswechsel alle aussperren. Geschützt ist sie durch Basic Auth und die Sperre
+  unten; HTTPS steht aus (siehe „TLS und Port“). Deshalb ein langes, zufälliges Passwort verwenden und
+  sich bis dahin nicht aus fremden WLANs (Café, Hotel) anmelden. Weitere Benutzer legt `sudo htpasswd -B /etc/apache2/.htpasswd <login>` an.
   Fünf falsche Anmeldungen in 10 Minuten sperren die Adresse für eine Stunde auf `WEB_PORT`
   (fail2ban, Schritt `web_fail2ban`). Weil das Büro eine gemeinsame Adresse hat, trifft die Sperre
   alle dort ([Handbuch](handbuch.md#seite-lädt-nach-falschen-passwörtern-nicht-mehr)).

@@ -96,8 +96,9 @@ Der Grundsatz heißt: **Im Zweifel lieber kein Video als ein ungeprüftes Bild.*
 
 ## Was man selbst tun kann – die Weboberfläche
 
-Zusätzlich gibt es eine kleine Webseite für das Team. Sie ist mit Benutzername und Passwort
-geschützt und nur aus dem Büronetz erreichbar, nicht aus dem offenen Internet. Dort kann man:
+Zusätzlich gibt es eine kleine Webseite für das Team. Sie ist aus dem Internet erreichbar und mit
+Benutzername und Passwort geschützt; wer mehrmals ein falsches Passwort eingibt, wird für eine Stunde
+gesperrt. Dort kann man:
 
 - für eine Kamera ein **Video für einen beliebigen vergangenen Zeitraum** bestellen: einen Tag,
   eine Woche, einen Monat oder ein Jahr, jeweils bis zu einem gewählten Datum. Monats- und
