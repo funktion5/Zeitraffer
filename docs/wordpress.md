@@ -135,16 +135,7 @@ Die Installation überlebt `docker compose down` und einen Neustart des Macs, da
 
 ## Schritt 5: Plugin aktivieren
 
-Unter **Plugins** erscheint **F5 Webcams** (Datei `frontend/f5-webcams/f5-webcams.php`). Auf **Aktivieren** klicken. Erscheint das Plugin nicht, ist der Mount nicht angekommen; siehe [Fehlerbehebung](#fehlerbehebung-wordpress-frontend). Dieses eine Plugin liefert den Player, den Shortcode, die Kameraeinträge mit der Sichtbarkeitsregel und die Videoübersicht. Das frühere zweite Plugin „Zeitraffer“ gibt es nicht mehr.
-
-**Umstellen einer bestehenden Installation** (überall, wo „Zeitraffer“ noch in der Pluginliste steht, zum Beispiel auf der Live-Seite):
-
-1. Das Plugin „Zeitraffer“ **deaktivieren**.
-2. F5 Webcams auf die neue Version aktualisieren.
-3. Prüfen: Kameraliste, Kasten „Videos“ im Kameraeintrag, Webcam-Seite mit Player (Checkliste unter „Player: Bedienung und Bildrate“).
-4. Erst danach den alten Plugin-Ordner entfernen.
-
-Beide Plugins gleichzeitig zu betreiben ist nicht vorgesehen: Sie benutzen denselben Eintragstyp und denselben Cron-Hook. Unverändert geblieben sind der Eintragstyp `zeitraffer_camera`, die Metaschlüssel `_zeitraffer_folder` und `_zeitraffer_video_<Zeitraum>`, der Cron-Hook `zeitraffer_scan` und das Intervall `zeitraffer_10min`. Deshalb bleiben bestehende Kameraeinträge und ihre gespeicherten Videowerte erhalten.
+Unter **Plugins** erscheint **F5 Webcams** (Datei `frontend/f5-webcams/f5-webcams.php`). Auf **Aktivieren** klicken. Erscheint das Plugin nicht, ist der Mount nicht angekommen; siehe [Fehlerbehebung](#fehlerbehebung-wordpress-frontend). Dieses eine Plugin liefert den Player, den Shortcode, die Kameraeinträge mit der Sichtbarkeitsregel und die Videoübersicht. Der Eintragstyp `zeitraffer_camera`, die Metaschlüssel `_zeitraffer_folder` und `_zeitraffer_video_<Zeitraum>` sowie der Cron-Hook `zeitraffer_scan` tragen noch den Namen des früheren Plugins „Zeitraffer“; F5 Webcams nutzt sie weiter, deshalb blieben die Kameraeinträge beim Umstieg erhalten.
 
 ## Schritt 6: Kameras anlegen und Shortcode einbauen
 
@@ -229,7 +220,7 @@ Auf der Seite einer Webcam (`/webcams/<name>/`) steht `[zeitraffer]` ohne Attrib
 
 Der Shortcode liest von der Webcam-Seite nur das Feld „foldername“. Der Shortcode-Player erscheint nur dort, wo der Shortcode steht; unter dem Bild von `[f5_webcams_last]` (neueste Webcam in Seitenleiste oder Startseite) gibt das Plugin nichts aus.
 
-Die Webcam-Seite kann den Player auch **ohne Shortcode** selbst ausgeben: Das Plugin f5-webcams enthält dafür die Klasse `Timelapse` (`includes/class-timelapse.php`), die nach dem Seitentext und vor der Karte einfügt. Webcam-Seite und Shortcode drucken denselben Player über `Timelapse::render_player()`. Steht `[zeitraffer]` im Text der Seite, gibt die Seite keinen zweiten Player aus. Ob ein Player erscheint, entscheidet in beiden Fällen der Kameraeintrag (Klasse `TimelapsePostType`): Nur eine Kamera mit veröffentlichtem Eintrag zeigt sich Besuchern, Redakteure sehen jede Kamera (bei einem Entwurf mit Hinweis), und Titel und Beschreibung kommen aus dem Eintrag. Filter gibt es dafür nicht mehr. Eine Webcam ohne veröffentlichten Eintrag zeigt Besuchern also keinen Player, auch wenn Videos da sind. Das f5-Plugin ist ein eigenes Repository und in diesem Repository nicht versioniert.
+Die Webcam-Seite kann den Player auch **ohne Shortcode** selbst ausgeben: Das Plugin f5-webcams enthält dafür die Klasse `Timelapse` (`includes/class-timelapse.php`), die nach dem Seitentext und vor der Karte einfügt. Webcam-Seite und Shortcode drucken denselben Player über `Timelapse::render_player()`. Steht `[zeitraffer]` im Text der Seite, gibt die Seite keinen zweiten Player aus. Ob er erscheint, entscheidet wie beim Shortcode der Kameraeintrag (Klasse `TimelapsePostType`, siehe „Sichtbarkeit: Entwurf und veröffentlicht“). Das f5-Plugin ist ein eigenes Repository und in diesem Repository nicht versioniert.
 
 ## So funktioniert das Plugin
 
@@ -255,11 +246,10 @@ Alles liegt im Plugin F5 Webcams (`frontend/f5-webcams/`, Namensraum `F5\Webcams
 - Versteckte Dateien und `manual-runs/` werden nicht angezeigt.
 - Die Tabs funktionieren auch ohne JavaScript als normale Links. `assets/js/timelapse.js` (Plugin f5-webcams) schaltet ohne Seitenneuladen um und baut die eigene Bedienleiste; die Stile stehen im letzten Abschnitt von `assets/css/f5-webcams.css` und gestalten Tabs, Bild und Leiste. Bedienung, Tastatur und Farben: siehe „Player: Bedienung und Bildrate“. Schrift und Textfarbe kommen vom Theme.
 - Das Plugin lädt **nichts von Dritten**: keine externen Schriften, Skripte oder Tracker, keine Cookies und kein Browser-Speicher. Es sind also keine Einwilligung und keine Datenschutzanpassung nötig.
-- Farben stammen nur aus der Palette des Avada-Themes, jeweils mit demselben Hex-Wert als Rückfallwert in der lokalen Umgebung (Einzelheiten unter „Player: Bedienung und Bildrate“). Schrift und Textfarbe erbt das Plugin vom Theme.
 
 ## Player: Bedienung und Bildrate
 
-Der Player ersetzt die Bedienleiste des Browsers durch eine eigene. Sie liegt ohne eigenen Hintergrund am unteren Bildrand (weiße Bedienelemente mit dunklem Rand, damit sie auf hellen und dunklen Bildern lesbar bleiben); sie bleibt immer auf dem Bild. Der Player kennt drei Größen, gemessen an seiner eigenen Breite (nicht an der des Bildschirms): Desktop (über 48 rem, also 768 px), Tablet (bis 48 rem, Knopfgröße 2,5 rem) und Mobil (bis 30 rem, also 480 px). Mobil werden Knöpfe und Schrift am kleinsten (Knopfgröße 2 rem, mindestens die 24 px, die WCAG 2.2 AA verlangt), die Tabs sind in allen Größen gleich breit (mobil in einer Reihe) und zeigen mobil die Kurzformen 1T, 7T, 30T und 365T statt „Gestern“, „Die letzten 7 Tage“ usw. (der lange Text bleibt für Screenreader im Link, nur unsichtbar, damit der Name zum Sichtbaren passt). Die langen Texte passen ab etwa 55 rem (880 px) auf eine Zeile, darunter brechen sie gleichmäßig um. Das Tages-Tab heißt „Gestern“, weil das Tagesvideo genau den Vortag (Sonnenaufgang bis Sonnenuntergang) zeigt und keine gleitenden 24 Stunden; das Jahres-Tab heißt „Die letzten 365 Tage“ (nicht „Das letzte Jahr“, das nach einem Kalenderjahr klingt). Die Leiste hat mobil zwei Zeilen: Fortschritt und Zeit oben, darunter links Abspielen, genau in der Mitte die Bild-Tasten und rechts Geschwindigkeit und Vollbild (die Bild-Tasten sind in jeder Größe mittig, auch wenn die Geschwindigkeit eine Auswahlliste ist).
+Der Player ersetzt die Bedienleiste des Browsers durch eine eigene, ohne eigenen Hintergrund am unteren Bildrand (weiße Bedienelemente mit dunklem Rand, auf hellen und dunklen Bildern lesbar). Er passt sich an seine eigene Breite an (Desktop, Tablet, Mobil; die Werte stehen im CSS des Plugins); mobil zeigen die Tabs die Kurzformen 1T, 7T, 30T und 365T (der volle Name bleibt für Screenreader im Link), die Leiste hat zwei Zeilen, und die Knöpfe bleiben mindestens 24 px groß (WCAG 2.2 AA). Das Tages-Tab heißt „Gestern“, weil das Video genau den Vortag zeigt und keine gleitenden 24 Stunden; das Jahres-Tab „Die letzten 365 Tage“, weil kein Kalenderjahr gemeint ist.
 
 | Element | Wirkung |
 |---|---|
@@ -285,7 +275,7 @@ Der Player ersetzt die Bedienleiste des Browsers durch eine eigene. Sie liegt oh
 
 **Bildrate.** Das Springen um ein Bild muss die Bildrate des Videos kennen. Sie steht je Tab (`data-fps`) und kommt aus einer Konstante: Tag 10, Woche 10, Monat 20, Jahr 20 Bilder pro Sekunde. Die Konstante heißt `Timelapse::FRAME_RATES` im Plugin f5-webcams. **Die Werte müssen zur Pipeline passen:** `timelapse.daily_framerate`, `monthly_framerate` und `yearly_framerate` in `config/config.json`; das Wochenvideo wird mit der Tagesrate gebaut (`src/jobs/weekly.py`). Ändert sich dort ein Wert, muss er auch in der Konstante geändert werden. Videos, die vor der aktuellen Einstellung gebaut wurden, können eine andere Rate haben; dann springt die Taste entsprechend ungenau. Fehlt die Rate, werden die Bild-Tasten ausgeblendet.
 
-**Ein Player für beide Wege.** Skript und Stile gibt es nur einmal, im Plugin f5-webcams: das Skript in `assets/js/timelapse.js`, die Stile als letzter Abschnitt von `assets/css/f5-webcams.css` (der Abschnitt steht absichtlich am Ende, weil er CSS-Verschachtelung benutzt: ein Browser ohne sie kann dann nur diesen Teil verlieren). Das Stylesheet ist auf jeder Seite geladen, das Skript auf Webcam-Seiten und überall, wo der Shortcode einen Player druckt. Es gibt nur diesen einen Player. Die Tests der Rechenfunktionen des Players (`tests/frontend/player.test.js`) laden das Skript aus dem Ordner des f5-Plugins.
+**Ein Player für beide Wege.** Skript und Stile gibt es nur einmal, im Plugin f5-webcams: das Skript in `assets/js/timelapse.js`, die Stile als letzter Abschnitt von `assets/css/f5-webcams.css` (der Abschnitt steht absichtlich am Ende, weil er CSS-Verschachtelung benutzt: ein Browser ohne sie kann dann nur diesen Teil verlieren). Das Stylesheet ist auf jeder Seite geladen, das Skript auf Webcam-Seiten und überall, wo der Shortcode einen Player druckt. Es gibt nur diesen einen Player.
 
 ### Checkliste zur Abnahme (von Hand im Browser)
 
@@ -359,10 +349,4 @@ Die fertigen Videos bringt jede Nacht `scripts/copy_zeitraffer_videos_vps2sitegr
 
 **Neue Kamera.** Den Namen in `ignored_cameras` (`config/config.json`) eintragen, wenn die Kamera eingerichtet wird, vor dem ersten Lauf um 02:00, sonst baut die Nacht schon ein Video. Erst wenn die Kamera live gehen darf, den Namen entfernen. Der Entwurf des Kameraeintrags im WordPress-Plugin ist nur die zweite Sicherung. Wird eine Kamera wegen ihres Inhalts zurückgezogen (Datenschutz, nicht verpixelt), reicht der Entwurf nicht: Die Dateien auf der Live-Seite müssen gelöscht werden.
 
-**Was der Upload daraus macht.** Das Skript liegt im Repository und überträgt nur Einträge der Liste; ein Eintrag, der kein sicherer Pfad der Form `<Kamera>/<Zeitraum>/<Name>.mp4` ist, wird abgelehnt.
-
-1. Eine Datei, die mit gleicher Größe schon auf der Live-Seite liegt, wird übersprungen.
-2. Eine neue Datei geht zuerst unter einem versteckten Temporärnamen (`.<Name>.part`) im selben Ordner hoch. Die Größe wird danach nicht noch einmal verglichen; ein fehlgeschlagener Upload oder Umbenennungsschritt zählt als Fehler.
-3. Erst dann wird auf den endgültigen Namen umbenannt.
-4. Danach bleiben je Kamera und Zeitraum das neueste und das vorherige Video, ältere werden gelöscht. Das vorherige ist die Sicherung und deckt eine zwischengespeicherte Seite ab, die noch den alten Dateinamen enthält.
-5. Bei einem Fehler in einem Ordner, bei einer leeren Liste und wenn die Dateiliste der Live-Seite nicht lesbar ist oder die gerade gesendete Datei nicht enthält, wird dort nichts gelöscht.
+**Was der Upload daraus macht:** [betrieb.md](betrieb.md#upload-auf-die-website). Er überträgt nur Einträge der Liste und lehnt jeden ab, der kein sicherer Pfad der Form `<Kamera>/<Zeitraum>/<Name>.mp4` ist. Neben dem neuesten Video bleibt je Zeitraum das vorherige liegen: Es deckt eine zwischengespeicherte Seite ab, die noch den alten Dateinamen enthält.
