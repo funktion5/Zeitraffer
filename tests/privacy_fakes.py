@@ -136,7 +136,7 @@ class FakeBox:
 	def _scp(self, argv: list[str]) -> subprocess.CompletedProcess:
 		source, target = argv[-2], argv[-1]
 
-		# Download: box -> Pi.
+		# Download: box -> VPS.
 		if ":" in source:
 			remote, _, remote_path = source.partition(":")
 			assert remote == self.remote

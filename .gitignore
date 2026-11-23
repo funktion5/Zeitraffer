@@ -46,6 +46,9 @@ sandbox/
 # Archived Docker trial (archive/docker-trial): its local volumes, if it is ever run again
 docker-data/
 
+# Retired code (Pi, Docker trial, staging): kept locally only; in git history up to commit 55c7219
+archive/
+
 # Exports and reports (attendee lists and the like) hold personal data and never belong in git
 report-*.csv
 frontend/*.csv

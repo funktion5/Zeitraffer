@@ -24,8 +24,8 @@ ersetzt man durch die echten Werte.
 
 ## Überblick
 
-Alles läuft auf einem VPS (Debian 13). Der frühere Raspberry Pi ist stillgelegt; was von ihm
-übrig ist, liegt im [Archiv](../archive/README.md).
+Alles läuft auf einem VPS (Debian 13). Der frühere Raspberry Pi ist stillgelegt; sein Code
+steht nur noch in der Git-Historie.
 
 ### Begriffe
 
