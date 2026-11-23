@@ -173,7 +173,7 @@ Port nicht 80, legt er eine eigene `Listen`-Zeile an. Die Site wird unter
 
 Apache läuft als `www-data`. Dieser Benutzer wird nicht in die Gruppe `<benutzer>` aufgenommen. Die lokalen Projektpfade erhalten nur die für Website, Videos und Web-Status erforderlichen Leserechte (Details unter [Dateirechte für `www-data`](#dateirechte-für-www-data)). Die Wrapper werden als root-eigene, für `www-data` nicht beschreibbare Kopien unter `/usr/local` installiert.
 
-Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt; die Site darf deshalb weiterhin nicht ohne zusätzliche Transportverschlüsselung aus einem nicht vertrauenswürdigen Netzwerk erreichbar sein.
+Die Site verwendet Apache-Basisauthentifizierung, aber weiterhin HTTP statt HTTPS. Zugangsdaten werden dadurch nicht auf dem Transportweg verschlüsselt. Die Site ist trotzdem aus dem Internet erreichbar, mit Absicht (das Büro hat keine feste IP). Bis HTTPS eingerichtet ist, schützen sie ein langes, zufälliges Passwort und die [Sperre gegen Passwort-Raten](#sperre-gegen-passwort-raten); aus fremden WLANs (Café, Hotel) sollte man sich bis dahin nicht anmelden.
 
 ### Basisauthentifizierung einrichten
 
