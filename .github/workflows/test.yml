@@ -83,8 +83,7 @@ jobs:
           flock 9
           old=$(git rev-parse HEAD)
           git pull --ff-only
-          # TEMPORARY: the first deploy only pulls (the "test" marker); the next merge turns this back on.
-          # .venv/bin/pip install -r requirements.txt
+          .venv/bin/pip install -r requirements.txt
           # The root-owned copies of the web wrappers need sudo, which a deploy does not have.
           git diff --quiet "$old" HEAD -- scripts/web \
             || echo "::warning::scripts/web changed: run ./install.sh web_bridge on the VPS"
