@@ -2,12 +2,16 @@ name: Tests
 run-name: Tests for ${{ github.ref_name }} by ${{ github.actor }}
 on: [push, pull_request]
 
+# The jobs only read the repository.
+permissions:
+  contents: read
+
 # A newer push to the same branch makes the older run pointless.
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
-# The three jobs run side by side, so a lint error never hides a test failure and the other way round.
+# Dependencies and lint run side by side; tests wait for both, but run even if one of them failed.
 jobs:
   dependencies:
     name: Dependencies
@@ -27,10 +31,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      # No pip cache here: lint finishes first and would save a cache holding only ruff under the key
+      # the other jobs use, so they would download everything again on every run.
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-          cache: pip
       # Only ruff, at the version requirements.txt pins, so lint does not wait for onnxruntime and OpenCV.
       - run: python -m pip install "$(grep '^ruff==' requirements.txt)"
       - run: ruff check .
@@ -38,6 +43,8 @@ jobs:
 
   tests:
     name: Tests
+    needs: [dependencies, lint]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
