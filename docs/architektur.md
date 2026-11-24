@@ -278,8 +278,7 @@ timelapse/
 │   └── wordpress.md
 ├── extras/   (vorhanden, nicht eingeschaltet)
 │   ├── README.md
-│   ├── mark_newest.py   (markiert bei Kameras ohne Verpixelung das neueste Bild)
-│   └── mark_newest_test.py
+│   └── mark_newest.py   (markiert bei Kameras ohne Verpixelung das neueste Bild)
 ├── frontend/
 │   └── f5-webcams/   (WordPress-Plugin: Player, Shortcode, Kameraeinträge; eigenes Repository)
 ├── .github/
@@ -355,10 +354,13 @@ timelapse/
 │   ├── video.py
 │   └── web_state.py
 ├── tests/   (pytest, eine *_test.py-Datei pro Modul)
+│   ├── extras/   (Tests von extras/)
 │   ├── flagger/   (Tests des Highlights-Flaggers und seine Fakes)
 │   ├── jobs/   (Tests von Daily, Weekly, Monthly, Yearly)
+│   ├── nas/   (Tests der NAS-Werkzeuge in nas/)
 │   ├── privacy/   (Tests der Verpixelung)
-│   ├── scripts/   (Tests von install.sh, backup.sh, scripts/ und den NAS-Werkzeugen)
+│   ├── scripts/   (Tests von install.sh, backup.sh und scripts/)
+│   ├── storage/   (Tests von src/storage/)
 │   ├── web/   (Tests der Weboberfläche und ihrer Wrapper)
 │   └── conftest.py, frame_source_fakes.py, privacy_fakes.py, *_test.py   (übrige Module)
 ├── web/
