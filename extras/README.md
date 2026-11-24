@@ -53,4 +53,4 @@ Abholjob muss dann wieder mit der Liste arbeiten, sonst bekommt keine andere Kam
   veröffentlicht (die Website zeigt ohnehin nur das neueste).
 - Die neuesten Bilder aller Kameras ändern sich auf der Box um die 21 Bytes der Markierung (kein Pixel).
 
-Tests: `extras/mark_newest_test.py` (laufen mit `pytest` wie alle anderen).
+Tests: `tests/extras/mark_newest_test.py` (laufen mit `pytest` wie alle anderen).

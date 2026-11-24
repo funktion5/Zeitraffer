@@ -34,17 +34,8 @@ CLAUDE.md
 # Blog drafts for the company website (not part of the repository)
 docs/blog/
 
-# NAS archive notes and inventory (local only, not part of the repository)
-docs/nas-notizen/
-
 # Moved-aside videos (kept out of the repository)
 video-backup/
-
-# Local sample images of the highlights flagger's acceptance test (copies of camera images)
-sandbox/
-
-# Archived Docker trial (archive/docker-trial): its local volumes, if it is ever run again
-docker-data/
 
 # Retired code (Pi, Docker trial, staging): kept locally only; in git history up to commit 55c7219
 archive/

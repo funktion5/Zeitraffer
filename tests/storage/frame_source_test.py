@@ -180,7 +180,7 @@ def test_ssh_path_for_points_into_the_cache():
 # The listing is the stall timeout's neighbour: one ssh command sends no progress ticks, so its own
 # timeout has to fire first or the worker is killed as "stalled" and the real error is hidden.
 def test_ssh_listing_timeout_is_below_the_configured_stall_timeout():
-	config_path = Path(__file__).parent.parent / "config" / "config.json"
+	config_path = Path(__file__).parents[2] / "config" / "config.json"
 	stall_timeout = json.loads(config_path.read_text())["image_scan_stall_timeout_seconds"]
 
 	assert NAME_LISTING_TIMEOUT_SECONDS < stall_timeout

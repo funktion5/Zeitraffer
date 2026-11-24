@@ -32,7 +32,7 @@ services:
       - ../../extras:/home/zeitraffer/timelapse/extras:ro
       - ../../pyproject.toml:/home/zeitraffer/timelapse/pyproject.toml:ro
       - ../../requirements.txt:/home/zeitraffer/timelapse/requirements.txt:ro
-      # Read by the tests of the installer, the backup script and the NAS helper (tests/scripts/).
+      # Read by the tests of the installer, the backup script and the NAS helpers (tests/scripts/, tests/nas/).
       - ../../install.sh:/home/zeitraffer/timelapse/install.sh:ro
       - ../../backup.sh:/home/zeitraffer/timelapse/backup.sh:ro
       - ../../nas:/home/zeitraffer/timelapse/nas:ro
