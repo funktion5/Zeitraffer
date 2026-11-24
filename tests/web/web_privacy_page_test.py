@@ -258,6 +258,8 @@ def test_cameras_that_already_blur_are_marked_and_the_warning_is_shown(tmp_path)
 	assert sorted(live) == sorted(["Beta", "Scheunenviertel", "SLSV"])
 	assert "Wichtig" in important
 	assert "schon läuft" in important
+	# A new blur camera also belongs in the website's own list, or the website skips the check.
+	assert "webcam_list.config" in important
 
 
 def test_the_current_values_are_shown_with_their_standard(tmp_path):
