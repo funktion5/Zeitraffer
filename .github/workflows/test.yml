@@ -6,10 +6,11 @@ on: [push, pull_request]
 permissions:
   contents: read
 
-# A newer push to the same branch makes the older run pointless.
+# A newer push to the same branch makes the older run pointless. Not on main: there the run may be
+# deploying, and a deploy must never stop halfway, so a newer run waits for it instead.
 concurrency:
   group: tests-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 # Dependencies and lint run side by side; tests wait for both, but run even if one of them failed.
 jobs:
@@ -54,3 +55,37 @@ jobs:
           cache: pip
       - run: python -m pip install -r requirements.txt
       - run: python -m pytest
+
+  deploy:
+    name: Deploy
+    needs: [dependencies, lint, tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull main and install the requirements on the VPS
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -p "$VPS_PORT" "$VPS_HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -p "$VPS_PORT" -o BatchMode=yes "$VPS_USER@$VPS_HOST" bash -s <<'EOF'
+          set -e
+          cd ~/timelapse
+          # Wait until no video job (night run, web UI runs) and no blur round is running, and keep
+          # both locks until the end so none starts while the code is being swapped.
+          exec 8>>state/zeitraffer-run.lock 9>>state/privacy-blur.lock
+          flock 8
+          flock 9
+          old=$(git rev-parse HEAD)
+          git pull --ff-only
+          # TEMPORARY: the first deploy only pulls (the "test" marker); the next merge turns this back on.
+          # .venv/bin/pip install -r requirements.txt
+          # The root-owned copies of the web wrappers need sudo, which a deploy does not have.
+          git diff --quiet "$old" HEAD -- scripts/web \
+            || echo "::warning::scripts/web changed: run ./install.sh web_bridge on the VPS"
+          EOF
