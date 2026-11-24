@@ -7,8 +7,10 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
 
+# The three jobs run side by side, so a lint error never hides a test failure and the other way round.
 jobs:
-  pytest:
+  dependencies:
+    name: Dependencies
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -17,6 +19,31 @@ jobs:
           python-version: "3.13"
           cache: pip
       - run: python -m pip install -r requirements.txt
+      # The pins install, but pip only warns about packages whose requirements clash; this fails on it.
+      - run: python -m pip check
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      # Only ruff, at the version requirements.txt pins, so lint does not wait for onnxruntime and OpenCV.
+      - run: python -m pip install "$(grep '^ruff==' requirements.txt)"
       - run: ruff check .
       - run: ruff format --check .
+
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: python -m pip install -r requirements.txt
       - run: python -m pytest
