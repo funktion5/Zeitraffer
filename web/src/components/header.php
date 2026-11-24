@@ -8,8 +8,6 @@ declare(strict_types=1);
 	<nav aria-label="Hauptnavigation">
 		<a href="/">Kameras</a>
 		<a href="/highlights.php">Highlights</a>
-		<!-- TEMPORARY: proves the automatic deploy reached the VPS. Remove once it was seen there. -->
-		<span>test</span>
 	</nav>
 
 	<?php if ($storage !== null): ?>
